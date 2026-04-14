@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coups de surf NC</title>
+<title>Surf Journal — Nouvelle-Calédonie</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -379,6 +379,9 @@ nav {
   .container, .container-wide { padding: 1.5rem 1rem; }
 }
 
+/* ── LABEL AS BTN (file input) ── */
+label.btn { display: inline-flex; }
+
 /* ── SETUP BANNER ── */
 .setup-banner {
   background: rgba(232,160,87,0.1); border: 1px solid rgba(232,160,87,0.3);
@@ -400,8 +403,11 @@ nav {
 <script>
 const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
-const APP_NAME = 'Coups de surf NC';
-
+const APP_NAME = 'Coups de surf';
+//window.supabaseClient = window.supabase.createClient(
+//  SUPABASE_URL,
+//  SUPABASE_KEY
+//);
 </script>
 
 <!-- TOAST -->
@@ -411,13 +417,10 @@ const APP_NAME = 'Coups de surf NC';
 <nav id="main-nav" style="display:none">
   <a href="#" class="nav-logo" onclick="showPage('dashboard')">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c2-4 5-7 10-7s8 3 10 7c-2 4-5 7-10 7s-8-3-10-7z"/><path d="M20 12C17 8 14 5 9 5"/></svg>
-    <span>Coups de surf <span>NC</span>
+    <span>Surf<span>.</span>NC</span>
   </a>
   <button class="nav-btn" onclick="showPage('dashboard')">Mes sessions</button>
   <button class="nav-btn" onclick="showPage('group')">Groupe</button>
-  <button class="nav-btn" onclick="showPage('spots')">Spots</button>
-  <button class="nav-btn" onclick="showPage('ranking')">Classement</button>
-  <button class="nav-btn" onclick="showPage('boats')">Bateaux</button>
   <button class="nav-btn" onclick="showPage('stats')">Stats</button>
   <button class="nav-btn primary" onclick="openAddSession()">+ Session</button>
   <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')">?</div>
@@ -426,8 +429,8 @@ const APP_NAME = 'Coups de surf NC';
 <!-- ══ PAGE AUTH ══ -->
 <div id="page-auth" class="page active">
   <div class="auth-card">
-    <div class="auth-title">Coups de surf <span style="color:var(--accent)">NC</span></div>
-    <div class="auth-sub">Le journal de surf de la bande 🤙</div>
+    <div class="auth-title">Surf<span style="color:var(--accent)">.</span>NC</div>
+    <div class="auth-sub">Journal de sessions partagé</div>
     <div id="auth-form-login">
       <div class="form-group">
         <label class="form-label">Email</label>
@@ -474,7 +477,14 @@ const APP_NAME = 'Coups de surf NC';
         <div class="page-title" id="dash-greeting">Mes sessions</div>
         <div class="page-sub" id="dash-sub">Chargement…</div>
       </div>
-      <button class="btn btn-primary" onclick="openAddSession()">+ Ajouter session</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV()" title="Exporter les sessions en CSV">⬇ Export CSV</button>
+        <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importer un CSV de sessions">
+          ⬆ Import CSV
+          <input type="file" accept=".csv" style="display:none;" onchange="importCSV(this)">
+        </label>
+        <button class="btn btn-primary" onclick="openAddSession()">+ Ajouter session</button>
+      </div>
     </div>
 
     <div class="stats-grid" id="dash-stats"></div>
@@ -555,100 +565,6 @@ const APP_NAME = 'Coups de surf NC';
   </div>
 </div>
 
-<!-- ══ PAGE BOATS ══ -->
-<div id="page-boats" class="page">
-  <div class="container">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
-      <div class="page-header" style="margin-bottom:0">
-        <div class="page-title">Bateaux</div>
-        <div class="page-sub">Stats, consommation et renommage</div>
-      </div>
-      <button class="btn btn-primary" onclick="openAddBoat()">+ Ajouter bateau</button>
-    </div>
-    <div id="boats-list">
-      <div class="loading-state"><div class="spinner"></div></div>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL BOAT ══ -->
-<div class="modal-overlay" id="modal-boat">
-  <div class="modal" style="max-width:420px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
-      <div class="modal-title" id="modal-boat-title">Bateau</div>
-      <button onclick="closeModal('modal-boat')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
-    </div>
-    <input type="hidden" id="boat-edit-id">
-    <div class="form-group">
-      <label class="form-label">Nom du bateau</label>
-      <input type="text" class="form-input" id="boat-name" placeholder="ex: Cool Breeze">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Alias / ancien nom</label>
-      <input type="text" class="form-input" id="boat-alias" placeholder="ex: Raph, Lucas…">
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Conso (L/h)</label>
-        <input type="number" class="form-input" id="boat-conso" placeholder="35" step="1" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Carburant</label>
-        <select class="form-select" id="boat-fuel">
-          <option value="essence">Essence</option>
-          <option value="diesel">Diesel</option>
-          <option value="electrique">Électrique</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Places</label>
-        <input type="number" class="form-input" id="boat-places" placeholder="6" step="1" min="1" max="20">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Prix carburant (CFP/L)</label>
-        <input type="number" class="form-input" id="boat-fuel-price" placeholder="185" step="5" min="0">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Notes</label>
-      <textarea class="form-textarea" id="boat-notes" placeholder="Infos utiles…" style="min-height:60px;"></textarea>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.5rem;">
-      <button class="btn btn-secondary" onclick="closeModal('modal-boat')">Annuler</button>
-      <button class="btn btn-primary" onclick="saveBoat()">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ PAGE SPOTS ══ -->
-<div id="page-spots" class="page">
-  <div class="container-wide">
-    <div class="page-header">
-      <div class="page-title">Spots</div>
-      <div class="page-sub">Stats et conditions par spot</div>
-    </div>
-    <div id="spots-selector" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem;"></div>
-    <div id="spots-content">
-      <div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- ══ PAGE RANKING ══ -->
-<div id="page-ranking" class="page">
-  <div class="container">
-    <div class="page-header">
-      <div class="page-title">Classement 🏆</div>
-      <div class="page-sub">Qui surfe le plus dans la bande ?</div>
-    </div>
-    <div id="ranking-content">
-      <div class="loading-state"><div class="spinner"></div></div>
-    </div>
-  </div>
-</div>
-
 <!-- ══ MODAL ADD SESSION ══ -->
 <div class="modal-overlay" id="modal-add">
   <div class="modal">
@@ -658,7 +574,6 @@ const APP_NAME = 'Coups de surf NC';
     </div>
 
     <input type="hidden" id="edit-session-id">
-    <div id="fuel-estimate" style="font-size:12px;color:var(--accent);margin-bottom:8px;min-height:16px;"></div>
 
     <div class="form-row">
       <div class="form-group">
@@ -667,46 +582,25 @@ const APP_NAME = 'Coups de surf NC';
       </div>
       <div class="form-group">
         <label class="form-label">Durée (h)</label>
-        <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12" oninput="updateFuelEstimate()">
+        <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12">
       </div>
     </div>
 
     <div class="form-group">
       <label class="form-label">Spot</label>
-      <select class="form-select" id="f-spot" onchange="handleSpotChange(this)">
-        <option value="">— Choisir —</option>
-        <option value="Grand bac">Grand bac</option>
-        <option value="Petit U">Petit U</option>
-        <option value="Gros nem">Gros nem</option>
-        <option value="Fausse passe Dumbéa">Fausse passe Dumbéa</option>
-        <option value="Gauche de Dumbéa">Gauche de Dumbéa</option>
-        <option value="Droite de Dumbéa">Droite de Dumbéa</option>
-        <option value="La roche percée">La roche percée</option>
-        <option value="Ouano">Ouano</option>
-        <option value="Skatepark">Skatepark</option>
-        <option value="Trois cailloux">Trois cailloux</option>
-        <option value="__autre__">+ Autre spot…</option>
-      </select>
-      <input type="text" class="form-input" id="f-spot-custom" placeholder="Nom du nouveau spot" style="display:none;margin-top:8px;">
+      <input type="text" class="form-input" id="f-spot" placeholder="ex: Gros nem, Grand bac…" list="spots-list">
+      <datalist id="spots-list">
+        <option value="Grand bac"><option value="Petit U"><option value="Gros nem">
+        <option value="Fausse passe Dumbéa"><option value="Gauche de Dumbéa"><option value="Droite de Dumbéa">
+        <option value="La roche percée"><option value="Ouano"><option value="Skatepark"><option value="Trois cailloux">
+      </datalist>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Bateau</label>
-      <select class="form-select" id="f-boat-id" onchange="updateFuelEstimate()">
-        <option value="">— Choisir un bateau —</option>
-      </select>
-    </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Mise à l'eau</label>
         <input type="text" class="form-input" id="f-launch" placeholder="ex: Tomo, Port Ouenghi">
       </div>
-      <div class="form-group">
-        <label class="form-label">Distance A/R (nm)</label>
-        <input type="number" class="form-input" id="f-distance" placeholder="12" step="0.5" min="0" oninput="updateFuelEstimate()">
-      </div>
-    </div>
-    <div class="form-row">
       <div class="form-group">
         <label class="form-label">Contexte</label>
         <select class="form-select" id="f-context">
@@ -730,28 +624,7 @@ const APP_NAME = 'Coups de surf NC';
       </div>
       <div class="form-group">
         <label class="form-label">Direction houle</label>
-        <select class="form-select" id="f-swell-dir">
-          <option value="">—</option>
-          <option value="N (0°)">N — 0°</option>
-          <option value="NNE (22°)">NNE — 22°</option>
-          <option value="NE (45°)">NE — 45°</option>
-          <option value="ENE (67°)">ENE — 67°</option>
-          <option value="E (90°)">E — 90°</option>
-          <option value="ESE (112°)">ESE — 112°</option>
-          <option value="SE (135°)">SE — 135°</option>
-          <option value="SSE (157°)">SSE — 157°</option>
-          <option value="S (180°)">S — 180°</option>
-          <option value="SSO (190°)">SSO — 190°</option>
-          <option value="SSO (195°)">SSO — 195°</option>
-          <option value="SSO (200°)">SSO — 200°</option>
-          <option value="SO (210°)">SO — 210°</option>
-          <option value="SO (216°)">SO — 216°</option>
-          <option value="OSO (247°)">OSO — 247°</option>
-          <option value="O (270°)">O — 270°</option>
-          <option value="ONO (292°)">ONO — 292°</option>
-          <option value="NO (315°)">NO — 315°</option>
-          <option value="NNO (335°)">NNO — 335°</option>
-        </select>
+        <input type="text" class="form-input" id="f-swell-dir" placeholder="SSO">
       </div>
     </div>
 
@@ -762,20 +635,7 @@ const APP_NAME = 'Coups de surf NC';
       </div>
       <div class="form-group">
         <label class="form-label">Direction vent</label>
-        <select class="form-select" id="f-wind-dir">
-          <option value="">—</option>
-          <option value="Glassy">Glassy</option>
-          <option value="N">N</option><option value="NNE">NNE</option>
-          <option value="NE">NE</option><option value="ENE">ENE</option>
-          <option value="E">E</option><option value="ESE">ESE</option>
-          <option value="SE">SE</option><option value="SSE">SSE</option>
-          <option value="S">S</option><option value="SSO">SSO</option>
-          <option value="SO">SO</option><option value="OSO">OSO</option>
-          <option value="O">O</option><option value="ONO">ONO</option>
-          <option value="NO">NO</option><option value="NNO">NNO</option>
-          <option value="Tournant">Tournant</option>
-          <option value="Onshore">Onshore</option>
-        </select>
+        <input type="text" class="form-input" id="f-wind-dir" placeholder="ESE">
       </div>
       <div class="form-group">
         <label class="form-label">Marée (m)</label>
@@ -789,15 +649,9 @@ const APP_NAME = 'Coups de surf NC';
       <datalist id="boards-list"></datalist>
     </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Prix bateau (CFP)</label>
-        <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nb surfeurs à bord</label>
-        <input type="number" class="form-input" id="f-nb-surfers" placeholder="3" step="1" min="1" max="12" oninput="updateFuelEstimate()">
-      </div>
+    <div class="form-group">
+      <label class="form-label">Prix bateau (CFP)</label>
+      <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
     </div>
 
     <div class="form-group">
@@ -814,16 +668,16 @@ const APP_NAME = 'Coups de surf NC';
     <div class="form-group">
       <label class="form-label">Manœuvres & highlights</label>
       <div class="toggle-group" id="f-moves">
-        <button class="toggle-btn tube" onclick="toggleMove(this,'tube')">Tube</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'casquette')">Casquette</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'floater')">Floater</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'roller')">Roller</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'cutback')">Cutback</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'carve')">Carve</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'aérien')">Aérien</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'wipeout')">Wipeout</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'dauphins')">Dauphins 🐬</button>
-        <button class="toggle-btn" onclick="toggleMove(this,'requin')">Requin 🦈</button>
+        <button class="toggle-btn tube" data-move="tube" onclick="toggleMove(this,'tube')">Tube</button>
+        <button class="toggle-btn" data-move="casquette" onclick="toggleMove(this,'casquette')">Casquette</button>
+        <button class="toggle-btn" data-move="floater" onclick="toggleMove(this,'floater')">Floater</button>
+        <button class="toggle-btn" data-move="roller" onclick="toggleMove(this,'roller')">Roller</button>
+        <button class="toggle-btn" data-move="cutback" onclick="toggleMove(this,'cutback')">Cutback</button>
+        <button class="toggle-btn" data-move="carve" onclick="toggleMove(this,'carve')">Carve</button>
+        <button class="toggle-btn" data-move="aérien" onclick="toggleMove(this,'aérien')">Aérien</button>
+        <button class="toggle-btn" data-move="wipeout" onclick="toggleMove(this,'wipeout')">Wipeout</button>
+        <button class="toggle-btn" data-move="dauphins" onclick="toggleMove(this,'dauphins')">Dauphins 🐬</button>
+        <button class="toggle-btn" data-move="requin" onclick="toggleMove(this,'requin')">Requin 🦈</button>
       </div>
     </div>
 
@@ -967,7 +821,8 @@ create policy "Users manage own comments" on session_comments
 
 <script>
 // ══ SUPABASE INIT ══
-let sb = null;
+// (supabase initialisé dans le bloc de config ci-dessus)
+let _appInitialized = false; // guard anti-double init
 let currentUser = null;
 let currentProfile = null;
 let allSessions = [];
@@ -979,11 +834,15 @@ let selectedCommentQuality = 0;
 let selectedMoves = [];
 let statsMode = 'me';
 
+// ── Supabase global (scope correct) ──
+let supabase = null;
 try {
-  if (SUPABASE_URL !== 'VOTRE_URL_SUPABASE_ICI') {
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  if (SUPABASE_URL && SUPABASE_URL !== 'VOTRE_URL_SUPABASE_ICI') {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   }
-} catch(e) { console.error("❌ Supabase init error:", e); }
+} catch(e) {
+  console.warn('Supabase init failed:', e);
+}
 
 // ══ AUTH ══
 function switchAuthMode(mode) {
@@ -992,61 +851,33 @@ function switchAuthMode(mode) {
 }
 
 async function doLogin() {
-  console.log("🔐 doLogin appelé, sb =", sb);
-  if (!sb) {
-    console.error("❌ supabase est null !");
-    showToast('Supabase non initialisé — vérifie la console', 'error');
-    showSetupGuide();
-    return;
-  }
+  if (!supabase) { showToast('Configure Supabase d\'abord !', 'error'); showSetupGuide(); return; }
   const email = document.getElementById('auth-email').value.trim();
   const pass = document.getElementById('auth-password').value;
-  console.log("📧 Tentative login pour:", email);
   const btn = document.getElementById('btn-login');
   btn.textContent = '…'; btn.disabled = true;
-  try {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-    console.log("✅ Réponse Supabase:", { data, error });
-    if (error) {
-      showToast(error.message, 'error');
-      console.error("❌ Erreur login:", error);
-    }
-  } catch(e) {
-    console.error("❌ Exception login:", e);
-    showToast('Erreur réseau : ' + e.message, 'error');
-  }
+  const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
   btn.textContent = 'Se connecter'; btn.disabled = false;
+  if (error) showToast(error.message, 'error');
 }
 
 async function doSignup() {
-  console.log("📝 doSignup appelé, sb =", sb);
-  if (!sb) {
-    console.error("❌ supabase est null !");
-    showToast('Supabase non initialisé — vérifie la console', 'error');
-    return;
-  }
+  if (!supabase) { showToast('Configure Supabase d\'abord !', 'error'); showSetupGuide(); return; }
   const username = document.getElementById('auth-username').value.trim();
   const email = document.getElementById('auth-email-2').value.trim();
   const pass = document.getElementById('auth-password-2').value;
   if (!username || !email || !pass) { showToast('Remplis tous les champs', 'error'); return; }
-  try {
-    console.log("📧 Tentative inscription pour:", email);
-    const { data, error } = await sb.auth.signUp({ email, password: pass });
-    console.log("✅ Réponse Supabase signup:", { data, error });
-    if (error) { showToast(error.message, 'error'); console.error("❌ Erreur signup:", error); return; }
-    if (data.user) {
-      await sb.from('profiles').upsert({ id: data.user.id, username, boards: [] });
-      showToast('Compte créé ! Connecte-toi.', 'success');
-      switchAuthMode('login');
-    }
-  } catch(e) {
-    console.error("❌ Exception signup:", e);
-    showToast('Erreur réseau : ' + e.message, 'error');
+  const { data, error } = await supabase.auth.signUp({ email, password: pass });
+  if (error) { showToast(error.message, 'error'); return; }
+  if (data.user) {
+    await supabase.from('profiles').upsert({ id: data.user.id, username, boards: [] });
+    showToast('Compte créé ! Connecte-toi.', 'success');
+    switchAuthMode('login');
   }
 }
 
 async function doLogout() {
-  if (sb) await sb.auth.signOut();
+  if (supabase) await supabase.auth.signOut();
   currentUser = null; currentProfile = null; allSessions = [];
   showPage('auth');
   document.getElementById('main-nav').style.display = 'none';
@@ -1054,72 +885,43 @@ async function doLogout() {
 
 // ══ STARTUP ══
 async function init() {
-  console.log("🚀 init() appelé");
-  console.log("📡 sb initialisé ?", sb !== null);
-  if (!sb) {
+  if (_appInitialized) return; // guard anti-double init
+  _appInitialized = true;
+
+  if (!supabase) {
     document.getElementById('main-nav').style.display = 'flex';
     document.getElementById('setup-banner').style.display = 'block';
     showPage('dashboard');
     renderDashStats([]); renderSessionsList([]);
     return;
   }
-  const { data: { session } } = await sb.auth.getSession();
+  const { data: { session } } = await supabase.auth.getSession();
   if (session) await onLogin(session.user);
-  sb.auth.onAuthStateChange(async (event, sess) => {
+  supabase.auth.onAuthStateChange(async (event, sess) => {
+    // Éviter double appel si déjà loggé via getSession()
+    if (event === 'SIGNED_IN' && currentUser && sess?.user?.id === currentUser.id) return;
     if (sess) await onLogin(sess.user);
-    else { document.getElementById('main-nav').style.display = 'none'; showPage('auth'); }
+    else { currentUser = null; currentProfile = null; allSessions = []; document.getElementById('main-nav').style.display = 'none'; showPage('auth'); }
   });
 }
 
 async function onLogin(user) {
-  console.log("👤 onLogin appelé pour:", user.email);
   currentUser = user;
-
-  // Charger ou créer le profil
-  try {
-    const { data: profile, error: profileError } = await sb
-      .from('profiles').select('*').eq('id', user.id).maybeSingle();
-
-    console.log("👤 Profil chargé:", profile, "Erreur:", profileError);
-
-    if (profile) {
-      currentProfile = profile;
-    } else {
-      // Profil inexistant — on le crée
-      const username = user.email.split('@')[0];
-      currentProfile = { username, boards: [] };
-      const { error: upsertError } = await sb.from('profiles')
-        .upsert({ id: user.id, username, boards: [] });
-      if (upsertError) console.warn("⚠️ Impossible de créer le profil:", upsertError);
-      else console.log("✅ Profil créé pour:", username);
-    }
-  } catch(e) {
-    console.warn("⚠️ Erreur profil (non bloquante):", e);
-    currentProfile = { username: user.email.split('@')[0], boards: [] };
-  }
-
-  const initials = (currentProfile.username || '?')[0].toUpperCase();
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+  currentProfile = profile || { username: user.email.split('@')[0], boards: [] };
+  if (!profile) await supabase.from('profiles').upsert({ id: user.id, username: currentProfile.username, boards: [] });
+  const initials = currentProfile.username ? currentProfile.username[0].toUpperCase() : '?';
   document.getElementById('nav-avatar').textContent = initials;
   document.getElementById('main-nav').style.display = 'flex';
   showPage('dashboard');
-  await loadBoats();
   await loadMySessions();
-  console.log("✅ onLogin terminé, dashboard affiché");
 }
 
 // ══ SESSIONS ══
 async function loadMySessions() {
-  if (!sb || !currentUser) { renderSessionsList([]); renderDashStats([]); return; }
-  try {
-    const { data, error } = await sb.from('sessions').select('*')
-      .eq('user_id', currentUser.id).order('date', { ascending: false });
-    if (error) console.error("❌ Erreur chargement sessions:", error);
-    allSessions = data || [];
-    console.log("📋 Sessions chargées:", allSessions.length);
-  } catch(e) {
-    console.error("❌ Exception loadMySessions:", e);
-    allSessions = [];
-  }
+  if (!supabase || !currentUser) { renderSessionsList([]); renderDashStats([]); return; }
+  const { data } = await supabase.from('sessions').select('*').eq('user_id', currentUser.id).order('date', { ascending: false });
+  allSessions = data || [];
   renderDashStats(allSessions);
   renderSessionsList(filterList(allSessions, currentFilter));
 }
@@ -1185,7 +987,12 @@ function sessionCardHTML(s) {
     </div>
     <div>
       <div class="session-spot">${s.spot || '—'}</div>
-      <div class="session-meta">${[s.hs ? `Hs ${s.hs}m` : '', s.period ? `${s.period}s` : '', s.context || ''].filter(Boolean).join(' · ')}</div>
+      <div class="session-meta">${[
+        s.hs ? `Hs ${s.hs}m ${swellGauge(s.hs)}` : '',
+        s.period ? `${s.period}s` : '',
+        s.wind_kts !== null && s.wind_kts !== undefined ? `<span style="color:${beaufortColor(beaufort(s.wind_kts))}">${s.wind_kts}nds</span>` : '',
+        s.context || ''
+      ].filter(Boolean).join(' · ')}</div>
       ${tags.length ? `<div class="session-tags">${tags.join('')}</div>` : ''}
     </div>
     <div class="session-right">
@@ -1214,7 +1021,6 @@ function openAddSession() {
     const dl = document.getElementById('boards-list');
     dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${b}">`).join('');
   }
-  populateBoatSelect();
   document.getElementById('modal-add').classList.add('open');
 }
 
@@ -1229,7 +1035,7 @@ function editSession() {
   document.getElementById('edit-session-id').value = s.id;
   document.getElementById('f-date').value = s.date;
   document.getElementById('f-duration').value = s.duration_h || '';
-  setSpotValue(s.spot || '');
+  document.getElementById('f-spot').value = s.spot || '';
   document.getElementById('f-launch').value = s.launch_point || '';
   document.getElementById('f-context').value = s.context || '';
   document.getElementById('f-hs').value = s.hs || '';
@@ -1242,32 +1048,21 @@ function editSession() {
   document.getElementById('f-price').value = s.price_cfp || '';
   document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
   document.getElementById('f-obs').value = s.observations || '';
-  populateBoatSelect().then(function() {
-    if (s.boat_id && document.getElementById('f-boat-id')) {
-      document.getElementById('f-boat-id').value = s.boat_id;
-    }
-  });
-  if (document.getElementById('f-distance')) document.getElementById('f-distance').value = s.distance_nm || '';
-  if (document.getElementById('f-nb-surfers')) document.getElementById('f-nb-surfers').value = s.nb_surfers || '';
   setStars(selectedQuality);
   document.querySelectorAll('#f-moves .toggle-btn').forEach(b => {
-    const move = b.getAttribute('data-move') || b.textContent.toLowerCase().replace(/[^a-zéàèê]/g,'');
+    const move = b.getAttribute('data-move') || '';
     b.classList.toggle('active', selectedMoves.includes(move));
   });
   document.getElementById('modal-add').classList.add('open');
 }
 
 async function saveSession() {
-  if (!sb) { showToast('Configure Supabase !', 'error'); return; }
+  if (!supabase) { showToast('Configure Supabase !', 'error'); return; }
   const sharedWith = document.getElementById('f-shared-with').value.split(',').map(s=>s.trim()).filter(Boolean);
   const payload = {
     user_id: currentUser.id,
     date: document.getElementById('f-date').value,
-    boat_id: (document.getElementById('f-boat-id') && document.getElementById('f-boat-id').value) || null,
-    spot: getSpotValue(),
-    spots: parseSpots(getSpotValue()),
-    distance_nm: parseFloat(document.getElementById('f-distance') && document.getElementById('f-distance').value) || null,
-    nb_surfers: parseInt(document.getElementById('f-nb-surfers') && document.getElementById('f-nb-surfers').value) || null,
+    spot: document.getElementById('f-spot').value.trim(),
     launch_point: document.getElementById('f-launch').value.trim(),
     context: document.getElementById('f-context').value,
     duration_h: parseFloat(document.getElementById('f-duration').value) || null,
@@ -1289,9 +1084,9 @@ async function saveSession() {
   btn.textContent = '…'; btn.disabled = true;
   let error;
   if (editingSessionId) {
-    ({ error } = await sb.from('sessions').update(payload).eq('id', editingSessionId));
+    ({ error } = await supabase.from('sessions').update(payload).eq('id', editingSessionId));
   } else {
-    ({ error } = await sb.from('sessions').insert(payload));
+    ({ error } = await supabase.from('sessions').insert(payload));
   }
   btn.textContent = 'Enregistrer'; btn.disabled = false;
   if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
@@ -1304,7 +1099,7 @@ async function saveSession() {
 // ══ SESSION DETAIL ══
 async function openDetail(id) {
   const s = allSessions.find(x => x.id === id) || (await (async () => {
-    const { data } = await sb.from('sessions').select('*').eq('id', id).single();
+    const { data } = await supabase.from('sessions').select('*').eq('id', id).single();
     return data;
   })());
   if (!s) return;
@@ -1326,9 +1121,9 @@ async function openDetail(id) {
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem;">${dateStr}</div>
     ${moves ? `<div style="margin-bottom:1rem;display:flex;gap:4px;flex-wrap:wrap;">${moves}</div>` : ''}
     <div class="detail-grid">
-      ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? '· '+s.swell_dir : ''}</div></div>` : ''}
+      ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? dirArrow(compassToDeg(s.swell_dir),'var(--accent)',12)+' '+s.swell_dir : ''} &nbsp;${swellGauge(s.hs)}</div></div>` : ''}
       ${s.period ? `<div class="detail-item"><div class="detail-label">Période</div><div class="detail-value">${s.period}s</div></div>` : ''}
-      ${s.wind_kts !== null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+s.wind_dir : ''}</div></div>` : ''}
+      ${s.wind_kts !== null && s.wind_kts !== undefined ? (()=>{ const bf=beaufort(s.wind_kts); return `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value" style="color:${beaufortColor(bf)}">${s.wind_kts} nds ${s.wind_dir ? dirArrow(compassToDeg(s.wind_dir),beaufortColor(bf),12)+' '+s.wind_dir : ''} <span style="font-size:11px;opacity:.7">Bf${bf}</span></div></div>`; })() : ''}
       ${s.tide ? `<div class="detail-item"><div class="detail-label">Marée</div><div class="detail-value">${s.tide}</div></div>` : ''}
       ${s.board ? `<div class="detail-item"><div class="detail-label">Planche</div><div class="detail-value">${s.board}</div></div>` : ''}
       ${s.launch_point ? `<div class="detail-item"><div class="detail-label">Mise à l'eau</div><div class="detail-value">${s.launch_point}</div></div>` : ''}
@@ -1338,7 +1133,7 @@ async function openDetail(id) {
     ${s.observations ? `<div style="margin-top:1rem;padding:12px 14px;background:var(--glass);border-radius:var(--radius-sm);font-size:13px;color:var(--text);line-height:1.7;">${s.observations}</div>` : ''}
     ${isOwn ? `<div style="margin-top:1rem;text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteSession('${s.id}')">Supprimer</button></div>` : ''}
   `;
-  if (s.is_shared && sb) {
+  if (s.is_shared && supabase) {
     document.getElementById('detail-comments-section').style.display = 'block';
     selectedCommentQuality = 0; setCommentStars(0);
     document.getElementById('comment-text').value = '';
@@ -1350,8 +1145,8 @@ async function openDetail(id) {
 }
 
 async function loadComments(sessionId) {
-  if (!sb) return;
-  const { data: comments } = await sb.from('session_comments').select('*').eq('session_id', sessionId).order('created_at');
+  if (!supabase) return;
+  const { data: comments } = await supabase.from('session_comments').select('*').eq('session_id', sessionId).order('created_at');
   const el = document.getElementById('detail-comments');
   if (!comments || !comments.length) {
     el.innerHTML = `<div style="font-size:13px;color:var(--text-faint);margin-bottom:1rem;">Aucun avis encore — sois le premier !</div>`;
@@ -1367,9 +1162,9 @@ async function loadComments(sessionId) {
 }
 
 async function submitComment() {
-  if (!sb || !currentDetailSession) return;
+  if (!supabase || !currentDetailSession) return;
   const text = document.getElementById('comment-text').value.trim();
-  const { error } = await sb.from('session_comments').insert({
+  const { error } = await supabase.from('session_comments').insert({
     session_id: currentDetailSession.id,
     user_id: currentUser.id,
     username: currentProfile?.username || '?',
@@ -1384,7 +1179,7 @@ async function submitComment() {
 
 async function deleteSession(id) {
   if (!confirm('Supprimer cette session ?')) return;
-  await sb.from('sessions').delete().eq('id', id);
+  await supabase.from('sessions').delete().eq('id', id);
   closeModal('modal-detail');
   await loadMySessions();
   showToast('Session supprimée', 'success');
@@ -1392,8 +1187,8 @@ async function deleteSession(id) {
 
 // ══ GROUP SESSIONS ══
 async function loadGroupSessions() {
-  if (!sb) { document.getElementById('group-list').innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Configure Supabase d\'abord</div></div>'; return; }
-  const { data } = await sb.from('sessions').select('*').eq('is_shared', true).order('date', { ascending: false });
+  if (!supabase) { document.getElementById('group-list').innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Configure Supabase d\'abord</div></div>'; return; }
+  const { data } = await supabase.from('sessions').select('*').eq('is_shared', true).order('date', { ascending: false });
   const sessions = data || [];
   const el = document.getElementById('group-list');
   if (!sessions.length) {
@@ -1403,7 +1198,49 @@ async function loadGroupSessions() {
   el.innerHTML = sessions.map(s => sessionCardHTML(s)).join('');
 }
 
-// ══ STATS ══
+// ── Utilitaire : normalise les spots (gère "Spot A, Spot B") ──
+function getSpots(session) {
+  if (!session.spot) return [];
+  if (typeof session.spot === 'string' && session.spot.includes(',')) {
+    return session.spot.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [session.spot];
+}
+
+// ── Utilitaire : direction compass → degrés (approximation) ──
+function compassToDeg(dir) {
+  const map = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337,
+                NNW:337,NW:315,WNW:292,W:270,WSW:247,SW:225,SSW:202,SSE:157};
+  return map[(dir||'').toUpperCase().trim()] ?? null;
+}
+
+// ── Utilitaire : flèche directionnelle SVG inline ──
+function dirArrow(deg, color='currentColor', size=14) {
+  if (deg === null) return '';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;transform:rotate(${deg}deg);color:${color}" fill="${color}"><path d="M12 2 L19 20 L12 15 L5 20 Z"/></svg>`;
+}
+
+// ── Utilitaire : jauge houle ──
+function swellGauge(hs) {
+  if (!hs) return '';
+  const max = 4; // 4m = 5 barres
+  const filled = Math.min(5, Math.round(hs / max * 5));
+  const color = hs < 1 ? 'var(--text-faint)' : hs < 2 ? 'var(--accent)' : hs < 3 ? 'var(--accent-warm)' : 'var(--danger)';
+  return `<span style="font-size:11px;color:${color};letter-spacing:1px">${'▮'.repeat(filled)}${'▯'.repeat(5-filled)}</span>`;
+}
+
+// ── Utilitaire : Beaufort scale ──
+function beaufort(kts) {
+  if (kts === null || kts === undefined) return null;
+  if (kts < 1) return 0; if (kts < 4) return 1; if (kts < 7) return 2;
+  if (kts < 11) return 3; if (kts < 16) return 4; if (kts < 22) return 5;
+  if (kts < 28) return 6; if (kts < 34) return 7; if (kts < 41) return 8;
+  return 9;
+}
+function beaufortColor(bf) {
+  if (bf <= 2) return 'var(--success)'; if (bf <= 4) return 'var(--accent)';
+  if (bf <= 6) return 'var(--accent-warm)'; return 'var(--danger)';
+}
 async function loadStats(mode) {
   statsMode = mode;
   document.getElementById('stats-tab-me').style.borderColor = mode==='me' ? 'var(--accent)' : '';
@@ -1413,11 +1250,11 @@ async function loadStats(mode) {
   const el = document.getElementById('stats-content');
   el.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
   let sessions = [];
-  if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
+  if (!supabase && mode === 'group') { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase pour les stats groupe</div></div>'; return; }
   if (mode === 'me') {
     sessions = allSessions;
   } else {
-    const { data } = await sb.from('sessions').select('*').order('date', { ascending: false });
+    const { data } = await supabase.from('sessions').select('*').order('date', { ascending: false });
     sessions = data || [];
   }
   renderStats(sessions, el);
@@ -1425,8 +1262,16 @@ async function loadStats(mode) {
 
 function renderStats(sessions, el) {
   if (!sessions.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Pas encore de données</div></div>'; return; }
+  // Utilise getSpots() pour gérer les spots multiples (ex: "Spot A, Spot B")
   const spotMap = {};
-  sessions.forEach(s => { if (s.spot) { if (!spotMap[s.spot]) spotMap[s.spot]={count:0,qual:0}; spotMap[s.spot].count++; spotMap[s.spot].qual += s.quality||0; } });
+  sessions.forEach(s => {
+    getSpots(s).forEach(spot => {
+      if (!spot) return;
+      if (!spotMap[spot]) spotMap[spot] = {count:0, qual:0};
+      spotMap[spot].count++;
+      spotMap[spot].qual += s.quality || 0;
+    });
+  });
   const spotsSorted = Object.entries(spotMap).sort((a,b)=>b[1].count-a[1].count).slice(0,7);
   const monthMap = {};
   sessions.forEach(s => { const m = s.date?.slice(0,7); if(m){if(!monthMap[m])monthMap[m]=0; monthMap[m]++;} });
@@ -1451,9 +1296,25 @@ function renderStats(sessions, el) {
         <div class="chart-wrap" style="height:180px;"><canvas id="stat-spot-chart" role="img" aria-label="Sessions par spot"></canvas></div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:14px;">
       <div class="section-title" style="margin-bottom:10px;">Qualité dans le temps</div>
       <div class="chart-wrap" style="height:160px;"><canvas id="stat-qual-chart" role="img" aria-label="Qualité par session"></canvas></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+      <div class="card" style="text-align:center;">
+        <div class="section-title" style="margin-bottom:10px;">Rose des houles</div>
+        <div id="rose-swell" style="display:flex;justify-content:center;">${buildRoseSVG(sessions,'swell_dir','#4fa3c7','houle')}</div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Direction d'où vient la houle</div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="section-title" style="margin-bottom:10px;">Rose des vents</div>
+        <div id="rose-wind" style="display:flex;justify-content:center;">${buildRoseSVG(sessions,'wind_dir','#e8a057','vent')}</div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Direction d'où vient le vent</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-bottom:10px;">Qualité par spot (top 5)</div>
+      <div id="spot-quality-bars"></div>
     </div>
   `;
   setTimeout(() => {
@@ -1476,6 +1337,25 @@ function renderStats(sessions, el) {
       ]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',font:{size:10},maxRotation:45,autoSkip:true,maxTicksLimit:8}},y:{min:.5,max:5.5,ticks:{stepSize:1,color:'#7a94aa',callback:v=>Math.round(v)+'★'},grid:{color:'rgba(255,255,255,0.05)'}}}}
     });
+    // ── Barres qualité par spot ──
+    const topSpots = spotsSorted.slice(0,5);
+    const sqEl = document.getElementById('spot-quality-bars');
+    if (sqEl) {
+      sqEl.innerHTML = topSpots.length ? topSpots.map(([name, v]) => {
+        const avgQspot = v.count ? (v.qual / v.count).toFixed(1) : 0;
+        const pct = Math.round(avgQspot / 5 * 100);
+        const color = pct >= 80 ? 'var(--success)' : pct >= 60 ? 'var(--accent)' : pct >= 40 ? 'var(--accent-warm)' : 'var(--danger)';
+        return `<div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+            <span style="color:var(--text)">${name.length>20?name.slice(0,19)+'…':name}</span>
+            <span style="color:${color}">${avgQspot}★ <span style="color:var(--text-faint)">(${v.count} session${v.count>1?'s':''})</span></span>
+          </div>
+          <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .4s;"></div>
+          </div>
+        </div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--text-faint)">Pas assez de données</div>';
+    }
   }, 50);
 }
 
@@ -1517,7 +1397,9 @@ async function removeBoard(i) {
 
 async function saveProfile() {
   if (!currentProfile) return;
-  currentProfile.username = document.getElementById('profile-username-input').value.trim();
+  const newUsername = document.getElementById('profile-username-input').value.trim();
+  if (!newUsername) { showToast('Le pseudo ne peut pas être vide', 'error'); return; }
+  currentProfile.username = newUsername;
   await saveProfileData();
   const initials = currentProfile.username[0].toUpperCase();
   document.getElementById('nav-avatar').textContent = initials;
@@ -1527,8 +1409,119 @@ async function saveProfile() {
 }
 
 async function saveProfileData() {
-  if (!sb || !currentUser) return;
-  await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards });
+  if (!supabase || !currentUser) return;
+  await supabase.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards });
+}
+
+// ══ CSV EXPORT ══
+function exportCSV() {
+  if (!allSessions.length) { showToast('Aucune session à exporter', 'error'); return; }
+  const headers = ['date','spot','launch_point','context','duration_h','hs','period','swell_dir','wind_kts','wind_dir','tide','board','price_cfp','quality','moves','shared_with','is_shared','observations'];
+  const rows = allSessions.map(s => headers.map(h => {
+    const v = s[h];
+    if (Array.isArray(v)) return '"' + v.join(';') + '"';
+    if (typeof v === 'string' && (v.includes(',') || v.includes('"') || v.includes('\n'))) return '"' + v.replace(/"/g,'""') + '"';
+    return v ?? '';
+  }).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `surf-sessions-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast(`${allSessions.length} sessions exportées ✓`, 'success');
+}
+
+// ══ CSV IMPORT ══
+function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const text = e.target.result.replace(/^\uFEFF/, ''); // strip BOM
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 2) { showToast('Fichier CSV vide ou invalide', 'error'); return; }
+    const headers = lines[0].split(',').map(h => h.trim());
+    const parseCSVLine = (line) => {
+      const result = []; let cur = ''; let inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '"' && !inQ) { inQ = true; }
+        else if (line[i] === '"' && inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else if (line[i] === '"' && inQ) { inQ = false; }
+        else if (line[i] === ',' && !inQ) { result.push(cur); cur = ''; }
+        else { cur += line[i]; }
+      }
+      result.push(cur); return result;
+    };
+    let imported = 0, skipped = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const vals = parseCSVLine(lines[i]);
+      if (vals.length < 2) continue;
+      const row = {};
+      headers.forEach((h, idx) => {
+        let v = vals[idx] ?? '';
+        if (h === 'moves' || h === 'shared_with') v = v ? v.split(';').filter(Boolean) : [];
+        else if (h === 'duration_h' || h === 'hs' || h === 'period' || h === 'wind_kts') v = v !== '' ? parseFloat(v) : null;
+        else if (h === 'price_cfp' || h === 'quality') v = v !== '' ? parseInt(v) : null;
+        else if (h === 'is_shared') v = v === 'true';
+        row[h] = v;
+      });
+      if (!row.date) { skipped++; continue; }
+      if (supabase && currentUser) {
+        row.user_id = currentUser.id;
+        const { error } = await supabase.from('sessions').insert(row);
+        if (error) { skipped++; continue; }
+      }
+      imported++;
+    }
+    input.value = '';
+    await loadMySessions();
+    showToast(`Import : ${imported} session(s) ajoutée(s)${skipped ? ', ' + skipped + ' ignorée(s)' : ''} ✓`, 'success');
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ══ ROSE DES HOULES / VENTS (SVG) ══
+function buildRoseSVG(sessions, field, colorHex, label) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  const counts = {}; dirs.forEach(d => counts[d] = 0);
+  let total = 0;
+  sessions.forEach(s => {
+    const dir = (s[field] || '').toUpperCase().trim();
+    if (counts[dir] !== undefined) { counts[dir]++; total++; }
+  });
+  if (!total) return `<div style="font-size:12px;color:var(--text-faint);text-align:center;padding:1rem;">Pas de données ${label}</div>`;
+  const cx = 90, cy = 90, maxR = 70;
+  const maxCount = Math.max(...Object.values(counts), 1);
+  const petals = dirs.map((d, i) => {
+    const angle = (i / dirs.length) * 2 * Math.PI - Math.PI / 2;
+    const r = (counts[d] / maxCount) * maxR;
+    if (r < 1) return '';
+    const w = (Math.PI / dirs.length) * 0.7;
+    const x1 = cx + Math.cos(angle - w) * r * 0.3;
+    const y1 = cy + Math.sin(angle - w) * r * 0.3;
+    const x2 = cx + Math.cos(angle) * r;
+    const y2 = cy + Math.sin(angle) * r;
+    const x3 = cx + Math.cos(angle + w) * r * 0.3;
+    const y3 = cy + Math.sin(angle + w) * r * 0.3;
+    const pct = Math.round(counts[d] / total * 100);
+    return `<path d="M${cx},${cy} L${x1},${y1} Q${x2},${y2} ${x3},${y3} Z" fill="${colorHex}" opacity="0.75">
+      <title>${d}: ${counts[d]} (${pct}%)</title></path>`;
+  }).join('');
+  const cardinals = [{d:'N',a:-90},{d:'E',a:0},{d:'S',a:90},{d:'O',a:180}];
+  const labels = cardinals.map(({d,a}) => {
+    const rad = a * Math.PI / 180;
+    const x = cx + Math.cos(rad) * (maxR + 14);
+    const y = cy + Math.sin(rad) * (maxR + 14);
+    return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" fill="#7a94aa" font-size="10" font-family="system-ui">${d}</text>`;
+  }).join('');
+  return `<svg width="180" height="180" viewBox="0 0 180 180">
+    <circle cx="${cx}" cy="${cy}" r="${maxR}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${maxR*0.5}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+    ${petals}
+    ${labels}
+    <circle cx="${cx}" cy="${cy}" r="3" fill="${colorHex}"/>
+  </svg>`;
 }
 
 // ══ UI HELPERS ══
@@ -1548,15 +1541,20 @@ function toggleMove(btn, move) {
 
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
+  const page = document.getElementById('page-' + name);
+  if (page) page.classList.add('active');
+  // Active state nav buttons
   document.querySelectorAll('.nav-btn:not(.primary)').forEach(b => b.classList.remove('active'));
+  const navMap = { dashboard: 'Mes sessions', group: 'Groupe', stats: 'Stats' };
+  if (navMap[name]) {
+    document.querySelectorAll('.nav-btn:not(.primary)').forEach(b => {
+      if (b.textContent.trim() === navMap[name]) b.classList.add('active');
+    });
+  }
   if (name === 'dashboard') { loadMySessions(); }
   if (name === 'group') { loadGroupSessions(); }
   if (name === 'stats') { loadStats('me'); }
   if (name === 'profile') { loadProfilePage(); }
-  if (name === 'spots') { loadSpotsPage(); }
-  if (name === 'ranking') { loadRanking(); }
-  if (name === 'boats') { loadBoatsPage(); }
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -1569,476 +1567,15 @@ function showToast(msg, type = '') {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ══ CLOSE MODAL ON OVERLAY CLICK ══
+// ══ CLOSE MODAL ON OVERLAY CLICK + ESC ══
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
 });
-
-
-// ══ SPOT HELPERS ══
-function handleSpotChange(sel) {
-  const custom = document.getElementById('f-spot-custom');
-  custom.style.display = sel.value === '__autre__' ? 'block' : 'none';
-  if (sel.value === '__autre__') custom.focus();
-}
-
-function getSpotValue() {
-  const sel = document.getElementById('f-spot');
-  if (sel.value === '__autre__') {
-    const custom = document.getElementById('f-spot-custom').value.trim();
-    if (custom) {
-      const exists = Array.from(sel.options).some(o => o.value === custom);
-      if (!exists) {
-        const opt = new Option(custom, custom);
-        sel.insertBefore(opt, sel.querySelector('option[value="__autre__"]'));
-      }
-      sel.value = custom;
-      document.getElementById('f-spot-custom').style.display = 'none';
-      return custom;
-    }
-    return '';
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
   }
-  return sel.value;
-}
-
-function setSpotValue(val) {
-  if (!val) return;
-  const sel = document.getElementById('f-spot');
-  const exists = Array.from(sel.options).some(o => o.value === val);
-  if (!exists) {
-    const opt = new Option(val, val);
-    sel.insertBefore(opt, sel.querySelector('option[value="__autre__"]'));
-  }
-  sel.value = val;
-  document.getElementById('f-spot-custom').style.display = 'none';
-}
-
-// ══ SPOTS PAGE ══
-const SPOT_SLOPES = {
-  'Grand bac':6,'Petit U':9,'Gros nem':8,'Fausse passe Dumbéa':7,
-  'Gauche de Dumbéa':10,'Droite de Dumbéa':8,'La roche percée':5,
-  'Ouano':7,'Skatepark':8,'Trois cailloux':6
-};
-
-function calcXi(hs, T, beta) {
-  if (!hs || !T || hs <= 0 || T <= 0) return null;
-  const L0 = 9.81 * T * T / (2 * Math.PI);
-  return Math.tan(beta * Math.PI / 180) / Math.sqrt(hs / L0);
-}
-
-let spotsGroupData = [];
-
-async function loadSpotsPage() {
-  if (sb) {
-    const { data } = await sb.from('sessions').select('*');
-    spotsGroupData = data || [];
-  } else {
-    spotsGroupData = allSessions;
-  }
-  const spots = new Set(['Grand bac','Petit U','Gros nem','Fausse passe Dumbéa',
-    'Gauche de Dumbéa','Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux']);
-  spotsGroupData.forEach(s => { if (s.spot) spots.add(s.spot); });
-
-  document.getElementById('spots-selector').innerHTML =
-    [...spots].map(sp =>
-      '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
-      'onclick="showSpotDetail(' + JSON.stringify(sp) + ')">' + sp + '</button>'
-    ).join('');
-  document.getElementById('spots-content').innerHTML =
-    '<div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>';
-}
-
-let spotCharts = [];
-
-function showSpotDetail(spotName) {
-  spotCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
-  spotCharts = [];
-
-  const sessions = spotsGroupData.filter(s => s.spot === spotName);
-  const el = document.getElementById('spots-content');
-  if (!sessions.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-title">Aucune session pour ce spot</div></div>';
-    return;
-  }
-
-  const beta = SPOT_SLOPES[spotName] || 8;
-  const n = sessions.length;
-  const qSess = sessions.filter(s => s.quality);
-  const avgQ = qSess.length ? (qSess.reduce((a,x) => a + x.quality, 0) / qSess.length).toFixed(1) : '—';
-  const hsSess = sessions.filter(s => s.hs);
-  const avgHs = hsSess.length ? (hsSess.reduce((a,x) => a + x.hs, 0) / hsSess.length).toFixed(2) : '—';
-  const tSess = sessions.filter(s => s.period);
-  const avgT = tSess.length ? (tSess.reduce((a,x) => a + x.period, 0) / tSess.length).toFixed(1) : '—';
-  const durSess = sessions.filter(s => s.duration_h);
-  const avgDur = durSess.length ? (durSess.reduce((a,x) => a + x.duration_h, 0) / durSess.length).toFixed(1) : '—';
-  const tubeN = sessions.filter(s => s.moves && s.moves.includes('tube')).length;
-  const xiList = sessions.filter(s => s.hs && s.period).map(s => calcXi(s.hs, s.period, beta)).filter(Boolean);
-  const avgXi = xiList.length ? (xiList.reduce((a,b) => a + b, 0) / xiList.length).toFixed(2) : '—';
-  const deflType = avgXi !== '—'
-    ? (parseFloat(avgXi) < 0.5 ? 'déversant' : parseFloat(avgXi) < 3.3 ? '🤙 plongeant (tube!)' : 'surgissant')
-    : '—';
-  const good = sessions.filter(s => s.quality >= 4);
-  const avgHsGood = good.filter(s => s.hs).length
-    ? (good.filter(s => s.hs).reduce((a,x) => a + x.hs, 0) / good.filter(s => s.hs).length).toFixed(2) : '—';
-  const avgTGood = good.filter(s => s.period).length
-    ? (good.filter(s => s.period).reduce((a,x) => a + x.period, 0) / good.filter(s => s.period).length).toFixed(1) : '—';
-  const best = qSess.sort((a,b) => b.quality - a.quality)[0];
-
-  el.innerHTML =
-    '<div style="margin-bottom:1rem;">' +
-      '<h2 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:4px;">' + spotName + '</h2>' +
-      '<span style="font-size:12px;color:var(--text-muted);">Pente β ≈ ' + beta + '° · ξ moy = ' + avgXi + ' · ' + deflType + '</span>' +
-    '</div>' +
-    '<div class="stats-grid" style="margin-bottom:1.5rem;">' +
-      '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">' + n + '</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value">' + avgQ + '<span style="font-size:1rem;color:var(--star)"> ★</span></div></div>' +
-      '<div class="stat-card"><div class="stat-label">Hs moy.</div><div class="stat-value">' + avgHs + 'm</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Période moy.</div><div class="stat-value">' + avgT + 's</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Durée moy.</div><div class="stat-value">' + avgDur + 'h</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">' + tubeN + '</div><div class="stat-sub">' + Math.round(tubeN/n*100) + '%</div></div>' +
-    '</div>' +
-    (good.length ? '<div class="card" style="margin-bottom:1rem;border-color:var(--success);">' +
-      '<div class="section-title" style="margin-bottom:8px;color:var(--success);">Conditions sessions ≥ 4★ (' + good.length + ' sessions)</div>' +
-      '<div style="font-size:13px;">Hs moy. <strong>' + avgHsGood + 'm</strong> · Période moy. <strong>' + avgTGood + 's</strong></div>' +
-    '</div>' : '') +
-    (best ? '<div class="card" style="margin-bottom:1rem;">' +
-      '<div class="section-title" style="margin-bottom:8px;">Meilleure session</div>' +
-      '<div style="font-size:13px;">' + best.date + ' — <strong>' + '★'.repeat(best.quality) + '</strong>' +
-      (best.observations ? ' — ' + best.observations.slice(0, 80) + '…' : '') + '</div>' +
-    '</div>' : '') +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité dans le temps</div>' +
-        '<div style="position:relative;height:160px;"><canvas id="spot-qual-chart" role="img" aria-label="Qualite sessions"></canvas></div></div>' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Hs par session</div>' +
-        '<div style="position:relative;height:160px;"><canvas id="spot-hs-chart" role="img" aria-label="Hs sessions"></canvas></div></div>' +
-    '</div>';
-
-  setTimeout(function() {
-    const sorted = sessions.slice().sort((a,b) => a.date > b.date ? 1 : -1);
-    const labels = sorted.map(s => (s.date || '').slice(5));
-    const qColors = ['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
-
-    const c1 = document.getElementById('spot-qual-chart');
-    if (c1) {
-      spotCharts.push(new Chart(c1, {
-        type: 'line',
-        data: { labels: labels, datasets: [{ data: sorted.map(s => s.quality || null),
-          borderColor: '#4fa3c7', backgroundColor: 'rgba(79,163,199,0.08)',
-          borderWidth: 1.5, pointRadius: 4, fill: true, tension: 0.3,
-          pointBackgroundColor: sorted.map(s => qColors[s.quality || 0]) }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { min: 0, max: 5, ticks: { stepSize: 1, color: '#7a94aa', callback: function(v) { return v + '★'; } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
-      }));
-    }
-    const c2 = document.getElementById('spot-hs-chart');
-    if (c2) {
-      spotCharts.push(new Chart(c2, {
-        type: 'bar',
-        data: { labels: labels, datasets: [{ data: sorted.map(s => s.hs || null),
-          backgroundColor: '#7b6cf6aa', borderRadius: 3 }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
-      }));
-    }
-  }, 50);
-}
-
-// ══ RANKING PAGE ══
-let rankingChart = null;
-
-async function loadRanking() {
-  const el = document.getElementById('ranking-content');
-  if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
-
-  const { data: allData } = await sb.from('sessions').select('*');
-  const { data: profiles } = await sb.from('profiles').select('id, username');
-  if (!allData || !allData.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><div class="empty-title">Pas encore de données</div></div>';
-    return;
-  }
-
-  const profileMap = {};
-  (profiles || []).forEach(function(p) { profileMap[p.id] = p.username || p.id.slice(0,6); });
-
-  const userStats = {};
-  allData.forEach(function(s) {
-    const uid = s.user_id;
-    if (!userStats[uid]) userStats[uid] = { name: profileMap[uid] || '?', uid: uid, sessions: 0, hours: 0, tubes: 0, qual: [], cfp: 0 };
-    userStats[uid].sessions++;
-    if (s.duration_h) userStats[uid].hours += s.duration_h;
-    if (s.moves && s.moves.includes('tube')) userStats[uid].tubes++;
-    if (s.quality) userStats[uid].qual.push(s.quality);
-    if (s.price_cfp) userStats[uid].cfp += s.price_cfp;
-  });
-
-  const users = Object.values(userStats).map(function(u) {
-    return Object.assign({}, u, {
-      avgQ: u.qual.length ? parseFloat((u.qual.reduce(function(a,b){return a+b;},0)/u.qual.length).toFixed(1)) : 0,
-      hours: Math.round(u.hours * 10) / 10
-    });
-  });
-
-  const medals = ['🥇','🥈','🥉'];
-  const barColors = ['#e8a057','#7a94aa','#3d5468','#4fa3c7','#7b6cf6'];
-
-  const categories = [
-    { label: 'Sessions surfées', icon: '🏄', key: 'sessions', fmt: function(u) { return u.sessions + ' sessions'; } },
-    { label: 'Heures à l\'eau', icon: '⏱', key: 'hours', fmt: function(u) { return u.hours + 'h'; } },
-    { label: 'Tubes', icon: '🤙', key: 'tubes', fmt: function(u) { return u.tubes + ' tubes'; } },
-    { label: 'Qualité moyenne', icon: '★', key: 'avgQ', fmt: function(u) { return u.avgQ + '★'; }, max: 5 },
-    { label: 'CFP dépensés (bateau)', icon: '💸', key: 'cfp', fmt: function(u) { return u.cfp.toLocaleString('fr') + ' CFP'; } },
-  ];
-
-  var html = '';
-  categories.forEach(function(cat) {
-    var sorted = users.slice().sort(function(a,b) { return b[cat.key] - a[cat.key]; });
-    var maxVal = cat.max || Math.max.apply(null, sorted.map(function(u){ return u[cat.key] || 0; }));
-    html += '<div class="card" style="margin-bottom:14px;">';
-    html += '<div class="section-title" style="margin-bottom:12px;">' + cat.icon + ' ' + cat.label + '</div>';
-    sorted.forEach(function(u, i) {
-      var val = u[cat.key] || 0;
-      var pct = maxVal > 0 ? Math.round(val / maxVal * 100) : 0;
-      var isMe = currentUser && u.uid === currentUser.id;
-      html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-      html += '<span style="font-size:1.1rem;min-width:28px;">' + (medals[i] || '') + '</span>';
-      html += '<span style="min-width:80px;font-size:13px;font-weight:' + (isMe ? '500' : '400') + ';color:' + (isMe ? 'var(--accent)' : 'var(--text)') + ';">' + u.name + (isMe ? ' (toi)' : '') + '</span>';
-      html += '<div style="flex:1;background:var(--glass);border-radius:4px;height:18px;overflow:hidden;">';
-      html += '<div style="width:' + pct + '%;height:100%;background:' + barColors[i % barColors.length] + ';border-radius:4px;"></div>';
-      html += '</div>';
-      html += '<span style="min-width:80px;text-align:right;font-size:12px;color:var(--text-muted);">' + cat.fmt(u) + '</span>';
-      html += '</div>';
-    });
-    html += '</div>';
-  });
-
-  const months = [];
-  const monthSet = new Set(allData.map(function(s){ return (s.date || '').slice(0,7); }).filter(Boolean));
-  Array.from(monthSet).sort().slice(-6).forEach(function(m){ months.push(m); });
-
-  const chartColors = ['#4fa3c7','#e8a057','#7b6cf6','#3dba8a','#e05c5c'];
-  const datasets = users.map(function(u, i) {
-    return {
-      label: u.name,
-      data: months.map(function(m) {
-        return allData.filter(function(s){ return s.user_id === u.uid && (s.date||'').startsWith(m); }).length;
-      }),
-      backgroundColor: chartColors[i % chartColors.length] + 'cc',
-      borderRadius: 3
-    };
-  });
-
-  html += '<div class="card">';
-  html += '<div class="section-title" style="margin-bottom:10px;">Sessions / mois par surfeur (6 derniers mois)</div>';
-  html += '<div style="position:relative;height:200px;"><canvas id="ranking-chart" role="img" aria-label="Comparaison sessions par mois"></canvas></div>';
-  html += '</div>';
-
-  el.innerHTML = html;
-
-  setTimeout(function() {
-    const labels6 = months.map(function(m) {
-      var parts = m.split('-');
-      var mo = parseInt(parts[1]);
-      var yr = parts[0].slice(2);
-      return ['','jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][mo] + " '" + yr;
-    });
-    if (rankingChart) { try { rankingChart.destroy(); } catch(e) {} }
-    const rc = document.getElementById('ranking-chart');
-    if (rc) {
-      rankingChart = new Chart(rc, {
-        type: 'bar',
-        data: { labels: labels6, datasets: datasets },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { color: '#7a94aa', boxWidth: 12, font: { size: 11 } } } },
-          scales: { x: { ticks: { color: '#7a94aa' }, grid: { display: false } },
-                    y: { ticks: { color: '#7a94aa', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
-      });
-    }
-  }, 50);
-}
-
-
-// ══ BOATS ══
-let boatsCache = [];
-const FUEL_PRICE_CFP = { essence: 185, diesel: 160, electrique: 0 };
-
-async function loadBoats() {
-  if (!sb) return [];
-  const { data, error } = await sb.from('boats').select('*').order('name');
-  if (error) { console.error('Erreur chargement bateaux:', error); return []; }
-  boatsCache = data || [];
-  return boatsCache;
-}
-
-async function populateBoatSelect() {
-  const boats = boatsCache.length ? boatsCache : await loadBoats();
-  const sel = document.getElementById('f-boat-id');
-  if (!sel) return;
-  const current = sel.value;
-  sel.innerHTML = '<option value="">— Choisir un bateau —</option>';
-  boats.forEach(function(b) {
-    const opt = new Option(b.name + (b.alias ? ' (' + b.alias + ')' : ''), b.id);
-    sel.appendChild(opt);
-  });
-  if (current) sel.value = current;
-}
-
-async function loadBoatsPage() {
-  const boats = await loadBoats();
-  const el = document.getElementById('boats-list');
-  if (!boats.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⛵</div><div class="empty-title">Aucun bateau</div><div class="empty-sub">Ajoute-en un !</div></div>';
-    return;
-  }
-
-  // Charger les sessions pour stats
-  let sessions = allSessions;
-  if (sb) {
-    const { data } = await sb.from('sessions').select('*');
-    if (data) sessions = data;
-  }
-
-  var html = '';
-  boats.forEach(function(b) {
-    const bSessions = sessions.filter(function(s) { return s.boat_id === b.id; });
-    const totalH = bSessions.reduce(function(a,s) { return a + (s.duration_h||0); }, 0);
-    const totalNm = bSessions.reduce(function(a,s) { return a + (s.distance_nm||0); }, 0);
-    const totalL = b.conso_l_h ? totalH * b.conso_l_h : null;
-    const fuelPrice = FUEL_PRICE_CFP[b.fuel_type] || 185;
-    const totalCFPcarbu = totalL ? Math.round(totalL * fuelPrice) : null;
-    const avgQ = bSessions.filter(function(s){return s.quality;}).length
-      ? (bSessions.filter(function(s){return s.quality;}).reduce(function(a,s){return a+s.quality;},0)
-         / bSessions.filter(function(s){return s.quality;}).length).toFixed(1)
-      : '—';
-    // Spot préféré
-    const spotCount = {};
-    bSessions.forEach(function(s) {
-      const sp = (s.spots && s.spots[0]) || s.spot || '';
-      if (sp) spotCount[sp] = (spotCount[sp]||0) + 1;
-    });
-    const spotPref = Object.entries(spotCount).sort(function(a,b){return b[1]-a[1];})[0];
-
-    html += '<div class="card" style="margin-bottom:12px;">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
-    html += '<div>';
-    html += '<div style="font-weight:500;font-size:15px;color:var(--text);">' + b.name + '</div>';
-    if (b.alias) html += '<div style="font-size:12px;color:var(--text-muted);">alias : ' + b.alias + '</div>';
-    html += '</div>';
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="btn btn-sm btn-secondary" onclick="openEditBoat(' + JSON.stringify(b) + ')">Renommer</button>';
-    html += '</div>';
-    html += '</div>';
-
-    // Stats grid
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px;">';
-    html += '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" style="font-size:1.3rem;">' + bSessions.length + '</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">Heures</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalH*10)/10 + 'h</div></div>';
-    if (totalNm > 0) html += '<div class="stat-card"><div class="stat-label">Distance</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalNm) + ' nm</div></div>';
-    if (totalL) html += '<div class="stat-card"><div class="stat-label">Carburant</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalL) + ' L</div><div class="stat-sub">' + (totalCFPcarbu ? totalCFPcarbu.toLocaleString('fr') + ' CFP' : '') + '</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value" style="font-size:1.3rem;">' + avgQ + (avgQ!=='—'?'★':'') + '</div></div>';
-    html += '</div>';
-
-    // Infos bateau
-    var infos = [];
-    if (b.conso_l_h) infos.push(b.conso_l_h + ' L/h · ' + (b.fuel_type||'essence'));
-    if (b.nb_places) infos.push(b.nb_places + ' places');
-    if (spotPref) infos.push('spot préféré : ' + spotPref[0] + ' (' + spotPref[1] + 'x)');
-    if (infos.length) html += '<div style="font-size:12px;color:var(--text-muted);">' + infos.join(' · ') + '</div>';
-
-    html += '</div>';
-  });
-
-  el.innerHTML = html;
-}
-
-function openAddBoat() {
-  document.getElementById('boat-edit-id').value = '';
-  document.getElementById('modal-boat-title').textContent = 'Nouveau bateau';
-  document.getElementById('boat-name').value = '';
-  document.getElementById('boat-alias').value = '';
-  document.getElementById('boat-conso').value = '';
-  document.getElementById('boat-fuel').value = 'essence';
-  document.getElementById('boat-places').value = '6';
-  document.getElementById('boat-fuel-price').value = '185';
-  document.getElementById('boat-notes').value = '';
-  document.getElementById('modal-boat').classList.add('open');
-}
-
-function openEditBoat(boat) {
-  document.getElementById('boat-edit-id').value = boat.id;
-  document.getElementById('modal-boat-title').textContent = 'Modifier ' + boat.name;
-  document.getElementById('boat-name').value = boat.name || '';
-  document.getElementById('boat-alias').value = boat.alias || '';
-  document.getElementById('boat-conso').value = boat.conso_l_h || '';
-  document.getElementById('boat-fuel').value = boat.fuel_type || 'essence';
-  document.getElementById('boat-places').value = boat.nb_places || 6;
-  document.getElementById('boat-fuel-price').value = FUEL_PRICE_CFP[boat.fuel_type||'essence'];
-  document.getElementById('boat-notes').value = boat.notes || '';
-  document.getElementById('modal-boat').classList.add('open');
-}
-
-async function saveBoat() {
-  if (!sb) { showToast('Supabase requis', 'error'); return; }
-  const id = document.getElementById('boat-edit-id').value;
-  const payload = {
-    name: document.getElementById('boat-name').value.trim(),
-    alias: document.getElementById('boat-alias').value.trim() || null,
-    conso_l_h: parseFloat(document.getElementById('boat-conso').value) || null,
-    fuel_type: document.getElementById('boat-fuel').value,
-    nb_places: parseInt(document.getElementById('boat-places').value) || null,
-    notes: document.getElementById('boat-notes').value.trim() || null,
-  };
-  if (!payload.name) { showToast('Donne un nom au bateau', 'error'); return; }
-  let error;
-  if (id) {
-    ({ error } = await sb.from('boats').update(payload).eq('id', id));
-  } else {
-    ({ error } = await sb.from('boats').insert(payload));
-  }
-  if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
-  showToast(id ? 'Bateau renommé !' : 'Bateau ajouté !', 'success');
-  closeModal('modal-boat');
-  boatsCache = [];
-  await loadBoatsPage();
-  await populateBoatSelect();
-}
-
-// ── Calcul consommation dans le formulaire de session ──
-function updateFuelEstimate() {
-  const boatId = document.getElementById('f-boat-id') && document.getElementById('f-boat-id').value;
-  const dist = parseFloat(document.getElementById('f-distance') && document.getElementById('f-distance').value) || 0;
-  const dur = parseFloat(document.getElementById('f-duration') && document.getElementById('f-duration').value) || 0;
-  const nb = parseInt(document.getElementById('f-nb-surfers') && document.getElementById('f-nb-surfers').value) || 1;
-  const el = document.getElementById('fuel-estimate');
-  if (!el) return;
-  const boat = boatsCache.find(function(b) { return b.id === boatId; });
-  if (!boat || !boat.conso_l_h || !dur) { el.textContent = ''; return; }
-  const litres = Math.round(boat.conso_l_h * dur);
-  const fuelPrice = FUEL_PRICE_CFP[boat.fuel_type||'essence'];
-  const total = Math.round(litres * fuelPrice);
-  const perPerson = nb > 0 ? Math.round(total / nb) : total;
-  el.textContent = 'Estimation : ' + litres + ' L · ' + total.toLocaleString('fr') + ' CFP total · ' + perPerson.toLocaleString('fr') + ' CFP/personne';
-}
-
-// ── Spots multiples : parser "Grand bac, Petit U" → ['Grand bac', 'Petit U'] ──
-const KNOWN_SPOTS = [
-  'Grand bac','Petit U','Gros nem','Fausse passe Dumbéa','Gauche de Dumbéa',
-  'Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux',
-  'Droite de dumbéa','Fausse passe','Gauche Dumbéa','Droite Dumbéa'
-];
-
-function parseSpots(spotStr) {
-  if (!spotStr) return [];
-  // Séparer sur virgule, mais seulement si ce qui suit ressemble à un spot connu
-  // ou si la longueur totale suggère deux spots distincts
-  const parts = spotStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  if (parts.length <= 1) return [spotStr.trim()];
-  // Vérifier que chaque partie ressemble à un spot (pas juste "à part", etc.)
-  return parts.filter(function(p) { return p.length > 2; });
-}
+});
 
 // ══ BOOT ══
 init();
