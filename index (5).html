@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coups de surf NC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --ocean: #0a1628;
+  --deep: #0d1f3c;
+  --mid: #1a3a5c;
+  --surface: #1e2d42;
+  --glass: rgba(255,255,255,0.04);
+  --border: rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.16);
+  --text: #e8eef4;
+  --text-muted: #7a94aa;
+  --text-faint: #3d5468;
+  --accent: #4fa3c7;
+  --accent-warm: #e8a057;
+  --tube: #7b6cf6;
+  --success: #3dba8a;
+  --danger: #e05c5c;
+  --star: #e8a057;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--ocean);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 15px;
+  line-height: 1.6;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(79,163,199,0.07) 0%, transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+
+/* ── NAV ── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,22,40,0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+  display: flex; align-items: center; gap: 1rem; height: 56px;
+}
+.nav-logo {
+  font-family: var(--font-display);
+  font-size: 1.1rem; font-weight: 600;
+  color: var(--text); text-decoration: none;
+  margin-right: auto;
+  display: flex; align-items: center; gap: 8px;
+}
+.nav-logo span { color: var(--accent); }
+.nav-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-family: var(--font-body);
+  font-size: 13px; padding: 6px 12px; border-radius: var(--radius-sm);
+  transition: all .2s; white-space: nowrap;
+}
+.nav-btn:hover { color: var(--text); background: var(--glass); }
+.nav-btn.active { color: var(--accent); }
+.nav-btn.primary {
+  background: var(--accent); color: var(--ocean);
+  font-weight: 500; padding: 6px 14px;
+}
+.nav-btn.primary:hover { opacity: .85; color: var(--ocean); }
+.nav-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--mid); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 500; color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── LAYOUT ── */
+.page { display: none; }
+.page.active { display: block; }
+.container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; z-index: 1; }
+.container-wide { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; z-index: 1; }
+
+/* ── AUTH ── */
+#page-auth {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 2rem;
+}
+.auth-card {
+  width: 100%; max-width: 420px;
+  background: var(--deep);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2.5rem;
+}
+.auth-title {
+  font-family: var(--font-display);
+  font-size: 2rem; font-weight: 600;
+  text-align: center; margin-bottom: 4px;
+}
+.auth-sub {
+  color: var(--text-muted); text-align: center;
+  font-size: 13px; margin-bottom: 2rem;
+  font-style: italic;
+}
+
+/* ── FORMS ── */
+.form-group { margin-bottom: 1rem; }
+.form-label {
+  display: block; font-size: 12px; font-weight: 500;
+  color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: .05em; margin-bottom: 6px;
+}
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 10px 14px;
+  transition: border-color .2s;
+  outline: none;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--accent);
+}
+.form-select option { background: var(--deep); }
+.form-textarea { resize: vertical; min-height: 80px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 20px; border-radius: var(--radius-sm);
+  font-family: var(--font-body); font-size: 14px; font-weight: 500;
+  cursor: pointer; border: none; transition: all .2s; text-decoration: none;
+}
+.btn-primary { background: var(--accent); color: var(--ocean); }
+.btn-primary:hover { opacity: .85; }
+.btn-secondary {
+  background: var(--glass); color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--border-hover); background: rgba(255,255,255,0.07); }
+.btn-danger { background: rgba(224,92,92,0.15); color: var(--danger); border: 1px solid rgba(224,92,92,0.2); }
+.btn-danger:hover { background: rgba(224,92,92,0.25); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-full { width: 100%; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  transition: border-color .2s;
+}
+.card:hover { border-color: var(--border-hover); }
+.card-glass {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+/* ── SESSION CARD ── */
+.session-card {
+  background: var(--deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  cursor: pointer;
+  transition: all .2s;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  align-items: start;
+}
+.session-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.session-card.shared { border-left: 3px solid var(--tube); }
+.session-date-block { text-align: center; min-width: 48px; }
+.session-day { font-size: 1.5rem; font-weight: 600; font-family: var(--font-display); color: var(--text); line-height: 1; }
+.session-month { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.session-spot { font-weight: 500; font-size: 15px; color: var(--text); }
+.session-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.session-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tag {
+  font-size: 11px; padding: 2px 8px; border-radius: 20px;
+  font-weight: 500;
+}
+.tag-tube { background: rgba(123,108,246,0.2); color: #a99ff8; }
+.tag-shared { background: rgba(79,163,199,0.15); color: var(--accent); }
+.tag-board { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+.stars { color: var(--star); font-size: 13px; letter-spacing: -1px; }
+.stars-empty { color: var(--text-faint); }
+.session-right { text-align: right; }
+.session-duration { font-size: 13px; color: var(--text-muted); }
+.session-price { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+
+/* ── STATS ── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+.stat-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+.stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.stat-value { font-size: 1.6rem; font-weight: 600; font-family: var(--font-display); color: var(--text); line-height: 1.1; }
+.stat-sub { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+
+/* ── PAGE HEADER ── */
+.page-header { margin-bottom: 2rem; }
+.page-title { font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; margin-bottom: 4px; }
+.page-sub { color: var(--text-muted); font-size: 13px; }
+
+/* ── SECTION ── */
+.section-title {
+  font-size: 11px; font-weight: 500; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .08em;
+  margin-bottom: 10px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── DIVIDER ── */
+.divider { height: 1px; background: var(--border); margin: 1.5rem 0; }
+
+/* ── BADGE ── */
+.badge {
+  display: inline-block; font-size: 10px; padding: 2px 8px;
+  border-radius: 20px; font-weight: 500;
+}
+.badge-accent { background: rgba(79,163,199,0.15); color: var(--accent); }
+.badge-tube { background: rgba(123,108,246,0.2); color: #a99ff8; }
+.badge-warm { background: rgba(232,160,87,0.15); color: var(--accent-warm); }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed; bottom: 2rem; right: 2rem; z-index: 999;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 20px;
+  font-size: 13px; color: var(--text);
+  transform: translateY(100px); opacity: 0;
+  transition: all .3s; pointer-events: none;
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.success { border-color: var(--success); color: var(--success); }
+#toast.error { border-color: var(--danger); color: var(--danger); }
+
+/* ── MODAL ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center; padding: 1rem;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--deep); border: 1px solid var(--border);
+  border-radius: 16px; padding: 2rem;
+  width: 100%; max-width: 540px;
+  max-height: 90vh; overflow-y: auto;
+}
+.modal-title {
+  font-family: var(--font-display); font-size: 1.4rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ── STAR PICKER ── */
+.star-picker { display: flex; gap: 4px; }
+.star-picker span {
+  font-size: 1.5rem; cursor: pointer;
+  color: var(--text-faint); transition: color .15s;
+  user-select: none;
+}
+.star-picker span.active { color: var(--star); }
+.star-picker span:hover { color: var(--star); }
+
+/* ── TOGGLE ── */
+.toggle-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.toggle-btn {
+  padding: 5px 12px; border-radius: 20px;
+  border: 1px solid var(--border);
+  background: none; color: var(--text-muted);
+  font-family: var(--font-body); font-size: 12px;
+  cursor: pointer; transition: all .15s;
+}
+.toggle-btn.active {
+  background: rgba(79,163,199,0.15);
+  border-color: var(--accent); color: var(--accent);
+}
+.toggle-btn.active.tube {
+  background: rgba(123,108,246,0.2);
+  border-color: var(--tube); color: #a99ff8;
+}
+
+/* ── PROFILE RING ── */
+.profile-ring {
+  display: flex; gap: -6px;
+}
+.profile-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 500;
+  border: 2px solid var(--deep);
+  margin-left: -6px;
+}
+.profile-avatar:first-child { margin-left: 0; }
+
+/* ── EMPTY ── */
+.empty {
+  text-align: center; padding: 3rem 1rem;
+  color: var(--text-muted);
+}
+.empty-icon { font-size: 2.5rem; margin-bottom: 1rem; opacity: .4; }
+.empty-title { font-size: 1rem; font-weight: 500; margin-bottom: 4px; }
+.empty-sub { font-size: 13px; color: var(--text-faint); }
+
+/* ── LOADING ── */
+.spinner {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-state { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 3rem; color: var(--text-muted); font-size: 13px; }
+
+/* ── TABS ── */
+.tabs { display: flex; gap: 2px; background: var(--glass); border-radius: var(--radius-sm); padding: 3px; margin-bottom: 1.5rem; border: 1px solid var(--border); }
+.tab {
+  flex: 1; padding: 7px; border-radius: 6px; border: none;
+  background: none; color: var(--text-muted);
+  font-family: var(--font-body); font-size: 13px;
+  cursor: pointer; transition: all .15s; text-align: center;
+}
+.tab.active { background: var(--surface); color: var(--text); }
+
+/* ── CHART WRAPPER ── */
+.chart-wrap { position: relative; width: 100%; }
+
+/* ── SESSION DETAIL ── */
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1rem; }
+.detail-item { padding: 10px 14px; background: var(--glass); border-radius: var(--radius-sm); }
+.detail-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+.detail-value { font-size: 14px; color: var(--text); font-weight: 500; }
+
+/* ── COMMENT ── */
+.comment {
+  padding: 12px 14px; background: var(--glass);
+  border-radius: var(--radius-sm); margin-bottom: 8px;
+}
+.comment-author { font-size: 11px; color: var(--accent); font-weight: 500; margin-bottom: 4px; }
+.comment-text { font-size: 13px; color: var(--text); }
+.comment-meta { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 600px) {
+  .form-row, .form-row-3, .detail-grid { grid-template-columns: 1fr; }
+  .session-card { grid-template-columns: auto 1fr; }
+  .session-right { display: none; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  nav { padding: 0 1rem; }
+  .container, .container-wide { padding: 1.5rem 1rem; }
+}
+
+/* ── SETUP BANNER ── */
+.setup-banner {
+  background: rgba(232,160,87,0.1); border: 1px solid rgba(232,160,87,0.3);
+  border-radius: var(--radius); padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem; font-size: 13px; color: var(--accent-warm);
+}
+.setup-banner a { color: var(--accent-warm); }
+.setup-banner code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px;
+  border-radius: 4px; font-size: 12px; color: var(--text);
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     CONFIGURATION — À remplir après Supabase
+════════════════════════════════════════════ -->
+<script>
+const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
+const APP_NAME = 'Coups de surf NC';
+
+</script>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- NAV -->
+<nav id="main-nav" style="display:none">
+  <a href="#" class="nav-logo" onclick="showPage('dashboard')">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c2-4 5-7 10-7s8 3 10 7c-2 4-5 7-10 7s-8-3-10-7z"/><path d="M20 12C17 8 14 5 9 5"/></svg>
+    <span>Coups de surf <span>NC</span>
+  </a>
+  <button class="nav-btn" onclick="showPage('dashboard')">Mes sessions</button>
+  <button class="nav-btn" onclick="showPage('group')">Groupe</button>
+  <button class="nav-btn" onclick="showPage('spots')">Spots</button>
+  <button class="nav-btn" onclick="showPage('ranking')">Classement</button>
+  <button class="nav-btn" onclick="showPage('stats')">Stats</button>
+  <button class="nav-btn primary" onclick="openAddSession()">+ Session</button>
+  <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')">?</div>
+</nav>
+
+<!-- ══ PAGE AUTH ══ -->
+<div id="page-auth" class="page active">
+  <div class="auth-card">
+    <div class="auth-title">Coups de surf <span style="color:var(--accent)">NC</span></div>
+    <div class="auth-sub">Le journal de surf de la bande 🤙</div>
+    <div id="auth-form-login">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-input" id="auth-email" placeholder="ton@email.com" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mot de passe</label>
+        <input type="password" class="form-input" id="auth-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="doLogin()" id="btn-login">Se connecter</button>
+      <div style="text-align:center;margin-top:1rem;font-size:13px;color:var(--text-muted)">
+        Pas encore de compte ? <a href="#" style="color:var(--accent)" onclick="switchAuthMode('signup')">S'inscrire</a>
+      </div>
+    </div>
+    <div id="auth-form-signup" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Pseudo (affiché aux autres)</label>
+        <input type="text" class="form-input" id="auth-username" placeholder="ex: Lucas">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-input" id="auth-email-2" placeholder="ton@email.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mot de passe</label>
+        <input type="password" class="form-input" id="auth-password-2" placeholder="min. 6 caractères">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="doSignup()">Créer mon compte</button>
+      <div style="text-align:center;margin-top:1rem;font-size:13px;color:var(--text-muted)">
+        Déjà un compte ? <a href="#" style="color:var(--accent)" onclick="switchAuthMode('login')">Se connecter</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE DASHBOARD ══ -->
+<div id="page-dashboard" class="page">
+  <div class="container">
+    <div id="setup-banner" class="setup-banner" style="display:none">
+      ⚠️ <strong>Configuration requise :</strong> Remplace <code>VOTRE_URL_SUPABASE_ICI</code> et <code>VOTRE_CLE_ANON_ICI</code> en haut du fichier HTML avec tes identifiants Supabase. <a href="#" onclick="showSetupGuide()">Voir le guide →</a>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+      <div class="page-header" style="margin-bottom:0">
+        <div class="page-title" id="dash-greeting">Mes sessions</div>
+        <div class="page-sub" id="dash-sub">Chargement…</div>
+      </div>
+      <button class="btn btn-primary" onclick="openAddSession()">+ Ajouter session</button>
+    </div>
+
+    <div class="stats-grid" id="dash-stats"></div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="filterSessions('all', this)">Toutes</button>
+      <button class="tab" onclick="filterSessions('tube', this)">Tubes 🤙</button>
+      <button class="tab" onclick="filterSessions('shared', this)">Partagées</button>
+    </div>
+
+    <div id="sessions-list">
+      <div class="loading-state"><div class="spinner"></div> Chargement des sessions…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE GROUP ══ -->
+<div id="page-group" class="page">
+  <div class="container">
+    <div class="page-header">
+      <div class="page-title">Sessions du groupe</div>
+      <div class="page-sub">Toutes les sorties partagées entre surfers</div>
+    </div>
+    <div id="group-list">
+      <div class="loading-state"><div class="spinner"></div> Chargement…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE STATS ══ -->
+<div id="page-stats" class="page">
+  <div class="container-wide">
+    <div class="page-header">
+      <div class="page-title">Statistiques</div>
+      <div class="page-sub">Analyse de ta pratique</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:1.5rem;flex-wrap:wrap;">
+      <button class="btn btn-sm btn-secondary" onclick="loadStats('me')" id="stats-tab-me" style="border-color:var(--accent);color:var(--accent)">Mes stats</button>
+      <button class="btn btn-sm btn-secondary" onclick="loadStats('group')" id="stats-tab-group">Stats groupe</button>
+    </div>
+    <div id="stats-content">
+      <div class="loading-state"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE PROFILE ══ -->
+<div id="page-profile" class="page">
+  <div class="container">
+    <div class="page-header">
+      <div class="page-title">Mon profil</div>
+    </div>
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--mid);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:600;color:var(--accent);" id="profile-avatar-big">?</div>
+        <div>
+          <div style="font-weight:500;font-size:1.1rem;" id="profile-name-display">—</div>
+          <div style="font-size:13px;color:var(--text-muted);" id="profile-email-display">—</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Pseudo</label>
+        <input type="text" class="form-input" id="profile-username-input" placeholder="Ton pseudo">
+      </div>
+      <button class="btn btn-primary" onclick="saveProfile()">Enregistrer</button>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-bottom:1rem;">Mes planches habituelles</div>
+      <div id="profile-boards-list" style="margin-bottom:1rem;"></div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" class="form-input" id="new-board-input" placeholder="ex: Pyzel – Power Tiger" style="flex:1">
+        <button class="btn btn-secondary" onclick="addBoard()">Ajouter</button>
+      </div>
+    </div>
+    <div style="margin-top:1.5rem;text-align:right;">
+      <button class="btn btn-danger" onclick="doLogout()">Se déconnecter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE SPOTS ══ -->
+<div id="page-spots" class="page">
+  <div class="container-wide">
+    <div class="page-header">
+      <div class="page-title">Spots</div>
+      <div class="page-sub">Stats et conditions par spot</div>
+    </div>
+    <div id="spots-selector" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem;"></div>
+    <div id="spots-content">
+      <div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE RANKING ══ -->
+<div id="page-ranking" class="page">
+  <div class="container">
+    <div class="page-header">
+      <div class="page-title">Classement 🏆</div>
+      <div class="page-sub">Qui surfe le plus dans la bande ?</div>
+    </div>
+    <div id="ranking-content">
+      <div class="loading-state"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL ADD SESSION ══ -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+      <div class="modal-title" id="modal-add-title">Nouvelle session</div>
+      <button onclick="closeModal('modal-add')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
+    </div>
+
+    <input type="hidden" id="edit-session-id">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input type="date" class="form-input" id="f-date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Durée (h)</label>
+        <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Spot</label>
+      <select class="form-select" id="f-spot" onchange="handleSpotChange(this)">
+        <option value="">— Choisir —</option>
+        <option value="Grand bac">Grand bac</option>
+        <option value="Petit U">Petit U</option>
+        <option value="Gros nem">Gros nem</option>
+        <option value="Fausse passe Dumbéa">Fausse passe Dumbéa</option>
+        <option value="Gauche de Dumbéa">Gauche de Dumbéa</option>
+        <option value="Droite de Dumbéa">Droite de Dumbéa</option>
+        <option value="La roche percée">La roche percée</option>
+        <option value="Ouano">Ouano</option>
+        <option value="Skatepark">Skatepark</option>
+        <option value="Trois cailloux">Trois cailloux</option>
+        <option value="__autre__">+ Autre spot…</option>
+      </select>
+      <input type="text" class="form-input" id="f-spot-custom" placeholder="Nom du nouveau spot" style="display:none;margin-top:8px;">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Mise à l'eau</label>
+        <input type="text" class="form-input" id="f-launch" placeholder="ex: Tomo, Port Ouenghi">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contexte</label>
+        <select class="form-select" id="f-context">
+          <option value="">—</option>
+          <option value="WE">Week-end</option>
+          <option value="RTT">RTT / CP</option>
+          <option value="RECUP">Récup</option>
+          <option value="Vacances">Vacances</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row-3">
+      <div class="form-group">
+        <label class="form-label">Hs (m)</label>
+        <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Période (s)</label>
+        <input type="number" class="form-input" id="f-period" placeholder="14" step="0.5" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Direction houle</label>
+        <select class="form-select" id="f-swell-dir">
+          <option value="">—</option>
+          <option value="N (0°)">N — 0°</option>
+          <option value="NNE (22°)">NNE — 22°</option>
+          <option value="NE (45°)">NE — 45°</option>
+          <option value="ENE (67°)">ENE — 67°</option>
+          <option value="E (90°)">E — 90°</option>
+          <option value="ESE (112°)">ESE — 112°</option>
+          <option value="SE (135°)">SE — 135°</option>
+          <option value="SSE (157°)">SSE — 157°</option>
+          <option value="S (180°)">S — 180°</option>
+          <option value="SSO (190°)">SSO — 190°</option>
+          <option value="SSO (195°)">SSO — 195°</option>
+          <option value="SSO (200°)">SSO — 200°</option>
+          <option value="SO (210°)">SO — 210°</option>
+          <option value="SO (216°)">SO — 216°</option>
+          <option value="OSO (247°)">OSO — 247°</option>
+          <option value="O (270°)">O — 270°</option>
+          <option value="ONO (292°)">ONO — 292°</option>
+          <option value="NO (315°)">NO — 315°</option>
+          <option value="NNO (335°)">NNO — 335°</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row-3">
+      <div class="form-group">
+        <label class="form-label">Vent (nds)</label>
+        <input type="number" class="form-input" id="f-wind" placeholder="5" step="1" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Direction vent</label>
+        <select class="form-select" id="f-wind-dir">
+          <option value="">—</option>
+          <option value="Glassy">Glassy</option>
+          <option value="N">N</option><option value="NNE">NNE</option>
+          <option value="NE">NE</option><option value="ENE">ENE</option>
+          <option value="E">E</option><option value="ESE">ESE</option>
+          <option value="SE">SE</option><option value="SSE">SSE</option>
+          <option value="S">S</option><option value="SSO">SSO</option>
+          <option value="SO">SO</option><option value="OSO">OSO</option>
+          <option value="O">O</option><option value="ONO">ONO</option>
+          <option value="NO">NO</option><option value="NNO">NNO</option>
+          <option value="Tournant">Tournant</option>
+          <option value="Onshore">Onshore</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Marée (m)</label>
+        <input type="text" class="form-input" id="f-tide" placeholder="1.2 → 0.4">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Planche</label>
+      <input type="text" class="form-input" id="f-board" placeholder="ex: Pukas, Pyzel…" list="boards-list">
+      <datalist id="boards-list"></datalist>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Prix bateau (CFP)</label>
+      <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Qualité de la session</label>
+      <div class="star-picker" id="f-qual-stars">
+        <span onclick="setStars(1)">★</span>
+        <span onclick="setStars(2)">★</span>
+        <span onclick="setStars(3)">★</span>
+        <span onclick="setStars(4)">★</span>
+        <span onclick="setStars(5)">★</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Manœuvres & highlights</label>
+      <div class="toggle-group" id="f-moves">
+        <button class="toggle-btn tube" onclick="toggleMove(this,'tube')">Tube</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'casquette')">Casquette</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'floater')">Floater</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'roller')">Roller</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'cutback')">Cutback</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'carve')">Carve</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'aérien')">Aérien</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'wipeout')">Wipeout</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'dauphins')">Dauphins 🐬</button>
+        <button class="toggle-btn" onclick="toggleMove(this,'requin')">Requin 🦈</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Session partagée avec</label>
+      <input type="text" class="form-input" id="f-shared-with" placeholder="ex: Lucas, Raph (séparé par virgule)">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Observations</label>
+      <textarea class="form-textarea" id="f-obs" placeholder="Conditions, anecdotes, ressenti…"></textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.5rem;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveSession()" id="btn-save-session">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL SESSION DETAIL ══ -->
+<div class="modal-overlay" id="modal-detail">
+  <div class="modal" style="max-width:600px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+      <div class="modal-title" id="detail-title">Session</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm btn-secondary" onclick="editSession()" id="btn-edit-session">Modifier</button>
+        <button onclick="closeModal('modal-detail')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
+      </div>
+    </div>
+    <div id="detail-content"></div>
+    <div id="detail-comments-section" style="display:none;margin-top:1.5rem;">
+      <div class="section-title" style="margin-bottom:0.75rem;">Avis des surfeurs</div>
+      <div id="detail-comments"></div>
+      <div style="margin-top:1rem;" id="my-comment-form">
+        <div class="form-group">
+          <div class="star-picker" id="comment-stars">
+            <span onclick="setCommentStars(1)">★</span>
+            <span onclick="setCommentStars(2)">★</span>
+            <span onclick="setCommentStars(3)">★</span>
+            <span onclick="setCommentStars(4)">★</span>
+            <span onclick="setCommentStars(5)">★</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <textarea class="form-textarea" id="comment-text" placeholder="Ton avis sur cette session partagée…" style="min-height:60px;flex:1;"></textarea>
+          <button class="btn btn-primary" onclick="submitComment()" style="align-self:flex-end;">Envoyer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL SETUP GUIDE ══ -->
+<div class="modal-overlay" id="modal-setup">
+  <div class="modal" style="max-width:600px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+      <div class="modal-title">Guide d'installation</div>
+      <button onclick="closeModal('modal-setup')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
+    </div>
+    <div style="font-size:14px;line-height:1.8;color:var(--text-muted);">
+      <div style="margin-bottom:1rem;"><strong style="color:var(--accent)">Étape 1 — Créer la base Supabase</strong><br>
+        1. Va sur <a href="https://supabase.com" target="_blank" style="color:var(--accent)">supabase.com</a> → New project<br>
+        2. Dans "SQL Editor", colle et exécute le SQL ci-dessous<br>
+        3. Dans "Project Settings" → API → copie l'URL et la clé <code>anon</code>
+      </div>
+      <div style="background:var(--ocean);border:1px solid var(--border);border-radius:8px;padding:1rem;font-size:12px;font-family:monospace;color:var(--text);margin-bottom:1rem;overflow-x:auto;white-space:pre-wrap;">
+-- Profils utilisateurs
+create table profiles (
+  id uuid references auth.users primary key,
+  username text,
+  boards text[],
+  created_at timestamptz default now()
+);
+alter table profiles enable row level security;
+create policy "Users can manage own profile" on profiles
+  for all using (auth.uid() = id);
+
+-- Sessions de surf
+create table sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  date date not null,
+  spot text,
+  launch_point text,
+  context text,
+  duration_h float,
+  hs float,
+  period float,
+  swell_dir text,
+  wind_kts float,
+  wind_dir text,
+  tide text,
+  board text,
+  price_cfp int,
+  quality int,
+  moves text[],
+  shared_with text[],
+  observations text,
+  is_shared boolean default false,
+  created_at timestamptz default now()
+);
+alter table sessions enable row level security;
+create policy "Users see own sessions and shared" on sessions
+  for select using (auth.uid() = user_id or is_shared = true);
+create policy "Users manage own sessions" on sessions
+  for all using (auth.uid() = user_id);
+
+-- Commentaires sur sessions partagées
+create table session_comments (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid references sessions not null,
+  user_id uuid references auth.users not null,
+  username text,
+  quality int,
+  comment text,
+  created_at timestamptz default now()
+);
+alter table session_comments enable row level security;
+create policy "Anyone can read comments" on session_comments
+  for select using (true);
+create policy "Users manage own comments" on session_comments
+  for all using (auth.uid() = user_id);
+      </div>
+      <div><strong style="color:var(--accent)">Étape 2 — Configurer le fichier HTML</strong><br>
+        Ouvre <code>surf-journal.html</code> et remplace les deux lignes en haut :<br>
+        <code>const SUPABASE_URL = 'https://xxxxx.supabase.co';</code><br>
+        <code>const SUPABASE_KEY = 'eyJhbGc...';</code>
+      </div>
+      <div style="margin-top:1rem;"><strong style="color:var(--accent)">Étape 3 — Mettre en ligne (Netlify)</strong><br>
+        1. Va sur <a href="https://netlify.com" target="_blank" style="color:var(--accent)">netlify.com</a> → "Add new site" → "Deploy manually"<br>
+        2. Glisse-dépose ton fichier <code>surf-journal.html</code><br>
+        3. Partage l'URL avec tes potes !
+      </div>
+    </div>
+    <div style="margin-top:1.5rem;text-align:right;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-setup')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══ SUPABASE INIT ══
+let sb = null;
+let currentUser = null;
+let currentProfile = null;
+let allSessions = [];
+let currentFilter = 'all';
+let editingSessionId = null;
+let currentDetailSession = null;
+let selectedQuality = 0;
+let selectedCommentQuality = 0;
+let selectedMoves = [];
+let statsMode = 'me';
+
+try {
+  if (SUPABASE_URL !== 'VOTRE_URL_SUPABASE_ICI') {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+} catch(e) { console.error("❌ Supabase init error:", e); }
+
+// ══ AUTH ══
+function switchAuthMode(mode) {
+  document.getElementById('auth-form-login').style.display = mode === 'login' ? 'block' : 'none';
+  document.getElementById('auth-form-signup').style.display = mode === 'signup' ? 'block' : 'none';
+}
+
+async function doLogin() {
+  console.log("🔐 doLogin appelé, sb =", sb);
+  if (!sb) {
+    console.error("❌ supabase est null !");
+    showToast('Supabase non initialisé — vérifie la console', 'error');
+    showSetupGuide();
+    return;
+  }
+  const email = document.getElementById('auth-email').value.trim();
+  const pass = document.getElementById('auth-password').value;
+  console.log("📧 Tentative login pour:", email);
+  const btn = document.getElementById('btn-login');
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+    console.log("✅ Réponse Supabase:", { data, error });
+    if (error) {
+      showToast(error.message, 'error');
+      console.error("❌ Erreur login:", error);
+    }
+  } catch(e) {
+    console.error("❌ Exception login:", e);
+    showToast('Erreur réseau : ' + e.message, 'error');
+  }
+  btn.textContent = 'Se connecter'; btn.disabled = false;
+}
+
+async function doSignup() {
+  console.log("📝 doSignup appelé, sb =", sb);
+  if (!sb) {
+    console.error("❌ supabase est null !");
+    showToast('Supabase non initialisé — vérifie la console', 'error');
+    return;
+  }
+  const username = document.getElementById('auth-username').value.trim();
+  const email = document.getElementById('auth-email-2').value.trim();
+  const pass = document.getElementById('auth-password-2').value;
+  if (!username || !email || !pass) { showToast('Remplis tous les champs', 'error'); return; }
+  try {
+    console.log("📧 Tentative inscription pour:", email);
+    const { data, error } = await sb.auth.signUp({ email, password: pass });
+    console.log("✅ Réponse Supabase signup:", { data, error });
+    if (error) { showToast(error.message, 'error'); console.error("❌ Erreur signup:", error); return; }
+    if (data.user) {
+      await sb.from('profiles').upsert({ id: data.user.id, username, boards: [] });
+      showToast('Compte créé ! Connecte-toi.', 'success');
+      switchAuthMode('login');
+    }
+  } catch(e) {
+    console.error("❌ Exception signup:", e);
+    showToast('Erreur réseau : ' + e.message, 'error');
+  }
+}
+
+async function doLogout() {
+  if (sb) await sb.auth.signOut();
+  currentUser = null; currentProfile = null; allSessions = [];
+  showPage('auth');
+  document.getElementById('main-nav').style.display = 'none';
+}
+
+// ══ STARTUP ══
+async function init() {
+  console.log("🚀 init() appelé");
+  console.log("📡 sb initialisé ?", sb !== null);
+  if (!sb) {
+    document.getElementById('main-nav').style.display = 'flex';
+    document.getElementById('setup-banner').style.display = 'block';
+    showPage('dashboard');
+    renderDashStats([]); renderSessionsList([]);
+    return;
+  }
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) await onLogin(session.user);
+  sb.auth.onAuthStateChange(async (event, sess) => {
+    if (sess) await onLogin(sess.user);
+    else { document.getElementById('main-nav').style.display = 'none'; showPage('auth'); }
+  });
+}
+
+async function onLogin(user) {
+  console.log("👤 onLogin appelé pour:", user.email);
+  currentUser = user;
+
+  // Charger ou créer le profil
+  try {
+    const { data: profile, error: profileError } = await sb
+      .from('profiles').select('*').eq('id', user.id).maybeSingle();
+
+    console.log("👤 Profil chargé:", profile, "Erreur:", profileError);
+
+    if (profile) {
+      currentProfile = profile;
+    } else {
+      // Profil inexistant — on le crée
+      const username = user.email.split('@')[0];
+      currentProfile = { username, boards: [] };
+      const { error: upsertError } = await sb.from('profiles')
+        .upsert({ id: user.id, username, boards: [] });
+      if (upsertError) console.warn("⚠️ Impossible de créer le profil:", upsertError);
+      else console.log("✅ Profil créé pour:", username);
+    }
+  } catch(e) {
+    console.warn("⚠️ Erreur profil (non bloquante):", e);
+    currentProfile = { username: user.email.split('@')[0], boards: [] };
+  }
+
+  const initials = (currentProfile.username || '?')[0].toUpperCase();
+  document.getElementById('nav-avatar').textContent = initials;
+  document.getElementById('main-nav').style.display = 'flex';
+  showPage('dashboard');
+  await loadMySessions();
+  console.log("✅ onLogin terminé, dashboard affiché");
+}
+
+// ══ SESSIONS ══
+async function loadMySessions() {
+  if (!sb || !currentUser) { renderSessionsList([]); renderDashStats([]); return; }
+  try {
+    const { data, error } = await sb.from('sessions').select('*')
+      .eq('user_id', currentUser.id).order('date', { ascending: false });
+    if (error) console.error("❌ Erreur chargement sessions:", error);
+    allSessions = data || [];
+    console.log("📋 Sessions chargées:", allSessions.length);
+  } catch(e) {
+    console.error("❌ Exception loadMySessions:", e);
+    allSessions = [];
+  }
+  renderDashStats(allSessions);
+  renderSessionsList(filterList(allSessions, currentFilter));
+}
+
+function filterList(sessions, filter) {
+  if (filter === 'tube') return sessions.filter(s => s.moves && s.moves.includes('tube'));
+  if (filter === 'shared') return sessions.filter(s => s.is_shared);
+  return sessions;
+}
+
+function filterSessions(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderSessionsList(filterList(allSessions, f));
+}
+
+function renderDashStats(sessions) {
+  const totalH = sessions.reduce((s,x) => s + (x.duration_h || 0), 0);
+  const avgQ = sessions.length ? (sessions.reduce((s,x) => s + (x.quality || 0), 0) / sessions.length).toFixed(1) : '—';
+  const tubes = sessions.filter(s => s.moves && s.moves.includes('tube')).length;
+  const totalCFP = sessions.reduce((s,x) => s + (x.price_cfp || 0), 0);
+  const h = Math.floor(totalH), m = Math.round((totalH - h) * 60);
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">${sessions.length}</div><div class="stat-sub">au total</div></div>
+    <div class="stat-card"><div class="stat-label">À l'eau</div><div class="stat-value">${h}h${m > 0 ? m : ''}</div><div class="stat-sub">cumulées</div></div>
+    <div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value">${avgQ}<span style="font-size:1rem;color:var(--star)"> ★</span></div><div class="stat-sub">sur 5</div></div>
+    <div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">${tubes}</div><div class="stat-sub">${sessions.length ? Math.round(tubes/sessions.length*100) : 0}% des sessions</div></div>
+    <div class="stat-card"><div class="stat-label">Coût total</div><div class="stat-value">${totalCFP.toLocaleString('fr')}</div><div class="stat-sub">CFP bateau</div></div>
+  `;
+  const name = currentProfile ? currentProfile.username : '';
+  document.getElementById('dash-greeting').textContent = name ? `Aloha ${name} 🤙` : 'Mes sessions';
+  document.getElementById('dash-sub').textContent = sessions.length
+    ? `${sessions.length} session${sessions.length>1?'s':''} · ${(totalH/sessions.length).toFixed(1)}h de moy.`
+    : 'Aucune session encore — ajoute-en une !';
+}
+
+function renderSessionsList(sessions) {
+  const el = document.getElementById('sessions-list');
+  if (!sessions.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🏄</div><div class="empty-title">Aucune session</div><div class="empty-sub">Appuie sur "+ Ajouter session" pour commencer !</div></div>`;
+    return;
+  }
+  el.innerHTML = sessions.map(s => sessionCardHTML(s)).join('');
+}
+
+function sessionCardHTML(s) {
+  const d = new Date(s.date + 'T00:00:00');
+  const day = d.getDate();
+  const month = d.toLocaleDateString('fr-FR', { month: 'short' });
+  const year = d.getFullYear().toString().slice(2);
+  const stars = s.quality ? '★'.repeat(s.quality) + '<span class="stars-empty">' + '★'.repeat(5 - s.quality) + '</span>' : '';
+  const tags = [];
+  if (s.moves && s.moves.includes('tube')) tags.push('<span class="tag tag-tube">tube</span>');
+  if (s.is_shared) tags.push('<span class="tag tag-shared">partagée</span>');
+  if (s.board) tags.push(`<span class="tag tag-board">${s.board}</span>`);
+  if (s.moves) s.moves.filter(m=>m!=='tube').slice(0,2).forEach(m => tags.push(`<span class="tag tag-board">${m}</span>`));
+  const dur = s.duration_h ? `${s.duration_h}h` : '';
+  return `<div class="session-card ${s.is_shared ? 'shared' : ''}" onclick="openDetail('${s.id}')" style="margin-bottom:8px;">
+    <div class="session-date-block">
+      <div class="session-day">${day}</div>
+      <div class="session-month">${month} ${year}</div>
+    </div>
+    <div>
+      <div class="session-spot">${s.spot || '—'}</div>
+      <div class="session-meta">${[s.hs ? `Hs ${s.hs}m` : '', s.period ? `${s.period}s` : '', s.context || ''].filter(Boolean).join(' · ')}</div>
+      ${tags.length ? `<div class="session-tags">${tags.join('')}</div>` : ''}
+    </div>
+    <div class="session-right">
+      <div class="stars">${stars}</div>
+      <div class="session-duration">${dur}</div>
+      ${s.price_cfp ? `<div class="session-price">${s.price_cfp.toLocaleString('fr')} CFP</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ══ ADD / EDIT SESSION ══
+function openAddSession() {
+  editingSessionId = null;
+  selectedQuality = 0; selectedMoves = [];
+  document.getElementById('modal-add-title').textContent = 'Nouvelle session';
+  document.getElementById('edit-session-id').value = '';
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  ['f-duration','f-spot','f-launch','f-hs','f-period','f-swell-dir','f-wind','f-wind-dir','f-tide','f-board','f-price','f-shared-with','f-obs'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('f-context').value = '';
+  document.querySelectorAll('#f-moves .toggle-btn').forEach(b => b.classList.remove('active'));
+  setStars(0);
+  if (currentProfile && currentProfile.boards) {
+    const dl = document.getElementById('boards-list');
+    dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${b}">`).join('');
+  }
+  document.getElementById('modal-add').classList.add('open');
+}
+
+function editSession() {
+  if (!currentDetailSession) return;
+  closeModal('modal-detail');
+  const s = currentDetailSession;
+  editingSessionId = s.id;
+  selectedQuality = s.quality || 0;
+  selectedMoves = s.moves || [];
+  document.getElementById('modal-add-title').textContent = 'Modifier la session';
+  document.getElementById('edit-session-id').value = s.id;
+  document.getElementById('f-date').value = s.date;
+  document.getElementById('f-duration').value = s.duration_h || '';
+  setSpotValue(s.spot || '');
+  document.getElementById('f-launch').value = s.launch_point || '';
+  document.getElementById('f-context').value = s.context || '';
+  document.getElementById('f-hs').value = s.hs || '';
+  document.getElementById('f-period').value = s.period || '';
+  document.getElementById('f-swell-dir').value = s.swell_dir || '';
+  document.getElementById('f-wind').value = s.wind_kts || '';
+  document.getElementById('f-wind-dir').value = s.wind_dir || '';
+  document.getElementById('f-tide').value = s.tide || '';
+  document.getElementById('f-board').value = s.board || '';
+  document.getElementById('f-price').value = s.price_cfp || '';
+  document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
+  document.getElementById('f-obs').value = s.observations || '';
+  setStars(selectedQuality);
+  document.querySelectorAll('#f-moves .toggle-btn').forEach(b => {
+    const move = b.getAttribute('data-move') || b.textContent.toLowerCase().replace(/[^a-zéàèê]/g,'');
+    b.classList.toggle('active', selectedMoves.includes(move));
+  });
+  document.getElementById('modal-add').classList.add('open');
+}
+
+async function saveSession() {
+  if (!sb) { showToast('Configure Supabase !', 'error'); return; }
+  const sharedWith = document.getElementById('f-shared-with').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const payload = {
+    user_id: currentUser.id,
+    date: document.getElementById('f-date').value,
+    spot: getSpotValue(),
+    launch_point: document.getElementById('f-launch').value.trim(),
+    context: document.getElementById('f-context').value,
+    duration_h: parseFloat(document.getElementById('f-duration').value) || null,
+    hs: parseFloat(document.getElementById('f-hs').value) || null,
+    period: parseFloat(document.getElementById('f-period').value) || null,
+    swell_dir: document.getElementById('f-swell-dir').value.trim(),
+    wind_kts: parseFloat(document.getElementById('f-wind').value) || null,
+    wind_dir: document.getElementById('f-wind-dir').value.trim(),
+    tide: document.getElementById('f-tide').value.trim(),
+    board: document.getElementById('f-board').value.trim(),
+    price_cfp: parseInt(document.getElementById('f-price').value) || null,
+    quality: selectedQuality || null,
+    moves: selectedMoves,
+    shared_with: sharedWith,
+    is_shared: sharedWith.length > 0,
+    observations: document.getElementById('f-obs').value.trim(),
+  };
+  const btn = document.getElementById('btn-save-session');
+  btn.textContent = '…'; btn.disabled = true;
+  let error;
+  if (editingSessionId) {
+    ({ error } = await sb.from('sessions').update(payload).eq('id', editingSessionId));
+  } else {
+    ({ error } = await sb.from('sessions').insert(payload));
+  }
+  btn.textContent = 'Enregistrer'; btn.disabled = false;
+  if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
+  showToast(editingSessionId ? 'Session mise à jour !' : 'Session ajoutée !', 'success');
+  closeModal('modal-add');
+  await loadMySessions();
+  if (document.getElementById('page-group').classList.contains('active')) await loadGroupSessions();
+}
+
+// ══ SESSION DETAIL ══
+async function openDetail(id) {
+  const s = allSessions.find(x => x.id === id) || (await (async () => {
+    const { data } = await sb.from('sessions').select('*').eq('id', id).single();
+    return data;
+  })());
+  if (!s) return;
+  currentDetailSession = s;
+  const isOwn = currentUser && s.user_id === currentUser.id;
+  document.getElementById('btn-edit-session').style.display = isOwn ? 'inline-flex' : 'none';
+  const d = new Date(s.date + 'T00:00:00');
+  const dateStr = d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const stars = s.quality ? '★'.repeat(s.quality) : '—';
+  const moves = (s.moves || []).map(m => `<span class="badge ${m==='tube'?'badge-tube':'badge-accent'}">${m}</span>`).join(' ');
+  document.getElementById('detail-title').textContent = `${s.spot || 'Session'} · ${d.toLocaleDateString('fr-FR', {day:'numeric', month:'short'})}`;
+  document.getElementById('detail-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+      <span style="font-size:1.1rem;color:var(--star);">${stars}</span>
+      ${s.duration_h ? `<span class="badge badge-accent">${s.duration_h}h à l'eau</span>` : ''}
+      ${s.context ? `<span class="badge" style="background:var(--glass);color:var(--text-muted);">${s.context}</span>` : ''}
+      ${s.is_shared ? `<span class="badge badge-tube">partagée</span>` : ''}
+    </div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem;">${dateStr}</div>
+    ${moves ? `<div style="margin-bottom:1rem;display:flex;gap:4px;flex-wrap:wrap;">${moves}</div>` : ''}
+    <div class="detail-grid">
+      ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? '· '+s.swell_dir : ''}</div></div>` : ''}
+      ${s.period ? `<div class="detail-item"><div class="detail-label">Période</div><div class="detail-value">${s.period}s</div></div>` : ''}
+      ${s.wind_kts !== null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+s.wind_dir : ''}</div></div>` : ''}
+      ${s.tide ? `<div class="detail-item"><div class="detail-label">Marée</div><div class="detail-value">${s.tide}</div></div>` : ''}
+      ${s.board ? `<div class="detail-item"><div class="detail-label">Planche</div><div class="detail-value">${s.board}</div></div>` : ''}
+      ${s.launch_point ? `<div class="detail-item"><div class="detail-label">Mise à l'eau</div><div class="detail-value">${s.launch_point}</div></div>` : ''}
+      ${s.price_cfp ? `<div class="detail-item"><div class="detail-label">Prix bateau</div><div class="detail-value">${s.price_cfp.toLocaleString('fr')} CFP</div></div>` : ''}
+      ${s.shared_with && s.shared_with.length ? `<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">Surfeurs</div><div class="detail-value">${s.shared_with.join(', ')}</div></div>` : ''}
+    </div>
+    ${s.observations ? `<div style="margin-top:1rem;padding:12px 14px;background:var(--glass);border-radius:var(--radius-sm);font-size:13px;color:var(--text);line-height:1.7;">${s.observations}</div>` : ''}
+    ${isOwn ? `<div style="margin-top:1rem;text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteSession('${s.id}')">Supprimer</button></div>` : ''}
+  `;
+  if (s.is_shared && sb) {
+    document.getElementById('detail-comments-section').style.display = 'block';
+    selectedCommentQuality = 0; setCommentStars(0);
+    document.getElementById('comment-text').value = '';
+    await loadComments(s.id);
+  } else {
+    document.getElementById('detail-comments-section').style.display = 'none';
+  }
+  document.getElementById('modal-detail').classList.add('open');
+}
+
+async function loadComments(sessionId) {
+  if (!sb) return;
+  const { data: comments } = await sb.from('session_comments').select('*').eq('session_id', sessionId).order('created_at');
+  const el = document.getElementById('detail-comments');
+  if (!comments || !comments.length) {
+    el.innerHTML = `<div style="font-size:13px;color:var(--text-faint);margin-bottom:1rem;">Aucun avis encore — sois le premier !</div>`;
+    return;
+  }
+  el.innerHTML = comments.map(c => `
+    <div class="comment">
+      <div class="comment-author">${c.username || 'Surfeur'} ${c.quality ? '<span style="color:var(--star)">'+('★'.repeat(c.quality))+'</span>' : ''}</div>
+      <div class="comment-text">${c.comment || ''}</div>
+      <div class="comment-meta">${new Date(c.created_at).toLocaleDateString('fr-FR')}</div>
+    </div>
+  `).join('');
+}
+
+async function submitComment() {
+  if (!sb || !currentDetailSession) return;
+  const text = document.getElementById('comment-text').value.trim();
+  const { error } = await sb.from('session_comments').insert({
+    session_id: currentDetailSession.id,
+    user_id: currentUser.id,
+    username: currentProfile?.username || '?',
+    quality: selectedCommentQuality || null,
+    comment: text,
+  });
+  if (error) { showToast('Erreur', 'error'); return; }
+  showToast('Avis ajouté !', 'success');
+  document.getElementById('comment-text').value = '';
+  await loadComments(currentDetailSession.id);
+}
+
+async function deleteSession(id) {
+  if (!confirm('Supprimer cette session ?')) return;
+  await sb.from('sessions').delete().eq('id', id);
+  closeModal('modal-detail');
+  await loadMySessions();
+  showToast('Session supprimée', 'success');
+}
+
+// ══ GROUP SESSIONS ══
+async function loadGroupSessions() {
+  if (!sb) { document.getElementById('group-list').innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Configure Supabase d\'abord</div></div>'; return; }
+  const { data } = await sb.from('sessions').select('*').eq('is_shared', true).order('date', { ascending: false });
+  const sessions = data || [];
+  const el = document.getElementById('group-list');
+  if (!sessions.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Aucune session partagée</div><div class="empty-sub">Ajoute une session et indique les surfeurs présents.</div></div>';
+    return;
+  }
+  el.innerHTML = sessions.map(s => sessionCardHTML(s)).join('');
+}
+
+// ══ STATS ══
+async function loadStats(mode) {
+  statsMode = mode;
+  document.getElementById('stats-tab-me').style.borderColor = mode==='me' ? 'var(--accent)' : '';
+  document.getElementById('stats-tab-me').style.color = mode==='me' ? 'var(--accent)' : '';
+  document.getElementById('stats-tab-group').style.borderColor = mode==='group' ? 'var(--accent)' : '';
+  document.getElementById('stats-tab-group').style.color = mode==='group' ? 'var(--accent)' : '';
+  const el = document.getElementById('stats-content');
+  el.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+  let sessions = [];
+  if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
+  if (mode === 'me') {
+    sessions = allSessions;
+  } else {
+    const { data } = await sb.from('sessions').select('*').order('date', { ascending: false });
+    sessions = data || [];
+  }
+  renderStats(sessions, el);
+}
+
+function renderStats(sessions, el) {
+  if (!sessions.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Pas encore de données</div></div>'; return; }
+  const spotMap = {};
+  sessions.forEach(s => { if (s.spot) { if (!spotMap[s.spot]) spotMap[s.spot]={count:0,qual:0}; spotMap[s.spot].count++; spotMap[s.spot].qual += s.quality||0; } });
+  const spotsSorted = Object.entries(spotMap).sort((a,b)=>b[1].count-a[1].count).slice(0,7);
+  const monthMap = {};
+  sessions.forEach(s => { const m = s.date?.slice(0,7); if(m){if(!monthMap[m])monthMap[m]=0; monthMap[m]++;} });
+  const months = Object.keys(monthMap).sort().slice(-12);
+  const totalH = sessions.reduce((s,x)=>s+(x.duration_h||0),0);
+  const tubes = sessions.filter(s=>s.moves&&s.moves.includes('tube'));
+  const avgQ = sessions.filter(s=>s.quality).reduce((s,x)=>s+x.quality,0) / (sessions.filter(s=>s.quality).length||1);
+  el.innerHTML = `
+    <div class="stats-grid" style="margin-bottom:1.5rem;">
+      <div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">${sessions.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Heures</div><div class="stat-value">${Math.floor(totalH)}h</div></div>
+      <div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value">${avgQ.toFixed(1)} <span style="color:var(--star);font-size:1rem;">★</span></div></div>
+      <div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">${tubes.length}</div><div class="stat-sub">${Math.round(tubes.length/sessions.length*100)}%</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px;">Sessions par mois</div>
+        <div class="chart-wrap" style="height:180px;"><canvas id="stat-month-chart" role="img" aria-label="Sessions par mois"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px;">Spots (top 7)</div>
+        <div class="chart-wrap" style="height:180px;"><canvas id="stat-spot-chart" role="img" aria-label="Sessions par spot"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-bottom:10px;">Qualité dans le temps</div>
+      <div class="chart-wrap" style="height:160px;"><canvas id="stat-qual-chart" role="img" aria-label="Qualité par session"></canvas></div>
+    </div>
+  `;
+  setTimeout(() => {
+    new Chart(document.getElementById('stat-month-chart'), {
+      type:'bar',
+      data:{ labels:months.map(m=>{const[y,mo]=m.split('-');return ['','jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][+mo]+" '"+y.slice(2);}), datasets:[{data:months.map(m=>monthMap[m]),backgroundColor:'#4fa3c7aa',borderRadius:4}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',font:{size:10},maxRotation:45}},y:{ticks:{color:'#7a94aa',stepSize:1},grid:{color:'rgba(255,255,255,0.05)'}}}}
+    });
+    new Chart(document.getElementById('stat-spot-chart'), {
+      type:'bar',indexAxis:'y',
+      data:{labels:spotsSorted.map(([s])=>s.length>14?s.slice(0,13)+'…':s),datasets:[{data:spotsSorted.map(([,v])=>v.count),backgroundColor:'#7b6cf6aa',borderRadius:4}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',stepSize:1},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#7a94aa',font:{size:11}}}}}
+    });
+    const qualSessions = sessions.filter(s=>s.quality).slice(-30);
+    new Chart(document.getElementById('stat-qual-chart'), {
+      type:'line',
+      data:{labels:qualSessions.map(s=>s.date?.slice(5)),datasets:[
+        {data:qualSessions.map(s=>s.quality),borderColor:'#4fa3c7',backgroundColor:'rgba(79,163,199,0.07)',borderWidth:1.5,pointRadius:3,pointBackgroundColor:qualSessions.map(s=>['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'][s.quality||0]),fill:true,tension:.3},
+        {data:qualSessions.map((_,i,a)=>{const sl=a.slice(Math.max(0,i-4),i+1);return +(sl.reduce((s,x)=>s+x.quality,0)/sl.length).toFixed(2);}),borderColor:'#e8a057',borderWidth:2,borderDash:[5,3],pointRadius:0,fill:false,tension:.4}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',font:{size:10},maxRotation:45,autoSkip:true,maxTicksLimit:8}},y:{min:.5,max:5.5,ticks:{stepSize:1,color:'#7a94aa',callback:v=>Math.round(v)+'★'},grid:{color:'rgba(255,255,255,0.05)'}}}}
+    });
+  }, 50);
+}
+
+// ══ PROFILE ══
+function loadProfilePage() {
+  if (!currentProfile) return;
+  const initials = (currentProfile.username || '?')[0].toUpperCase();
+  document.getElementById('profile-avatar-big').textContent = initials;
+  document.getElementById('profile-name-display').textContent = currentProfile.username || '—';
+  document.getElementById('profile-email-display').textContent = currentUser?.email || '—';
+  document.getElementById('profile-username-input').value = currentProfile.username || '';
+  renderBoardsList();
+}
+
+function renderBoardsList() {
+  const boards = currentProfile?.boards || [];
+  document.getElementById('profile-boards-list').innerHTML = boards.map((b,i) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="flex:1;font-size:13px;color:var(--text);">${b}</span>
+      <button class="btn btn-sm btn-danger" onclick="removeBoard(${i})">✕</button>
+    </div>
+  `).join('') || '<div style="font-size:13px;color:var(--text-faint);margin-bottom:8px;">Aucune planche enregistrée</div>';
+}
+
+async function addBoard() {
+  const val = document.getElementById('new-board-input').value.trim();
+  if (!val || !currentProfile) return;
+  currentProfile.boards = [...(currentProfile.boards || []), val];
+  document.getElementById('new-board-input').value = '';
+  renderBoardsList();
+  await saveProfileData();
+}
+
+async function removeBoard(i) {
+  currentProfile.boards.splice(i, 1);
+  renderBoardsList();
+  await saveProfileData();
+}
+
+async function saveProfile() {
+  if (!currentProfile) return;
+  currentProfile.username = document.getElementById('profile-username-input').value.trim();
+  await saveProfileData();
+  const initials = currentProfile.username[0].toUpperCase();
+  document.getElementById('nav-avatar').textContent = initials;
+  document.getElementById('profile-avatar-big').textContent = initials;
+  document.getElementById('profile-name-display').textContent = currentProfile.username;
+  showToast('Profil sauvegardé !', 'success');
+}
+
+async function saveProfileData() {
+  if (!sb || !currentUser) return;
+  await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards });
+}
+
+// ══ UI HELPERS ══
+function setStars(n) {
+  selectedQuality = n;
+  document.querySelectorAll('#f-qual-stars span').forEach((s, i) => s.classList.toggle('active', i < n));
+}
+function setCommentStars(n) {
+  selectedCommentQuality = n;
+  document.querySelectorAll('#comment-stars span').forEach((s, i) => s.classList.toggle('active', i < n));
+}
+function toggleMove(btn, move) {
+  btn.classList.toggle('active');
+  if (selectedMoves.includes(move)) selectedMoves = selectedMoves.filter(m => m !== move);
+  else selectedMoves.push(move);
+}
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-btn:not(.primary)').forEach(b => b.classList.remove('active'));
+  if (name === 'dashboard') { loadMySessions(); }
+  if (name === 'group') { loadGroupSessions(); }
+  if (name === 'stats') { loadStats('me'); }
+  if (name === 'profile') { loadProfilePage(); }
+  if (name === 'spots') { loadSpotsPage(); }
+  if (name === 'ranking') { loadRanking(); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function showSetupGuide() { document.getElementById('modal-setup').classList.add('open'); }
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ══ CLOSE MODAL ON OVERLAY CLICK ══
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+});
+
+
+// ══ SPOT HELPERS ══
+function handleSpotChange(sel) {
+  const custom = document.getElementById('f-spot-custom');
+  custom.style.display = sel.value === '__autre__' ? 'block' : 'none';
+  if (sel.value === '__autre__') custom.focus();
+}
+
+function getSpotValue() {
+  const sel = document.getElementById('f-spot');
+  if (sel.value === '__autre__') {
+    const custom = document.getElementById('f-spot-custom').value.trim();
+    if (custom) {
+      const exists = Array.from(sel.options).some(o => o.value === custom);
+      if (!exists) {
+        const opt = new Option(custom, custom);
+        sel.insertBefore(opt, sel.querySelector('option[value="__autre__"]'));
+      }
+      sel.value = custom;
+      document.getElementById('f-spot-custom').style.display = 'none';
+      return custom;
+    }
+    return '';
+  }
+  return sel.value;
+}
+
+function setSpotValue(val) {
+  if (!val) return;
+  const sel = document.getElementById('f-spot');
+  const exists = Array.from(sel.options).some(o => o.value === val);
+  if (!exists) {
+    const opt = new Option(val, val);
+    sel.insertBefore(opt, sel.querySelector('option[value="__autre__"]'));
+  }
+  sel.value = val;
+  document.getElementById('f-spot-custom').style.display = 'none';
+}
+
+// ══ SPOTS PAGE ══
+const SPOT_SLOPES = {
+  'Grand bac':6,'Petit U':9,'Gros nem':8,'Fausse passe Dumbéa':7,
+  'Gauche de Dumbéa':10,'Droite de Dumbéa':8,'La roche percée':5,
+  'Ouano':7,'Skatepark':8,'Trois cailloux':6
+};
+
+function calcXi(hs, T, beta) {
+  if (!hs || !T || hs <= 0 || T <= 0) return null;
+  const L0 = 9.81 * T * T / (2 * Math.PI);
+  return Math.tan(beta * Math.PI / 180) / Math.sqrt(hs / L0);
+}
+
+let spotsGroupData = [];
+
+async function loadSpotsPage() {
+  if (sb) {
+    const { data } = await sb.from('sessions').select('*');
+    spotsGroupData = data || [];
+  } else {
+    spotsGroupData = allSessions;
+  }
+  const spots = new Set(['Grand bac','Petit U','Gros nem','Fausse passe Dumbéa',
+    'Gauche de Dumbéa','Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux']);
+  spotsGroupData.forEach(s => { if (s.spot) spots.add(s.spot); });
+
+  document.getElementById('spots-selector').innerHTML =
+    [...spots].map(sp =>
+      '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
+      'onclick="showSpotDetail(' + JSON.stringify(sp) + ')">' + sp + '</button>'
+    ).join('');
+  document.getElementById('spots-content').innerHTML =
+    '<div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>';
+}
+
+let spotCharts = [];
+
+function showSpotDetail(spotName) {
+  spotCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
+  spotCharts = [];
+
+  const sessions = spotsGroupData.filter(s => s.spot === spotName);
+  const el = document.getElementById('spots-content');
+  if (!sessions.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-title">Aucune session pour ce spot</div></div>';
+    return;
+  }
+
+  const beta = SPOT_SLOPES[spotName] || 8;
+  const n = sessions.length;
+  const qSess = sessions.filter(s => s.quality);
+  const avgQ = qSess.length ? (qSess.reduce((a,x) => a + x.quality, 0) / qSess.length).toFixed(1) : '—';
+  const hsSess = sessions.filter(s => s.hs);
+  const avgHs = hsSess.length ? (hsSess.reduce((a,x) => a + x.hs, 0) / hsSess.length).toFixed(2) : '—';
+  const tSess = sessions.filter(s => s.period);
+  const avgT = tSess.length ? (tSess.reduce((a,x) => a + x.period, 0) / tSess.length).toFixed(1) : '—';
+  const durSess = sessions.filter(s => s.duration_h);
+  const avgDur = durSess.length ? (durSess.reduce((a,x) => a + x.duration_h, 0) / durSess.length).toFixed(1) : '—';
+  const tubeN = sessions.filter(s => s.moves && s.moves.includes('tube')).length;
+  const xiList = sessions.filter(s => s.hs && s.period).map(s => calcXi(s.hs, s.period, beta)).filter(Boolean);
+  const avgXi = xiList.length ? (xiList.reduce((a,b) => a + b, 0) / xiList.length).toFixed(2) : '—';
+  const deflType = avgXi !== '—'
+    ? (parseFloat(avgXi) < 0.5 ? 'déversant' : parseFloat(avgXi) < 3.3 ? '🤙 plongeant (tube!)' : 'surgissant')
+    : '—';
+  const good = sessions.filter(s => s.quality >= 4);
+  const avgHsGood = good.filter(s => s.hs).length
+    ? (good.filter(s => s.hs).reduce((a,x) => a + x.hs, 0) / good.filter(s => s.hs).length).toFixed(2) : '—';
+  const avgTGood = good.filter(s => s.period).length
+    ? (good.filter(s => s.period).reduce((a,x) => a + x.period, 0) / good.filter(s => s.period).length).toFixed(1) : '—';
+  const best = qSess.sort((a,b) => b.quality - a.quality)[0];
+
+  el.innerHTML =
+    '<div style="margin-bottom:1rem;">' +
+      '<h2 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:4px;">' + spotName + '</h2>' +
+      '<span style="font-size:12px;color:var(--text-muted);">Pente β ≈ ' + beta + '° · ξ moy = ' + avgXi + ' · ' + deflType + '</span>' +
+    '</div>' +
+    '<div class="stats-grid" style="margin-bottom:1.5rem;">' +
+      '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">' + n + '</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value">' + avgQ + '<span style="font-size:1rem;color:var(--star)"> ★</span></div></div>' +
+      '<div class="stat-card"><div class="stat-label">Hs moy.</div><div class="stat-value">' + avgHs + 'm</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Période moy.</div><div class="stat-value">' + avgT + 's</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Durée moy.</div><div class="stat-value">' + avgDur + 'h</div></div>' +
+      '<div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">' + tubeN + '</div><div class="stat-sub">' + Math.round(tubeN/n*100) + '%</div></div>' +
+    '</div>' +
+    (good.length ? '<div class="card" style="margin-bottom:1rem;border-color:var(--success);">' +
+      '<div class="section-title" style="margin-bottom:8px;color:var(--success);">Conditions sessions ≥ 4★ (' + good.length + ' sessions)</div>' +
+      '<div style="font-size:13px;">Hs moy. <strong>' + avgHsGood + 'm</strong> · Période moy. <strong>' + avgTGood + 's</strong></div>' +
+    '</div>' : '') +
+    (best ? '<div class="card" style="margin-bottom:1rem;">' +
+      '<div class="section-title" style="margin-bottom:8px;">Meilleure session</div>' +
+      '<div style="font-size:13px;">' + best.date + ' — <strong>' + '★'.repeat(best.quality) + '</strong>' +
+      (best.observations ? ' — ' + best.observations.slice(0, 80) + '…' : '') + '</div>' +
+    '</div>' : '') +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité dans le temps</div>' +
+        '<div style="position:relative;height:160px;"><canvas id="spot-qual-chart" role="img" aria-label="Qualite sessions"></canvas></div></div>' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Hs par session</div>' +
+        '<div style="position:relative;height:160px;"><canvas id="spot-hs-chart" role="img" aria-label="Hs sessions"></canvas></div></div>' +
+    '</div>';
+
+  setTimeout(function() {
+    const sorted = sessions.slice().sort((a,b) => a.date > b.date ? 1 : -1);
+    const labels = sorted.map(s => (s.date || '').slice(5));
+    const qColors = ['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
+
+    const c1 = document.getElementById('spot-qual-chart');
+    if (c1) {
+      spotCharts.push(new Chart(c1, {
+        type: 'line',
+        data: { labels: labels, datasets: [{ data: sorted.map(s => s.quality || null),
+          borderColor: '#4fa3c7', backgroundColor: 'rgba(79,163,199,0.08)',
+          borderWidth: 1.5, pointRadius: 4, fill: true, tension: 0.3,
+          pointBackgroundColor: sorted.map(s => qColors[s.quality || 0]) }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { min: 0, max: 5, ticks: { stepSize: 1, color: '#7a94aa', callback: function(v) { return v + '★'; } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
+      }));
+    }
+    const c2 = document.getElementById('spot-hs-chart');
+    if (c2) {
+      spotCharts.push(new Chart(c2, {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ data: sorted.map(s => s.hs || null),
+          backgroundColor: '#7b6cf6aa', borderRadius: 3 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
+      }));
+    }
+  }, 50);
+}
+
+// ══ RANKING PAGE ══
+let rankingChart = null;
+
+async function loadRanking() {
+  const el = document.getElementById('ranking-content');
+  if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
+
+  const { data: allData } = await sb.from('sessions').select('*');
+  const { data: profiles } = await sb.from('profiles').select('id, username');
+  if (!allData || !allData.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><div class="empty-title">Pas encore de données</div></div>';
+    return;
+  }
+
+  const profileMap = {};
+  (profiles || []).forEach(function(p) { profileMap[p.id] = p.username || p.id.slice(0,6); });
+
+  const userStats = {};
+  allData.forEach(function(s) {
+    const uid = s.user_id;
+    if (!userStats[uid]) userStats[uid] = { name: profileMap[uid] || '?', uid: uid, sessions: 0, hours: 0, tubes: 0, qual: [], cfp: 0 };
+    userStats[uid].sessions++;
+    if (s.duration_h) userStats[uid].hours += s.duration_h;
+    if (s.moves && s.moves.includes('tube')) userStats[uid].tubes++;
+    if (s.quality) userStats[uid].qual.push(s.quality);
+    if (s.price_cfp) userStats[uid].cfp += s.price_cfp;
+  });
+
+  const users = Object.values(userStats).map(function(u) {
+    return Object.assign({}, u, {
+      avgQ: u.qual.length ? parseFloat((u.qual.reduce(function(a,b){return a+b;},0)/u.qual.length).toFixed(1)) : 0,
+      hours: Math.round(u.hours * 10) / 10
+    });
+  });
+
+  const medals = ['🥇','🥈','🥉'];
+  const barColors = ['#e8a057','#7a94aa','#3d5468','#4fa3c7','#7b6cf6'];
+
+  const categories = [
+    { label: 'Sessions surfées', icon: '🏄', key: 'sessions', fmt: function(u) { return u.sessions + ' sessions'; } },
+    { label: 'Heures à l\'eau', icon: '⏱', key: 'hours', fmt: function(u) { return u.hours + 'h'; } },
+    { label: 'Tubes', icon: '🤙', key: 'tubes', fmt: function(u) { return u.tubes + ' tubes'; } },
+    { label: 'Qualité moyenne', icon: '★', key: 'avgQ', fmt: function(u) { return u.avgQ + '★'; }, max: 5 },
+    { label: 'CFP dépensés (bateau)', icon: '💸', key: 'cfp', fmt: function(u) { return u.cfp.toLocaleString('fr') + ' CFP'; } },
+  ];
+
+  var html = '';
+  categories.forEach(function(cat) {
+    var sorted = users.slice().sort(function(a,b) { return b[cat.key] - a[cat.key]; });
+    var maxVal = cat.max || Math.max.apply(null, sorted.map(function(u){ return u[cat.key] || 0; }));
+    html += '<div class="card" style="margin-bottom:14px;">';
+    html += '<div class="section-title" style="margin-bottom:12px;">' + cat.icon + ' ' + cat.label + '</div>';
+    sorted.forEach(function(u, i) {
+      var val = u[cat.key] || 0;
+      var pct = maxVal > 0 ? Math.round(val / maxVal * 100) : 0;
+      var isMe = currentUser && u.uid === currentUser.id;
+      html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
+      html += '<span style="font-size:1.1rem;min-width:28px;">' + (medals[i] || '') + '</span>';
+      html += '<span style="min-width:80px;font-size:13px;font-weight:' + (isMe ? '500' : '400') + ';color:' + (isMe ? 'var(--accent)' : 'var(--text)') + ';">' + u.name + (isMe ? ' (toi)' : '') + '</span>';
+      html += '<div style="flex:1;background:var(--glass);border-radius:4px;height:18px;overflow:hidden;">';
+      html += '<div style="width:' + pct + '%;height:100%;background:' + barColors[i % barColors.length] + ';border-radius:4px;"></div>';
+      html += '</div>';
+      html += '<span style="min-width:80px;text-align:right;font-size:12px;color:var(--text-muted);">' + cat.fmt(u) + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+
+  const months = [];
+  const monthSet = new Set(allData.map(function(s){ return (s.date || '').slice(0,7); }).filter(Boolean));
+  Array.from(monthSet).sort().slice(-6).forEach(function(m){ months.push(m); });
+
+  const chartColors = ['#4fa3c7','#e8a057','#7b6cf6','#3dba8a','#e05c5c'];
+  const datasets = users.map(function(u, i) {
+    return {
+      label: u.name,
+      data: months.map(function(m) {
+        return allData.filter(function(s){ return s.user_id === u.uid && (s.date||'').startsWith(m); }).length;
+      }),
+      backgroundColor: chartColors[i % chartColors.length] + 'cc',
+      borderRadius: 3
+    };
+  });
+
+  html += '<div class="card">';
+  html += '<div class="section-title" style="margin-bottom:10px;">Sessions / mois par surfeur (6 derniers mois)</div>';
+  html += '<div style="position:relative;height:200px;"><canvas id="ranking-chart" role="img" aria-label="Comparaison sessions par mois"></canvas></div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+
+  setTimeout(function() {
+    const labels6 = months.map(function(m) {
+      var parts = m.split('-');
+      var mo = parseInt(parts[1]);
+      var yr = parts[0].slice(2);
+      return ['','jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][mo] + " '" + yr;
+    });
+    if (rankingChart) { try { rankingChart.destroy(); } catch(e) {} }
+    const rc = document.getElementById('ranking-chart');
+    if (rc) {
+      rankingChart = new Chart(rc, {
+        type: 'bar',
+        data: { labels: labels6, datasets: datasets },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#7a94aa', boxWidth: 12, font: { size: 11 } } } },
+          scales: { x: { ticks: { color: '#7a94aa' }, grid: { display: false } },
+                    y: { ticks: { color: '#7a94aa', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+      });
+    }
+  }, 50);
+}
+
+// ══ BOOT ══
+init();
+</script>
+</body>
+</html>
