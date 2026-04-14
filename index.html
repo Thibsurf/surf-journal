@@ -417,6 +417,7 @@ const APP_NAME = 'Coups de surf NC';
   <button class="nav-btn" onclick="showPage('group')">Groupe</button>
   <button class="nav-btn" onclick="showPage('spots')">Spots</button>
   <button class="nav-btn" onclick="showPage('ranking')">Classement</button>
+  <button class="nav-btn" onclick="showPage('boats')">Bateaux</button>
   <button class="nav-btn" onclick="showPage('stats')">Stats</button>
   <button class="nav-btn primary" onclick="openAddSession()">+ Session</button>
   <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')">?</div>
@@ -554,6 +555,73 @@ const APP_NAME = 'Coups de surf NC';
   </div>
 </div>
 
+<!-- ══ PAGE BOATS ══ -->
+<div id="page-boats" class="page">
+  <div class="container">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+      <div class="page-header" style="margin-bottom:0">
+        <div class="page-title">Bateaux</div>
+        <div class="page-sub">Stats, consommation et renommage</div>
+      </div>
+      <button class="btn btn-primary" onclick="openAddBoat()">+ Ajouter bateau</button>
+    </div>
+    <div id="boats-list">
+      <div class="loading-state"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL BOAT ══ -->
+<div class="modal-overlay" id="modal-boat">
+  <div class="modal" style="max-width:420px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+      <div class="modal-title" id="modal-boat-title">Bateau</div>
+      <button onclick="closeModal('modal-boat')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
+    </div>
+    <input type="hidden" id="boat-edit-id">
+    <div class="form-group">
+      <label class="form-label">Nom du bateau</label>
+      <input type="text" class="form-input" id="boat-name" placeholder="ex: Cool Breeze">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Alias / ancien nom</label>
+      <input type="text" class="form-input" id="boat-alias" placeholder="ex: Raph, Lucas…">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Conso (L/h)</label>
+        <input type="number" class="form-input" id="boat-conso" placeholder="35" step="1" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Carburant</label>
+        <select class="form-select" id="boat-fuel">
+          <option value="essence">Essence</option>
+          <option value="diesel">Diesel</option>
+          <option value="electrique">Électrique</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Places</label>
+        <input type="number" class="form-input" id="boat-places" placeholder="6" step="1" min="1" max="20">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prix carburant (CFP/L)</label>
+        <input type="number" class="form-input" id="boat-fuel-price" placeholder="185" step="5" min="0">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-textarea" id="boat-notes" placeholder="Infos utiles…" style="min-height:60px;"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.5rem;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-boat')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveBoat()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ PAGE SPOTS ══ -->
 <div id="page-spots" class="page">
   <div class="container-wide">
@@ -590,6 +658,7 @@ const APP_NAME = 'Coups de surf NC';
     </div>
 
     <input type="hidden" id="edit-session-id">
+    <div id="fuel-estimate" style="font-size:12px;color:var(--accent);margin-bottom:8px;min-height:16px;"></div>
 
     <div class="form-row">
       <div class="form-group">
@@ -598,7 +667,7 @@ const APP_NAME = 'Coups de surf NC';
       </div>
       <div class="form-group">
         <label class="form-label">Durée (h)</label>
-        <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12">
+        <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12" oninput="updateFuelEstimate()">
       </div>
     </div>
 
@@ -621,11 +690,23 @@ const APP_NAME = 'Coups de surf NC';
       <input type="text" class="form-input" id="f-spot-custom" placeholder="Nom du nouveau spot" style="display:none;margin-top:8px;">
     </div>
 
+    <div class="form-group">
+      <label class="form-label">Bateau</label>
+      <select class="form-select" id="f-boat-id" onchange="updateFuelEstimate()">
+        <option value="">— Choisir un bateau —</option>
+      </select>
+    </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Mise à l'eau</label>
         <input type="text" class="form-input" id="f-launch" placeholder="ex: Tomo, Port Ouenghi">
       </div>
+      <div class="form-group">
+        <label class="form-label">Distance A/R (nm)</label>
+        <input type="number" class="form-input" id="f-distance" placeholder="12" step="0.5" min="0" oninput="updateFuelEstimate()">
+      </div>
+    </div>
+    <div class="form-row">
       <div class="form-group">
         <label class="form-label">Contexte</label>
         <select class="form-select" id="f-context">
@@ -708,9 +789,15 @@ const APP_NAME = 'Coups de surf NC';
       <datalist id="boards-list"></datalist>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Prix bateau (CFP)</label>
-      <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Prix bateau (CFP)</label>
+        <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nb surfeurs à bord</label>
+        <input type="number" class="form-input" id="f-nb-surfers" placeholder="3" step="1" min="1" max="12" oninput="updateFuelEstimate()">
+      </div>
     </div>
 
     <div class="form-group">
@@ -1015,6 +1102,7 @@ async function onLogin(user) {
   document.getElementById('nav-avatar').textContent = initials;
   document.getElementById('main-nav').style.display = 'flex';
   showPage('dashboard');
+  await loadBoats();
   await loadMySessions();
   console.log("✅ onLogin terminé, dashboard affiché");
 }
@@ -1126,6 +1214,7 @@ function openAddSession() {
     const dl = document.getElementById('boards-list');
     dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${b}">`).join('');
   }
+  populateBoatSelect();
   document.getElementById('modal-add').classList.add('open');
 }
 
@@ -1145,28 +1234,21 @@ function editSession() {
   document.getElementById('f-context').value = s.context || '';
   document.getElementById('f-hs').value = s.hs || '';
   document.getElementById('f-period').value = s.period || '';
-  // Swell dir : chercher correspondance dans le select, sinon premier vide
-  (function() {
-    var sel = document.getElementById('f-swell-dir');
-    var val = s.swell_dir || '';
-    // Cherche correspondance exacte ou partielle
-    var found = Array.from(sel.options).find(function(o) {
-      return o.value === val || (val && o.value && o.value.startsWith(val.split(' ')[0]));
-    });
-    sel.value = found ? found.value : '';
-  })();
+  document.getElementById('f-swell-dir').value = s.swell_dir || '';
   document.getElementById('f-wind').value = s.wind_kts || '';
-  (function() {
-    var sel = document.getElementById('f-wind-dir');
-    var val = (s.wind_dir || '').trim();
-    var found = Array.from(sel.options).find(function(o) { return o.value === val; });
-    sel.value = found ? found.value : '';
-  })();
+  document.getElementById('f-wind-dir').value = s.wind_dir || '';
   document.getElementById('f-tide').value = s.tide || '';
   document.getElementById('f-board').value = s.board || '';
   document.getElementById('f-price').value = s.price_cfp || '';
   document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
   document.getElementById('f-obs').value = s.observations || '';
+  populateBoatSelect().then(function() {
+    if (s.boat_id && document.getElementById('f-boat-id')) {
+      document.getElementById('f-boat-id').value = s.boat_id;
+    }
+  });
+  if (document.getElementById('f-distance')) document.getElementById('f-distance').value = s.distance_nm || '';
+  if (document.getElementById('f-nb-surfers')) document.getElementById('f-nb-surfers').value = s.nb_surfers || '';
   setStars(selectedQuality);
   document.querySelectorAll('#f-moves .toggle-btn').forEach(b => {
     const move = b.getAttribute('data-move') || b.textContent.toLowerCase().replace(/[^a-zéàèê]/g,'');
@@ -1181,7 +1263,11 @@ async function saveSession() {
   const payload = {
     user_id: currentUser.id,
     date: document.getElementById('f-date').value,
+    boat_id: (document.getElementById('f-boat-id') && document.getElementById('f-boat-id').value) || null,
     spot: getSpotValue(),
+    spots: parseSpots(getSpotValue()),
+    distance_nm: parseFloat(document.getElementById('f-distance') && document.getElementById('f-distance').value) || null,
+    nb_surfers: parseInt(document.getElementById('f-nb-surfers') && document.getElementById('f-nb-surfers').value) || null,
     launch_point: document.getElementById('f-launch').value.trim(),
     context: document.getElementById('f-context').value,
     duration_h: parseFloat(document.getElementById('f-duration').value) || null,
@@ -1470,6 +1556,7 @@ function showPage(name) {
   if (name === 'profile') { loadProfilePage(); }
   if (name === 'spots') { loadSpotsPage(); }
   if (name === 'ranking') { loadRanking(); }
+  if (name === 'boats') { loadBoatsPage(); }
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -1516,10 +1603,10 @@ function getSpotValue() {
 
 function setSpotValue(val) {
   if (!val) return;
-  var sel = document.getElementById('f-spot');
-  var exists = Array.from(sel.options).some(function(o) { return o.value === val; });
+  const sel = document.getElementById('f-spot');
+  const exists = Array.from(sel.options).some(o => o.value === val);
   if (!exists) {
-    var opt = new Option(val, val);
+    const opt = new Option(val, val);
     sel.insertBefore(opt, sel.querySelector('option[value="__autre__"]'));
   }
   sel.value = val;
@@ -1542,16 +1629,9 @@ function calcXi(hs, T, beta) {
 let spotsGroupData = [];
 
 async function loadSpotsPage() {
-  document.getElementById('spots-content').innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
   if (sb) {
-    try {
-      var r = await sb.from('sessions').select('*');
-      spotsGroupData = r.data || [];
-      console.log('📍 Spots: sessions chargées =', spotsGroupData.length);
-    } catch(e) {
-      console.error('❌ loadSpotsPage error:', e);
-      spotsGroupData = allSessions;
-    }
+    const { data } = await sb.from('sessions').select('*');
+    spotsGroupData = data || [];
   } else {
     spotsGroupData = allSessions;
   }
@@ -1560,10 +1640,10 @@ async function loadSpotsPage() {
   spotsGroupData.forEach(s => { if (s.spot) spots.add(s.spot); });
 
   document.getElementById('spots-selector').innerHTML =
-    [...spots].map(function(sp) {
-      return '<button class="btn btn-sm btn-secondary" style="white-space:nowrap;margin-bottom:4px" ' +
-        'onclick="showSpotDetail(this.dataset.spot)" data-spot="' + sp.replace(/"/g,'&quot;') + '">' + sp + '</button>';
-    }).join('');
+    [...spots].map(sp =>
+      '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
+      'onclick="showSpotDetail(' + JSON.stringify(sp) + ')">' + sp + '</button>'
+    ).join('');
   document.getElementById('spots-content').innerHTML =
     '<div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>';
 }
@@ -1674,22 +1754,14 @@ async function loadRanking() {
   const el = document.getElementById('ranking-content');
   if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
 
-  var allData = [], profiles = [];
-  try {
-    var r1 = await sb.from('sessions').select('*');
-    var r2 = await sb.from('profiles').select('id, username');
-    allData = r1.data || [];
-    profiles = r2.data || [];
-    console.log('🏆 Ranking: sessions=', allData.length, 'profiles=', profiles.length);
-  } catch(e) {
-    console.error('❌ Ranking load error:', e);
-  }
-  if (!allData.length) {
+  const { data: allData } = await sb.from('sessions').select('*');
+  const { data: profiles } = await sb.from('profiles').select('id, username');
+  if (!allData || !allData.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><div class="empty-title">Pas encore de données</div></div>';
     return;
   }
 
-  var profileMap = {};
+  const profileMap = {};
   (profiles || []).forEach(function(p) { profileMap[p.id] = p.username || p.id.slice(0,6); });
 
   const userStats = {};
@@ -1786,6 +1858,186 @@ async function loadRanking() {
       });
     }
   }, 50);
+}
+
+
+// ══ BOATS ══
+let boatsCache = [];
+const FUEL_PRICE_CFP = { essence: 185, diesel: 160, electrique: 0 };
+
+async function loadBoats() {
+  if (!sb) return [];
+  const { data, error } = await sb.from('boats').select('*').order('name');
+  if (error) { console.error('Erreur chargement bateaux:', error); return []; }
+  boatsCache = data || [];
+  return boatsCache;
+}
+
+async function populateBoatSelect() {
+  const boats = boatsCache.length ? boatsCache : await loadBoats();
+  const sel = document.getElementById('f-boat-id');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Choisir un bateau —</option>';
+  boats.forEach(function(b) {
+    const opt = new Option(b.name + (b.alias ? ' (' + b.alias + ')' : ''), b.id);
+    sel.appendChild(opt);
+  });
+  if (current) sel.value = current;
+}
+
+async function loadBoatsPage() {
+  const boats = await loadBoats();
+  const el = document.getElementById('boats-list');
+  if (!boats.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">⛵</div><div class="empty-title">Aucun bateau</div><div class="empty-sub">Ajoute-en un !</div></div>';
+    return;
+  }
+
+  // Charger les sessions pour stats
+  let sessions = allSessions;
+  if (sb) {
+    const { data } = await sb.from('sessions').select('*');
+    if (data) sessions = data;
+  }
+
+  var html = '';
+  boats.forEach(function(b) {
+    const bSessions = sessions.filter(function(s) { return s.boat_id === b.id; });
+    const totalH = bSessions.reduce(function(a,s) { return a + (s.duration_h||0); }, 0);
+    const totalNm = bSessions.reduce(function(a,s) { return a + (s.distance_nm||0); }, 0);
+    const totalL = b.conso_l_h ? totalH * b.conso_l_h : null;
+    const fuelPrice = FUEL_PRICE_CFP[b.fuel_type] || 185;
+    const totalCFPcarbu = totalL ? Math.round(totalL * fuelPrice) : null;
+    const avgQ = bSessions.filter(function(s){return s.quality;}).length
+      ? (bSessions.filter(function(s){return s.quality;}).reduce(function(a,s){return a+s.quality;},0)
+         / bSessions.filter(function(s){return s.quality;}).length).toFixed(1)
+      : '—';
+    // Spot préféré
+    const spotCount = {};
+    bSessions.forEach(function(s) {
+      const sp = (s.spots && s.spots[0]) || s.spot || '';
+      if (sp) spotCount[sp] = (spotCount[sp]||0) + 1;
+    });
+    const spotPref = Object.entries(spotCount).sort(function(a,b){return b[1]-a[1];})[0];
+
+    html += '<div class="card" style="margin-bottom:12px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
+    html += '<div>';
+    html += '<div style="font-weight:500;font-size:15px;color:var(--text);">' + b.name + '</div>';
+    if (b.alias) html += '<div style="font-size:12px;color:var(--text-muted);">alias : ' + b.alias + '</div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;">';
+    html += '<button class="btn btn-sm btn-secondary" onclick="openEditBoat(' + JSON.stringify(b) + ')">Renommer</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // Stats grid
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px;">';
+    html += '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" style="font-size:1.3rem;">' + bSessions.length + '</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">Heures</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalH*10)/10 + 'h</div></div>';
+    if (totalNm > 0) html += '<div class="stat-card"><div class="stat-label">Distance</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalNm) + ' nm</div></div>';
+    if (totalL) html += '<div class="stat-card"><div class="stat-label">Carburant</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalL) + ' L</div><div class="stat-sub">' + (totalCFPcarbu ? totalCFPcarbu.toLocaleString('fr') + ' CFP' : '') + '</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value" style="font-size:1.3rem;">' + avgQ + (avgQ!=='—'?'★':'') + '</div></div>';
+    html += '</div>';
+
+    // Infos bateau
+    var infos = [];
+    if (b.conso_l_h) infos.push(b.conso_l_h + ' L/h · ' + (b.fuel_type||'essence'));
+    if (b.nb_places) infos.push(b.nb_places + ' places');
+    if (spotPref) infos.push('spot préféré : ' + spotPref[0] + ' (' + spotPref[1] + 'x)');
+    if (infos.length) html += '<div style="font-size:12px;color:var(--text-muted);">' + infos.join(' · ') + '</div>';
+
+    html += '</div>';
+  });
+
+  el.innerHTML = html;
+}
+
+function openAddBoat() {
+  document.getElementById('boat-edit-id').value = '';
+  document.getElementById('modal-boat-title').textContent = 'Nouveau bateau';
+  document.getElementById('boat-name').value = '';
+  document.getElementById('boat-alias').value = '';
+  document.getElementById('boat-conso').value = '';
+  document.getElementById('boat-fuel').value = 'essence';
+  document.getElementById('boat-places').value = '6';
+  document.getElementById('boat-fuel-price').value = '185';
+  document.getElementById('boat-notes').value = '';
+  document.getElementById('modal-boat').classList.add('open');
+}
+
+function openEditBoat(boat) {
+  document.getElementById('boat-edit-id').value = boat.id;
+  document.getElementById('modal-boat-title').textContent = 'Modifier ' + boat.name;
+  document.getElementById('boat-name').value = boat.name || '';
+  document.getElementById('boat-alias').value = boat.alias || '';
+  document.getElementById('boat-conso').value = boat.conso_l_h || '';
+  document.getElementById('boat-fuel').value = boat.fuel_type || 'essence';
+  document.getElementById('boat-places').value = boat.nb_places || 6;
+  document.getElementById('boat-fuel-price').value = FUEL_PRICE_CFP[boat.fuel_type||'essence'];
+  document.getElementById('boat-notes').value = boat.notes || '';
+  document.getElementById('modal-boat').classList.add('open');
+}
+
+async function saveBoat() {
+  if (!sb) { showToast('Supabase requis', 'error'); return; }
+  const id = document.getElementById('boat-edit-id').value;
+  const payload = {
+    name: document.getElementById('boat-name').value.trim(),
+    alias: document.getElementById('boat-alias').value.trim() || null,
+    conso_l_h: parseFloat(document.getElementById('boat-conso').value) || null,
+    fuel_type: document.getElementById('boat-fuel').value,
+    nb_places: parseInt(document.getElementById('boat-places').value) || null,
+    notes: document.getElementById('boat-notes').value.trim() || null,
+  };
+  if (!payload.name) { showToast('Donne un nom au bateau', 'error'); return; }
+  let error;
+  if (id) {
+    ({ error } = await sb.from('boats').update(payload).eq('id', id));
+  } else {
+    ({ error } = await sb.from('boats').insert(payload));
+  }
+  if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
+  showToast(id ? 'Bateau renommé !' : 'Bateau ajouté !', 'success');
+  closeModal('modal-boat');
+  boatsCache = [];
+  await loadBoatsPage();
+  await populateBoatSelect();
+}
+
+// ── Calcul consommation dans le formulaire de session ──
+function updateFuelEstimate() {
+  const boatId = document.getElementById('f-boat-id') && document.getElementById('f-boat-id').value;
+  const dist = parseFloat(document.getElementById('f-distance') && document.getElementById('f-distance').value) || 0;
+  const dur = parseFloat(document.getElementById('f-duration') && document.getElementById('f-duration').value) || 0;
+  const nb = parseInt(document.getElementById('f-nb-surfers') && document.getElementById('f-nb-surfers').value) || 1;
+  const el = document.getElementById('fuel-estimate');
+  if (!el) return;
+  const boat = boatsCache.find(function(b) { return b.id === boatId; });
+  if (!boat || !boat.conso_l_h || !dur) { el.textContent = ''; return; }
+  const litres = Math.round(boat.conso_l_h * dur);
+  const fuelPrice = FUEL_PRICE_CFP[boat.fuel_type||'essence'];
+  const total = Math.round(litres * fuelPrice);
+  const perPerson = nb > 0 ? Math.round(total / nb) : total;
+  el.textContent = 'Estimation : ' + litres + ' L · ' + total.toLocaleString('fr') + ' CFP total · ' + perPerson.toLocaleString('fr') + ' CFP/personne';
+}
+
+// ── Spots multiples : parser "Grand bac, Petit U" → ['Grand bac', 'Petit U'] ──
+const KNOWN_SPOTS = [
+  'Grand bac','Petit U','Gros nem','Fausse passe Dumbéa','Gauche de Dumbéa',
+  'Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux',
+  'Droite de dumbéa','Fausse passe','Gauche Dumbéa','Droite Dumbéa'
+];
+
+function parseSpots(spotStr) {
+  if (!spotStr) return [];
+  // Séparer sur virgule, mais seulement si ce qui suit ressemble à un spot connu
+  // ou si la longueur totale suggère deux spots distincts
+  const parts = spotStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  if (parts.length <= 1) return [spotStr.trim()];
+  // Vérifier que chaque partie ressemble à un spot (pas juste "à part", etc.)
+  return parts.filter(function(p) { return p.length > 2; });
 }
 
 // ══ BOOT ══
