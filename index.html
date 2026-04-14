@@ -1289,7 +1289,8 @@ async function openDetail(id) {
   const dateStr = d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   const stars = s.quality ? '★'.repeat(s.quality) : '—';
   const moves = (s.moves || []).map(m => `<span class="badge ${m==='tube'?'badge-tube':'badge-accent'}">${m}</span>`).join(' ');
-  document.getElementById('detail-title').textContent = `${s.spot || 'Session'} · ${d.toLocaleDateString('fr-FR', {day:'numeric', month:'short'})}`;
+  var spotLabel = getSpots(s).join(' + ') || 'Session';
+  document.getElementById('detail-title').textContent = spotLabel + ' · ' + d.toLocaleDateString('fr-FR', {day:'numeric', month:'short'});;
   document.getElementById('detail-content').innerHTML = `
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
       <span style="font-size:1.1rem;color:var(--star);">${stars}</span>
@@ -1298,11 +1299,12 @@ async function openDetail(id) {
       ${s.is_shared ? `<span class="badge badge-tube">partagée</span>` : ''}
     </div>
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem;">${dateStr}</div>
-    ${moves ? `<div style="margin-bottom:1rem;display:flex;gap:4px;flex-wrap:wrap;">${moves}</div>` : ''}
+    ' + (moves ? '<div style="margin-bottom:1rem;display:flex;gap:4px;flex-wrap:wrap;">' + moves + '</div>' : '') + '
+    ' + ((s.swell_dir || s.wind_dir) ? '<div style="margin-bottom:1rem;">' + renderMiniWindRose(s.swell_dir, s.wind_dir, 64) + '</div>' : '') + '
     <div class="detail-grid">
-      ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? '· '+s.swell_dir : ''}</div></div>` : ''}
+      ' + (s.hs ? '<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">' + renderSwellGauge(s.hs) + (s.swell_dir ? " &middot; "+s.swell_dir : '') + '</div></div>' : '') + '
       ${s.period ? `<div class="detail-item"><div class="detail-label">Période</div><div class="detail-value">${s.period}s</div></div>` : ''}
-      ${s.wind_kts !== null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+s.wind_dir : ''}</div></div>` : ''}
+      ' + (s.wind_kts !== null && s.wind_kts !== undefined ? '<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">' + renderWind(s.wind_kts, s.wind_dir) + '</div></div>' : '') + '
       ${s.tide ? `<div class="detail-item"><div class="detail-label">Marée</div><div class="detail-value">${s.tide}</div></div>` : ''}
       ${s.board ? `<div class="detail-item"><div class="detail-label">Planche</div><div class="detail-value">${s.board}</div></div>` : ''}
       ${s.launch_point ? `<div class="detail-item"><div class="detail-label">Mise à l'eau</div><div class="detail-value">${s.launch_point}</div></div>` : ''}
@@ -1620,11 +1622,14 @@ async function loadSpotsPage() {
     const { data } = await sb.from('sessions').select('*');
     spotsGroupData = data || [];
   } else {
-    spotsGroupData = allSessions;
+    spotsGroupData = allSessions; // Sera mis à jour si Supabase disponible
   }
   const spots = new Set(['Grand bac','Petit U','Gros nem','Fausse passe Dumbéa',
     'Gauche de Dumbéa','Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux']);
-  spotsGroupData.forEach(s => { if (s.spot) spots.add(s.spot); });
+  // Collecter TOUS les spots individuels via getSpots() pour gérer les spots multiples
+  spotsGroupData.forEach(function(s) {
+    getSpots(s).forEach(function(sp) { if (sp && sp !== '—') spots.add(sp); });
+  });
 
   document.getElementById('spots-selector').innerHTML =
     [...spots].map(sp =>
@@ -1641,7 +1646,10 @@ function showSpotDetail(spotName) {
   spotCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
   spotCharts = [];
 
-  const sessions = spotsGroupData.filter(s => s.spot === spotName);
+  // Filtrer en utilisant getSpots() pour gérer les spots multiples
+  const sessions = spotsGroupData.filter(function(s) {
+    return getSpots(s).some(function(sp) { return sp === spotName; });
+  });
   const el = document.getElementById('spots-content');
   if (!sessions.length) {
     el.innerHTML = '<div class="empty"><div class="empty-title">Aucune session pour ce spot</div></div>';
@@ -1916,7 +1924,7 @@ async function populateBoatSelect(){
   if(!sel) return;
   var cur=sel.value;
   sel.innerHTML='<option value="">-- Choisir --</option>';
-  boats.forEach(function(b){ var o=document.createElement('option'); o.value=b.id; o.textContent=b.name+(b.alias?' ('+b.alias+')':''); sel.appendChild(o); });
+  boats.forEach(function(b, bi){ var o=document.createElement('option'); o.value=b.id; o.textContent=b.name+(b.alias?' ('+b.alias+')':''); sel.appendChild(o); });
   if(cur) sel.value=cur;
 }
 
@@ -1942,7 +1950,7 @@ async function loadBoatsPage(){
   var r2=await sb.from('sessions').select('*');
   var sess=(r2&&r2.data)||allSessions;
   var html='';
-  boats.forEach(function(b){
+  boats.forEach(function(b, bi){
     var bs=sess.filter(function(s){return s.boat_id===b.id;});
     var tH=Math.round(bs.reduce(function(a,s){return a+(s.duration_h||0);},0)*10)/10;
     var tNm=Math.round(bs.reduce(function(a,s){return a+(s.distance_nm||0);},0));
@@ -1958,7 +1966,7 @@ async function loadBoatsPage(){
     html+='<div class="card" style="margin-bottom:12px;">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">'
       +'<div><div style="font-weight:500;font-size:15px;">'+b.name+'</div>'+(b.alias?'<div style="font-size:12px;color:var(--text-muted);">alias : '+b.alias+'</div>':'')+'</div>'
-      +'<button class="btn btn-sm btn-secondary" data-boat=''+bData+'' onclick="openEditBoatFromBtn(this)">Renommer</button>'
+      +'<button class="btn btn-sm btn-secondary" data-boat-idx="'+bi+'" onclick="openEditBoatByIdx(this)">Renommer</button>'
       +'</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:8px;">'
       +'<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" style="font-size:1.3rem;">'+bs.length+'</div></div>'
@@ -1974,6 +1982,11 @@ async function loadBoatsPage(){
 }
 
 function openEditBoatFromBtn(btn){ try{openEditBoat(JSON.parse(btn.getAttribute('data-boat')));}catch(e){console.error(e);} }
+function openEditBoatByIdx(btn) {
+  var idx = parseInt(btn.getAttribute('data-boat-idx'));
+  if (isNaN(idx) || !boatsCache[idx]) return;
+  openEditBoat(boatsCache[idx]);
+}
 
 function openAddBoat(){
   document.getElementById('boat-edit-id').value='';
