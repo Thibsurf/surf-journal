@@ -1145,9 +1145,23 @@ function editSession() {
   document.getElementById('f-context').value = s.context || '';
   document.getElementById('f-hs').value = s.hs || '';
   document.getElementById('f-period').value = s.period || '';
-  document.getElementById('f-swell-dir').value = s.swell_dir || '';
+  // Swell dir : chercher correspondance dans le select, sinon premier vide
+  (function() {
+    var sel = document.getElementById('f-swell-dir');
+    var val = s.swell_dir || '';
+    // Cherche correspondance exacte ou partielle
+    var found = Array.from(sel.options).find(function(o) {
+      return o.value === val || (val && o.value && o.value.startsWith(val.split(' ')[0]));
+    });
+    sel.value = found ? found.value : '';
+  })();
   document.getElementById('f-wind').value = s.wind_kts || '';
-  document.getElementById('f-wind-dir').value = s.wind_dir || '';
+  (function() {
+    var sel = document.getElementById('f-wind-dir');
+    var val = (s.wind_dir || '').trim();
+    var found = Array.from(sel.options).find(function(o) { return o.value === val; });
+    sel.value = found ? found.value : '';
+  })();
   document.getElementById('f-tide').value = s.tide || '';
   document.getElementById('f-board').value = s.board || '';
   document.getElementById('f-price').value = s.price_cfp || '';
@@ -1502,10 +1516,10 @@ function getSpotValue() {
 
 function setSpotValue(val) {
   if (!val) return;
-  const sel = document.getElementById('f-spot');
-  const exists = Array.from(sel.options).some(o => o.value === val);
+  var sel = document.getElementById('f-spot');
+  var exists = Array.from(sel.options).some(function(o) { return o.value === val; });
   if (!exists) {
-    const opt = new Option(val, val);
+    var opt = new Option(val, val);
     sel.insertBefore(opt, sel.querySelector('option[value="__autre__"]'));
   }
   sel.value = val;
@@ -1528,9 +1542,16 @@ function calcXi(hs, T, beta) {
 let spotsGroupData = [];
 
 async function loadSpotsPage() {
+  document.getElementById('spots-content').innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
   if (sb) {
-    const { data } = await sb.from('sessions').select('*');
-    spotsGroupData = data || [];
+    try {
+      var r = await sb.from('sessions').select('*');
+      spotsGroupData = r.data || [];
+      console.log('📍 Spots: sessions chargées =', spotsGroupData.length);
+    } catch(e) {
+      console.error('❌ loadSpotsPage error:', e);
+      spotsGroupData = allSessions;
+    }
   } else {
     spotsGroupData = allSessions;
   }
@@ -1539,10 +1560,10 @@ async function loadSpotsPage() {
   spotsGroupData.forEach(s => { if (s.spot) spots.add(s.spot); });
 
   document.getElementById('spots-selector').innerHTML =
-    [...spots].map(sp =>
-      '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
-      'onclick="showSpotDetail(' + JSON.stringify(sp) + ')">' + sp + '</button>'
-    ).join('');
+    [...spots].map(function(sp) {
+      return '<button class="btn btn-sm btn-secondary" style="white-space:nowrap;margin-bottom:4px" ' +
+        'onclick="showSpotDetail(this.dataset.spot)" data-spot="' + sp.replace(/"/g,'&quot;') + '">' + sp + '</button>';
+    }).join('');
   document.getElementById('spots-content').innerHTML =
     '<div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>';
 }
@@ -1653,14 +1674,22 @@ async function loadRanking() {
   const el = document.getElementById('ranking-content');
   if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
 
-  const { data: allData } = await sb.from('sessions').select('*');
-  const { data: profiles } = await sb.from('profiles').select('id, username');
-  if (!allData || !allData.length) {
+  var allData = [], profiles = [];
+  try {
+    var r1 = await sb.from('sessions').select('*');
+    var r2 = await sb.from('profiles').select('id, username');
+    allData = r1.data || [];
+    profiles = r2.data || [];
+    console.log('🏆 Ranking: sessions=', allData.length, 'profiles=', profiles.length);
+  } catch(e) {
+    console.error('❌ Ranking load error:', e);
+  }
+  if (!allData.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><div class="empty-title">Pas encore de données</div></div>';
     return;
   }
 
-  const profileMap = {};
+  var profileMap = {};
   (profiles || []).forEach(function(p) { profileMap[p.id] = p.username || p.id.slice(0,6); });
 
   const userStats = {};
