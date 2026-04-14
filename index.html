@@ -563,59 +563,31 @@ const APP_NAME = 'Coups de surf NC';
         <div class="page-title">Bateaux</div>
         <div class="page-sub">Stats, consommation et renommage</div>
       </div>
-      <button class="btn btn-primary" onclick="openAddBoat()">+ Ajouter bateau</button>
+      <button class="btn btn-primary" onclick="openAddBoat()">+ Ajouter</button>
     </div>
-    <div id="boats-list">
-      <div class="loading-state"><div class="spinner"></div></div>
-    </div>
+    <div id="boats-list"><div class="loading-state"><div class="spinner"></div></div></div>
   </div>
 </div>
 
-<!-- ══ MODAL BOAT ══ -->
 <div class="modal-overlay" id="modal-boat">
   <div class="modal" style="max-width:420px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
       <div class="modal-title" id="modal-boat-title">Bateau</div>
-      <button onclick="closeModal('modal-boat')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
+      <button onclick="closeModal('modal-boat')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">&times;</button>
     </div>
     <input type="hidden" id="boat-edit-id">
-    <div class="form-group">
-      <label class="form-label">Nom du bateau</label>
-      <input type="text" class="form-input" id="boat-name" placeholder="ex: Cool Breeze">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Alias / ancien nom</label>
-      <input type="text" class="form-input" id="boat-alias" placeholder="ex: Raph, Lucas…">
+    <div class="form-group"><label class="form-label">Nom</label><input type="text" class="form-input" id="boat-name" placeholder="ex: Cool Breeze"></div>
+    <div class="form-group"><label class="form-label">Alias</label><input type="text" class="form-input" id="boat-alias" placeholder="ex: Raph"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Conso (L/h)</label><input type="number" class="form-input" id="boat-conso" placeholder="35" step="1" min="0"></div>
+      <div class="form-select-wrap form-group"><label class="form-label">Carburant</label><select class="form-select" id="boat-fuel"><option value="essence">Essence</option><option value="diesel">Diesel</option><option value="electrique">&Eacute;lectrique</option></select></div>
     </div>
     <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Conso (L/h)</label>
-        <input type="number" class="form-input" id="boat-conso" placeholder="35" step="1" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Carburant</label>
-        <select class="form-select" id="boat-fuel">
-          <option value="essence">Essence</option>
-          <option value="diesel">Diesel</option>
-          <option value="electrique">Électrique</option>
-        </select>
-      </div>
+      <div class="form-group"><label class="form-label">Places</label><input type="number" class="form-input" id="boat-places" placeholder="6" min="1" max="20"></div>
+      <div class="form-group"><label class="form-label">CFP/L</label><input type="number" class="form-input" id="boat-fuel-price" placeholder="185" step="5"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Places</label>
-        <input type="number" class="form-input" id="boat-places" placeholder="6" step="1" min="1" max="20">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Prix carburant (CFP/L)</label>
-        <input type="number" class="form-input" id="boat-fuel-price" placeholder="185" step="5" min="0">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Notes</label>
-      <textarea class="form-textarea" id="boat-notes" placeholder="Infos utiles…" style="min-height:60px;"></textarea>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.5rem;">
+    <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="boat-notes" style="min-height:60px;"></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:.5rem;">
       <button class="btn btn-secondary" onclick="closeModal('modal-boat')">Annuler</button>
       <button class="btn btn-primary" onclick="saveBoat()">Enregistrer</button>
     </div>
@@ -658,7 +630,6 @@ const APP_NAME = 'Coups de surf NC';
     </div>
 
     <input type="hidden" id="edit-session-id">
-    <div id="fuel-estimate" style="font-size:12px;color:var(--accent);margin-bottom:8px;min-height:16px;"></div>
 
     <div class="form-row">
       <div class="form-group">
@@ -693,12 +664,13 @@ const APP_NAME = 'Coups de surf NC';
     <div class="form-group">
       <label class="form-label">Bateau</label>
       <select class="form-select" id="f-boat-id" onchange="updateFuelEstimate()">
-        <option value="">— Choisir un bateau —</option>
+        <option value="">-- Choisir --</option>
       </select>
     </div>
+    <div id="fuel-estimate" style="font-size:12px;color:var(--accent);margin:0 0 8px;min-height:16px;"></div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Mise à l'eau</label>
+        <label class="form-label">Mise &agrave; l'eau</label>
         <input type="text" class="form-input" id="f-launch" placeholder="ex: Tomo, Port Ouenghi">
       </div>
       <div class="form-group">
@@ -713,13 +685,17 @@ const APP_NAME = 'Coups de surf NC';
           <option value="">—</option>
           <option value="WE">Week-end</option>
           <option value="RTT">RTT / CP</option>
-          <option value="RECUP">Récup</option>
+          <option value="RECUP">R&eacute;cup</option>
           <option value="Vacances">Vacances</option>
         </select>
       </div>
-    </div>
+      <div class="form-group">
+        <label class="form-label">Nb surfeurs</label>
+        <input type="number" class="form-input" id="f-nb-surfers" placeholder="3" step="1" min="1" max="12" oninput="updateFuelEstimate()">
+      </div>
+    </div
 
-    <div class="form-row-3">
+        <div class="form-row-3">
       <div class="form-group">
         <label class="form-label">Hs (m)</label>
         <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
@@ -789,15 +765,9 @@ const APP_NAME = 'Coups de surf NC';
       <datalist id="boards-list"></datalist>
     </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Prix bateau (CFP)</label>
-        <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nb surfeurs à bord</label>
-        <input type="number" class="form-input" id="f-nb-surfers" placeholder="3" step="1" min="1" max="12" oninput="updateFuelEstimate()">
-      </div>
+    <div class="form-group">
+      <label class="form-label">Prix bateau (CFP)</label>
+      <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
     </div>
 
     <div class="form-group">
@@ -1054,7 +1024,8 @@ async function doLogout() {
 
 // ══ STARTUP ══
 async function init() {
-  console.log("🚀 init() appelé");
+  if (window._appInit) return; window._appInit = true;
+  console.log("init() appelé");
   console.log("📡 sb initialisé ?", sb !== null);
   if (!sb) {
     document.getElementById('main-nav').style.display = 'flex';
@@ -1065,9 +1036,16 @@ async function init() {
   }
   const { data: { session } } = await sb.auth.getSession();
   if (session) await onLogin(session.user);
-  sb.auth.onAuthStateChange(async (event, sess) => {
-    if (sess) await onLogin(sess.user);
-    else { document.getElementById('main-nav').style.display = 'none'; showPage('auth'); }
+  sb.auth.onAuthStateChange(async function(event, sess) {
+    if (event === 'SIGNED_IN' && sess && !window._loginDone) {
+      window._loginDone = true;
+      await onLogin(sess.user);
+    } else if (event === 'SIGNED_OUT') {
+      window._loginDone = false;
+      window._appInit = false;
+      document.getElementById('main-nav').style.display = 'none';
+      showPage('auth');
+    }
   });
 }
 
@@ -1102,7 +1080,6 @@ async function onLogin(user) {
   document.getElementById('nav-avatar').textContent = initials;
   document.getElementById('main-nav').style.display = 'flex';
   showPage('dashboard');
-  await loadBoats();
   await loadMySessions();
   console.log("✅ onLogin terminé, dashboard affiché");
 }
@@ -1214,7 +1191,7 @@ function openAddSession() {
     const dl = document.getElementById('boards-list');
     dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${b}">`).join('');
   }
-  populateBoatSelect();
+  if (typeof populateBoatSelect === 'function') populateBoatSelect();
   document.getElementById('modal-add').classList.add('open');
 }
 
@@ -1242,13 +1219,11 @@ function editSession() {
   document.getElementById('f-price').value = s.price_cfp || '';
   document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
   document.getElementById('f-obs').value = s.observations || '';
-  populateBoatSelect().then(function() {
-    if (s.boat_id && document.getElementById('f-boat-id')) {
-      document.getElementById('f-boat-id').value = s.boat_id;
-    }
-  });
   if (document.getElementById('f-distance')) document.getElementById('f-distance').value = s.distance_nm || '';
-  if (document.getElementById('f-nb-surfers')) document.getElementById('f-nb-surfers').value = s.nb_surfers || '';
+  if (typeof populateBoatSelect === 'function') populateBoatSelect().then(function(){
+    var sel = document.getElementById('f-boat-id');
+    if (sel && s.boat_id) sel.value = s.boat_id;
+  });
   setStars(selectedQuality);
   document.querySelectorAll('#f-moves .toggle-btn').forEach(b => {
     const move = b.getAttribute('data-move') || b.textContent.toLowerCase().replace(/[^a-zéàèê]/g,'');
@@ -1263,11 +1238,10 @@ async function saveSession() {
   const payload = {
     user_id: currentUser.id,
     date: document.getElementById('f-date').value,
-    boat_id: (document.getElementById('f-boat-id') && document.getElementById('f-boat-id').value) || null,
+    boat_id: (document.getElementById('f-boat-id')&&document.getElementById('f-boat-id').value)||null,
     spot: getSpotValue(),
-    spots: parseSpots(getSpotValue()),
-    distance_nm: parseFloat(document.getElementById('f-distance') && document.getElementById('f-distance').value) || null,
-    nb_surfers: parseInt(document.getElementById('f-nb-surfers') && document.getElementById('f-nb-surfers').value) || null,
+    spots: (function(){var sv=getSpotValue();if(!sv)return[];var p=sv.split(',').map(function(s){return s.trim();}).filter(Boolean);return p.length>1?p:[sv];}()),
+    distance_nm: parseFloat((document.getElementById('f-distance')&&document.getElementById('f-distance').value)||0)||null,
     launch_point: document.getElementById('f-launch').value.trim(),
     context: document.getElementById('f-context').value,
     duration_h: parseFloat(document.getElementById('f-duration').value) || null,
@@ -1426,7 +1400,16 @@ async function loadStats(mode) {
 function renderStats(sessions, el) {
   if (!sessions.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Pas encore de données</div></div>'; return; }
   const spotMap = {};
-  sessions.forEach(s => { if (s.spot) { if (!spotMap[s.spot]) spotMap[s.spot]={count:0,qual:0}; spotMap[s.spot].count++; spotMap[s.spot].qual += s.quality||0; } });
+  sessions.forEach(function(s) {
+    var spts = (s.spots&&Array.isArray(s.spots)&&s.spots.length) ? s.spots : (s.spot?[s.spot]:[]);
+    spts.forEach(function(sp) {
+      sp = sp && sp.trim();
+      if (!sp || sp==='—') return;
+      if (!spotMap[sp]) spotMap[sp]={count:0,qual:0};
+      spotMap[sp].count++;
+      spotMap[sp].qual += s.quality||0;
+    });
+  });
   const spotsSorted = Object.entries(spotMap).sort((a,b)=>b[1].count-a[1].count).slice(0,7);
   const monthMap = {};
   sessions.forEach(s => { const m = s.date?.slice(0,7); if(m){if(!monthMap[m])monthMap[m]=0; monthMap[m]++;} });
@@ -1456,18 +1439,22 @@ function renderStats(sessions, el) {
       <div class="chart-wrap" style="height:160px;"><canvas id="stat-qual-chart" role="img" aria-label="Qualité par session"></canvas></div>
     </div>
   `;
-  setTimeout(() => {
+  clearTimeout(window._statsT);
+  window._statsT = setTimeout(function() {
+    try{var _csta=Chart.getChart(document.getElementById('stat-month-chart'));if(_csta)_csta.destroy();}catch(e){}
     new Chart(document.getElementById('stat-month-chart'), {
       type:'bar',
       data:{ labels:months.map(m=>{const[y,mo]=m.split('-');return ['','jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][+mo]+" '"+y.slice(2);}), datasets:[{data:months.map(m=>monthMap[m]),backgroundColor:'#4fa3c7aa',borderRadius:4}]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',font:{size:10},maxRotation:45}},y:{ticks:{color:'#7a94aa',stepSize:1},grid:{color:'rgba(255,255,255,0.05)'}}}}
     });
+    try{var _csta=Chart.getChart(document.getElementById('stat-spot-chart'));if(_csta)_csta.destroy();}catch(e){}
     new Chart(document.getElementById('stat-spot-chart'), {
       type:'bar',indexAxis:'y',
       data:{labels:spotsSorted.map(([s])=>s.length>14?s.slice(0,13)+'…':s),datasets:[{data:spotsSorted.map(([,v])=>v.count),backgroundColor:'#7b6cf6aa',borderRadius:4}]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',stepSize:1},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#7a94aa',font:{size:11}}}}}
     });
     const qualSessions = sessions.filter(s=>s.quality).slice(-30);
+    try{var _csta=Chart.getChart(document.getElementById('stat-qual-chart'));if(_csta)_csta.destroy();}catch(e){}
     new Chart(document.getElementById('stat-qual-chart'), {
       type:'line',
       data:{labels:qualSessions.map(s=>s.date?.slice(5)),datasets:[
@@ -1476,7 +1463,7 @@ function renderStats(sessions, el) {
       ]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',font:{size:10},maxRotation:45,autoSkip:true,maxTicksLimit:8}},y:{min:.5,max:5.5,ticks:{stepSize:1,color:'#7a94aa',callback:v=>Math.round(v)+'★'},grid:{color:'rgba(255,255,255,0.05)'}}}}
     });
-  }, 50);
+  }, 300);
 }
 
 // ══ PROFILE ══
@@ -1744,7 +1731,7 @@ function showSpotDetail(spotName) {
                     x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
       }));
     }
-  }, 50);
+  }, 300);
 }
 
 // ══ RANKING PAGE ══
@@ -1857,189 +1844,181 @@ async function loadRanking() {
                     y: { ticks: { color: '#7a94aa', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
       });
     }
-  }, 50);
+  }, 300);
 }
 
 
-// ══ BOATS ══
-let boatsCache = [];
-const FUEL_PRICE_CFP = { essence: 185, diesel: 160, electrique: 0 };
+// ══ HELPERS ══
+function getSpots(session) {
+  var raw = (session.spots && Array.isArray(session.spots) && session.spots.length)
+    ? session.spots : (session.spot ? [session.spot] : []);
+  var result = [];
+  raw.forEach(function(s) {
+    if (!s) return;
+    if (s.includes(',')) { s.split(',').forEach(function(p){ var t=p.trim(); if(t) result.push(t); }); }
+    else if (s.trim()) { result.push(s.trim()); }
+  });
+  return result.length ? result : ['—'];
+}
 
-async function loadBoats() {
-  if (!sb) return [];
-  const { data, error } = await sb.from('boats').select('*').order('name');
-  if (error) { console.error('Erreur chargement bateaux:', error); return []; }
-  boatsCache = data || [];
+function dirToDeg(d) {
+  if (!d) return null;
+  var m = d.match(/(\d+)/); if (m) return parseInt(m[1]);
+  var map={'N':0,'NNE':22,'NE':45,'ENE':67,'E':90,'ESE':112,'SE':135,'SSE':157,'S':180,'SSO':190,'SO':210,'OSO':247,'O':270,'ONO':292,'NO':315,'NNO':335};
+  return map[d.replace(/[^A-Z]/g,'').trim()] !== undefined ? map[d.replace(/[^A-Z]/g,'').trim()] : null;
+}
+
+function renderMiniWindRose(swell, wind, sz) {
+  sz = sz||64; var cx=sz/2, cy=sz/2, r=sz/2-4;
+  function arr(deg,col,len,w) {
+    if (deg===null) return '';
+    var rad=(deg-90)*Math.PI/180;
+    return '<line x1="'+cx+'" y1="'+cy+'" x2="'+(cx+Math.cos(rad)*len)+'" y2="'+(cy+Math.sin(rad)*len)+'" stroke="'+col+'" stroke-width="'+w+'" stroke-linecap="round"/>';
+  }
+  var sd=dirToDeg(swell), wd=dirToDeg(wind);
+  return '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 '+sz+' '+sz+'" style="flex-shrink:0;opacity:0.85;">'
+    +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>'
+    +'<text x="'+cx+'" y="8" text-anchor="middle" font-size="7" fill="rgba(255,255,255,0.3)">N</text>'
+    +arr(sd,'#4fa3c7',r*0.75,3)+arr(wd,'#e05c5c',r*0.55,2)+'</svg>';
+}
+
+function renderSwellGauge(hs) {
+  if (!hs) return '<span style="color:var(--text-faint);">—</span>';
+  var filled=Math.min(Math.round(hs/4*5),5);
+  var color=hs<0.5?'#7a94aa':hs<1.5?'#4fa3c7':hs<2.5?'#3dba8a':hs<3.5?'#e8a057':'#e05c5c';
+  var bars=''; for(var i=0;i<5;i++) bars+='<span style="display:inline-block;width:5px;height:10px;margin-right:1px;border-radius:1px;background:'+(i<filled?color:'rgba(255,255,255,0.1)')+'"></span>';
+  return '<span style="display:inline-flex;align-items:center;gap:3px;">'+bars+'<span style="font-size:11px;color:var(--text-muted);">'+hs+'m</span></span>';
+}
+
+function renderWind(kts, dir) {
+  if (!kts && !dir) return '—';
+  var color=!kts?'#7a94aa':kts<10?'#3dba8a':kts<20?'#e8a057':'#e05c5c';
+  var label=kts?(kts+' nds'):'';
+  if (dir&&dir.toLowerCase()==='glassy') label='Glassy';
+  else if (dir) label+=(label?' ':'')+dir;
+  return '<span style="color:'+color+';">'+label+'</span>';
+}
+
+// ══ BATEAUX ══
+var boatsCache=[];
+var FUEL_CFP={essence:185,diesel:160,electrique:0};
+
+async function loadBoats(){
+  if(!sb) return [];
+  try{ var r=await sb.from('boats').select('*').order('name'); boatsCache=(r&&r.data)||[]; }
+  catch(e){ console.warn('loadBoats:',e); boatsCache=[]; }
   return boatsCache;
 }
 
-async function populateBoatSelect() {
-  const boats = boatsCache.length ? boatsCache : await loadBoats();
-  const sel = document.getElementById('f-boat-id');
-  if (!sel) return;
-  const current = sel.value;
-  sel.innerHTML = '<option value="">— Choisir un bateau —</option>';
-  boats.forEach(function(b) {
-    const opt = new Option(b.name + (b.alias ? ' (' + b.alias + ')' : ''), b.id);
-    sel.appendChild(opt);
-  });
-  if (current) sel.value = current;
+async function populateBoatSelect(){
+  var boats=boatsCache.length?boatsCache:await loadBoats();
+  var sel=document.getElementById('f-boat-id');
+  if(!sel) return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">-- Choisir --</option>';
+  boats.forEach(function(b){ var o=document.createElement('option'); o.value=b.id; o.textContent=b.name+(b.alias?' ('+b.alias+')':''); sel.appendChild(o); });
+  if(cur) sel.value=cur;
 }
 
-async function loadBoatsPage() {
-  const boats = await loadBoats();
-  const el = document.getElementById('boats-list');
-  if (!boats.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⛵</div><div class="empty-title">Aucun bateau</div><div class="empty-sub">Ajoute-en un !</div></div>';
-    return;
-  }
-
-  // Charger les sessions pour stats
-  let sessions = allSessions;
-  if (sb) {
-    const { data } = await sb.from('sessions').select('*');
-    if (data) sessions = data;
-  }
-
-  var html = '';
-  boats.forEach(function(b) {
-    const bSessions = sessions.filter(function(s) { return s.boat_id === b.id; });
-    const totalH = bSessions.reduce(function(a,s) { return a + (s.duration_h||0); }, 0);
-    const totalNm = bSessions.reduce(function(a,s) { return a + (s.distance_nm||0); }, 0);
-    const totalL = b.conso_l_h ? totalH * b.conso_l_h : null;
-    const fuelPrice = FUEL_PRICE_CFP[b.fuel_type] || 185;
-    const totalCFPcarbu = totalL ? Math.round(totalL * fuelPrice) : null;
-    const avgQ = bSessions.filter(function(s){return s.quality;}).length
-      ? (bSessions.filter(function(s){return s.quality;}).reduce(function(a,s){return a+s.quality;},0)
-         / bSessions.filter(function(s){return s.quality;}).length).toFixed(1)
-      : '—';
-    // Spot préféré
-    const spotCount = {};
-    bSessions.forEach(function(s) {
-      const sp = (s.spots && s.spots[0]) || s.spot || '';
-      if (sp) spotCount[sp] = (spotCount[sp]||0) + 1;
-    });
-    const spotPref = Object.entries(spotCount).sort(function(a,b){return b[1]-a[1];})[0];
-
-    html += '<div class="card" style="margin-bottom:12px;">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
-    html += '<div>';
-    html += '<div style="font-weight:500;font-size:15px;color:var(--text);">' + b.name + '</div>';
-    if (b.alias) html += '<div style="font-size:12px;color:var(--text-muted);">alias : ' + b.alias + '</div>';
-    html += '</div>';
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="btn btn-sm btn-secondary" onclick="openEditBoat(' + JSON.stringify(b) + ')">Renommer</button>';
-    html += '</div>';
-    html += '</div>';
-
-    // Stats grid
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px;">';
-    html += '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" style="font-size:1.3rem;">' + bSessions.length + '</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">Heures</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalH*10)/10 + 'h</div></div>';
-    if (totalNm > 0) html += '<div class="stat-card"><div class="stat-label">Distance</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalNm) + ' nm</div></div>';
-    if (totalL) html += '<div class="stat-card"><div class="stat-label">Carburant</div><div class="stat-value" style="font-size:1.3rem;">' + Math.round(totalL) + ' L</div><div class="stat-sub">' + (totalCFPcarbu ? totalCFPcarbu.toLocaleString('fr') + ' CFP' : '') + '</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value" style="font-size:1.3rem;">' + avgQ + (avgQ!=='—'?'★':'') + '</div></div>';
-    html += '</div>';
-
-    // Infos bateau
-    var infos = [];
-    if (b.conso_l_h) infos.push(b.conso_l_h + ' L/h · ' + (b.fuel_type||'essence'));
-    if (b.nb_places) infos.push(b.nb_places + ' places');
-    if (spotPref) infos.push('spot préféré : ' + spotPref[0] + ' (' + spotPref[1] + 'x)');
-    if (infos.length) html += '<div style="font-size:12px;color:var(--text-muted);">' + infos.join(' · ') + '</div>';
-
-    html += '</div>';
-  });
-
-  el.innerHTML = html;
+function updateFuelEstimate(){
+  var id=(document.getElementById('f-boat-id')||{}).value||'';
+  var dur=parseFloat((document.getElementById('f-duration')||{}).value||0)||0;
+  var nb=parseInt((document.getElementById('f-nb-surfers')||{}).value||1)||1;
+  var el=document.getElementById('fuel-estimate');
+  if(!el) return;
+  var b=boatsCache.find(function(b){return b.id===id;});
+  if(!b||!b.conso_l_h||!dur){el.textContent='';return;}
+  var L=Math.round(b.conso_l_h*dur), fP=FUEL_CFP[b.fuel_type||'essence']||185;
+  var tot=Math.round(L*fP), perP=nb>0?Math.round(tot/nb):tot;
+  el.textContent='Estimation : '+L+' L · '+tot.toLocaleString('fr')+' CFP · '+perP.toLocaleString('fr')+' CFP/pers.';
 }
 
-function openAddBoat() {
-  document.getElementById('boat-edit-id').value = '';
-  document.getElementById('modal-boat-title').textContent = 'Nouveau bateau';
-  document.getElementById('boat-name').value = '';
-  document.getElementById('boat-alias').value = '';
-  document.getElementById('boat-conso').value = '';
-  document.getElementById('boat-fuel').value = 'essence';
-  document.getElementById('boat-places').value = '6';
-  document.getElementById('boat-fuel-price').value = '185';
-  document.getElementById('boat-notes').value = '';
+async function loadBoatsPage(){
+  var el=document.getElementById('boats-list');
+  if(!el) return;
+  el.innerHTML='<div class="loading-state"><div class="spinner"></div></div>';
+  var boats=await loadBoats();
+  if(!boats.length){ el.innerHTML='<div class="empty"><div class="empty-icon">&#x26F5;</div><div class="empty-title">Aucun bateau</div><div class="empty-sub">Ajoute-en un !</div></div>'; return; }
+  var r2=await sb.from('sessions').select('*');
+  var sess=(r2&&r2.data)||allSessions;
+  var html='';
+  boats.forEach(function(b){
+    var bs=sess.filter(function(s){return s.boat_id===b.id;});
+    var tH=Math.round(bs.reduce(function(a,s){return a+(s.duration_h||0);},0)*10)/10;
+    var tNm=Math.round(bs.reduce(function(a,s){return a+(s.distance_nm||0);},0));
+    var L=b.conso_l_h?Math.round(tH*b.conso_l_h):null;
+    var fP=FUEL_CFP[b.fuel_type||'essence']||185;
+    var cfp=L?Math.round(L*fP):null;
+    var qL=bs.filter(function(s){return s.quality;});
+    var avgQ=qL.length?(qL.reduce(function(a,s){return a+s.quality;},0)/qL.length).toFixed(1):'--';
+    var sc={};
+    bs.forEach(function(s){getSpots(s).forEach(function(sp){if(sp&&sp!=='—')sc[sp]=(sc[sp]||0)+1;});});
+    var spPref=Object.entries(sc).sort(function(a,b){return b[1]-a[1];})[0];
+    var bData=JSON.stringify({id:b.id,name:b.name,alias:b.alias||'',conso_l_h:b.conso_l_h||0,fuel_type:b.fuel_type||'essence',nb_places:b.nb_places||6,notes:b.notes||''}).replace(/'/g,'&#39;');
+    html+='<div class="card" style="margin-bottom:12px;">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">'
+      +'<div><div style="font-weight:500;font-size:15px;">'+b.name+'</div>'+(b.alias?'<div style="font-size:12px;color:var(--text-muted);">alias : '+b.alias+'</div>':'')+'</div>'
+      +'<button class="btn btn-sm btn-secondary" data-boat=''+bData+'' onclick="openEditBoatFromBtn(this)">Renommer</button>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:8px;">'
+      +'<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" style="font-size:1.3rem;">'+bs.length+'</div></div>'
+      +'<div class="stat-card"><div class="stat-label">Heures</div><div class="stat-value" style="font-size:1.3rem;">'+tH+'h</div></div>'
+      +(tNm>0?'<div class="stat-card"><div class="stat-label">Distance</div><div class="stat-value" style="font-size:1.3rem;">'+tNm+' nm</div></div>':'')
+      +(L?'<div class="stat-card"><div class="stat-label">Carburant</div><div class="stat-value" style="font-size:1.3rem;">'+L+' L</div>'+(cfp?'<div class="stat-sub">'+cfp.toLocaleString('fr')+' CFP</div>':'')+'</div>':'')
+      +'<div class="stat-card"><div class="stat-label">Qualit&eacute;</div><div class="stat-value" style="font-size:1.3rem;">'+avgQ+(avgQ!=='--'?' &#x2605;':'')+'</div></div>'
+      +'</div>'
+      +(spPref?'<div style="font-size:12px;color:var(--text-muted);">Spot pr&eacute;f&eacute;r&eacute; : '+spPref[0]+' ('+spPref[1]+'x)'+(b.conso_l_h?' &middot; '+b.conso_l_h+' L/h':'')+'</div>':'')
+      +'</div>';
+  });
+  el.innerHTML=html;
+}
+
+function openEditBoatFromBtn(btn){ try{openEditBoat(JSON.parse(btn.getAttribute('data-boat')));}catch(e){console.error(e);} }
+
+function openAddBoat(){
+  document.getElementById('boat-edit-id').value='';
+  document.getElementById('modal-boat-title').textContent='Nouveau bateau';
+  ['boat-name','boat-alias','boat-notes'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('boat-conso').value='';
+  document.getElementById('boat-fuel').value='essence';
+  document.getElementById('boat-places').value='6';
+  document.getElementById('boat-fuel-price').value='185';
   document.getElementById('modal-boat').classList.add('open');
 }
 
-function openEditBoat(boat) {
-  document.getElementById('boat-edit-id').value = boat.id;
-  document.getElementById('modal-boat-title').textContent = 'Modifier ' + boat.name;
-  document.getElementById('boat-name').value = boat.name || '';
-  document.getElementById('boat-alias').value = boat.alias || '';
-  document.getElementById('boat-conso').value = boat.conso_l_h || '';
-  document.getElementById('boat-fuel').value = boat.fuel_type || 'essence';
-  document.getElementById('boat-places').value = boat.nb_places || 6;
-  document.getElementById('boat-fuel-price').value = FUEL_PRICE_CFP[boat.fuel_type||'essence'];
-  document.getElementById('boat-notes').value = boat.notes || '';
+function openEditBoat(b){
+  document.getElementById('boat-edit-id').value=b.id||'';
+  document.getElementById('modal-boat-title').textContent='Modifier : '+b.name;
+  document.getElementById('boat-name').value=b.name||'';
+  document.getElementById('boat-alias').value=b.alias||'';
+  document.getElementById('boat-conso').value=b.conso_l_h||'';
+  document.getElementById('boat-fuel').value=b.fuel_type||'essence';
+  document.getElementById('boat-places').value=b.nb_places||6;
+  document.getElementById('boat-fuel-price').value=FUEL_CFP[b.fuel_type||'essence']||185;
+  document.getElementById('boat-notes').value=b.notes||'';
   document.getElementById('modal-boat').classList.add('open');
 }
 
-async function saveBoat() {
-  if (!sb) { showToast('Supabase requis', 'error'); return; }
-  const id = document.getElementById('boat-edit-id').value;
-  const payload = {
-    name: document.getElementById('boat-name').value.trim(),
-    alias: document.getElementById('boat-alias').value.trim() || null,
-    conso_l_h: parseFloat(document.getElementById('boat-conso').value) || null,
-    fuel_type: document.getElementById('boat-fuel').value,
-    nb_places: parseInt(document.getElementById('boat-places').value) || null,
-    notes: document.getElementById('boat-notes').value.trim() || null,
-  };
-  if (!payload.name) { showToast('Donne un nom au bateau', 'error'); return; }
-  let error;
-  if (id) {
-    ({ error } = await sb.from('boats').update(payload).eq('id', id));
-  } else {
-    ({ error } = await sb.from('boats').insert(payload));
-  }
-  if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
-  showToast(id ? 'Bateau renommé !' : 'Bateau ajouté !', 'success');
-  closeModal('modal-boat');
-  boatsCache = [];
-  await loadBoatsPage();
-  await populateBoatSelect();
+async function saveBoat(){
+  if(!sb){showToast('Supabase requis','error');return;}
+  var id=document.getElementById('boat-edit-id').value;
+  var name=document.getElementById('boat-name').value.trim();
+  if(!name){showToast('Nom requis','error');return;}
+  var dup=boatsCache.find(function(b){return b.name.toLowerCase()===name.toLowerCase()&&b.id!==id;});
+  if(dup){showToast('Ce nom existe déjà','error');return;}
+  var payload={name:name,alias:document.getElementById('boat-alias').value.trim()||null,
+    conso_l_h:parseFloat(document.getElementById('boat-conso').value)||null,
+    fuel_type:document.getElementById('boat-fuel').value,
+    nb_places:parseInt(document.getElementById('boat-places').value)||null,
+    notes:document.getElementById('boat-notes').value.trim()||null};
+  var res=id?await sb.from('boats').update(payload).eq('id',id):await sb.from('boats').insert(payload);
+  if(res.error){showToast('Erreur : '+res.error.message,'error');return;}
+  showToast(id?'Bateau mis à jour !':'Bateau ajouté !','success');
+  closeModal('modal-boat'); boatsCache=[];
+  await loadBoatsPage(); await populateBoatSelect();
 }
 
-// ── Calcul consommation dans le formulaire de session ──
-function updateFuelEstimate() {
-  const boatId = document.getElementById('f-boat-id') && document.getElementById('f-boat-id').value;
-  const dist = parseFloat(document.getElementById('f-distance') && document.getElementById('f-distance').value) || 0;
-  const dur = parseFloat(document.getElementById('f-duration') && document.getElementById('f-duration').value) || 0;
-  const nb = parseInt(document.getElementById('f-nb-surfers') && document.getElementById('f-nb-surfers').value) || 1;
-  const el = document.getElementById('fuel-estimate');
-  if (!el) return;
-  const boat = boatsCache.find(function(b) { return b.id === boatId; });
-  if (!boat || !boat.conso_l_h || !dur) { el.textContent = ''; return; }
-  const litres = Math.round(boat.conso_l_h * dur);
-  const fuelPrice = FUEL_PRICE_CFP[boat.fuel_type||'essence'];
-  const total = Math.round(litres * fuelPrice);
-  const perPerson = nb > 0 ? Math.round(total / nb) : total;
-  el.textContent = 'Estimation : ' + litres + ' L · ' + total.toLocaleString('fr') + ' CFP total · ' + perPerson.toLocaleString('fr') + ' CFP/personne';
-}
-
-// ── Spots multiples : parser "Grand bac, Petit U" → ['Grand bac', 'Petit U'] ──
-const KNOWN_SPOTS = [
-  'Grand bac','Petit U','Gros nem','Fausse passe Dumbéa','Gauche de Dumbéa',
-  'Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux',
-  'Droite de dumbéa','Fausse passe','Gauche Dumbéa','Droite Dumbéa'
-];
-
-function parseSpots(spotStr) {
-  if (!spotStr) return [];
-  // Séparer sur virgule, mais seulement si ce qui suit ressemble à un spot connu
-  // ou si la longueur totale suggère deux spots distincts
-  const parts = spotStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  if (parts.length <= 1) return [spotStr.trim()];
-  // Vérifier que chaque partie ressemble à un spot (pas juste "à part", etc.)
-  return parts.filter(function(p) { return p.length > 2; });
-}
-
+// ══ RANKING (remplace l'ancienne version - Chrome safe) ══
 // ══ BOOT ══
 init();
 </script>
