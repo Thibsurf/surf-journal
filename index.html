@@ -541,13 +541,6 @@ const APP_NAME = 'Coups de surf NC';
       </div>
       <button class="btn btn-primary" onclick="saveProfile()">Enregistrer</button>
     </div>
-    <div class="card" style="margin-bottom:1rem;">
-      <div class="section-title" style="margin-bottom:1rem;">Mon bateau habituel</div>
-      <select class="form-select" id="profile-boat-select">
-        <option value="">— Aucun —</option>
-      </select>
-      <button class="btn btn-primary" style="margin-top:10px;" onclick="saveProfile()">Enregistrer</button>
-    </div>
     <div class="card">
       <div class="section-title" style="margin-bottom:1rem;">Mes planches habituelles</div>
       <div id="profile-boards-list" style="margin-bottom:1rem;"></div>
@@ -589,7 +582,7 @@ const APP_NAME = 'Coups de surf NC';
   </div>
 </div>
 
-<!-- ══ PAGE BOATS ══ -->
+<!-- PAGE BOATS -->
 <div id="page-boats" class="page">
   <div class="container">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
@@ -790,6 +783,12 @@ const APP_NAME = 'Coups de surf NC';
       <label class="form-label">Manœuvres & highlights</label>
       <div class="toggle-group" id="f-moves">
         <button class="toggle-btn tube" onclick="toggleMove(this,'tube')">Tube</button>
+        <div id="tube-counter" style="display:none;align-items:center;gap:6px;margin-left:4px;">
+          <span style="font-size:12px;color:var(--text-muted);">Nb tubes :</span>
+          <button onclick="changeTubeCount(-1)" style="background:var(--glass);border:1px solid var(--border);color:var(--text);width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:14px;">-</button>
+          <span id="tube-count-val" style="font-size:14px;font-weight:500;min-width:20px;text-align:center;">1</span>
+          <button onclick="changeTubeCount(1)" style="background:var(--glass);border:1px solid var(--border);color:var(--text);width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:14px;">+</button>
+        </div>
         <button class="toggle-btn" onclick="toggleMove(this,'casquette')">Casquette</button>
         <button class="toggle-btn" onclick="toggleMove(this,'floater')">Floater</button>
         <button class="toggle-btn" onclick="toggleMove(this,'roller')">Roller</button>
@@ -1082,7 +1081,7 @@ async function onLogin(user) {
   document.getElementById('nav-avatar').textContent = initials;
   document.getElementById('main-nav').style.display = 'flex';
   showPage('dashboard');
-  if(typeof loadBoats==="function")await loadBoats();
+  if (typeof loadBoats==="function") await loadBoats();
   await loadMySessions();
   console.log("✅ onLogin terminé, dashboard affiché");
 }
@@ -1165,7 +1164,7 @@ function sessionCardHTML(s) {
     </div>
     <div>
       <div class="session-spot">${s.spot || '—'}</div>
-      <div class="session-meta">${_fmtMeta(s)}</div>
+      <div class="session-meta">${[s.hs?'Hs '+s.hs+'m':'',s.period?s.period+'s':'',s.context||''].filter(Boolean).join(' \u00b7')}${s.swell_dir&&s.swell_dir!=='?'?' <span style="font-size:10px;color:#4fa3c7;background:rgba(79,163,199,0.15);padding:1px 5px;border-radius:4px;">'+s.swell_dir+'</span>':''}${s.wind_kts?' <span style="font-size:10px;color:'+(s.wind_kts<10?'#3dba8a':s.wind_kts<20?'#e8a057':'#e05c5c')+';background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;">'+s.wind_kts+' nds</span>':''}</div>
       ${tags.length ? `<div class="session-tags">${tags.join('')}</div>` : ''}
     </div>
     <div class="session-right">
@@ -1188,16 +1187,15 @@ function openAddSession() {
     if (el) el.value = '';
   });
   document.getElementById('f-context').value = '';
+  var tc = document.getElementById('tube-count-val'); if(tc) tc.textContent='1';
+  var tcd = document.getElementById('tube-counter'); if(tcd) tcd.style.display='none';
   document.querySelectorAll('#f-moves .toggle-btn').forEach(b => b.classList.remove('active'));
   setStars(0);
   if (currentProfile && currentProfile.boards) {
     const dl = document.getElementById('boards-list');
     dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${b}">`).join('');
   }
-  if (typeof populateBoatSelect==='function') populateBoatSelect().then(function() {
-    var sel = document.getElementById('f-boat-id');
-    if (sel && currentProfile && currentProfile.default_boat_id) sel.value = currentProfile.default_boat_id;
-  });
+  if (typeof populateBoatSelect==='function') populateBoatSelect();
   document.getElementById('modal-add').classList.add('open');
 }
 
@@ -1225,10 +1223,14 @@ function editSession() {
   document.getElementById('f-price').value = s.price_cfp || '';
   document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
   document.getElementById('f-obs').value = s.observations || '';
-  if(document.getElementById('f-distance'))document.getElementById('f-distance').value=s.distance_nm||'';
-  if(typeof populateBoatSelect==='function')populateBoatSelect().then(function(){
-    var sel=document.getElementById('f-boat-id');if(sel&&s.boat_id)sel.value=s.boat_id;
+  if (document.getElementById('f-distance')) document.getElementById('f-distance').value = s.distance_nm||'';
+  if (typeof populateBoatSelect==='function') populateBoatSelect().then(function(){
+    var sel=document.getElementById('f-boat-id'); if(sel&&s.boat_id) sel.value=s.boat_id;
   });
+  var tc2 = document.getElementById('tube-count-val');
+  if (tc2) tc2.textContent = (s.tube_count && s.tube_count > 0) ? s.tube_count : '1';
+  var tcd2 = document.getElementById('tube-counter');
+  if (tcd2) tcd2.style.display = (s.moves && s.moves.includes('tube')) ? 'flex' : 'none';
   setStars(selectedQuality);
   document.querySelectorAll('#f-moves .toggle-btn').forEach(b => {
     const move = b.getAttribute('data-move') || b.textContent.toLowerCase().replace(/[^a-zéàèê]/g,'');
@@ -1243,9 +1245,9 @@ async function saveSession() {
   const payload = {
     user_id: currentUser.id,
     date: document.getElementById('f-date').value,
-    boat_id: document.getElementById('f-boat-id')?(document.getElementById('f-boat-id').value||null):null,
+    boat_id: document.getElementById('f-boat-id') ? (document.getElementById('f-boat-id').value||null) : null,
     spot: getSpotValue(),
-    distance_nm: document.getElementById('f-distance')?(parseFloat(document.getElementById('f-distance').value)||null):null,
+    distance_nm: document.getElementById('f-distance') ? (parseFloat(document.getElementById('f-distance').value)||null) : null,
     launch_point: document.getElementById('f-launch').value.trim(),
     context: document.getElementById('f-context').value,
     duration_h: parseFloat(document.getElementById('f-duration').value) || null,
@@ -1259,6 +1261,7 @@ async function saveSession() {
     price_cfp: parseInt(document.getElementById('f-price').value) || null,
     quality: selectedQuality || null,
     moves: selectedMoves,
+    tube_count: selectedMoves.includes('tube') ? (parseInt(document.getElementById('tube-count-val').textContent)||1) : 0,
     shared_with: sharedWith,
     is_shared: sharedWith.length > 0,
     observations: document.getElementById('f-obs').value.trim(),
@@ -1293,9 +1296,9 @@ async function openDetail(id) {
   const dateStr = d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   const stars = s.quality ? '★'.repeat(s.quality) : '—';
   const moves = (s.moves || []).map(m => `<span class="badge ${m==='tube'?'badge-tube':'badge-accent'}">${m}</span>`).join(' ');
-  var _spL=(s.spots&&Array.isArray(s.spots)&&s.spots.length?s.spots:[s.spot||'Session']);
-  var _spStr=_spL.map(function(x){return x.split(',').map(function(p){return p.trim();}).join(' + ');}).join(' + ');
-  document.getElementById('detail-title').textContent=_spStr+' · '+d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});;
+  var _spArr=(s.spots&&Array.isArray(s.spots)&&s.spots.length)?s.spots:(s.spot?[s.spot]:['Session']);
+  var _spLabel=_spArr.map(function(x){return x.split(',').map(function(p){return p.trim();}).join(' + ');}).join(' + ');
+  document.getElementById('detail-title').textContent=_spLabel+' · '+d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});;
   document.getElementById('detail-content').innerHTML = `
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
       <span style="font-size:1.1rem;color:var(--star);">${stars}</span>
@@ -1407,8 +1410,8 @@ function renderStats(sessions, el) {
   if (!sessions.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Pas encore de données</div></div>'; return; }
   const spotMap = {};
   sessions.forEach(function(s) {
-    var _ss=(s.spots&&Array.isArray(s.spots))?s.spots:(s.spot?[s.spot]:[]);
-    _ss.forEach(function(raw) {
+    var _ss=(s.spots&&Array.isArray(s.spots)&&s.spots.length)?s.spots:(s.spot?[s.spot]:[]);
+    _ss.forEach(function(raw){
       raw.split(',').map(function(p){return p.trim();}).filter(Boolean).forEach(function(sp){
         if(!spotMap[sp])spotMap[sp]={count:0,qual:0};
         spotMap[sp].count++; spotMap[sp].qual+=s.quality||0;
@@ -1480,20 +1483,6 @@ function loadProfilePage() {
   document.getElementById('profile-email-display').textContent = currentUser?.email || '—';
   document.getElementById('profile-username-input').value = currentProfile.username || '';
   renderBoardsList();
-  // Peupler le select bateau
-  var sel = document.getElementById('profile-boat-select');
-  if (sel) {
-    sel.innerHTML = '<option value="">— Aucun —</option>';
-    (boatsCache.length ? Promise.resolve(boatsCache) : loadBoats()).then(function(boats) {
-      boats.forEach(function(b) {
-        var o = document.createElement('option');
-        o.value = b.id;
-        o.textContent = b.name + (b.alias ? ' (' + b.alias + ')' : '');
-        sel.appendChild(o);
-      });
-      sel.value = currentProfile.default_boat_id || '';
-    });
-  }
 }
 
 function renderBoardsList() {
@@ -1524,8 +1513,6 @@ async function removeBoard(i) {
 async function saveProfile() {
   if (!currentProfile) return;
   currentProfile.username = document.getElementById('profile-username-input').value.trim();
-  var boatSel = document.getElementById('profile-boat-select');
-  if (boatSel) currentProfile.default_boat_id = boatSel.value || null;
   await saveProfileData();
   const initials = currentProfile.username[0].toUpperCase();
   document.getElementById('nav-avatar').textContent = initials;
@@ -1536,7 +1523,7 @@ async function saveProfile() {
 
 async function saveProfileData() {
   if (!sb || !currentUser) return;
-  await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards, default_boat_id: currentProfile.default_boat_id || null });
+  await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards });
 }
 
 // ══ UI HELPERS ══
@@ -1550,8 +1537,12 @@ function setCommentStars(n) {
 }
 function toggleMove(btn, move) {
   btn.classList.toggle('active');
-  if (selectedMoves.includes(move)) selectedMoves = selectedMoves.filter(m => m !== move);
+  if (selectedMoves.includes(move)) selectedMoves = selectedMoves.filter(function(m){return m!==move;});
   else selectedMoves.push(move);
+  if (move === 'tube') {
+    var counter = document.getElementById('tube-counter');
+    if (counter) counter.style.display = selectedMoves.includes('tube') ? 'flex' : 'none';
+  }
 }
 
 function showPage(name) {
@@ -1645,21 +1636,13 @@ async function loadSpotsPage() {
   }
   const spots = new Set(['Grand bac','Petit U','Gros nem','Fausse passe Dumbéa',
     'Gauche de Dumbéa','Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux']);
-  // Extraire tous les spots depuis spots[] ET spot (champ legacy)
-  spotsGroupData.forEach(function(s) {
-    var all = (s.spots && Array.isArray(s.spots) && s.spots.length) ? s.spots : (s.spot ? [s.spot] : []);
-    all.forEach(function(raw) {
-      raw.split(',').map(function(p){return p.trim();}).filter(Boolean).forEach(function(sp){ spots.add(sp); });
-    });
-  });
+  spotsGroupData.forEach(s => { if (s.spot) spots.add(s.spot); });
 
-  // Stocker les noms dans un tableau indexé pour éviter le bug d'encodage dans onclick
-  window._spotNames = [...spots];
   document.getElementById('spots-selector').innerHTML =
-    window._spotNames.map(function(sp, i) {
-      return '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
-        'onclick="showSpotDetail(window._spotNames[' + i + '])">' + sp + '</button>';
-    }).join('');
+    [...spots].map(sp =>
+      '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
+      'onclick="showSpotDetail(' + JSON.stringify(sp) + ')">' + sp + '</button>'
+    ).join('');
   document.getElementById('spots-content').innerHTML =
     '<div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>';
 }
@@ -1670,13 +1653,7 @@ function showSpotDetail(spotName) {
   spotCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
   spotCharts = [];
 
-  // Matcher les sessions qui ont ce spot, que ce soit dans spots[] ou dans spot (legacy)
-  const sessions = spotsGroupData.filter(function(s) {
-    var all = (s.spots && Array.isArray(s.spots) && s.spots.length) ? s.spots : (s.spot ? [s.spot] : []);
-    return all.some(function(raw) {
-      return raw.split(',').map(function(p){return p.trim();}).indexOf(spotName) !== -1;
-    });
-  });
+  const sessions = spotsGroupData.filter(s => s.spot === spotName);
   const el = document.getElementById('spots-content');
   if (!sessions.length) {
     el.innerHTML = '<div class="empty"><div class="empty-title">Aucune session pour ce spot</div></div>';
@@ -1728,27 +1705,18 @@ function showSpotDetail(spotName) {
       '<div style="font-size:13px;">' + best.date + ' — <strong>' + '★'.repeat(best.quality) + '</strong>' +
       (best.observations ? ' — ' + best.observations.slice(0, 80) + '…' : '') + '</div>' +
     '</div>' : '') +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité dans le temps</div>' +
         '<div style="position:relative;height:160px;"><canvas id="spot-qual-chart" role="img" aria-label="Qualite sessions"></canvas></div></div>' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">Hs par session</div>' +
         '<div style="position:relative;height:160px;"><canvas id="spot-hs-chart" role="img" aria-label="Hs sessions"></canvas></div></div>' +
-    '</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité vs Hs (scatter)</div>' +
-        '<div style="position:relative;height:180px;"><canvas id="spot-scatter-chart" role="img" aria-label="Qualite vs Hs"></canvas></div></div>' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Rose des houles</div>' +
-        '<div style="display:flex;align-items:center;justify-content:center;height:180px;" id="spot-rose-wrap"></div></div>' +
-    '</div>' +
-    '<div class="card" style="margin-bottom:14px;"><div class="section-title" style="margin-bottom:8px;">Qualité vs Période (scatter)</div>' +
-      '<div style="position:relative;height:160px;"><canvas id="spot-period-chart" role="img" aria-label="Qualite vs Periode"></canvas></div></div>';
+    '</div>';
 
   setTimeout(function() {
     const sorted = sessions.slice().sort((a,b) => a.date > b.date ? 1 : -1);
     const labels = sorted.map(s => (s.date || '').slice(5));
     const qColors = ['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
 
-    // ── Qualité dans le temps
     const c1 = document.getElementById('spot-qual-chart');
     if (c1) {
       spotCharts.push(new Chart(c1, {
@@ -1763,8 +1731,6 @@ function showSpotDetail(spotName) {
                     x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
       }));
     }
-
-    // ── Hs par session
     const c2 = document.getElementById('spot-hs-chart');
     if (c2) {
       spotCharts.push(new Chart(c2, {
@@ -1777,105 +1743,6 @@ function showSpotDetail(spotName) {
                     x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
       }));
     }
-
-    // ── Scatter Qualité vs Hs
-    const c3 = document.getElementById('spot-scatter-chart');
-    if (c3) {
-      var scatterHs = sessions.filter(function(s){return s.hs && s.quality;}).map(function(s){
-        return {x: s.hs, y: s.quality, label: s.date};
-      });
-      spotCharts.push(new Chart(c3, {
-        type: 'scatter',
-        data: { datasets: [{ data: scatterHs,
-          backgroundColor: scatterHs.map(function(p){ return qColors[p.y]+'cc'; }),
-          pointRadius: 6, pointHoverRadius: 8 }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) {
-            return 'Hs ' + ctx.raw.x + 'm · ' + ctx.raw.y + '★';
-          }}}},
-          scales: {
-            x: { title: { display: true, text: 'Hs (m)', color: '#7a94aa', font:{size:10} }, ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { min: 0.5, max: 5.5, title: { display: true, text: 'Qualité', color: '#7a94aa', font:{size:10} }, ticks: { stepSize:1, color: '#7a94aa', callback: function(v){return Math.round(v)+'★';} }, grid: { color: 'rgba(255,255,255,0.05)' } }
-          }
-        }
-      }));
-    }
-
-    // ── Scatter Qualité vs Période
-    const c4 = document.getElementById('spot-period-chart');
-    if (c4) {
-      var scatterT = sessions.filter(function(s){return s.period && s.quality;}).map(function(s){
-        return {x: s.period, y: s.quality};
-      });
-      spotCharts.push(new Chart(c4, {
-        type: 'scatter',
-        data: { datasets: [{ data: scatterT,
-          backgroundColor: scatterT.map(function(p){ return qColors[p.y]+'cc'; }),
-          pointRadius: 6, pointHoverRadius: 8 }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) {
-            return 'T ' + ctx.raw.x + 's · ' + ctx.raw.y + '★';
-          }}}},
-          scales: {
-            x: { title: { display: true, text: 'Période (s)', color: '#7a94aa', font:{size:10} }, ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { min: 0.5, max: 5.5, title: { display: true, text: 'Qualité', color: '#7a94aa', font:{size:10} }, ticks: { stepSize:1, color: '#7a94aa', callback: function(v){return Math.round(v)+'★';} }, grid: { color: 'rgba(255,255,255,0.05)' } }
-          }
-        }
-      }));
-    }
-
-    // ── Rose des houles SVG
-    var roseWrap = document.getElementById('spot-rose-wrap');
-    if (roseWrap) {
-      var dirCount = {};
-      sessions.forEach(function(s) {
-        var d = (s.swell_dir || '').trim();
-        if (d && d !== '?' && d !== '—') { dirCount[d] = (dirCount[d]||0) + 1; }
-      });
-      var dirs = Object.keys(dirCount);
-      if (!dirs.length) {
-        roseWrap.innerHTML = '<span style="color:var(--text-faint);font-size:13px;">Pas de données houle</span>';
-      } else {
-        var maxC = Math.max.apply(null, Object.values(dirCount));
-        var sz = 160, cx = sz/2, cy = sz/2, rMax = sz/2 - 18;
-        var cardinals = ['N','NE','E','SE','S','SO','O','NO'];
-        var degMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
-        var svgParts = ['<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 '+sz+' '+sz+'">'];
-        // Cercles de référence
-        [0.33,0.66,1].forEach(function(f){
-          svgParts.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+(rMax*f).toFixed(1)+'" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>');
-        });
-        // Labels cardinaux
-        cardinals.forEach(function(c){
-          var deg = degMap[c]||0;
-          var rad = (deg - 90) * Math.PI / 180;
-          var tx = (cx + Math.cos(rad)*(rMax+10)).toFixed(1);
-          var ty = (cy + Math.sin(rad)*(rMax+10)).toFixed(1);
-          svgParts.push('<text x="'+tx+'" y="'+ty+'" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="rgba(255,255,255,0.3)">'+c+'</text>');
-        });
-        // Barres par direction
-        dirs.forEach(function(d){
-          var deg = dirCount[d] !== undefined ? (degMap[d] !== undefined ? degMap[d] : null) : null;
-          // Essai sur les chiffres
-          var m = d.match(/(\d+)/);
-          if (deg === null && m) deg = parseInt(m[1]);
-          if (deg === null) { var k = d.replace(/[^A-Z]/g,''); deg = degMap[k] !== undefined ? degMap[k] : null; }
-          if (deg === null) return;
-          var rad = (deg - 90) * Math.PI / 180;
-          var len = (dirCount[d] / maxC * rMax).toFixed(1);
-          var x2 = (cx + Math.cos(rad) * len).toFixed(1);
-          var y2 = (cy + Math.sin(rad) * len).toFixed(1);
-          svgParts.push('<line x1="'+cx+'" y1="'+cy+'" x2="'+x2+'" y2="'+y2+'" stroke="#4fa3c7" stroke-width="6" stroke-linecap="round" opacity="0.85"/>');
-          svgParts.push('<circle cx="'+x2+'" cy="'+y2+'" r="3" fill="#4fa3c7"/>');
-          // Label count
-          var lx = (cx + Math.cos(rad)*(parseFloat(len)+12)).toFixed(1);
-          var ly = (cy + Math.sin(rad)*(parseFloat(len)+12)).toFixed(1);
-          svgParts.push('<text x="'+lx+'" y="'+ly+'" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#4fa3c7">'+dirCount[d]+'</text>');
-        });
-        svgParts.push('</svg>');
-        roseWrap.innerHTML = svgParts.join('');
-      }
-    }
   }, 300);
 }
 
@@ -1883,61 +1750,347 @@ function showSpotDetail(spotName) {
 let rankingChart = null;
 
 async function loadRanking() {
-  var el=document.getElementById('ranking-content');
-  if(!el) return;
-  if(!sb){el.innerHTML='<div class="empty"><div class="empty-title">Configure Supabase</div></div>';return;}
-  el.innerHTML='<div class="loading-state"><div class="spinner"></div></div>';
-  var allData=[],profileMap={};
-  try{var sr=await sb.from('sessions').select('*');allData=(sr&&sr.data)||[];}catch(e){console.warn(e);}
-  try{var pr=await sb.from('profiles').select('id,username');
-    if(pr&&pr.data)pr.data.forEach(function(p){profileMap[p.id]=p.username||p.id.slice(0,8);});
-  }catch(e){console.warn('profiles RLS:',e);}
-  if(currentUser&&currentProfile)profileMap[currentUser.id]=currentProfile.username;
-  if(!allData.length){el.innerHTML='<div class="empty"><div class="empty-title">Pas encore de données</div></div>';return;}
+  const el = document.getElementById('ranking-content');
+  if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
+
+  const { data: allData } = await sb.from('sessions').select('*');
+  const { data: profiles } = await sb.from('profiles').select('id, username');
+  if (!allData || !allData.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><div class="empty-title">Pas encore de données</div></div>';
+    return;
+  }
+
+  const profileMap = {};
+  (profiles || []).forEach(function(p) { profileMap[p.id] = p.username || p.id.slice(0,6); });
+
+  const userStats = {};
+  allData.forEach(function(s) {
+    const uid = s.user_id;
+    if (!userStats[uid]) userStats[uid] = { name: profileMap[uid] || '?', uid: uid, sessions: 0, hours: 0, tubes: 0, qual: [], cfp: 0 };
+    userStats[uid].sessions++;
+    if (s.duration_h) userStats[uid].hours += s.duration_h;
+    if (s.moves && s.moves.includes('tube')) userStats[uid].tubes++;
+    if (s.quality) userStats[uid].qual.push(s.quality);
+    if (s.price_cfp) userStats[uid].cfp += s.price_cfp;
+  });
+
+  const users = Object.values(userStats).map(function(u) {
+    return Object.assign({}, u, {
+      avgQ: u.qual.length ? parseFloat((u.qual.reduce(function(a,b){return a+b;},0)/u.qual.length).toFixed(1)) : 0,
+      hours: Math.round(u.hours * 10) / 10
+    });
+  });
+
+  const medals = ['🥇','🥈','🥉'];
+  const barColors = ['#e8a057','#7a94aa','#3d5468','#4fa3c7','#7b6cf6'];
+
+  const categories = [
+    { label: 'Sessions surfées', icon: '🏄', key: 'sessions', fmt: function(u) { return u.sessions + ' sessions'; } },
+    { label: 'Heures à l\'eau', icon: '⏱', key: 'hours', fmt: function(u) { return u.hours + 'h'; } },
+    { label: 'Tubes', icon: '🤙', key: 'tubes', fmt: function(u) { return u.tubes + ' tubes'; } },
+    { label: 'Qualité moyenne', icon: '★', key: 'avgQ', fmt: function(u) { return u.avgQ + '★'; }, max: 5 },
+    { label: 'CFP dépensés (bateau)', icon: '💸', key: 'cfp', fmt: function(u) { return u.cfp.toLocaleString('fr') + ' CFP'; } },
+  ];
+
+  var html = '';
+  categories.forEach(function(cat) {
+    var sorted = users.slice().sort(function(a,b) { return b[cat.key] - a[cat.key]; });
+    var maxVal = cat.max || Math.max.apply(null, sorted.map(function(u){ return u[cat.key] || 0; }));
+    html += '<div class="card" style="margin-bottom:14px;">';
+    html += '<div class="section-title" style="margin-bottom:12px;">' + cat.icon + ' ' + cat.label + '</div>';
+    sorted.forEach(function(u, i) {
+      var val = u[cat.key] || 0;
+      var pct = maxVal > 0 ? Math.round(val / maxVal * 100) : 0;
+      var isMe = currentUser && u.uid === currentUser.id;
+      html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
+      html += '<span style="font-size:1.1rem;min-width:28px;">' + (medals[i] || '') + '</span>';
+      html += '<span style="min-width:80px;font-size:13px;font-weight:' + (isMe ? '500' : '400') + ';color:' + (isMe ? 'var(--accent)' : 'var(--text)') + ';">' + u.name + (isMe ? ' (toi)' : '') + '</span>';
+      html += '<div style="flex:1;background:var(--glass);border-radius:4px;height:18px;overflow:hidden;">';
+      html += '<div style="width:' + pct + '%;height:100%;background:' + barColors[i % barColors.length] + ';border-radius:4px;"></div>';
+      html += '</div>';
+      html += '<span style="min-width:80px;text-align:right;font-size:12px;color:var(--text-muted);">' + cat.fmt(u) + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+
+  const months = [];
+  const monthSet = new Set(allData.map(function(s){ return (s.date || '').slice(0,7); }).filter(Boolean));
+  Array.from(monthSet).sort().slice(-6).forEach(function(m){ months.push(m); });
+
+  const chartColors = ['#4fa3c7','#e8a057','#7b6cf6','#3dba8a','#e05c5c'];
+  const datasets = users.map(function(u, i) {
+    return {
+      label: u.name,
+      data: months.map(function(m) {
+        return allData.filter(function(s){ return s.user_id === u.uid && (s.date||'').startsWith(m); }).length;
+      }),
+      backgroundColor: chartColors[i % chartColors.length] + 'cc',
+      borderRadius: 3
+    };
+  });
+
+  html += '<div class="card">';
+  html += '<div class="section-title" style="margin-bottom:10px;">Sessions / mois par surfeur (6 derniers mois)</div>';
+  html += '<div style="position:relative;height:200px;"><canvas id="ranking-chart" role="img" aria-label="Comparaison sessions par mois"></canvas></div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+
+  setTimeout(function() {
+    const labels6 = months.map(function(m) {
+      var parts = m.split('-');
+      var mo = parseInt(parts[1]);
+      var yr = parts[0].slice(2);
+      return ['','jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][mo] + " '" + yr;
+    });
+    if (rankingChart) { try { rankingChart.destroy(); } catch(e) {} }
+    const rc = document.getElementById('ranking-chart');
+    if (rc) {
+      rankingChart = new Chart(rc, {
+        type: 'bar',
+        data: { labels: labels6, datasets: datasets },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#7a94aa', boxWidth: 12, font: { size: 11 } } } },
+          scales: { x: { ticks: { color: '#7a94aa' }, grid: { display: false } },
+                    y: { ticks: { color: '#7a94aa', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+      });
+    }
+  }, 300);
+}
+
+// ════ HELPERS ════════════════════════════════════
+
+function getSpots(session) {
+  var raw = (session.spots && Array.isArray(session.spots) && session.spots.length)
+    ? session.spots : (session.spot ? [session.spot] : []);
+  var out = [];
+  raw.forEach(function(r) {
+    if (!r) return;
+    r.split(',').forEach(function(p) { p = p.trim(); if (p) out.push(p); });
+  });
+  return out.length ? out : ['?'];
+}
+
+function dirToDeg(d) {
+  if (!d) return null;
+  var m = d.match(/(\d+)/); if (m) return parseInt(m[1]);
+  var map = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,
+    S:180,SSO:190,SO:210,OSO:247,O:270,ONO:292,NO:315,NNO:335};
+  return map[d.replace(/[^A-Z]/g,'')] !== undefined ? map[d.replace(/[^A-Z]/g,'')] : null;
+}
+
+// ════ BATEAUX ════════════════════════════════════
+var boatsCache = [];
+var FUEL_CFP = {essence:185, diesel:160, electrique:0};
+
+async function loadBoats() {
+  if (!sb) return [];
+  try {
+    var r = await sb.from('boats').select('*').order('name');
+    boatsCache = (r && r.data) ? r.data : [];
+  } catch(e) { console.warn('loadBoats:', e); boatsCache = []; }
+  return boatsCache;
+}
+
+async function populateBoatSelect() {
+  var boats = boatsCache.length ? boatsCache : await loadBoats();
+  var sel = document.getElementById('f-boat-id');
+  if (!sel) return;
+  var cur = sel.value;
+  sel.innerHTML = '<option value="">-- Choisir --</option>';
+  boats.forEach(function(b) {
+    var o = document.createElement('option');
+    o.value = b.id;
+    o.textContent = b.name + (b.alias ? ' (' + b.alias + ')' : '');
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+}
+
+function updateFuelEstimate() {
+  var bid = document.getElementById('f-boat-id') ? document.getElementById('f-boat-id').value : '';
+  var dur = parseFloat(document.getElementById('f-duration') ? document.getElementById('f-duration').value : 0) || 0;
+  var nb = parseInt(document.getElementById('f-nb-surfers') ? document.getElementById('f-nb-surfers').value : 1) || 1;
+  var el = document.getElementById('fuel-estimate');
+  if (!el) return;
+  var b = boatsCache.find(function(x) { return x.id === bid; });
+  if (!b || !b.conso_l_h || !dur) { el.textContent = ''; return; }
+  var L = Math.round(b.conso_l_h * dur);
+  var fP = FUEL_CFP[b.fuel_type || 'essence'] || 185;
+  var tot = Math.round(L * fP);
+  var perP = nb > 0 ? Math.round(tot / nb) : tot;
+  el.textContent = '~' + L + ' L - ' + tot.toLocaleString('fr') + ' CFP - ' + perP.toLocaleString('fr') + ' CFP/pers.';
+}
+
+async function loadBoatsPage() {
+  var el = document.getElementById('boats-list');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+  var boats = await loadBoats();
+  if (!boats.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-title">Aucun bateau</div><div class="empty-sub">Ajoute-en un avec le bouton ci-dessus</div></div>';
+    return;
+  }
+  var r2 = sb ? await sb.from('sessions').select('*') : {data: allSessions};
+  var sessions = (r2 && r2.data) ? r2.data : allSessions;
+  var html = '';
+  boats.forEach(function(b, bi) {
+    // Match par boat_id OU par nom/alias legacy (CSV importé sans boat_id)
+    var bname = (b.name || '').toLowerCase();
+    var balias = (b.alias || '').toLowerCase();
+    var bs = sessions.filter(function(s) {
+      if (s.boat_id && s.boat_id === b.id) return true;
+      var sboat = (s.bateau || s.launch_point || '').toLowerCase();
+      return sboat && (sboat === bname || sboat === balias || bname.includes(sboat) || sboat.includes(bname));
+    });
+    var tH = Math.round(bs.reduce(function(a,s){return a+(s.duration_h||0);},0)*10)/10;
+    var tNm = Math.round(bs.reduce(function(a,s){return a+(s.distance_nm||0);},0));
+    var L = b.conso_l_h ? Math.round(tH * b.conso_l_h) : null;
+    var fP = FUEL_CFP[b.fuel_type || 'essence'] || 185;
+    var cfp = L ? Math.round(L * fP) : null;
+    var qL = bs.filter(function(s){return s.quality;});
+    var avgQ = qL.length ? (qL.reduce(function(a,s){return a+s.quality;},0)/qL.length).toFixed(1) : '--';
+    var sc = {};
+    bs.forEach(function(s){ getSpots(s).forEach(function(sp){if(sp&&sp!='?')sc[sp]=(sc[sp]||0)+1;}); });
+    var spPref = Object.entries(sc).sort(function(a,b){return b[1]-a[1];})[0];
+    html += '<div class="card" style="margin-bottom:12px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
+    html += '<div>';
+    html += '<div style="font-weight:500;font-size:15px;">' + b.name + '</div>';
+    if (b.alias) html += '<div style="font-size:12px;color:var(--text-muted);">Prop. : ' + b.alias + '</div>';
+    html += '</div>';
+    html += '<button class="btn btn-sm btn-secondary" data-bidx="' + bi + '" onclick="openEditBoatByIdx(this)">Modifier</button>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px;">';
+    html += '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" style="font-size:1.3rem;">' + bs.length + '</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">Heures</div><div class="stat-value" style="font-size:1.3rem;">' + tH + 'h</div></div>';
+    if (tNm > 0) html += '<div class="stat-card"><div class="stat-label">Distance</div><div class="stat-value" style="font-size:1.3rem;">' + tNm + ' nm</div></div>';
+    if (L) html += '<div class="stat-card"><div class="stat-label">Carburant</div><div class="stat-value" style="font-size:1.3rem;">' + L + ' L</div>' + (cfp ? '<div class="stat-sub">' + cfp.toLocaleString('fr') + ' CFP</div>' : '') + '</div>';
+    html += '<div class="stat-card"><div class="stat-label">Qualite moy.</div><div class="stat-value" style="font-size:1.3rem;">' + avgQ + (avgQ !== '--' ? ' *' : '') + '</div></div>';
+    html += '</div>';
+    var infos = [];
+    if (b.conso_l_h) infos.push(b.conso_l_h + ' L/h');
+    if (b.tank_l) infos.push('Reservoir ' + b.tank_l + ' L');
+    if (b.nb_places) infos.push(b.nb_places + ' places');
+    if (b.fuel_type) infos.push(b.fuel_type);
+    if (spPref) infos.push('Spot pref. : ' + spPref[0]);
+    if (infos.length) html += '<div style="font-size:12px;color:var(--text-muted);">' + infos.join(' - ') + '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function openEditBoatByIdx(btn) {
+  var idx = parseInt(btn.getAttribute('data-bidx'));
+  if (isNaN(idx) || !boatsCache[idx]) { showToast('Bateau introuvable', 'error'); return; }
+  openEditBoat(boatsCache[idx]);
+}
+
+function openAddBoat() {
+  document.getElementById('boat-edit-id').value = '';
+  document.getElementById('modal-boat-title').textContent = 'Nouveau bateau';
+  ['boat-name','boat-alias','boat-notes'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+  ['boat-conso','boat-tank'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+  var p=document.getElementById('boat-places'); if(p) p.value='6';
+  var fp=document.getElementById('boat-fuel-price'); if(fp) fp.value='185';
+  var f=document.getElementById('boat-fuel'); if(f) f.value='essence';
+  document.getElementById('modal-boat').classList.add('open');
+}
+
+function openEditBoat(b) {
+  document.getElementById('boat-edit-id').value = b.id || '';
+  document.getElementById('modal-boat-title').textContent = 'Modifier : ' + b.name;
+  document.getElementById('boat-name').value = b.name || '';
+  document.getElementById('boat-alias').value = b.alias || '';
+  document.getElementById('boat-conso').value = b.conso_l_h || '';
+  document.getElementById('boat-tank').value = b.tank_l || '';
+  document.getElementById('boat-places').value = b.nb_places || '';
+  document.getElementById('boat-fuel').value = b.fuel_type || 'essence';
+  document.getElementById('boat-fuel-price').value = FUEL_CFP[b.fuel_type||'essence'] || 185;
+  document.getElementById('boat-notes').value = b.notes || '';
+  document.getElementById('modal-boat').classList.add('open');
+}
+
+async function saveBoat() {
+  if (!sb) { showToast('Supabase requis', 'error'); return; }
+  var id = document.getElementById('boat-edit-id').value;
+  var name = document.getElementById('boat-name').value.trim();
+  if (!name) { showToast('Le nom ne peut pas etre vide', 'error'); return; }
+  var dup = boatsCache.find(function(b){ return b.name.toLowerCase()===name.toLowerCase() && b.id!==id; });
+  if (dup) { showToast('Ce nom existe deja', 'error'); return; }
+  var payload = {
+    name: name,
+    alias: document.getElementById('boat-alias').value.trim() || null,
+    conso_l_h: parseFloat(document.getElementById('boat-conso').value) || null,
+    tank_l: parseFloat(document.getElementById('boat-tank').value) || null,
+    nb_places: parseInt(document.getElementById('boat-places').value) || null,
+    fuel_type: document.getElementById('boat-fuel').value,
+    notes: document.getElementById('boat-notes').value.trim() || null,
+  };
+  var res = id
+    ? await sb.from('boats').update(payload).eq('id', id)
+    : await sb.from('boats').insert(payload);
+  if (res.error) { showToast('Erreur : ' + res.error.message, 'error'); return; }
+  showToast(id ? 'Bateau mis a jour !' : 'Bateau ajoute !', 'success');
+  closeModal('modal-boat');
+  boatsCache = [];
+  await loadBoatsPage();
+  await populateBoatSelect();
+}
+
+// ════ RANKING Chrome-safe ════════════════════════
+async function loadRanking() {
+  var el = document.getElementById('ranking-content');
+  if (!el) return;
+  if (!sb) { el.innerHTML = '<div class="empty"><div class="empty-title">Configure Supabase</div></div>'; return; }
+  el.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+  var allData = [], profileMap = {};
+  try { var sr = await sb.from('sessions').select('*'); allData = (sr&&sr.data)||[]; } catch(e) { console.warn(e); }
+  try {
+    var pr = await sb.from('profiles').select('id,username');
+    if (pr&&pr.data) pr.data.forEach(function(p){ profileMap[p.id]=p.username||p.id.slice(0,8); });
+  } catch(e) { console.warn('profiles RLS:', e); }
+  if (currentUser&&currentProfile) profileMap[currentUser.id]=currentProfile.username;
+  if (!allData.length) { el.innerHTML='<div class="empty"><div class="empty-title">Pas encore de donnees</div></div>'; return; }
   var us={};
   allData.forEach(function(s){
     var uid=s.user_id;
-    if(!us[uid])us[uid]={name:profileMap[uid]||uid.slice(0,8),uid:uid,sessions:0,hours:0,tubes:0,qual:[],cfp:0,spots:{}};
+    if(!us[uid]) us[uid]={name:profileMap[uid]||uid.slice(0,8),uid:uid,sessions:0,hours:0,tubes:0,qual:[],cfp:0};
     us[uid].sessions++;
-    if(s.duration_h)us[uid].hours+=s.duration_h;
-    if(s.moves&&Array.isArray(s.moves)&&s.moves.includes('tube'))us[uid].tubes++;
-    if(s.quality)us[uid].qual.push(s.quality);
-    if(s.price_cfp)us[uid].cfp+=s.price_cfp;
-    // Spot préféré
-    var spAll=(s.spots&&Array.isArray(s.spots)&&s.spots.length)?s.spots:(s.spot?[s.spot]:[]);
-    spAll.forEach(function(raw){raw.split(',').map(function(p){return p.trim();}).filter(Boolean).forEach(function(sp){us[uid].spots[sp]=(us[uid].spots[sp]||0)+1;});});
+    if(s.duration_h) us[uid].hours+=s.duration_h;
+    if(s.moves&&Array.isArray(s.moves)&&s.moves.includes('tube')) us[uid].tubes++;
+    if(s.quality) us[uid].qual.push(s.quality);
+    if(s.price_cfp) us[uid].cfp+=s.price_cfp;
   });
   var users=Object.values(us).map(function(u){
-    var spEntries=Object.entries(u.spots).sort(function(a,b){return b[1]-a[1];});
-    var favSpot=spEntries.length?spEntries[0][0]+'('+spEntries[0][1]+'x)':null;
-    return{name:u.name,uid:u.uid,sessions:u.sessions,
-      hours:Math.round(u.hours*10)/10,tubes:u.tubes,cfp:u.cfp,favSpot:favSpot,
-      avgQ:u.qual.length?parseFloat((u.qual.reduce(function(a,b){return a+b;},0)/u.qual.length).toFixed(1)):0};
+    return{name:u.name,uid:u.uid,sessions:u.sessions,hours:Math.round(u.hours*10)/10,
+      tubes:u.tubes,cfp:u.cfp,avgQ:u.qual.length?parseFloat((u.qual.reduce(function(a,b){return a+b;},0)/u.qual.length).toFixed(1)):0};
   });
-  var medals=['🥇','🥈','🥉'];
+  var medals=['1.','2.','3.'];
   var bc=['#e8a057','#7a94aa','#3d5468','#4fa3c7','#7b6cf6'];
   var cats=[
-    {label:'Sessions',icon:'🏄',key:'sessions',fmt:function(u){return u.sessions+'';}},
-    {label:'Heures',icon:'⏱',key:'hours',fmt:function(u){return u.hours+'h';}},
-    {label:'Tubes',icon:'🤙',key:'tubes',fmt:function(u){return u.tubes+'';}},
-    {label:'Qualité moy.',icon:'★',key:'avgQ',fmt:function(u){return u.avgQ+'★';},max:5},
-    {label:'CFP bateau',icon:'💸',key:'cfp',fmt:function(u){return u.cfp.toLocaleString('fr')+' CFP';}}
+    {label:'Sessions',key:'sessions',fmt:function(u){return u.sessions+'  sess.';}},
+    {label:'Heures a l eau',key:'hours',fmt:function(u){return u.hours+'h';}},
+    {label:'Tubes',key:'tubes',fmt:function(u){return u.tubes+' tubes';}},
+    {label:'Qualite moy.',key:'avgQ',fmt:function(u){return u.avgQ+'/5';},max:5},
+    {label:'CFP bateau',key:'cfp',fmt:function(u){return u.cfp.toLocaleString('fr')+' CFP';}}
   ];
   var html='';
   cats.forEach(function(cat){
     var sorted=users.slice().sort(function(a,b){return b[cat.key]-a[cat.key];});
     var maxV=cat.max||(Math.max.apply(null,sorted.map(function(u){return u[cat.key]||0;}))||1);
     html+='<div class="card" style="margin-bottom:14px;">';
-    html+='<div class="section-title" style="margin-bottom:12px;">'+cat.icon+' '+cat.label+'</div>';
+    html+='<div class="section-title" style="margin-bottom:12px;">' + cat.label + '</div>';
     sorted.forEach(function(u,i){
-      var val=u[cat.key]||0,pct=Math.round(val/maxV*100);
+      var val=u[cat.key]||0, pct=Math.round(val/maxV*100);
       var isMe=currentUser&&u.uid===currentUser.id;
       html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-      html+='<span style="min-width:26px;font-size:1.1rem;">'+( medals[i]||'')+'</span>';
+      html+='<span style="min-width:24px;font-size:13px;color:var(--text-muted);">'+(medals[i]||'')+'</span>';
       html+='<span style="min-width:80px;font-size:13px;font-weight:'+(isMe?'500':'400')+';color:'+(isMe?'var(--accent)':'var(--text)')+';">'+u.name+(isMe?' (toi)':'')+'</span>';
       html+='<div style="flex:1;background:var(--glass);border-radius:4px;height:16px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:'+bc[i%bc.length]+';border-radius:4px;"></div></div>';
-      html+='<span style="min-width:70px;text-align:right;font-size:12px;color:var(--text-muted);">'+cat.fmt(u)+'</span></div>';
-      if(cat.key==='sessions'&&u.favSpot)html+='<div style="padding-left:36px;margin-top:-4px;margin-bottom:6px;font-size:11px;color:var(--text-faint);">📍 '+u.favSpot+'</div>';
+      html+='<span style="min-width:80px;text-align:right;font-size:12px;color:var(--text-muted);">'+cat.fmt(u)+'</span>';
+      html+='</div>';
     });
     html+='</div>';
   });
@@ -1949,14 +2102,14 @@ async function loadRanking() {
     return{label:u.name,backgroundColor:cc[i%cc.length]+'cc',borderRadius:3,
       data:months.map(function(m){return allData.filter(function(s){return s.user_id===u.uid&&(s.date||'').startsWith(m);}).length;})};
   });
-  html+='<div class="card"><div class="section-title" style="margin-bottom:10px;">Sessions / mois (6 derniers)</div><div style="position:relative;height:200px;"><canvas id="ranking-chart" role="img" aria-label="classement"></canvas></div></div>';
+  html+='<div class="card"><div class="section-title" style="margin-bottom:10px;">Sessions par mois (6 derniers)</div><div style="position:relative;height:200px;"><canvas id="ranking-chart" role="img" aria-label="classement"></canvas></div></div>';
   el.innerHTML=html;
   clearTimeout(window._rankT);
   window._rankT=setTimeout(function(){
-    var cv=document.getElementById('ranking-chart');if(!cv)return;
+    var cv=document.getElementById('ranking-chart'); if(!cv) return;
     try{var ex=Chart.getChart(cv);if(ex)ex.destroy();}catch(_){}
-        var _mn=['','jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
-    var ml=months.map(function(m){var p=m.split('-'),mo=parseInt(p[1]);return _mn[mo]+"'"+p[0].slice(2);});
+    var mn=['','jan','fev','mar','avr','mai','jun','jul','aou','sep','oct','nov','dec'];
+    var ml=months.map(function(m){var p=m.split('-');return mn[parseInt(p[1])]+"'"+p[0].slice(2);});
     window.rankChart=new Chart(cv,{type:'bar',data:{labels:ml,datasets:ds},
       options:{responsive:true,maintainAspectRatio:false,
         plugins:{legend:{position:'bottom',labels:{color:'#7a94aa',boxWidth:12}}},
@@ -1964,223 +2117,127 @@ async function loadRanking() {
   },300);
 }
 
+// ════ SPOTS : fix filtre avec spots multiples ════
+var _origLoadSpotsPage = typeof loadSpotsPage !== 'undefined' ? loadSpotsPage : null;
 
-
-// ════ HELPERS ════════════════════════════════════════════════
-
-function _fmtMeta(s) {
-  var parts = [];
-  if (s.hs) parts.push('Hs ' + s.hs + 'm');
-  if (s.period) parts.push(s.period + 's');
-  if (s.context) parts.push(s.context);
-  var txt = parts.join(' · ');
-  var badges = '';
-  if (s.swell_dir && s.swell_dir !== '?' && s.swell_dir !== '—') {
-    badges += ' <span style="font-size:10px;color:#4fa3c7;background:rgba(79,163,199,0.15);padding:1px 5px;border-radius:4px;">' + s.swell_dir + '</span>';
+async function loadSpotsPage() {
+  if (sb) {
+    var res = await sb.from('sessions').select('*');
+    spotsGroupData = (res && res.data) ? res.data : [];
+  } else {
+    spotsGroupData = allSessions;
   }
-  if (s.wind_kts) {
-    var wc = s.wind_kts < 10 ? '#3dba8a' : s.wind_kts < 20 ? '#e8a057' : '#e05c5c';
-    badges += ' <span style="font-size:10px;color:' + wc + ';background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;">' + s.wind_kts + ' nds</span>';
-  }
-  return txt + badges;
-}
-
-function getSpots(session) {
-  var raw = (session.spots && Array.isArray(session.spots) && session.spots.length)
-    ? session.spots : (session.spot ? [session.spot] : []);
-  var out = [];
-  raw.forEach(function(r) {
-    r.split(',').forEach(function(p) { p = p.trim(); if (p) out.push(p); });
+  // Collecter tous les spots individuels
+  var spots = new Set(['Grand bac','Petit U','Gros nem','Fausse passe Dumbea',
+    'Gauche de Dumbea','Droite de Dumbea','La roche percee','Ouano','Skatepark','Trois cailloux']);
+  spotsGroupData.forEach(function(s) {
+    getSpots(s).forEach(function(sp) { if (sp && sp !== '?') spots.add(sp); });
   });
-  return out.length ? out : ['—'];
+  document.getElementById('spots-selector').innerHTML = Array.from(spots).map(function(sp) {
+    return '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" onclick="showSpotDetailFixed('+JSON.stringify(sp)+')">'+sp+'</button>';
+  }).join('');
+  document.getElementById('spots-content').innerHTML = '<div class="empty"><div class="empty-icon">&#x1F4CD;</div><div class="empty-title">Selectionne un spot</div></div>';
 }
 
-function dirToDeg(d) {
-  if (!d) return null;
-  var m = d.match(/(\d+)/); if (m) return parseInt(m[1]);
-  var map = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,
-    S:180,SSO:190,SO:210,OSO:247,O:270,ONO:292,NO:315,NNO:335};
-  var k = d.replace(/[^A-Z]/g,'');
-  return map[k] !== undefined ? map[k] : null;
-}
+var spotCharts2 = [];
 
-function renderMiniWindRose(swell, wind, sz) {
-  sz = sz || 64; var cx = sz/2, cy = sz/2, r = sz/2-5;
-  function arr(deg, col, len, w) {
-    if (deg===null) return '';
-    var rad = (deg-90)*Math.PI/180;
-    return '<line x1="'+cx+'" y1="'+cy+'" x2="'+(cx+Math.cos(rad)*len).toFixed(1)+'" y2="'+(cy+Math.sin(rad)*len).toFixed(1)+'" stroke="'+col+'" stroke-width="'+w+'" stroke-linecap="round"/>';
-  }
-  var sd = dirToDeg(swell), wd = dirToDeg(wind);
-  return '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 '+sz+' '+sz+'" style="flex-shrink:0;" title="Houle:'+(swell||'—')+' Vent:'+(wind||'—')+'">'
-    +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>'
-    +'<text x="'+cx+'" y="8" text-anchor="middle" font-size="7" fill="rgba(255,255,255,0.2)">N</text>'
-    +arr(sd,'#4fa3c7',r*0.78,3)+arr(wd,'#e05c5c',r*0.58,2)
-    +(sd!==null?'<circle cx="'+(cx+Math.cos((sd-90)*Math.PI/180)*r*0.78).toFixed(1)+'" cy="'+(cy+Math.sin((sd-90)*Math.PI/180)*r*0.78).toFixed(1)+'" r="3" fill="#4fa3c7"/>':'')
-    +'</svg>';
-}
-
-function renderSwellGauge(hs) {
-  if (!hs) return '<span style="color:var(--text-faint);">—</span>';
-  var filled = Math.min(Math.round(hs/4*5),5);
-  var col = hs<0.5?'#7a94aa':hs<1.5?'#4fa3c7':hs<2.5?'#3dba8a':hs<3.5?'#e8a057':'#e05c5c';
-  var bars=''; for(var i=0;i<5;i++) bars+='<span style="display:inline-block;width:5px;height:11px;margin-right:1px;border-radius:1px;background:'+(i<filled?col:'rgba(255,255,255,0.1)')+'"></span>';
-  return '<span style="display:inline-flex;align-items:center;gap:3px;" title="Hs '+hs+'m">'+bars+'<span style="font-size:11px;color:var(--text-muted);">'+hs+'m</span></span>';
-}
-
-function renderWind(kts, dir) {
-  if (!kts && !dir) return '—';
-  var col = !kts?'#7a94aa':kts<10?'#3dba8a':kts<20?'#e8a057':'#e05c5c';
-  var label = kts?(kts+' nds'):'';
-  if (dir && dir.toLowerCase()==='glassy') { label='Glassy'; col='#3dba8a'; }
-  else if (dir && dir!=='?' && dir!=='—') label+=(label?' ':'')+dir;
-  return '<span style="color:'+col+';">'+label+'</span>';
-}
-
-// ════ BATEAUX ════════════════════════════════════════════════
-var boatsCache=[];
-var FUEL_CFP={essence:185,diesel:160,electrique:0};
-
-async function loadBoats() {
-  if(!sb) return [];
-  try { var r=await sb.from('boats').select('*').order('name'); boatsCache=(r&&r.data)||[]; }
-  catch(e) { console.warn('loadBoats:',e); boatsCache=[]; }
-  return boatsCache;
-}
-
-async function populateBoatSelect() {
-  var boats=boatsCache.length?boatsCache:await loadBoats();
-  var sel=document.getElementById('f-boat-id');
-  if(!sel) return;
-  var cur=sel.value;
-  sel.innerHTML='<option value="">-- Choisir --</option>';
-  boats.forEach(function(b){
-    var o=document.createElement('option');
-    o.value=b.id;
-    o.textContent=b.name+(b.alias?' ('+b.alias+')':'');
-    sel.appendChild(o);
+function showSpotDetailFixed(spotName) {
+  spotCharts2.forEach(function(ch){ try{ch.destroy();}catch(e){} });
+  spotCharts2 = [];
+  // Filtrer avec getSpots() pour trouver les sessions multi-spots
+  var sessions = spotsGroupData.filter(function(s) {
+    return getSpots(s).some(function(sp) { return sp === spotName; });
   });
-  if(cur) sel.value=cur;
-}
-
-function updateFuelEstimate() {
-  var bid=document.getElementById('f-boat-id')?document.getElementById('f-boat-id').value:'';
-  var dur=parseFloat(document.getElementById('f-duration')?document.getElementById('f-duration').value:0)||0;
-  var nb=parseInt(document.getElementById('f-nb-surfers')?document.getElementById('f-nb-surfers').value:1)||1;
-  var el=document.getElementById('fuel-estimate'); if(!el) return;
-  var b=boatsCache.find(function(x){return x.id===bid;});
-  if(!b||!b.conso_l_h||!dur){el.textContent='';return;}
-  var L=Math.round(b.conso_l_h*dur),fP=FUEL_CFP[b.fuel_type||'essence']||185;
-  var tot=Math.round(L*fP),perP=nb>0?Math.round(tot/nb):tot;
-  el.textContent='~'+L+' L · '+tot.toLocaleString('fr')+' CFP · '+perP.toLocaleString('fr')+' CFP/pers.';
-}
-
-async function loadBoatsPage() {
-  var el=document.getElementById('boats-list'); if(!el) return;
-  el.innerHTML='<div class="loading-state"><div class="spinner"></div></div>';
-  var boats=await loadBoats();
-  if(!boats.length){
-    el.innerHTML='<div class="empty"><div class="empty-icon">&#x26F5;</div><div class="empty-title">Aucun bateau enregistré</div></div>';
+  var el = document.getElementById('spots-content');
+  if (!sessions.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-title">Aucune session pour ce spot</div></div>';
     return;
   }
-  var r2=sb?await sb.from('sessions').select('*'):{data:allSessions};
-  var sessions=(r2&&r2.data)?r2.data:allSessions;
-  var html='';
-  boats.forEach(function(b,bi){
-    // Matcher les sessions : par boat_id OU par nom du bateau dans le champ bateau legacy
-    var bs=sessions.filter(function(s){
-      return s.boat_id===b.id
-        || (b.name&&s.bateau&&s.bateau.toLowerCase()===b.name.toLowerCase())
-        || (b.alias&&s.bateau&&s.bateau.toLowerCase()===b.alias.toLowerCase());
-    });
-    var tH=Math.round(bs.reduce(function(a,s){return a+(s.duration_h||0);},0)*10)/10;
-    var tNm=Math.round(bs.reduce(function(a,s){return a+(s.distance_nm||0);},0));
-    var L=b.conso_l_h?Math.round(tH*b.conso_l_h):null;
-    var fP=FUEL_CFP[b.fuel_type||'essence']||185;
-    var cfp=L?Math.round(L*fP):null;
-    var qL=bs.filter(function(s){return s.quality;});
-    var avgQ=qL.length?(qL.reduce(function(a,s){return a+s.quality;},0)/qL.length).toFixed(1):'--';
-    var sc={};
-    bs.forEach(function(s){getSpots(s).forEach(function(sp){if(sp&&sp!=='—')sc[sp]=(sc[sp]||0)+1;});});
-    var spPref=Object.entries(sc).sort(function(a,b){return b[1]-a[1];})[0];
-    html+='<div class="card" style="margin-bottom:12px;">';
-    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
-    html+='<div><div style="font-weight:500;font-size:15px;">'+b.name+'</div>';
-    if(b.alias) html+='<div style="font-size:12px;color:var(--text-muted);">Propriétaire : '+b.alias+'</div>';
-    html+='</div>';
-    html+='<button class="btn btn-sm btn-secondary" data-bidx="'+bi+'" onclick="openEditBoatByIdx(this)">Modifier</button>';
-    html+='</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px;">';
-    html+='<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" style="font-size:1.3rem;">'+bs.length+'</div></div>';
-    html+='<div class="stat-card"><div class="stat-label">Heures</div><div class="stat-value" style="font-size:1.3rem;">'+tH+'h</div></div>';
-    if(tNm>0) html+='<div class="stat-card"><div class="stat-label">Distance</div><div class="stat-value" style="font-size:1.3rem;">'+tNm+' nm</div></div>';
-    if(L) html+='<div class="stat-card"><div class="stat-label">Carburant est.</div><div class="stat-value" style="font-size:1.3rem;">'+L+' L</div>'+(cfp?'<div class="stat-sub">'+cfp.toLocaleString('fr')+' CFP</div>':'')+' </div>';
-    html+='<div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value" style="font-size:1.3rem;">'+avgQ+(avgQ!=='--'?' ★':'')+' </div></div>';
-    html+='</div>';
-    var infos=[];
-    if(b.conso_l_h) infos.push(b.conso_l_h+' L/h');
-    if(b.tank_l) infos.push('Réservoir '+b.tank_l+' L');
-    if(b.nb_places) infos.push(b.nb_places+' places');
-    if(b.fuel_type) infos.push(b.fuel_type);
-    if(spPref) infos.push('Spot préf. : '+spPref[0]+' ('+spPref[1]+'x)');
-    if(infos.length) html+='<div style="font-size:12px;color:var(--text-muted);">'+infos.join(' · ')+'</div>';
-    html+='</div>';
-  });
-  el.innerHTML=html;
+  var n = sessions.length;
+  var qSess = sessions.filter(function(s){return s.quality;});
+  var avgQ = qSess.length ? (qSess.reduce(function(a,s){return a+s.quality;},0)/qSess.length).toFixed(1) : '--';
+  var hsSess = sessions.filter(function(s){return s.hs;});
+  var avgHs = hsSess.length ? (hsSess.reduce(function(a,s){return a+s.hs;},0)/hsSess.length).toFixed(2) : '--';
+  var tSess = sessions.filter(function(s){return s.period;});
+  var avgT = tSess.length ? (tSess.reduce(function(a,s){return a+s.period;},0)/tSess.length).toFixed(1) : '--';
+  var durSess = sessions.filter(function(s){return s.duration_h;});
+  var avgDur = durSess.length ? (durSess.reduce(function(a,s){return a+s.duration_h;},0)/durSess.length).toFixed(1) : '--';
+  var tubeN = sessions.filter(function(s){return s.moves&&Array.isArray(s.moves)&&s.moves.includes('tube');}).length;
+  var good = sessions.filter(function(s){return s.quality>=4;});
+  var avgHsGood = good.filter(function(s){return s.hs;}).length
+    ? (good.filter(function(s){return s.hs;}).reduce(function(a,s){return a+s.hs;},0)/good.filter(function(s){return s.hs;}).length).toFixed(2) : '--';
+  var avgTGood = good.filter(function(s){return s.period;}).length
+    ? (good.filter(function(s){return s.period;}).reduce(function(a,s){return a+s.period;},0)/good.filter(function(s){return s.period;}).length).toFixed(1) : '--';
+  var best = sessions.filter(function(s){return s.quality;}).sort(function(a,b){return b.quality-a.quality;})[0];
+
+  var html = '<div style="margin-bottom:1rem;">';
+  html += '<h2 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:4px;">' + spotName + '</h2>';
+  html += '</div>';
+  html += '<div class="stats-grid" style="margin-bottom:1.5rem;">';
+  html += '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">' + n + '</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">Qualite moy.</div><div class="stat-value">' + avgQ + (avgQ!=='--'?' *':'') + '</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">Hs moy.</div><div class="stat-value">' + avgHs + (avgHs!=='--'?'m':'') + '</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">Periode moy.</div><div class="stat-value">' + avgT + (avgT!=='--'?'s':'') + '</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">Duree moy.</div><div class="stat-value">' + avgDur + (avgDur!=='--'?'h':'') + '</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">' + tubeN + '</div><div class="stat-sub">' + Math.round(tubeN/n*100) + '%</div></div>';
+  html += '</div>';
+  if (good.length) {
+    html += '<div class="card" style="margin-bottom:1rem;border-color:var(--success);">';
+    html += '<div class="section-title" style="margin-bottom:8px;color:var(--success);">Conditions sessions 4+ etoiles (' + good.length + ' sess.)</div>';
+    html += '<div style="font-size:13px;">Hs moy. ' + avgHsGood + 'm - Periode moy. ' + avgTGood + 's</div>';
+    html += '</div>';
+  }
+  if (best) {
+    html += '<div class="card" style="margin-bottom:1rem;">';
+    html += '<div class="section-title" style="margin-bottom:8px;">Meilleure session</div>';
+    html += '<div style="font-size:13px;">' + (best.date||'') + ' - ' + (best.quality||'') + ' etoiles' + (best.observations ? ' - ' + best.observations.slice(0,80) + '...' : '') + '</div>';
+    html += '</div>';
+  }
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">';
+  html += '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualite par session</div><div style="position:relative;height:160px;"><canvas id="sp-qual-chart" role="img" aria-label="qualite"></canvas></div></div>';
+  html += '<div class="card"><div class="section-title" style="margin-bottom:8px;">Hs par session</div><div style="position:relative;height:160px;"><canvas id="sp-hs-chart" role="img" aria-label="hs"></canvas></div></div>';
+  html += '</div>';
+  el.innerHTML = html;
+
+  clearTimeout(window._spotT);
+  window._spotT = setTimeout(function() {
+    var sorted = sessions.slice().sort(function(a,b){return (a.date||'')>(b.date||'')?1:-1;});
+    var labels = sorted.map(function(s){return (s.date||'').slice(5);});
+    var qColors = ['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
+    var c1 = document.getElementById('sp-qual-chart');
+    if (c1) {
+      try{var e=Chart.getChart(c1);if(e)e.destroy();}catch(_){}
+      spotCharts2.push(new Chart(c1, {
+        type:'line',
+        data:{labels:labels,datasets:[{data:sorted.map(function(s){return s.quality||null;}),
+          borderColor:'#4fa3c7',backgroundColor:'rgba(79,163,199,0.08)',
+          borderWidth:1.5,pointRadius:4,fill:true,tension:0.3,
+          pointBackgroundColor:sorted.map(function(s){return qColors[s.quality||0]||'#888';})}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+          scales:{y:{min:0,max:5,ticks:{stepSize:1,color:'#7a94aa',callback:function(v){return v+'*';}},grid:{color:'rgba(255,255,255,0.05)'}},
+            x:{ticks:{color:'#7a94aa',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:8},grid:{display:false}}}}
+      }));
+    }
+    var c2 = document.getElementById('sp-hs-chart');
+    if (c2) {
+      try{var e=Chart.getChart(c2);if(e)e.destroy();}catch(_){}
+      spotCharts2.push(new Chart(c2, {
+        type:'bar',
+        data:{labels:labels,datasets:[{data:sorted.map(function(s){return s.hs||null;}),
+          backgroundColor:'#7b6cf6aa',borderRadius:3}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+          scales:{y:{ticks:{color:'#7a94aa'},grid:{color:'rgba(255,255,255,0.05)'}},
+            x:{ticks:{color:'#7a94aa',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:8},grid:{display:false}}}}
+      }));
+    }
+  }, 300);
 }
 
-function openEditBoatByIdx(btn){
-  var idx=parseInt(btn.getAttribute('data-bidx'));
-  if(isNaN(idx)||!boatsCache[idx]){showToast('Bateau introuvable','error');return;}
-  openEditBoat(boatsCache[idx]);
-}
-
-function openAddBoat(){
-  document.getElementById('boat-edit-id').value='';
-  document.getElementById('modal-boat-title').textContent='Nouveau bateau';
-  ['boat-name','boat-alias','boat-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-  ['boat-conso','boat-tank'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-  var p=document.getElementById('boat-places');if(p)p.value='6';
-  var fp=document.getElementById('boat-fuel-price');if(fp)fp.value='185';
-  var f=document.getElementById('boat-fuel');if(f)f.value='essence';
-  document.getElementById('modal-boat').classList.add('open');
-}
-
-function openEditBoat(b){
-  document.getElementById('boat-edit-id').value=b.id||'';
-  document.getElementById('modal-boat-title').textContent='Modifier : '+b.name;
-  document.getElementById('boat-name').value=b.name||'';
-  document.getElementById('boat-alias').value=b.alias||'';
-  document.getElementById('boat-conso').value=b.conso_l_h||'';
-  document.getElementById('boat-tank').value=b.tank_l||'';
-  document.getElementById('boat-places').value=b.nb_places||'';
-  document.getElementById('boat-fuel').value=b.fuel_type||'essence';
-  document.getElementById('boat-fuel-price').value=FUEL_CFP[b.fuel_type||'essence']||185;
-  document.getElementById('boat-notes').value=b.notes||'';
-  document.getElementById('modal-boat').classList.add('open');
-}
-
-async function saveBoat(){
-  if(!sb){showToast('Supabase requis','error');return;}
-  var id=document.getElementById('boat-edit-id').value;
-  var name=document.getElementById('boat-name').value.trim();
-  if(!name){showToast('Le nom ne peut pas être vide','error');return;}
-  var dup=boatsCache.find(function(b){return b.name.toLowerCase()===name.toLowerCase()&&b.id!==id;});
-  if(dup){showToast('Ce nom existe déjà','error');return;}
-  var payload={
-    name:name,
-    alias:document.getElementById('boat-alias').value.trim()||null,
-    conso_l_h:parseFloat(document.getElementById('boat-conso').value)||null,
-    tank_l:parseFloat(document.getElementById('boat-tank').value)||null,
-    nb_places:parseInt(document.getElementById('boat-places').value)||null,
-    fuel_type:document.getElementById('boat-fuel').value,
-    notes:document.getElementById('boat-notes').value.trim()||null,
-  };
-  var res=id?await sb.from('boats').update(payload).eq('id',id):await sb.from('boats').insert(payload);
-  if(res.error){showToast('Erreur : '+res.error.message,'error');return;}
-  showToast(id?'Bateau mis à jour !':'Bateau ajouté !','success');
-  closeModal('modal-boat'); boatsCache=[];
-  await loadBoatsPage(); await populateBoatSelect();
+function changeTubeCount(delta) {
+  var el = document.getElementById('tube-count-val');
+  if (!el) return;
+  var v = Math.max(1, Math.min(10, (parseInt(el.textContent)||1) + delta));
+  el.textContent = v;
 }
 
 // ══ BOOT ══
