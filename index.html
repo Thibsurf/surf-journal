@@ -1843,9 +1843,9 @@ function showSpotDetail(spotName) {
   const best = qSess.sort((a,b) => b.quality - a.quality)[0];
 
   el.innerHTML =
-    '<div style="margin-bottom:1rem;">' +
-      '<h2 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:4px;">' + spotName + '</h2>' +
-      '<span style="font-size:12px;color:var(--text-muted);">Pente β ≈ ' + beta + '° · ξ moy = ' + avgXi + ' · ' + deflType + '</span>' +
+    '<div style="margin-bottom:1rem;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+      '<div><h2 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:4px;">' + spotName + '</h2>' +
+      '<span style="font-size:12px;color:var(--text-muted);">Pente β ≈ ' + beta + '° · ξ moy = ' + avgXi + ' · ' + deflType + '</span></div>' +
     '</div>' +
     '<div class="stats-grid" style="margin-bottom:1.5rem;">' +
       '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">' + n + '</div></div>' +
@@ -1856,7 +1856,7 @@ function showSpotDetail(spotName) {
       '<div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">' + tubeN + '</div><div class="stat-sub">' + Math.round(tubeN/n*100) + '%</div></div>' +
     '</div>' +
     (good.length ? '<div class="card" style="margin-bottom:1rem;border-color:var(--success);">' +
-      '<div class="section-title" style="margin-bottom:8px;color:var(--success);">Conditions sessions ≥ 4★ (' + good.length + ' sessions)</div>' +
+      '<div class="section-title" style="margin-bottom:8px;color:var(--success);">Conditions ≥ 4★ (' + good.length + ' sessions)</div>' +
       '<div style="font-size:13px;">Hs moy. <strong>' + avgHsGood + 'm</strong> · Période moy. <strong>' + avgTGood + 's</strong></div>' +
     '</div>' : '') +
     (best ? '<div class="card" style="margin-bottom:1rem;">' +
@@ -1864,245 +1864,427 @@ function showSpotDetail(spotName) {
       '<div style="font-size:13px;">' + best.date + ' — <strong>' + '★'.repeat(best.quality) + '</strong>' +
       (best.observations ? ' — ' + best.observations.slice(0, 80) + '…' : '') + '</div>' +
     '</div>' : '') +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité dans le temps</div>' +
-        '<div style="position:relative;height:160px;"><canvas id="spot-qual-chart" role="img" aria-label="Qualite sessions"></canvas></div></div>' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Hs par session</div>' +
-        '<div style="position:relative;height:160px;"><canvas id="spot-hs-chart" role="img" aria-label="Hs sessions"></canvas></div></div>' +
+
+    // Rose des houles
+    '<div class="card" style="margin-bottom:14px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">' +
+        '<div class="section-title" style="margin-bottom:0;">🌀 Rose des houles</div>' +
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
+          '<span style="font-size:11px;color:var(--text-muted);">Filtre ≥</span>' +
+          '<select id="rose-filter" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="redrawRose()">' +
+            '<option value="0">Toutes</option><option value="1">1★</option><option value="2">2★</option>' +
+            '<option value="3">3★</option><option value="4">4★</option><option value="5">5★</option>' +
+          '</select>' +
+          '<select id="rose-metric" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="redrawRose()">' +
+            '<option value="freq">Fréquence</option><option value="power">Puissance (Hs²·T)</option><option value="quality">Qualité moy.</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">' +
+        '<canvas id="spot-rose-canvas" style="flex-shrink:0;"></canvas>' +
+        '<div id="spot-rose-legend" style="font-size:11px;color:var(--text-muted);line-height:2;padding-top:4px;max-width:180px;"></div>' +
+      '</div>' +
     '</div>' +
+
+    // Heatmap calendrier
+    '<div class="card" style="margin-bottom:14px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">' +
+        '<div class="section-title" style="margin-bottom:0;">📅 Calendrier des sessions</div>' +
+        '<select id="heatmap-metric" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="redrawHeatmap()">' +
+          '<option value="quality">Qualité</option><option value="hs">Hs (m)</option><option value="power">Puissance (Hs²·T)</option>' +
+        '</select>' +
+      '</div>' +
+      '<div id="spot-heatmap" style="overflow-x:auto;"></div>' +
+    '</div>' +
+
+    // Puissance & qualité dans le temps
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité vs Hs (scatter)</div>' +
-        '<div style="position:relative;height:180px;"><canvas id="spot-scatter-chart" role="img" aria-label="Qualite vs Hs"></canvas></div></div>' +
-    '<div class="card" style="margin-bottom:14px;"><div class="section-title" style="margin-bottom:8px;">🌀 Rose des houles — Fréquence · Période · Hs · Qualité</div>' +
-      '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;padding:8px;" id="spot-rose-wrap"></div>' +
-      '<div style="font-size:10px;color:var(--text-faint);text-align:center;padding-bottom:6px;">Taille pétale = fréquence · Couleur = période moy (bleu court→violet long) · ● = Hs moy · Opacité = qualité moy</div>' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">⚡ Puissance Hs²·T par session</div>' +
+        '<div style="position:relative;height:160px;"><canvas id="spot-power-chart"></canvas></div></div>' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">★ Qualité dans le temps</div>' +
+        '<div style="position:relative;height:160px;"><canvas id="spot-qual-chart"></canvas></div></div>' +
+    '</div>' +
+
+    // Vents & saisons
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">🌬️ Qualité par direction vent</div>' +
+        '<div style="position:relative;height:160px;"><canvas id="spot-wind-chart"></canvas></div></div>' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">📆 Saisonnalité (qualité/mois)</div>' +
+        '<div style="position:relative;height:160px;"><canvas id="spot-season-chart"></canvas></div></div>' +
     '</div>';
 
+  window._roseSessions = sessions;
+
   setTimeout(function() {
-    const sorted = sessions.slice().sort((a,b) => a.date > b.date ? 1 : -1);
-    const labels = sorted.map(s => (s.date || '').slice(5));
-    const qColors = ['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
+    redrawRose();
+    redrawHeatmap();
 
-    // ── Qualité dans le temps
-    const c1 = document.getElementById('spot-qual-chart');
+    var sorted = sessions.slice().sort(function(a,b){return a.date>b.date?1:-1;});
+    var labels = sorted.map(function(s){return (s.date||'').slice(5);});
+    var qColors = ['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
+
+    // Puissance Hs²·T
+    var c1 = document.getElementById('spot-power-chart');
     if (c1) {
-      spotCharts.push(new Chart(c1, {
-        type: 'line',
-        data: { labels: labels, datasets: [{ data: sorted.map(s => s.quality || null),
-          borderColor: '#4fa3c7', backgroundColor: 'rgba(79,163,199,0.08)',
-          borderWidth: 1.5, pointRadius: 4, fill: true, tension: 0.3,
-          pointBackgroundColor: sorted.map(s => qColors[s.quality || 0]) }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { min: 0, max: 5, ticks: { stepSize: 1, color: '#7a94aa', callback: function(v) { return v + '★'; } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
-      }));
+      var pwrData = sorted.map(function(s){ return s.hs&&s.period?+(s.hs*s.hs*s.period).toFixed(1):null; });
+      spotCharts.push(new Chart(c1,{type:'bar',
+        data:{labels:labels,datasets:[{data:pwrData,backgroundColor:pwrData.map(function(v){
+          if(!v)return 'rgba(123,108,246,0.1)';
+          return v<5?'rgba(79,163,199,0.7)':v<15?'rgba(123,108,246,0.7)':v<30?'rgba(232,160,87,0.7)':'rgba(224,92,92,0.8)';
+        }),borderRadius:3}]},
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+' m²·s';}}}},
+          scales:{y:{title:{display:true,text:'Hs²·T (m²·s)',color:'#7a94aa',font:{size:9}},ticks:{color:'#7a94aa'},grid:{color:'rgba(255,255,255,0.04)'}},
+                  x:{ticks:{color:'#7a94aa',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:8},grid:{display:false}}}}}));
     }
 
-    // ── Hs par session
-    const c2 = document.getElementById('spot-hs-chart');
+    // Qualité dans le temps
+    var c2 = document.getElementById('spot-qual-chart');
     if (c2) {
-      spotCharts.push(new Chart(c2, {
-        type: 'bar',
-        data: { labels: labels, datasets: [{ data: sorted.map(s => s.hs || null),
-          backgroundColor: '#7b6cf6aa', borderRadius: 3 }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
-      }));
+      spotCharts.push(new Chart(c2,{type:'line',
+        data:{labels:labels,datasets:[{data:sorted.map(function(s){return s.quality||null;}),
+          borderColor:'#4fa3c7',backgroundColor:'rgba(79,163,199,0.08)',
+          borderWidth:1.5,pointRadius:4,fill:true,tension:0.3,
+          pointBackgroundColor:sorted.map(function(s){return qColors[s.quality||0];})}]},
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false}},
+          scales:{y:{min:0,max:5,ticks:{stepSize:1,color:'#7a94aa',callback:function(v){return v+'★';}},grid:{color:'rgba(255,255,255,0.04)'}},
+                  x:{ticks:{color:'#7a94aa',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:8},grid:{display:false}}}}}));
     }
 
-    // ── Scatter Qualité vs Hs
-    const c3 = document.getElementById('spot-scatter-chart');
+    // Qualité par direction de vent
+    var c3 = document.getElementById('spot-wind-chart');
     if (c3) {
-      var scatterHs = sessions.filter(function(s){return s.hs && s.quality;}).map(function(s){
-        return {x: s.hs, y: s.quality, label: s.date};
-      });
-      spotCharts.push(new Chart(c3, {
-        type: 'scatter',
-        data: { datasets: [{ data: scatterHs,
-          backgroundColor: scatterHs.map(function(p){ return qColors[p.y]+'cc'; }),
-          pointRadius: 6, pointHoverRadius: 8 }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) {
-            return 'Hs ' + ctx.raw.x + 'm · ' + ctx.raw.y + '★';
-          }}}},
-          scales: {
-            x: { title: { display: true, text: 'Hs (m)', color: '#7a94aa', font:{size:10} }, ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { min: 0.5, max: 5.5, title: { display: true, text: 'Qualité', color: '#7a94aa', font:{size:10} }, ticks: { stepSize:1, color: '#7a94aa', callback: function(v){return Math.round(v)+'★';} }, grid: { color: 'rgba(255,255,255,0.05)' } }
-          }
-        }
-      }));
+      var windMap={};
+      sessions.forEach(function(s){if(s.wind_dir&&s.quality){if(!windMap[s.wind_dir])windMap[s.wind_dir]=[];windMap[s.wind_dir].push(s.quality);}});
+      var windDirs=Object.keys(windMap).sort();
+      var windAvg=windDirs.map(function(d){var a=windMap[d];return +(a.reduce(function(x,y){return x+y;},0)/a.length).toFixed(1);});
+      var windN=windDirs.map(function(d){return windMap[d].length;});
+      spotCharts.push(new Chart(c3,{type:'bar',
+        data:{labels:windDirs,datasets:[
+          {label:'Qualité moy.',data:windAvg,backgroundColor:'rgba(79,163,199,0.7)',borderRadius:4,yAxisID:'y'},
+          {label:'N sessions',data:windN,backgroundColor:'rgba(255,255,255,0.07)',borderRadius:4,yAxisID:'y2'}
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:true,labels:{color:'#7a94aa',boxWidth:10,font:{size:9}}}},
+          scales:{y:{min:0,max:5,title:{display:true,text:'★',color:'#7a94aa',font:{size:9}},ticks:{color:'#7a94aa',callback:function(v){return v+'★';}},grid:{color:'rgba(255,255,255,0.04)'}},
+                  y2:{position:'right',title:{display:true,text:'N',color:'#7a94aa',font:{size:9}},ticks:{color:'#7a94aa',stepSize:1},grid:{display:false}},
+                  x:{ticks:{color:'#7a94aa',font:{size:9}},grid:{display:false}}}}}));
     }
 
-    // ── Scatter Qualité vs Période
-    const c4 = document.getElementById('spot-period-chart');
+    // Saisonnalité
+    var c4 = document.getElementById('spot-season-chart');
     if (c4) {
-      var scatterT = sessions.filter(function(s){return s.period && s.quality;}).map(function(s){
-        return {x: s.period, y: s.quality};
-      });
-      spotCharts.push(new Chart(c4, {
-        type: 'scatter',
-        data: { datasets: [{ data: scatterT,
-          backgroundColor: scatterT.map(function(p){ return qColors[p.y]+'cc'; }),
-          pointRadius: 6, pointHoverRadius: 8 }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) {
-            return 'T ' + ctx.raw.x + 's · ' + ctx.raw.y + '★';
-          }}}},
-          scales: {
-            x: { title: { display: true, text: 'Période (s)', color: '#7a94aa', font:{size:10} }, ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { min: 0.5, max: 5.5, title: { display: true, text: 'Qualité', color: '#7a94aa', font:{size:10} }, ticks: { stepSize:1, color: '#7a94aa', callback: function(v){return Math.round(v)+'★';} }, grid: { color: 'rgba(255,255,255,0.05)' } }
-          }
-        }
-      }));
-    }
-
-    // ── Rose des houles scientifique (Canvas polaire)
-    var roseWrap = document.getElementById('spot-rose-wrap');
-    if (roseWrap) {
-      // Collecter données : direction → liste de {hs, period, quality}
-      var roseData = {};
-      var degMap2 = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
-      sessions.forEach(function(s) {
-        var raw = (s.swell_dir || '').trim();
-        if (!raw || raw === '?' || raw === '—') return;
-        var deg = null;
-        var mDeg = raw.match(/(\d+)°?/); 
-        var mCard = raw.match(/^([A-Z]+)/);
-        if (mDeg) deg = parseInt(mDeg[1]);
-        else if (mCard && degMap2[mCard[1]] !== undefined) deg = degMap2[mCard[1]];
-        if (deg === null) return;
-        // Regrouper par secteur 22.5°
-        var sector = Math.round(deg / 22.5) * 22.5 % 360;
-        if (!roseData[sector]) roseData[sector] = {hs:[], period:[], quality:[], count:0};
-        roseData[sector].count++;
-        if (s.hs) roseData[sector].hs.push(s.hs);
-        if (s.period) roseData[sector].period.push(s.period);
-        if (s.quality) roseData[sector].quality.push(s.quality);
-      });
-
-      if (!Object.keys(roseData).length) {
-        roseWrap.innerHTML = '<span style="color:var(--text-faint);font-size:13px;">Pas de données direction houle</span>';
-      } else {
-        // Canvas polaire
-        roseWrap.innerHTML = '<canvas id="spot-rose-canvas" style="max-width:320px;max-height:320px;"></canvas>';
-        var canvas = document.getElementById('spot-rose-canvas');
-        var dpr = window.devicePixelRatio || 1;
-        var sz = Math.min(roseWrap.offsetWidth || 300, 300);
-        canvas.width = sz * dpr; canvas.height = sz * dpr;
-        canvas.style.width = sz + 'px'; canvas.style.height = sz + 'px';
-        var ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
-        var cx = sz/2, cy = sz/2, rMax = sz/2 - 28;
-        var maxCount = Math.max.apply(null, Object.values(roseData).map(function(d){return d.count;}));
-
-        // Fond
-        ctx.fillStyle = 'rgba(13,31,60,0)';
-        ctx.fillRect(0,0,sz,sz);
-
-        // Grille circulaire
-        [0.25,0.5,0.75,1].forEach(function(f) {
-          ctx.beginPath();
-          ctx.arc(cx, cy, rMax*f, 0, 2*Math.PI);
-          ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-          // Label fréquence
-          var labelN = Math.round(maxCount * f);
-          ctx.fillStyle = 'rgba(255,255,255,0.2)';
-          ctx.font = '8px DM Sans, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(labelN + 'x', cx + 3, cy - rMax*f + 9);
-        });
-
-        // Axes cardinaux
-        var cardLabels = ['N','NE','E','SE','S','SO','O','NO'];
-        cardLabels.forEach(function(c, i) {
-          var deg = i * 45;
-          var rad = (deg - 90) * Math.PI / 180;
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.lineTo(cx + Math.cos(rad)*rMax, cy + Math.sin(rad)*rMax);
-          ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-          var lx = cx + Math.cos(rad)*(rMax+14);
-          var ly = cy + Math.sin(rad)*(rMax+14);
-          ctx.fillStyle = 'rgba(255,255,255,0.35)';
-          ctx.font = 'bold 10px DM Sans, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(c, lx, ly);
-        });
-
-        // Secteurs : pétales colorées par période moyenne (bleu froid = courte, violet = longue)
-        // Taille = fréquence, couleur = période moy, opacité = qualité moy
-        Object.keys(roseData).forEach(function(secDeg) {
-          var d = roseData[secDeg];
-          var r = (d.count / maxCount) * rMax;
-          var rad = (parseFloat(secDeg) - 90) * Math.PI / 180;
-          var halfArc = (22.5 / 2) * Math.PI / 180;
-          var avgT = d.period.length ? d.period.reduce(function(a,b){return a+b;},0)/d.period.length : 10;
-          var avgQ = d.quality.length ? d.quality.reduce(function(a,b){return a+b;},0)/d.quality.length : 3;
-          var avgHs = d.hs.length ? d.hs.reduce(function(a,b){return a+b;},0)/d.hs.length : 1;
-
-          // Couleur par période : 7s=#4fa3c7, 14s=#7b6cf6, 20s=#e05c5c
-          var tNorm = Math.min(Math.max((avgT - 7) / 13, 0), 1);
-          var r2 = Math.round(79 + tNorm*(224-79));
-          var g2 = Math.round(163 + tNorm*(92-163));
-          var b2 = Math.round(199 + tNorm*(246-199));
-          var alpha = 0.4 + (avgQ/5)*0.5;
-
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.arc(cx, cy, r, rad - halfArc, rad + halfArc);
-          ctx.closePath();
-          ctx.fillStyle = 'rgba('+r2+','+g2+','+b2+','+alpha.toFixed(2)+')';
-          ctx.fill();
-          ctx.strokeStyle = 'rgba('+r2+','+g2+','+b2+',0.9)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-
-          // Point central : Hs moyen (taille du point)
-          var ptR = Math.min(avgHs * 3, 8);
-          var ptX = cx + Math.cos(rad) * r * 0.65;
-          var ptY = cy + Math.sin(rad) * r * 0.65;
-          ctx.beginPath();
-          ctx.arc(ptX, ptY, ptR, 0, 2*Math.PI);
-          ctx.fillStyle = 'rgba(255,255,255,0.7)';
-          ctx.fill();
-
-          // Label : count + Hs moy si pétale assez grand
-          if (r > 25) {
-            var lx = cx + Math.cos(rad) * (r + 10);
-            var ly = cy + Math.sin(rad) * (r + 10);
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.font = '8px DM Sans, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(d.count + 'x · ' + avgHs.toFixed(1) + 'm', lx, ly);
-          }
-        });
-
-        // Légende
-        var legY = sz - 10;
-        ctx.font = '8px DM Sans, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'alphabetic';
-        // Période
-        [{t:7,c:'rgba(79,163,199,0.8)'},{t:14,c:'rgba(123,108,246,0.8)'},{t:20,c:'rgba(224,92,92,0.8)'}].forEach(function(item,i){
-          ctx.fillStyle = item.c;
-          ctx.fillRect(4 + i*68, legY-8, 10, 8);
-          ctx.fillStyle = 'rgba(255,255,255,0.4)';
-          ctx.fillText('T≈'+item.t+'s', 16+i*68, legY);
-        });
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.fillText('● = Hs moy', sz - 68, legY);
-      }
+      var mNames=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+      var mQ=Array(12).fill(null).map(function(){return [];});
+      sessions.forEach(function(s){if(s.date&&s.quality){var mo=parseInt(s.date.slice(5,7))-1;mQ[mo].push(s.quality);}});
+      var mAvg=mQ.map(function(a){return a.length?+(a.reduce(function(x,y){return x+y;},0)/a.length).toFixed(1):null;});
+      var mN=mQ.map(function(a){return a.length;});
+      spotCharts.push(new Chart(c4,{type:'bar',
+        data:{labels:mNames,datasets:[
+          {label:'Qualité moy.',data:mAvg,backgroundColor:mAvg.map(function(v){
+            if(!v)return 'rgba(255,255,255,0.04)';
+            return v>=4?'rgba(61,186,138,0.75)':v>=3?'rgba(79,163,199,0.7)':v>=2?'rgba(232,160,87,0.65)':'rgba(224,92,92,0.6)';
+          }),borderRadius:4,yAxisID:'y'},
+          {label:'N',data:mN,type:'line',borderColor:'rgba(255,255,255,0.2)',backgroundColor:'transparent',
+           pointRadius:3,pointBackgroundColor:'rgba(255,255,255,0.4)',borderWidth:1,yAxisID:'y2'}
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:true,labels:{color:'#7a94aa',boxWidth:10,font:{size:9}}}},
+          scales:{y:{min:0,max:5,ticks:{stepSize:1,color:'#7a94aa',callback:function(v){return v?v+'★':'';}},grid:{color:'rgba(255,255,255,0.04)'}},
+                  y2:{position:'right',ticks:{color:'#7a94aa',stepSize:1},grid:{display:false}},
+                  x:{ticks:{color:'#7a94aa',font:{size:9}},grid:{display:false}}}}}));
     }
   }, 300);
+}
+
+
+// ══ ROSE DES HOULES (redessinage interactif) ══
+var _degMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
+
+function _parseDeg(raw) {
+  if (!raw || raw==='?'||raw==='—') return null;
+  var mFull = raw.match(/^([A-Z]+)\s*\((\d+)/);
+  if (mFull) return parseInt(mFull[2]);
+  var mDeg = raw.match(/^(\d+)/);
+  if (mDeg) return parseInt(mDeg[1]);
+  var mCard = raw.match(/^([A-Z]+)/);
+  if (mCard && _degMap[mCard[1]] !== undefined) return _degMap[mCard[1]];
+  return null;
+}
+
+function redrawRose() {
+  var sessions = window._roseSessions || [];
+  var minQ = parseInt((document.getElementById('rose-filter')||{value:'0'}).value) || 0;
+  var metric = (document.getElementById('rose-metric')||{value:'freq'}).value;
+
+  // Filtrer par qualité min
+  var filtered = sessions.filter(function(s){ return !minQ || (s.quality && s.quality >= minQ); });
+
+  // Agréger par secteur 22.5°
+  var sectors = {};
+  filtered.forEach(function(s) {
+    var deg = _parseDeg((s.swell_dir||'').trim());
+    if (deg === null) return;
+    var sec = Math.round(deg / 22.5) * 22.5 % 360;
+    if (!sectors[sec]) sectors[sec] = {count:0, hs:[], period:[], quality:[], power:[]};
+    sectors[sec].count++;
+    if (s.hs) sectors[sec].hs.push(s.hs);
+    if (s.period) sectors[sec].period.push(s.period);
+    if (s.quality) sectors[sec].quality.push(s.quality);
+    if (s.hs && s.period) sectors[sec].power.push(s.hs*s.hs*s.period);
+  });
+
+  var canvas = document.getElementById('spot-rose-canvas');
+  var legend = document.getElementById('spot-rose-legend');
+  if (!canvas) return;
+
+  if (!Object.keys(sectors).length) {
+    canvas.style.display='none';
+    if (legend) legend.innerHTML = '<span style="color:var(--text-faint);">Aucune donnée houle' + (minQ?' pour ≥'+minQ+'★':'') + '</span>';
+    return;
+  }
+  canvas.style.display='block';
+
+  // Calcul valeur max pour normalisation
+  function avg(arr) { return arr.length?arr.reduce(function(a,b){return a+b;},0)/arr.length:0; }
+  var metricVal = function(d) {
+    if (metric==='freq') return d.count;
+    if (metric==='power') return avg(d.power);
+    if (metric==='quality') return avg(d.quality);
+    return d.count;
+  };
+  var values = Object.values(sectors).map(metricVal);
+  var maxVal = Math.max.apply(null, values) || 1;
+
+  // Taille canvas
+  var dpr = window.devicePixelRatio || 1;
+  var wrap = canvas.parentElement;
+  var sz = Math.min((wrap ? wrap.offsetWidth : 340) - 200, 300);
+  sz = Math.max(sz, 200);
+  canvas.width = sz * dpr; canvas.height = sz * dpr;
+  canvas.style.width = sz+'px'; canvas.style.height = sz+'px';
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,sz,sz);
+
+  var cx=sz/2, cy=sz/2, rMax=sz/2-30;
+
+  // ── Grille : cercles + labels
+  ctx.font = '8px DM Sans,sans-serif';
+  ctx.textAlign = 'center';
+  [0.25,0.5,0.75,1].forEach(function(f) {
+    ctx.beginPath(); ctx.arc(cx,cy,rMax*f,0,2*Math.PI);
+    ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1; ctx.stroke();
+    var labelV = metric==='freq' ? Math.round(maxVal*f)+'x'
+               : metric==='power' ? (maxVal*f).toFixed(1)+' m²s'
+               : (maxVal*f).toFixed(1)+'★';
+    ctx.fillStyle='rgba(255,255,255,0.22)';
+    ctx.fillText(labelV, cx, cy - rMax*f + 9);
+  });
+
+  // ── 16 axes cardinaux fins
+  var card16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  card16.forEach(function(c,i) {
+    var rad = (i*22.5 - 90)*Math.PI/180;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.cos(rad)*rMax, cy+Math.sin(rad)*rMax);
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5; ctx.stroke();
+    // Labels cardinaux principaux seulement
+    if (i%2===0) {
+      var lx=cx+Math.cos(rad)*(rMax+13), ly=cy+Math.sin(rad)*(rMax+13);
+      ctx.fillStyle = c==='N'?'#e8a057':'rgba(255,255,255,0.5)';
+      ctx.font = c==='N'?'bold 11px DM Sans,sans-serif':'10px DM Sans,sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(c, lx, ly);
+    }
+  });
+
+  // ── Std dev par secteur (cercle d'incertitude)
+  function stddev(arr, mean) {
+    if (arr.length<2) return 0;
+    var v=arr.reduce(function(s,x){return s+(x-mean)*(x-mean);},0)/arr.length;
+    return Math.sqrt(v);
+  }
+
+  // ── Pétales
+  var legendItems = [];
+  Object.keys(sectors).sort(function(a,b){return a-b;}).forEach(function(sec) {
+    var d = sectors[sec];
+    var val = metricVal(d);
+    var r = (val/maxVal)*rMax;
+    var rad = (parseFloat(sec)-90)*Math.PI/180;
+    var halfArc = (22.5/2)*Math.PI/180;
+
+    var avgQ = avg(d.quality);
+    var avgT = avg(d.period);
+    var avgHs = avg(d.hs);
+    var avgPwr = avg(d.power);
+
+    // Couleur : période (bleu→violet→rouge) + alpha=qualité
+    var tNorm = Math.min(Math.max((avgT-7)/13,0),1);
+    var rr=Math.round(79+tNorm*(224-79)), gg=Math.round(163+tNorm*(92-163)), bb=Math.round(199+tNorm*(246-199));
+    var alpha = metric==='quality' ? 0.5+avgQ/5*0.45 : 0.6+avgQ/5*0.35;
+
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r,rad-halfArc,rad+halfArc);
+    ctx.closePath();
+    ctx.fillStyle='rgba('+rr+','+gg+','+bb+','+alpha.toFixed(2)+')';
+    ctx.fill();
+    ctx.strokeStyle='rgba('+rr+','+gg+','+bb+',0.95)';
+    ctx.lineWidth=1.2; ctx.stroke();
+
+    // Ecart type en degrés → arc d'incertitude semi-transparent
+    if (d.hs.length>=2) {
+      var sdHs = stddev(d.hs, avgHs);
+      var sdArc = Math.min(sdHs/avgHs * halfArc * 2, halfArc*1.5);
+      ctx.beginPath(); ctx.arc(cx,cy,r*0.92,rad-sdArc,rad+sdArc);
+      ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=3; ctx.stroke();
+    }
+
+    // Hs moyen : cercle blanc au bout
+    if (avgHs>0) {
+      var ptR=Math.min(Math.max(avgHs*2.5,3),7);
+      var ptX=cx+Math.cos(rad)*r*0.7, ptY=cy+Math.sin(rad)*r*0.7;
+      ctx.beginPath(); ctx.arc(ptX,ptY,ptR,0,2*Math.PI);
+      ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.fill();
+    }
+
+    // Label au bout si assez grand
+    if (r>28) {
+      var lx=cx+Math.cos(rad)*(r+11), ly=cy+Math.sin(rad)*(r+11);
+      ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.font='8px DM Sans,sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      var lbl = d.count+'x';
+      if(avgHs>0) lbl+=' '+avgHs.toFixed(1)+'m';
+      if(avgT>0) lbl+=' '+avgT.toFixed(0)+'s';
+      ctx.fillText(lbl, lx, ly);
+    }
+
+    // Stocker pour légende
+    legendItems.push({sec:sec, count:d.count, avgHs:avgHs, avgT:avgT, avgQ:avgQ, avgPwr:avgPwr, val:val,
+      color:'rgba('+rr+','+gg+','+bb+',0.85)'});
+  });
+
+  // ── Légende textuelle
+  if (legend) {
+    legendItems.sort(function(a,b){return b.val-a.val;});
+    var legHTML = '<div style="font-size:10px;font-weight:500;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Top directions</div>';
+    legendItems.slice(0,5).forEach(function(item) {
+      var dirName = card16[Math.round(item.sec/22.5)%16] || item.sec+'°';
+      legHTML += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+      legHTML += '<div style="width:10px;height:10px;border-radius:2px;background:'+item.color+';flex-shrink:0;"></div>';
+      legHTML += '<span style="color:var(--text);font-weight:500;min-width:32px;">'+dirName+'</span>';
+      legHTML += '<span style="color:var(--text-muted);">'+item.count+'x';
+      if(item.avgHs>0) legHTML+=' · '+item.avgHs.toFixed(1)+'m';
+      if(item.avgT>0) legHTML+=' · '+item.avgT.toFixed(0)+'s';
+      if(item.avgQ>0) legHTML+=' · '+item.avgQ.toFixed(1)+'★';
+      legHTML += '</span></div>';
+    });
+    legHTML += '<div style="margin-top:8px;font-size:9px;color:var(--text-faint);line-height:1.5;">';
+    legHTML += '● blanc = Hs moy<br>Tiret = écart-type Hs<br>Couleur = période<br>(bleu=court, violet=long)';
+    legHTML += '</div>';
+    legend.innerHTML = legHTML;
+  }
+}
+
+// ══ HEATMAP CALENDRIER ══
+function redrawHeatmap() {
+  var sessions = window._roseSessions || [];
+  var metric = (document.getElementById('heatmap-metric')||{value:'quality'}).value;
+  var el = document.getElementById('spot-heatmap');
+  if (!el || !sessions.length) return;
+
+  // Indexer sessions par date
+  var byDate = {};
+  sessions.forEach(function(s) {
+    if (!s.date) return;
+    var v = null;
+    if (metric==='quality') v = s.quality || null;
+    else if (metric==='hs') v = s.hs || null;
+    else if (metric==='power') v = (s.hs&&s.period) ? +(s.hs*s.hs*s.period).toFixed(1) : null;
+    if (v !== null) byDate[s.date] = v;
+  });
+
+  // Trouver plage de dates
+  var dates = Object.keys(byDate).sort();
+  if (!dates.length) { el.innerHTML='<span style="color:var(--text-faint);font-size:13px;">Pas de données</span>'; return; }
+  var dMin = new Date(dates[0]+'T00:00:00');
+  var dMax = new Date(dates[dates.length-1]+'T00:00:00');
+
+  // Plage valeurs pour couleur
+  var vals = Object.values(byDate).filter(Boolean);
+  var vMin = Math.min.apply(null,vals), vMax = Math.max.apply(null,vals)||1;
+
+  function colorForVal(v) {
+    if (v===null) return 'rgba(255,255,255,0.04)';
+    var t = (v-vMin)/(vMax-vMin);
+    if (metric==='quality') {
+      var cols=['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
+      return cols[Math.round(v)]||'#4fa3c7';
+    }
+    // Bleu→violet→rouge
+    var rr=Math.round(79+t*(224-79)), gg=Math.round(163+t*(92-163)), bb=Math.round(199+t*(246-199));
+    return 'rgba('+rr+','+gg+','+bb+',0.85)';
+  }
+
+  var mNames=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  var dayNames=['L','M','M','J','V','S','D'];
+  var sz=13, gap=2;
+
+  // Grouper par année-mois
+  var months={};
+  var cur=new Date(dMin); cur.setDate(1);
+  var end=new Date(dMax); end.setDate(1); end.setMonth(end.getMonth()+1);
+  while(cur<end) {
+    var key=cur.getFullYear()+'-'+(cur.getMonth()+1);
+    months[key]={year:cur.getFullYear(),month:cur.getMonth(),days:[]};
+    var nDays=new Date(cur.getFullYear(),cur.getMonth()+1,0).getDate();
+    for(var d=1;d<=nDays;d++) {
+      var ds=cur.getFullYear()+'-'+('0'+(cur.getMonth()+1)).slice(-2)+'-'+('0'+d).slice(-2);
+      months[key].days.push({date:ds,val:byDate[ds]!==undefined?byDate[ds]:null});
+    }
+    cur.setMonth(cur.getMonth()+1);
+  }
+
+  var html='<div style="display:flex;gap:12px;flex-wrap:wrap;">';
+  Object.values(months).forEach(function(m) {
+    html+='<div style="flex-shrink:0;">';
+    html+='<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-align:center;">'+mNames[m.month]+' '+m.year+'</div>';
+    // Grille semaine (lun=0)
+    var firstDay=new Date(m.year,m.month,1).getDay();
+    firstDay=(firstDay+6)%7; // lundi=0
+    html+='<div style="display:grid;grid-template-columns:repeat(7,'+(sz)+'px);gap:'+gap+'px;">';
+    for(var h=0;h<7;h++) html+='<div style="font-size:7px;color:rgba(255,255,255,0.2);text-align:center;height:'+(sz)+'px;line-height:'+(sz)+'px;">'+dayNames[h]+'</div>';
+    for(var blank=0;blank<firstDay;blank++) html+='<div></div>';
+    m.days.forEach(function(dd) {
+      var col=colorForVal(dd.val);
+      var tip=dd.val!==null?(metric==='quality'?dd.val+'★':dd.val+(metric==='hs'?'m':' m²s')):'';
+      html+='<div title="'+dd.date+(tip?' · '+tip:'')+'" style="width:'+sz+'px;height:'+sz+'px;border-radius:2px;background:'+col+';cursor:'+(dd.val!==null?'pointer':'default')+'"></div>';
+    });
+    html+='</div></div>';
+  });
+  html+='</div>';
+
+  // Légende
+  html+='<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">';
+  html+='<span style="font-size:10px;color:var(--text-faint);">'+mNames[0]+'</span>';
+  if(metric==='quality') {
+    [1,2,3,4,5].forEach(function(q){
+      var cols=['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
+      html+='<div style="width:12px;height:12px;background:'+cols[q]+';border-radius:2px;display:inline-block;"></div><span style="font-size:10px;color:var(--text-faint);">'+q+'★</span>';
+    });
+  } else {
+    ['bas','moyen','fort'].forEach(function(l,i){
+      var t=i/2;
+      var rr=Math.round(79+t*(224-79)),gg=Math.round(163+t*(92-163)),bb=Math.round(199+t*(246-199));
+      html+='<div style="width:12px;height:12px;background:rgba('+rr+','+gg+','+bb+',0.85);border-radius:2px;display:inline-block;"></div><span style="font-size:10px;color:var(--text-faint);">'+l+'</span>';
+    });
+  }
+  html+='<div style="width:12px;height:12px;background:rgba(255,255,255,0.04);border-radius:2px;display:inline-block;"></div><span style="font-size:10px;color:var(--text-faint);">sans session</span>';
+  html+='</div>';
+
+  el.innerHTML=html;
 }
 
 // ══ RANKING PAGE ══
