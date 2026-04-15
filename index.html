@@ -1799,7 +1799,8 @@ async function loadRanking() {
   window._rankT=setTimeout(function(){
     var cv=document.getElementById('ranking-chart');if(!cv)return;
     try{var ex=Chart.getChart(cv);if(ex)ex.destroy();}catch(_){}
-    var ml=months.map(function(m){var p=m.split('-'),mo=parseInt(p[1]);return ['''jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][mo]+"'"+p[0].slice(2);});
+        var _mn=['','jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+    var ml=months.map(function(m){var p=m.split('-'),mo=parseInt(p[1]);return _mn[mo]+"'"+p[0].slice(2);});
     window.rankChart=new Chart(cv,{type:'bar',data:{labels:ml,datasets:ds},
       options:{responsive:true,maintainAspectRatio:false,
         plugins:{legend:{position:'bottom',labels:{color:'#7a94aa',boxWidth:12}}},
