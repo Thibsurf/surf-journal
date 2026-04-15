@@ -1619,13 +1619,21 @@ async function loadSpotsPage() {
   }
   const spots = new Set(['Grand bac','Petit U','Gros nem','Fausse passe Dumbéa',
     'Gauche de Dumbéa','Droite de Dumbéa','La roche percée','Ouano','Skatepark','Trois cailloux']);
-  spotsGroupData.forEach(s => { if (s.spot) spots.add(s.spot); });
+  // Extraire tous les spots depuis spots[] ET spot (champ legacy)
+  spotsGroupData.forEach(function(s) {
+    var all = (s.spots && Array.isArray(s.spots) && s.spots.length) ? s.spots : (s.spot ? [s.spot] : []);
+    all.forEach(function(raw) {
+      raw.split(',').map(function(p){return p.trim();}).filter(Boolean).forEach(function(sp){ spots.add(sp); });
+    });
+  });
 
+  // Stocker les noms dans un tableau indexé pour éviter le bug d'encodage dans onclick
+  window._spotNames = [...spots];
   document.getElementById('spots-selector').innerHTML =
-    [...spots].map(sp =>
-      '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
-      'onclick="showSpotDetail(' + JSON.stringify(sp) + ')">' + sp + '</button>'
-    ).join('');
+    window._spotNames.map(function(sp, i) {
+      return '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
+        'onclick="showSpotDetail(window._spotNames[' + i + '])">' + sp + '</button>';
+    }).join('');
   document.getElementById('spots-content').innerHTML =
     '<div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>';
 }
@@ -1636,7 +1644,13 @@ function showSpotDetail(spotName) {
   spotCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
   spotCharts = [];
 
-  const sessions = spotsGroupData.filter(s => s.spot === spotName);
+  // Matcher les sessions qui ont ce spot, que ce soit dans spots[] ou dans spot (legacy)
+  const sessions = spotsGroupData.filter(function(s) {
+    var all = (s.spots && Array.isArray(s.spots) && s.spots.length) ? s.spots : (s.spot ? [s.spot] : []);
+    return all.some(function(raw) {
+      return raw.split(',').map(function(p){return p.trim();}).indexOf(spotName) !== -1;
+    });
+  });
   const el = document.getElementById('spots-content');
   if (!sessions.length) {
     el.innerHTML = '<div class="empty"><div class="empty-title">Aucune session pour ce spot</div></div>';
