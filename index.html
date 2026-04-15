@@ -541,6 +541,13 @@ const APP_NAME = 'Coups de surf NC';
       </div>
       <button class="btn btn-primary" onclick="saveProfile()">Enregistrer</button>
     </div>
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="section-title" style="margin-bottom:1rem;">Mon bateau habituel</div>
+      <select class="form-select" id="profile-boat-select">
+        <option value="">— Aucun —</option>
+      </select>
+      <button class="btn btn-primary" style="margin-top:10px;" onclick="saveProfile()">Enregistrer</button>
+    </div>
     <div class="card">
       <div class="section-title" style="margin-bottom:1rem;">Mes planches habituelles</div>
       <div id="profile-boards-list" style="margin-bottom:1rem;"></div>
@@ -1187,7 +1194,10 @@ function openAddSession() {
     const dl = document.getElementById('boards-list');
     dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${b}">`).join('');
   }
-  if (typeof populateBoatSelect==='function') populateBoatSelect();
+  if (typeof populateBoatSelect==='function') populateBoatSelect().then(function() {
+    var sel = document.getElementById('f-boat-id');
+    if (sel && currentProfile && currentProfile.default_boat_id) sel.value = currentProfile.default_boat_id;
+  });
   document.getElementById('modal-add').classList.add('open');
 }
 
@@ -1470,6 +1480,20 @@ function loadProfilePage() {
   document.getElementById('profile-email-display').textContent = currentUser?.email || '—';
   document.getElementById('profile-username-input').value = currentProfile.username || '';
   renderBoardsList();
+  // Peupler le select bateau
+  var sel = document.getElementById('profile-boat-select');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    (boatsCache.length ? Promise.resolve(boatsCache) : loadBoats()).then(function(boats) {
+      boats.forEach(function(b) {
+        var o = document.createElement('option');
+        o.value = b.id;
+        o.textContent = b.name + (b.alias ? ' (' + b.alias + ')' : '');
+        sel.appendChild(o);
+      });
+      sel.value = currentProfile.default_boat_id || '';
+    });
+  }
 }
 
 function renderBoardsList() {
@@ -1500,6 +1524,8 @@ async function removeBoard(i) {
 async function saveProfile() {
   if (!currentProfile) return;
   currentProfile.username = document.getElementById('profile-username-input').value.trim();
+  var boatSel = document.getElementById('profile-boat-select');
+  if (boatSel) currentProfile.default_boat_id = boatSel.value || null;
   await saveProfileData();
   const initials = currentProfile.username[0].toUpperCase();
   document.getElementById('nav-avatar').textContent = initials;
@@ -1510,7 +1536,7 @@ async function saveProfile() {
 
 async function saveProfileData() {
   if (!sb || !currentUser) return;
-  await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards });
+  await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards, default_boat_id: currentProfile.default_boat_id || null });
 }
 
 // ══ UI HELPERS ══
@@ -1702,18 +1728,27 @@ function showSpotDetail(spotName) {
       '<div style="font-size:13px;">' + best.date + ' — <strong>' + '★'.repeat(best.quality) + '</strong>' +
       (best.observations ? ' — ' + best.observations.slice(0, 80) + '…' : '') + '</div>' +
     '</div>' : '') +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité dans le temps</div>' +
         '<div style="position:relative;height:160px;"><canvas id="spot-qual-chart" role="img" aria-label="Qualite sessions"></canvas></div></div>' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">Hs par session</div>' +
         '<div style="position:relative;height:160px;"><canvas id="spot-hs-chart" role="img" aria-label="Hs sessions"></canvas></div></div>' +
-    '</div>';
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité vs Hs (scatter)</div>' +
+        '<div style="position:relative;height:180px;"><canvas id="spot-scatter-chart" role="img" aria-label="Qualite vs Hs"></canvas></div></div>' +
+      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Rose des houles</div>' +
+        '<div style="display:flex;align-items:center;justify-content:center;height:180px;" id="spot-rose-wrap"></div></div>' +
+    '</div>' +
+    '<div class="card" style="margin-bottom:14px;"><div class="section-title" style="margin-bottom:8px;">Qualité vs Période (scatter)</div>' +
+      '<div style="position:relative;height:160px;"><canvas id="spot-period-chart" role="img" aria-label="Qualite vs Periode"></canvas></div></div>';
 
   setTimeout(function() {
     const sorted = sessions.slice().sort((a,b) => a.date > b.date ? 1 : -1);
     const labels = sorted.map(s => (s.date || '').slice(5));
     const qColors = ['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
 
+    // ── Qualité dans le temps
     const c1 = document.getElementById('spot-qual-chart');
     if (c1) {
       spotCharts.push(new Chart(c1, {
@@ -1728,6 +1763,8 @@ function showSpotDetail(spotName) {
                     x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
       }));
     }
+
+    // ── Hs par session
     const c2 = document.getElementById('spot-hs-chart');
     if (c2) {
       spotCharts.push(new Chart(c2, {
@@ -1739,6 +1776,105 @@ function showSpotDetail(spotName) {
           scales: { y: { ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
                     x: { ticks: { color: '#7a94aa', font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } } } }
       }));
+    }
+
+    // ── Scatter Qualité vs Hs
+    const c3 = document.getElementById('spot-scatter-chart');
+    if (c3) {
+      var scatterHs = sessions.filter(function(s){return s.hs && s.quality;}).map(function(s){
+        return {x: s.hs, y: s.quality, label: s.date};
+      });
+      spotCharts.push(new Chart(c3, {
+        type: 'scatter',
+        data: { datasets: [{ data: scatterHs,
+          backgroundColor: scatterHs.map(function(p){ return qColors[p.y]+'cc'; }),
+          pointRadius: 6, pointHoverRadius: 8 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) {
+            return 'Hs ' + ctx.raw.x + 'm · ' + ctx.raw.y + '★';
+          }}}},
+          scales: {
+            x: { title: { display: true, text: 'Hs (m)', color: '#7a94aa', font:{size:10} }, ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { min: 0.5, max: 5.5, title: { display: true, text: 'Qualité', color: '#7a94aa', font:{size:10} }, ticks: { stepSize:1, color: '#7a94aa', callback: function(v){return Math.round(v)+'★';} }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          }
+        }
+      }));
+    }
+
+    // ── Scatter Qualité vs Période
+    const c4 = document.getElementById('spot-period-chart');
+    if (c4) {
+      var scatterT = sessions.filter(function(s){return s.period && s.quality;}).map(function(s){
+        return {x: s.period, y: s.quality};
+      });
+      spotCharts.push(new Chart(c4, {
+        type: 'scatter',
+        data: { datasets: [{ data: scatterT,
+          backgroundColor: scatterT.map(function(p){ return qColors[p.y]+'cc'; }),
+          pointRadius: 6, pointHoverRadius: 8 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) {
+            return 'T ' + ctx.raw.x + 's · ' + ctx.raw.y + '★';
+          }}}},
+          scales: {
+            x: { title: { display: true, text: 'Période (s)', color: '#7a94aa', font:{size:10} }, ticks: { color: '#7a94aa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { min: 0.5, max: 5.5, title: { display: true, text: 'Qualité', color: '#7a94aa', font:{size:10} }, ticks: { stepSize:1, color: '#7a94aa', callback: function(v){return Math.round(v)+'★';} }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          }
+        }
+      }));
+    }
+
+    // ── Rose des houles SVG
+    var roseWrap = document.getElementById('spot-rose-wrap');
+    if (roseWrap) {
+      var dirCount = {};
+      sessions.forEach(function(s) {
+        var d = (s.swell_dir || '').trim();
+        if (d && d !== '?' && d !== '—') { dirCount[d] = (dirCount[d]||0) + 1; }
+      });
+      var dirs = Object.keys(dirCount);
+      if (!dirs.length) {
+        roseWrap.innerHTML = '<span style="color:var(--text-faint);font-size:13px;">Pas de données houle</span>';
+      } else {
+        var maxC = Math.max.apply(null, Object.values(dirCount));
+        var sz = 160, cx = sz/2, cy = sz/2, rMax = sz/2 - 18;
+        var cardinals = ['N','NE','E','SE','S','SO','O','NO'];
+        var degMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
+        var svgParts = ['<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 '+sz+' '+sz+'">'];
+        // Cercles de référence
+        [0.33,0.66,1].forEach(function(f){
+          svgParts.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+(rMax*f).toFixed(1)+'" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>');
+        });
+        // Labels cardinaux
+        cardinals.forEach(function(c){
+          var deg = degMap[c]||0;
+          var rad = (deg - 90) * Math.PI / 180;
+          var tx = (cx + Math.cos(rad)*(rMax+10)).toFixed(1);
+          var ty = (cy + Math.sin(rad)*(rMax+10)).toFixed(1);
+          svgParts.push('<text x="'+tx+'" y="'+ty+'" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="rgba(255,255,255,0.3)">'+c+'</text>');
+        });
+        // Barres par direction
+        dirs.forEach(function(d){
+          var deg = dirCount[d] !== undefined ? (degMap[d] !== undefined ? degMap[d] : null) : null;
+          // Essai sur les chiffres
+          var m = d.match(/(\d+)/);
+          if (deg === null && m) deg = parseInt(m[1]);
+          if (deg === null) { var k = d.replace(/[^A-Z]/g,''); deg = degMap[k] !== undefined ? degMap[k] : null; }
+          if (deg === null) return;
+          var rad = (deg - 90) * Math.PI / 180;
+          var len = (dirCount[d] / maxC * rMax).toFixed(1);
+          var x2 = (cx + Math.cos(rad) * len).toFixed(1);
+          var y2 = (cy + Math.sin(rad) * len).toFixed(1);
+          svgParts.push('<line x1="'+cx+'" y1="'+cy+'" x2="'+x2+'" y2="'+y2+'" stroke="#4fa3c7" stroke-width="6" stroke-linecap="round" opacity="0.85"/>');
+          svgParts.push('<circle cx="'+x2+'" cy="'+y2+'" r="3" fill="#4fa3c7"/>');
+          // Label count
+          var lx = (cx + Math.cos(rad)*(parseFloat(len)+12)).toFixed(1);
+          var ly = (cy + Math.sin(rad)*(parseFloat(len)+12)).toFixed(1);
+          svgParts.push('<text x="'+lx+'" y="'+ly+'" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#4fa3c7">'+dirCount[d]+'</text>');
+        });
+        svgParts.push('</svg>');
+        roseWrap.innerHTML = svgParts.join('');
+      }
     }
   }, 300);
 }
@@ -1761,16 +1897,21 @@ async function loadRanking() {
   var us={};
   allData.forEach(function(s){
     var uid=s.user_id;
-    if(!us[uid])us[uid]={name:profileMap[uid]||uid.slice(0,8),uid:uid,sessions:0,hours:0,tubes:0,qual:[],cfp:0};
+    if(!us[uid])us[uid]={name:profileMap[uid]||uid.slice(0,8),uid:uid,sessions:0,hours:0,tubes:0,qual:[],cfp:0,spots:{}};
     us[uid].sessions++;
     if(s.duration_h)us[uid].hours+=s.duration_h;
     if(s.moves&&Array.isArray(s.moves)&&s.moves.includes('tube'))us[uid].tubes++;
     if(s.quality)us[uid].qual.push(s.quality);
     if(s.price_cfp)us[uid].cfp+=s.price_cfp;
+    // Spot préféré
+    var spAll=(s.spots&&Array.isArray(s.spots)&&s.spots.length)?s.spots:(s.spot?[s.spot]:[]);
+    spAll.forEach(function(raw){raw.split(',').map(function(p){return p.trim();}).filter(Boolean).forEach(function(sp){us[uid].spots[sp]=(us[uid].spots[sp]||0)+1;});});
   });
   var users=Object.values(us).map(function(u){
+    var spEntries=Object.entries(u.spots).sort(function(a,b){return b[1]-a[1];});
+    var favSpot=spEntries.length?spEntries[0][0]+'('+spEntries[0][1]+'x)':null;
     return{name:u.name,uid:u.uid,sessions:u.sessions,
-      hours:Math.round(u.hours*10)/10,tubes:u.tubes,cfp:u.cfp,
+      hours:Math.round(u.hours*10)/10,tubes:u.tubes,cfp:u.cfp,favSpot:favSpot,
       avgQ:u.qual.length?parseFloat((u.qual.reduce(function(a,b){return a+b;},0)/u.qual.length).toFixed(1)):0};
   });
   var medals=['🥇','🥈','🥉'];
@@ -1796,6 +1937,7 @@ async function loadRanking() {
       html+='<span style="min-width:80px;font-size:13px;font-weight:'+(isMe?'500':'400')+';color:'+(isMe?'var(--accent)':'var(--text)')+';">'+u.name+(isMe?' (toi)':'')+'</span>';
       html+='<div style="flex:1;background:var(--glass);border-radius:4px;height:16px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:'+bc[i%bc.length]+';border-radius:4px;"></div></div>';
       html+='<span style="min-width:70px;text-align:right;font-size:12px;color:var(--text-muted);">'+cat.fmt(u)+'</span></div>';
+      if(cat.key==='sessions'&&u.favSpot)html+='<div style="padding-left:36px;margin-top:-4px;margin-bottom:6px;font-size:11px;color:var(--text-faint);">📍 '+u.favSpot+'</div>';
     });
     html+='</div>';
   });
