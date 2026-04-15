@@ -628,25 +628,24 @@ const APP_NAME = 'Coups de surf NC';
 
 <!-- ══ MODAL ADD SESSION ══ -->
 <div class="modal-overlay" id="modal-add">
-  <div class="modal">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+  <div class="modal" style="max-width:560px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
       <div class="modal-title" id="modal-add-title">Nouvelle session</div>
       <button onclick="closeModal('modal-add')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
     </div>
-
     <input type="hidden" id="edit-session-id">
 
+    <!-- ── Bloc 1 : Logistique ── -->
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Date</label>
-        <input type="date" class="form-input" id="f-date">
+        <input type="date" class="form-input" id="f-date" onchange="updateShomLink()">
       </div>
       <div class="form-group">
         <label class="form-label">Durée (h)</label>
         <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12" oninput="updateFuelEstimate()">
       </div>
     </div>
-
     <div class="form-group">
       <label class="form-label">Spot</label>
       <select class="form-select" id="f-spot" onchange="handleSpotChange(this)">
@@ -665,17 +664,16 @@ const APP_NAME = 'Coups de surf NC';
       </select>
       <input type="text" class="form-input" id="f-spot-custom" placeholder="Nom du nouveau spot" style="display:none;margin-top:8px;">
     </div>
-
     <div class="form-group">
       <label class="form-label">Bateau</label>
       <select class="form-select" id="f-boat-id" onchange="updateFuelEstimate()">
         <option value="">-- Choisir --</option>
       </select>
     </div>
-    <div id="fuel-estimate" style="font-size:12px;color:var(--accent);margin:0 0 8px;min-height:16px;"></div>
+    <div id="fuel-estimate" style="font-size:12px;color:var(--accent);margin:-4px 0 8px;min-height:16px;"></div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Mise &agrave; l'eau</label>
+        <label class="form-label">Mise à l'eau</label>
         <input type="text" class="form-input" id="f-launch" placeholder="ex: Tomo, Port Ouenghi">
       </div>
       <div class="form-group">
@@ -690,7 +688,7 @@ const APP_NAME = 'Coups de surf NC';
           <option value="">—</option>
           <option value="WE">Week-end</option>
           <option value="RTT">RTT / CP</option>
-          <option value="RECUP">R&eacute;cup</option>
+          <option value="RECUP">Récup</option>
           <option value="Vacances">Vacances</option>
         </select>
       </div>
@@ -698,91 +696,102 @@ const APP_NAME = 'Coups de surf NC';
         <label class="form-label">Nb surfeurs</label>
         <input type="number" class="form-input" id="f-nb-surfers" placeholder="3" step="1" min="1" max="12" oninput="updateFuelEstimate()">
       </div>
-    </div
+    </div>
 
-    <div class="form-row-3">
-      <div class="form-group">
-        <label class="form-label">Hs (m)</label>
-        <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Période (s)</label>
-        <input type="number" class="form-input" id="f-period" placeholder="14" step="0.5" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Direction houle</label>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <select class="form-select" id="f-swell-dir-card" style="flex:1;" onchange="syncSwellDir()">
-            <option value="">—</option>
-            <option value="N">N</option><option value="NNE">NNE</option>
-            <option value="NE">NE</option><option value="ENE">ENE</option>
-            <option value="E">E</option><option value="ESE">ESE</option>
-            <option value="SE">SE</option><option value="SSE">SSE</option>
-            <option value="S">S</option><option value="SSO">SSO</option>
-            <option value="SO">SO</option><option value="OSO">OSO</option>
-            <option value="O">O</option><option value="ONO">ONO</option>
-            <option value="NO">NO</option><option value="NNO">NNO</option>
-          </select>
-          <input type="number" class="form-input" id="f-swell-dir-deg" placeholder="°" min="0" max="359" step="1" style="width:60px;text-align:center;" oninput="syncSwellDir()">
+    <!-- ── Bloc 2 : Conditions (collapsible) ── -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:1rem;overflow:hidden;">
+      <button onclick="toggleSection('sec-conditions',this)" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--glass);border:none;color:var(--text);cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;">
+        🌊 Conditions <span id="sec-conditions-arrow">▼</span>
+      </button>
+      <div id="sec-conditions" style="padding:12px 14px;display:none;">
+        <div class="form-row-3">
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">Hs (m)</label>
+            <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
+          </div>
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">Période (s)</label>
+            <input type="number" class="form-input" id="f-period" placeholder="14" step="0.5" min="0">
+          </div>
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">Dir. houle</label>
+            <div style="display:flex;gap:4px;">
+              <select class="form-select" id="f-swell-dir-card" style="flex:1;min-width:0;" onchange="syncSwellDir()">
+                <option value="">—</option>
+                <option>N</option><option>NNE</option><option>NE</option><option>ENE</option>
+                <option>E</option><option>ESE</option><option>SE</option><option>SSE</option>
+                <option>S</option><option>SSO</option><option>SO</option><option>OSO</option>
+                <option>O</option><option>ONO</option><option>NO</option><option>NNO</option>
+              </select>
+              <input type="number" class="form-input" id="f-swell-dir-deg" placeholder="°" min="0" max="359" style="width:52px;text-align:center;padding:10px 6px;" oninput="syncSwellDir()">
+            </div>
+            <input type="hidden" id="f-swell-dir">
+          </div>
         </div>
-        <input type="hidden" id="f-swell-dir">
+        <div class="form-row-3">
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">Vent (nds)</label>
+            <input type="number" class="form-input" id="f-wind" placeholder="5" step="1" min="0">
+          </div>
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">Dir. vent</label>
+            <div style="display:flex;gap:4px;">
+              <select class="form-select" id="f-wind-dir-card" style="flex:1;min-width:0;" onchange="syncWindDir()">
+                <option value="">—</option>
+                <option>Glassy</option>
+                <option>N</option><option>NNE</option><option>NE</option><option>ENE</option>
+                <option>E</option><option>ESE</option><option>SE</option><option>SSE</option>
+                <option>S</option><option>SSO</option><option>SO</option><option>OSO</option>
+                <option>O</option><option>ONO</option><option>NO</option><option>NNO</option>
+                <option>Tournant</option><option>Onshore</option>
+              </select>
+              <input type="number" class="form-input" id="f-wind-dir-deg" placeholder="°" min="0" max="359" style="width:52px;text-align:center;padding:10px 6px;" oninput="syncWindDir()">
+            </div>
+            <input type="hidden" id="f-wind-dir">
+          </div>
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">Marée</label>
+            <input type="text" class="form-input" id="f-tide" placeholder="1.2→0.4">
+          </div>
+        </div>
+        <!-- Widget marée SHOM -->
+        <div style="background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.15);border-radius:var(--radius-sm);padding:10px;margin-top:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+            <span style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">📈 Marée SHOM</span>
+            <select id="shom-port" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="updateShomLink()">
+              <option value="NOUMEA_NUMBO">Nouméa</option>
+              <option value="TOMO_NOUVELLE_CALEDONIE">Tomo (Dumbéa)</option>
+            </select>
+          </div>
+          <a id="shom-link" href="#" target="_blank" rel="noopener"
+            style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;background:rgba(79,163,199,0.1);border:1px solid rgba(79,163,199,0.25);border-radius:var(--radius-sm);color:var(--accent);font-size:13px;text-decoration:none;transition:background .2s;"
+            onmouseover="this.style.background='rgba(79,163,199,0.2)'" onmouseout="this.style.background='rgba(79,163,199,0.1)'">
+            <span style="font-size:1.1rem;">🌊</span>
+            <span id="shom-link-label">Voir la courbe de marée du jour →</span>
+          </a>
+          <div style="font-size:10px;color:var(--text-faint);margin-top:6px;text-align:center;">Ouvre maree.shom.fr avec la date et le port sélectionnés · Renseigne le champ Marée ci-dessus</div>
+        </div>
       </div>
     </div>
 
-    <div class="form-row-3">
-      <div class="form-group">
-        <label class="form-label">Vent (nds)</label>
-        <input type="number" class="form-input" id="f-wind" placeholder="5" step="1" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Direction vent</label>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <select class="form-select" id="f-wind-dir-card" style="flex:1;" onchange="syncWindDir()">
-            <option value="">—</option>
-            <option value="Glassy">Glassy</option>
-            <option value="N">N</option><option value="NNE">NNE</option>
-            <option value="NE">NE</option><option value="ENE">ENE</option>
-            <option value="E">E</option><option value="ESE">ESE</option>
-            <option value="SE">SE</option><option value="SSE">SSE</option>
-            <option value="S">S</option><option value="SSO">SSO</option>
-            <option value="SO">SO</option><option value="OSO">OSO</option>
-            <option value="O">O</option><option value="ONO">ONO</option>
-            <option value="NO">NO</option><option value="NNO">NNO</option>
-            <option value="Tournant">Tournant</option>
-            <option value="Onshore">Onshore</option>
-          </select>
-          <input type="number" class="form-input" id="f-wind-dir-deg" placeholder="°" min="0" max="359" step="1" style="width:60px;text-align:center;" oninput="syncWindDir()">
-        </div>
-        <input type="hidden" id="f-wind-dir">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Marée (m)</label>
-        <input type="text" class="form-input" id="f-tide" placeholder="1.2 → 0.4">
-      </div>
-    </div>
-
+    <!-- ── Bloc 3 : Surf ── -->
     <div class="form-group">
       <label class="form-label">Planche</label>
       <input type="text" class="form-input" id="f-board" placeholder="ex: Pukas, Pyzel…" list="boards-list">
       <datalist id="boards-list"></datalist>
     </div>
-
     <div class="form-group">
       <label class="form-label">Prix bateau (CFP)</label>
       <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
     </div>
-
     <div class="form-group">
       <label class="form-label">Qualité de la session</label>
       <div class="star-picker" id="f-qual-stars">
-        <span onclick="setStars(1)">★</span>
-        <span onclick="setStars(2)">★</span>
-        <span onclick="setStars(3)">★</span>
-        <span onclick="setStars(4)">★</span>
+        <span onclick="setStars(1)">★</span><span onclick="setStars(2)">★</span>
+        <span onclick="setStars(3)">★</span><span onclick="setStars(4)">★</span>
         <span onclick="setStars(5)">★</span>
       </div>
     </div>
-
     <div class="form-group">
       <label class="form-label">Manœuvres & highlights</label>
       <div class="toggle-group" id="f-moves" style="margin-bottom:8px;">
@@ -799,25 +808,21 @@ const APP_NAME = 'Coups de surf NC';
         <button class="toggle-btn" data-move="dauphins" onclick="toggleMove(this,'dauphins')">Dauphins 🐬</button>
         <button class="toggle-btn" data-move="requin" onclick="toggleMove(this,'requin')">Requin 🦈</button>
       </div>
-      <!-- Compteur de tubes, visible seulement si tube sélectionné -->
       <div id="tube-counter-wrap" style="display:none;align-items:center;gap:10px;background:rgba(123,108,246,0.1);border:1px solid rgba(123,108,246,0.25);border-radius:var(--radius-sm);padding:8px 12px;">
         <span style="font-size:13px;color:#a99ff8;">🤙 Nb de tubes :</span>
-        <button onclick="changeTubeCount(-1)" style="background:rgba(123,108,246,0.2);border:none;color:#a99ff8;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:1rem;line-height:1;">−</button>
+        <button onclick="changeTubeCount(-1)" style="background:rgba(123,108,246,0.2);border:none;color:#a99ff8;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:1rem;">−</button>
         <span id="tube-count-display" style="font-size:1.2rem;font-weight:600;color:#a99ff8;min-width:24px;text-align:center;">1</span>
-        <button onclick="changeTubeCount(1)" style="background:rgba(123,108,246,0.2);border:none;color:#a99ff8;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:1rem;line-height:1;">+</button>
+        <button onclick="changeTubeCount(1)" style="background:rgba(123,108,246,0.2);border:none;color:#a99ff8;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:1rem;">+</button>
       </div>
     </div>
-
     <div class="form-group">
       <label class="form-label">Session partagée avec</label>
       <input type="text" class="form-input" id="f-shared-with" placeholder="ex: Lucas, Raph (séparé par virgule)">
     </div>
-
     <div class="form-group">
       <label class="form-label">Observations</label>
       <textarea class="form-textarea" id="f-obs" placeholder="Conditions, anecdotes, ressenti…"></textarea>
     </div>
-
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.5rem;">
       <button class="btn btn-secondary" onclick="closeModal('modal-add')">Annuler</button>
       <button class="btn btn-primary" onclick="saveSession()" id="btn-save-session">Enregistrer</button>
@@ -1203,6 +1208,8 @@ function openAddSession() {
   selectedTubeCount = 0;
   _updateTubeDisplay();
   var wrap = document.getElementById('tube-counter-wrap'); if(wrap) wrap.style.display='none';
+  // Init lien SHOM marée
+  setTimeout(function(){ updateShomLink(); }, 50);
   setStars(0);
   if (currentProfile && currentProfile.boards) {
     const dl = document.getElementById('boards-list');
@@ -1631,6 +1638,28 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 });
 
 
+// ══ SHOM LINK ══
+function updateShomLink() {
+  var port = (document.getElementById('shom-port') || {value:'NOUMEA_NUMBO'}).value;
+  var dateEl = document.getElementById('f-date');
+  var date = dateEl && dateEl.value ? dateEl.value : new Date().toISOString().split('T')[0];
+  var portNames = { NOUMEA_NUMBO: 'Nouméa', TOMO_NOUVELLE_CALEDONIE: 'Tomo' };
+  var url = 'https://maree.shom.fr/harbor/' + port + '/hlt/0?date=' + date + '&utc=11';
+  var link = document.getElementById('shom-link');
+  var label = document.getElementById('shom-link-label');
+  if (link) link.href = url;
+  if (label) label.textContent = 'Voir marée ' + (portNames[port] || port) + ' · ' + date + ' →';
+}
+
+// ══ SECTION TOGGLE ══
+function toggleSection(id, btn) {
+  var el = document.getElementById(id);
+  var arrow = document.getElementById(id + '-arrow');
+  var open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▼' : '▲';
+}
+
 // ══ DIRECTION HELPERS ══
 var _cardDeg = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
 
@@ -1844,11 +1873,10 @@ function showSpotDetail(spotName) {
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">Qualité vs Hs (scatter)</div>' +
         '<div style="position:relative;height:180px;"><canvas id="spot-scatter-chart" role="img" aria-label="Qualite vs Hs"></canvas></div></div>' +
-      '<div class="card"><div class="section-title" style="margin-bottom:8px;">Rose des houles</div>' +
-        '<div style="display:flex;align-items:center;justify-content:center;height:180px;" id="spot-rose-wrap"></div></div>' +
-    '</div>' +
-    '<div class="card" style="margin-bottom:14px;"><div class="section-title" style="margin-bottom:8px;">Qualité vs Période (scatter)</div>' +
-      '<div style="position:relative;height:160px;"><canvas id="spot-period-chart" role="img" aria-label="Qualite vs Periode"></canvas></div></div>';
+    '<div class="card" style="margin-bottom:14px;"><div class="section-title" style="margin-bottom:8px;">🌀 Rose des houles — Fréquence · Période · Hs · Qualité</div>' +
+      '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;padding:8px;" id="spot-rose-wrap"></div>' +
+      '<div style="font-size:10px;color:var(--text-faint);text-align:center;padding-bottom:6px;">Taille pétale = fréquence · Couleur = période moy (bleu court→violet long) · ● = Hs moy · Opacité = qualité moy</div>' +
+    '</div>';
 
   setTimeout(function() {
     const sorted = sessions.slice().sort((a,b) => a.date > b.date ? 1 : -1);
@@ -1931,56 +1959,147 @@ function showSpotDetail(spotName) {
       }));
     }
 
-    // ── Rose des houles SVG
+    // ── Rose des houles scientifique (Canvas polaire)
     var roseWrap = document.getElementById('spot-rose-wrap');
     if (roseWrap) {
-      var dirCount = {};
+      // Collecter données : direction → liste de {hs, period, quality}
+      var roseData = {};
+      var degMap2 = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
       sessions.forEach(function(s) {
-        var d = (s.swell_dir || '').trim();
-        if (d && d !== '?' && d !== '—') { dirCount[d] = (dirCount[d]||0) + 1; }
+        var raw = (s.swell_dir || '').trim();
+        if (!raw || raw === '?' || raw === '—') return;
+        var deg = null;
+        var mDeg = raw.match(/(\d+)°?/); 
+        var mCard = raw.match(/^([A-Z]+)/);
+        if (mDeg) deg = parseInt(mDeg[1]);
+        else if (mCard && degMap2[mCard[1]] !== undefined) deg = degMap2[mCard[1]];
+        if (deg === null) return;
+        // Regrouper par secteur 22.5°
+        var sector = Math.round(deg / 22.5) * 22.5 % 360;
+        if (!roseData[sector]) roseData[sector] = {hs:[], period:[], quality:[], count:0};
+        roseData[sector].count++;
+        if (s.hs) roseData[sector].hs.push(s.hs);
+        if (s.period) roseData[sector].period.push(s.period);
+        if (s.quality) roseData[sector].quality.push(s.quality);
       });
-      var dirs = Object.keys(dirCount);
-      if (!dirs.length) {
-        roseWrap.innerHTML = '<span style="color:var(--text-faint);font-size:13px;">Pas de données houle</span>';
+
+      if (!Object.keys(roseData).length) {
+        roseWrap.innerHTML = '<span style="color:var(--text-faint);font-size:13px;">Pas de données direction houle</span>';
       } else {
-        var maxC = Math.max.apply(null, Object.values(dirCount));
-        var sz = 160, cx = sz/2, cy = sz/2, rMax = sz/2 - 18;
-        var cardinals = ['N','NE','E','SE','S','SO','O','NO'];
-        var degMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
-        var svgParts = ['<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 '+sz+' '+sz+'">'];
-        // Cercles de référence
-        [0.33,0.66,1].forEach(function(f){
-          svgParts.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+(rMax*f).toFixed(1)+'" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>');
+        // Canvas polaire
+        roseWrap.innerHTML = '<canvas id="spot-rose-canvas" style="max-width:320px;max-height:320px;"></canvas>';
+        var canvas = document.getElementById('spot-rose-canvas');
+        var dpr = window.devicePixelRatio || 1;
+        var sz = Math.min(roseWrap.offsetWidth || 300, 300);
+        canvas.width = sz * dpr; canvas.height = sz * dpr;
+        canvas.style.width = sz + 'px'; canvas.style.height = sz + 'px';
+        var ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        var cx = sz/2, cy = sz/2, rMax = sz/2 - 28;
+        var maxCount = Math.max.apply(null, Object.values(roseData).map(function(d){return d.count;}));
+
+        // Fond
+        ctx.fillStyle = 'rgba(13,31,60,0)';
+        ctx.fillRect(0,0,sz,sz);
+
+        // Grille circulaire
+        [0.25,0.5,0.75,1].forEach(function(f) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, rMax*f, 0, 2*Math.PI);
+          ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          // Label fréquence
+          var labelN = Math.round(maxCount * f);
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.font = '8px DM Sans, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(labelN + 'x', cx + 3, cy - rMax*f + 9);
         });
-        // Labels cardinaux
-        cardinals.forEach(function(c){
-          var deg = degMap[c]||0;
+
+        // Axes cardinaux
+        var cardLabels = ['N','NE','E','SE','S','SO','O','NO'];
+        cardLabels.forEach(function(c, i) {
+          var deg = i * 45;
           var rad = (deg - 90) * Math.PI / 180;
-          var tx = (cx + Math.cos(rad)*(rMax+10)).toFixed(1);
-          var ty = (cy + Math.sin(rad)*(rMax+10)).toFixed(1);
-          svgParts.push('<text x="'+tx+'" y="'+ty+'" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="rgba(255,255,255,0.3)">'+c+'</text>');
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(rad)*rMax, cy + Math.sin(rad)*rMax);
+          ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          var lx = cx + Math.cos(rad)*(rMax+14);
+          var ly = cy + Math.sin(rad)*(rMax+14);
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.font = 'bold 10px DM Sans, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(c, lx, ly);
         });
-        // Barres par direction
-        dirs.forEach(function(d){
-          var deg = dirCount[d] !== undefined ? (degMap[d] !== undefined ? degMap[d] : null) : null;
-          // Essai sur les chiffres
-          var m = d.match(/(\d+)/);
-          if (deg === null && m) deg = parseInt(m[1]);
-          if (deg === null) { var k = d.replace(/[^A-Z]/g,''); deg = degMap[k] !== undefined ? degMap[k] : null; }
-          if (deg === null) return;
-          var rad = (deg - 90) * Math.PI / 180;
-          var len = (dirCount[d] / maxC * rMax).toFixed(1);
-          var x2 = (cx + Math.cos(rad) * len).toFixed(1);
-          var y2 = (cy + Math.sin(rad) * len).toFixed(1);
-          svgParts.push('<line x1="'+cx+'" y1="'+cy+'" x2="'+x2+'" y2="'+y2+'" stroke="#4fa3c7" stroke-width="6" stroke-linecap="round" opacity="0.85"/>');
-          svgParts.push('<circle cx="'+x2+'" cy="'+y2+'" r="3" fill="#4fa3c7"/>');
-          // Label count
-          var lx = (cx + Math.cos(rad)*(parseFloat(len)+12)).toFixed(1);
-          var ly = (cy + Math.sin(rad)*(parseFloat(len)+12)).toFixed(1);
-          svgParts.push('<text x="'+lx+'" y="'+ly+'" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#4fa3c7">'+dirCount[d]+'</text>');
+
+        // Secteurs : pétales colorées par période moyenne (bleu froid = courte, violet = longue)
+        // Taille = fréquence, couleur = période moy, opacité = qualité moy
+        Object.keys(roseData).forEach(function(secDeg) {
+          var d = roseData[secDeg];
+          var r = (d.count / maxCount) * rMax;
+          var rad = (parseFloat(secDeg) - 90) * Math.PI / 180;
+          var halfArc = (22.5 / 2) * Math.PI / 180;
+          var avgT = d.period.length ? d.period.reduce(function(a,b){return a+b;},0)/d.period.length : 10;
+          var avgQ = d.quality.length ? d.quality.reduce(function(a,b){return a+b;},0)/d.quality.length : 3;
+          var avgHs = d.hs.length ? d.hs.reduce(function(a,b){return a+b;},0)/d.hs.length : 1;
+
+          // Couleur par période : 7s=#4fa3c7, 14s=#7b6cf6, 20s=#e05c5c
+          var tNorm = Math.min(Math.max((avgT - 7) / 13, 0), 1);
+          var r2 = Math.round(79 + tNorm*(224-79));
+          var g2 = Math.round(163 + tNorm*(92-163));
+          var b2 = Math.round(199 + tNorm*(246-199));
+          var alpha = 0.4 + (avgQ/5)*0.5;
+
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, r, rad - halfArc, rad + halfArc);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba('+r2+','+g2+','+b2+','+alpha.toFixed(2)+')';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba('+r2+','+g2+','+b2+',0.9)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Point central : Hs moyen (taille du point)
+          var ptR = Math.min(avgHs * 3, 8);
+          var ptX = cx + Math.cos(rad) * r * 0.65;
+          var ptY = cy + Math.sin(rad) * r * 0.65;
+          ctx.beginPath();
+          ctx.arc(ptX, ptY, ptR, 0, 2*Math.PI);
+          ctx.fillStyle = 'rgba(255,255,255,0.7)';
+          ctx.fill();
+
+          // Label : count + Hs moy si pétale assez grand
+          if (r > 25) {
+            var lx = cx + Math.cos(rad) * (r + 10);
+            var ly = cy + Math.sin(rad) * (r + 10);
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.font = '8px DM Sans, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(d.count + 'x · ' + avgHs.toFixed(1) + 'm', lx, ly);
+          }
         });
-        svgParts.push('</svg>');
-        roseWrap.innerHTML = svgParts.join('');
+
+        // Légende
+        var legY = sz - 10;
+        ctx.font = '8px DM Sans, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        // Période
+        [{t:7,c:'rgba(79,163,199,0.8)'},{t:14,c:'rgba(123,108,246,0.8)'},{t:20,c:'rgba(224,92,92,0.8)'}].forEach(function(item,i){
+          ctx.fillStyle = item.c;
+          ctx.fillRect(4 + i*68, legY-8, 10, 8);
+          ctx.fillStyle = 'rgba(255,255,255,0.4)';
+          ctx.fillText('T≈'+item.t+'s', 16+i*68, legY);
+        });
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillText('● = Hs moy', sz - 68, legY);
       }
     }
   }, 300);
