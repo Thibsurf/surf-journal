@@ -437,13 +437,6 @@ const APP_NAME = 'Coups de surf NC';
         <label class="form-label">Mot de passe</label>
         <input type="password" class="form-input" id="auth-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-        <input type="checkbox" id="auth-remember" checked
-          style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;">
-        <label for="auth-remember" style="font-size:13px;color:var(--text-muted);cursor:pointer;user-select:none;">
-          Se souvenir de moi
-        </label>
-      </div>
       <button class="btn btn-primary btn-full" onclick="doLogin()" id="btn-login">Se connecter</button>
       <div style="text-align:center;margin-top:1rem;font-size:13px;color:var(--text-muted)">
         Pas encore de compte ? <a href="#" style="color:var(--accent)" onclick="switchAuthMode('signup')">S'inscrire</a>
@@ -713,7 +706,10 @@ const APP_NAME = 'Coups de surf NC';
       <div id="sec-conditions" style="padding:12px 14px;display:none;">
         <div class="form-row-3">
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">Hs (m)</label>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <label class="form-label" style="margin-bottom:0;">Hs (m)</label>
+              <span id="autofill-hint" style="font-size:10px;color:var(--text-muted);"></span>
+            </div>
             <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
           </div>
           <div class="form-group" style="margin-bottom:10px;">
@@ -975,9 +971,7 @@ let statsMode = 'me';
 
 try {
   if (SUPABASE_URL !== 'VOTRE_URL_SUPABASE_ICI') {
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY,{
-  auth: { persistSession: true, storageKey: 'surf-nc-auth' }
-});
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   }
 } catch(e) { console.error("❌ Supabase init error:", e); }
 
@@ -1001,16 +995,6 @@ async function doLogin() {
   const btn = document.getElementById('btn-login');
   btn.textContent = '…'; btn.disabled = true;
   try {
-    // Persistance selon "se souvenir de moi"
-    const remember = document.getElementById('auth-remember')?.checked !== false;
-    // Supabase v2: storage persistant par défaut (localStorage)
-    // Pour session courte on utilise sessionStorage
-    if (!remember) {
-      // Temporairement rediriger Supabase vers sessionStorage
-      try { sb.auth.storage = window.sessionStorage; } catch(e) {}
-    } else {
-      try { sb.auth.storage = window.localStorage; } catch(e) {}
-    }
     const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
     console.log("✅ Réponse Supabase:", { data, error });
     if (error) {
@@ -1065,6 +1049,12 @@ async function init() {
   console.log("📡 sb initialisé ?", sb !== null);
   if (!sb) {
     document.getElementById('main-nav').style.display = 'flex';
+  // Charger le cache des profils pour afficher les noms dans les sessions
+  sb.from('profiles').select('id,username').then(function(res) {
+    if (res.data) res.data.forEach(function(p) {
+      window._profileCache[p.id] = p.username || 'Surfeur';
+    });
+  });
     document.getElementById('setup-banner').style.display = 'block';
     showPage('dashboard');
     renderDashStats([]); renderSessionsList([]);
@@ -1198,6 +1188,12 @@ function sessionCardHTML(s) {
       <div class="session-spot">${s.spot || '—'}</div>
       <div class="session-meta">${_fmtMeta(s)}</div>
       ${tags.length ? `<div class="session-tags">${tags.join('')}</div>` : ''}
+      ${(function(){
+        var isOwn = window.currentUser && s.user_id === window.currentUser.id;
+        if (isOwn) return '';
+        var name = (window._profileCache && window._profileCache[s.user_id]) || '';
+        return name ? '<div style="font-size:10px;color:var(--accent);margin-top:3px;opacity:.7;">👤 '+name+'</div>' : '';
+      })()}
     </div>
     <div class="session-right">
       <div class="stars">${stars}</div>
@@ -1214,6 +1210,22 @@ function openAddSession() {
   document.getElementById('modal-add-title').textContent = 'Nouvelle session';
   document.getElementById('edit-session-id').value = '';
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  // Écouter les changements de date
+  setTimeout(function(){
+    var dateEl = document.getElementById('f-date');
+    if (dateEl && !dateEl._autoFillBound) {
+      dateEl._autoFillBound = true;
+      dateEl.addEventListener('change', function() {
+        var today = new Date().toISOString().split('T')[0];
+        var hint = document.getElementById('autofill-hint');
+        if (this.value === today) {
+          _autoFillConditions();
+        } else if (hint) {
+          hint.textContent = '';
+        }
+      });
+    }
+  }, 100);
   ['f-duration','f-spot','f-launch','f-hs','f-period','f-swell-dir','f-wind','f-wind-dir','f-tide','f-board','f-price','f-shared-with','f-obs'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -1239,6 +1251,71 @@ function openAddSession() {
     if (sel && currentProfile && currentProfile.default_boat_id) sel.value = currentProfile.default_boat_id;
   });
   document.getElementById('modal-add').classList.add('open');
+  // Auto-fill conditions si session aujourd'hui
+  var today = new Date().toISOString().split('T')[0];
+  if (document.getElementById('f-date').value === today) {
+    _autoFillConditions();
+  }
+}
+
+async function _autoFillConditions() {
+  // Indiquer que le chargement est en cours
+  var hint = document.getElementById('autofill-hint');
+  if (hint) { hint.textContent = '⏳ Récupération des conditions…'; hint.style.color = 'var(--text-muted)'; }
+  try {
+    // Utiliser Open-Meteo marine (pas besoin de token)
+    // Coordonnées Nouméa par défaut (proche de la plupart des spots)
+    var lat = -22.27, lon = 166.43;
+    // Essayer de lire le spot sélectionné pour ajuster les coords
+    var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
+    
+    var [marine, wind] = await Promise.all([
+      fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lon
+        +'&current=wave_height,swell_wave_height,swell_wave_period,swell_wave_direction&timezone=Pacific%2FNoumea')
+        .then(function(r){return r.json();}),
+      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon
+        +'&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Pacific%2FNoumea')
+        .then(function(r){return r.json();})
+    ]);
+
+    var cur = marine.current || {};
+    var wcur = wind.current || {};
+
+    // Remplir seulement les champs vides
+    var hsEl = document.getElementById('f-hs');
+    if (hsEl && !hsEl.value && cur.swell_wave_height != null)
+      hsEl.value = cur.swell_wave_height.toFixed(1);
+
+    var perEl = document.getElementById('f-period');
+    if (perEl && !perEl.value && cur.swell_wave_period != null)
+      perEl.value = Math.round(cur.swell_wave_period);
+
+    var wdEl = document.getElementById('f-wind');
+    if (wdEl && !wdEl.value && wcur.wind_speed_10m != null)
+      wdEl.value = Math.round(wcur.wind_speed_10m);
+
+    // Directions: utiliser setDirFields si disponible
+    if (typeof setDirFields === 'function') {
+      if (cur.swell_wave_direction != null) {
+        setDirFields('f-swell-dir','f-swell-dir-card','f-swell-dir-deg', Math.round(cur.swell_wave_direction)+'');
+      }
+      if (wcur.wind_direction_10m != null) {
+        setDirFields('f-wind-dir','f-wind-dir-card','f-wind-dir-deg', Math.round(wcur.wind_direction_10m)+'');
+      }
+    }
+
+    if (hint) {
+      var parts = [];
+      if (cur.swell_wave_height) parts.push('Hs '+cur.swell_wave_height.toFixed(1)+'m');
+      if (cur.swell_wave_period) parts.push(Math.round(cur.swell_wave_period)+'s');
+      if (wcur.wind_speed_10m) parts.push('Vent '+Math.round(wcur.wind_speed_10m)+'kt');
+      hint.textContent = parts.length ? '✅ Conditions GFS · ' + parts.join(' · ') : '⚠ Pas de données';
+      hint.style.color = parts.length ? 'var(--success)' : 'var(--accent-warm)';
+    }
+  } catch(e) {
+    if (hint) { hint.textContent = '⚠ Conditions indisponibles'; hint.style.color = 'var(--accent-warm)'; }
+    console.warn('autofill:', e);
+  }
 }
 
 function editSession() {
@@ -1350,7 +1427,12 @@ async function openDetail(id) {
   }).join(' ');
   var _spL=(s.spots&&Array.isArray(s.spots)&&s.spots.length?s.spots:[s.spot||'Session']);
   var _spStr=_spL.map(function(x){return x.split(',').map(function(p){return p.trim();}).join(' + ');}).join(' + ');
-  document.getElementById('detail-title').textContent=_spStr+' · '+d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});;
+  var _authorName = (window._profileCache && window._profileCache[s.user_id]) || '';
+  var _isOwn = window.currentUser && s.user_id === window.currentUser.id;
+  document.getElementById('detail-title').textContent=_spStr+' · '+d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+  // Afficher l'auteur si ce n'est pas soi-même
+  var authorEl = document.getElementById('detail-author');
+  if (authorEl) authorEl.textContent = (!_isOwn && _authorName) ? '👤 ' + _authorName : '';
   document.getElementById('detail-content').innerHTML = `
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
       <span style="font-size:1.1rem;color:var(--star);">${stars}</span>
@@ -1498,6 +1580,45 @@ function renderStats(sessions, el) {
       <div class="section-title" style="margin-bottom:10px;">Qualité dans le temps</div>
       <div class="chart-wrap" style="height:160px;"><canvas id="stat-qual-chart" role="img" aria-label="Qualité par session"></canvas></div>
     </div>
+    ${(function(){
+      // Sessions groupées par spot+date (plusieurs surfeurs même jour)
+      var daySpotMap = {};
+      sessions.forEach(function(s) {
+        var spot = s.spot || '?';
+        var key = s.date + '|' + spot;
+        if (!daySpotMap[key]) daySpotMap[key] = { date:s.date, spot:spot, sessions:[], avgQ:0, avgHs:0 };
+        daySpotMap[key].sessions.push(s);
+      });
+      var grouped = Object.values(daySpotMap).filter(function(g){ return g.sessions.length > 1; })
+        .sort(function(a,b){ return b.date.localeCompare(a.date); }).slice(0,8);
+      if (!grouped.length) return '';
+      var rows = grouped.map(function(g) {
+        var avgQ = g.sessions.filter(function(s){return s.quality;}).reduce(function(a,s){return a+s.quality;},0) / (g.sessions.filter(function(s){return s.quality;}).length||1);
+        var avgHs = g.sessions.filter(function(s){return s.hs;}).reduce(function(a,s){return a+s.hs;},0) / (g.sessions.filter(function(s){return s.hs;}).length||1);
+        var names = g.sessions.map(function(s){
+          return (window._profileCache && window._profileCache[s.user_id]) || '?';
+        }).join(', ');
+        var stars = avgQ >= 1 ? ('★'.repeat(Math.round(avgQ)) + '<span style="opacity:.2">★</span>'.repeat(5-Math.round(avgQ))) : '—';
+        return '<tr style="border-bottom:1px solid var(--border);">'
+          +'<td style="padding:6px 4px;font-size:11px;color:var(--text-muted);">'+g.date.slice(5).replace('-','/')+'</td>'
+          +'<td style="padding:6px 4px;font-size:11px;font-weight:500;">'+g.spot+'</td>'
+          +'<td style="padding:6px 4px;font-size:11px;color:var(--accent);">'+g.sessions.length+' surfeurs</td>'
+          +'<td style="padding:6px 4px;font-size:11px;color:var(--star);">'+stars+'</td>'
+          +'<td style="padding:6px 4px;font-size:10px;color:var(--text-muted);">'+(avgHs>0?avgHs.toFixed(1)+'m':''+(names.length<40?names:names.slice(0,38)+'…'))+'</td>'
+          +'</tr>';
+      }).join('');
+      return '<div class="card" style="margin-top:14px;">'
+        +'<div class="section-title" style="margin-bottom:10px;">🏄 Sessions collectives (même spot · même jour)</div>'
+        +'<table style="width:100%;border-collapse:collapse;">'
+        +'<thead><tr style="border-bottom:1px solid var(--border);">'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Date</th>'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Spot</th>'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Surfeurs</th>'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Qualité moy.</th>'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Hs moy.</th>'
+        +'</tr></thead>'
+        +'<tbody>'+rows+'</tbody></table></div>';
+    })()}
   `;
   clearTimeout(window._statsT);
   window._statsT=setTimeout(function() {
