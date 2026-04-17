@@ -1582,7 +1582,7 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
   if(T) {
     if(T < SCORE_PARAMS.minPeriod) {
       score = Math.max(0, score - 1);
-      details.push('Période courte '+T+'s (<'+SCORE_PARAMS.minPeriod+'s)');
+      details.push('Période courte '+T+'s (&lt;'+SCORE_PARAMS.minPeriod+'s)');
     } else if(T >= 12) {
       score = Math.min(5, score + 1);
       details.push('Longue période '+T+'s');
@@ -1673,8 +1673,10 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p){
        (wd!==null&&wd!==undefined ? svgArrow(wd,'#e8a057')+' '+compass(wd)+' · ' : '')+'Raf. '+(wg?Math.round(wg):'—')+' kt',
        windCol(ws))+
     sc('Puissance',(p||'—')+' kW/m','',scCol)+
-    sc('Score <button onclick="showScoreSettings()" style="background:none;border:none;cursor:pointer;font-size:9px;color:var(--faint);padding:0 2px;" title="Régler le score">⚙</button>',
-       dots+' '+scTxt, surf.details.slice(0,2).join(' · '), scCol);
+    sc('Score <button onclick="showScoreSettings()" style="background:none;border:none;cursor:pointer;font-size:9px;color:var(--faint);padding:0 2px;" title="Regler">⚙</button>',
+       dots+' '+scTxt,
+       surf.details.map(function(d){return '<span style="opacity:.75;">'+d+'</span>';}).join(' &middot; '),
+       scCol);
 }
 
 
@@ -1900,7 +1902,8 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
     var p=pwr[i];
     var surfSc = calcSurfScore(sw1h[i],sw1t[i],sw1d[i],wSpd[i],wGst[i],wDir[i],p);
     var sc2=surfSc.score;
-    var sdots='<span style="color:'+surfSc.col+'">●'.repeat(sc2)+'</span>'+(sc2<5?'<span style="opacity:.15">'+'●'.repeat(5-sc2)+'</span>':'');
+    var sdots='';
+    for(var di2=0;di2<5;di2++) sdots+='<span style="color:'+(di2<sc2?surfSc.col:'rgba(255,255,255,.12)')+';">●</span>';
     var wnd=_fcastData.wndH&&_fcastData.wndH[i];
     html+='<tr'+(isN?' class="night"':'')+'>'
       +'<td style="color:var(--muted)">'+String(h).padStart(2,'0')+'h</td>'
