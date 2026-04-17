@@ -230,6 +230,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
           <button id="btn-src-om" onclick="setHsSrc('om')" style="padding:2px 10px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:none;color:var(--muted);">GFS</button>
         </div>
       </div>
+
       <div style="display:flex;gap:10px;align-items:center;font-size:9px;color:var(--muted);">
         <span><span style="display:inline-block;width:10px;height:10px;background:#1a5f8a;border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Houle 1</span>
         <span><span style="display:inline-block;width:10px;height:10px;background:#6ab4d4;border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Houle 2</span>
@@ -237,7 +238,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <span><span style="display:inline-block;width:12px;height:2px;background:rgba(255,255,255,.4);vertical-align:middle;margin-right:2px;"></span>Hs tot.</span>
       </div>
     </div>
-    <div style="position:relative;height:190px;"><canvas id="c-hs"></canvas></div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <div style="position:relative;height:200px;min-width:600px;"><canvas id="c-hs"></canvas></div>
+    </div>
     <div id="hs-hover-table" style="margin-top:6px;min-height:28px;border-top:1px solid var(--border);padding-top:5px;font-size:10px;color:var(--faint);">
       ← Survolez le graphique pour voir les détails
     </div>
@@ -800,7 +803,12 @@ var SPOTS = (function() {
   return DEFAULT_SPOTS.map(function(s){ return Object.assign({},s); });
 })();
 
-function saveSpots() { try{localStorage.setItem('surf-spots-nc',JSON.stringify(SPOTS));}catch(e){} }
+function saveSpots() {
+  try { localStorage.setItem('surf-spots-nc', JSON.stringify(SPOTS)); } catch(e) {}
+}
+function saveActiveSpot() {
+  try { localStorage.setItem('surf-active-spot', SPOTS[currentSpot] ? SPOTS[currentSpot].name : ''); } catch(e) {}
+}
 
 function resetSpots() {
   if (!confirm('Réinitialiser toutes les positions et supprimer les spots ajoutés ?')) return;
@@ -844,6 +852,7 @@ function buildSpotTabs() {
     btn.onclick=function(){
       currentSpot=i;
       document.querySelectorAll('.stab').forEach(function(b,j){b.classList.toggle('active',j===i);});
+      saveActiveSpot();
       loadForecast(i);
     };
     el.appendChild(btn);
@@ -914,42 +923,49 @@ function showNcTokenPrompt() {
     +'font-size:12px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.6);';
 
   div.innerHTML =
+    // ── Titre ──
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-    +'  <span style="font-weight:700;color:var(--accent);font-size:13px;">🔑 Token meteo.nc</span>'
-    +'  <button id="tkn-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px;">×</button>'
+    +'<span style="font-weight:700;color:var(--accent);font-size:13px;">🔑 Token meteo.nc</span>'
+    +'<button id="tkn-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px;">&#215;</button>'
     +'</div>'
 
-    // Extension épinglée
-    +'<div style="background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.2);border-radius:8px;padding:10px;margin-bottom:10px;">'
-    +'  <div style="font-size:11px;font-weight:600;color:#3dba8a;margin-bottom:8px;">⚡ Via l’extension Chrome (recommandé)</div>'
-    +'  <div style="font-size:10px;color:var(--muted);line-height:2;">'
-    +'    <span style="color:#3dba8a;">①</span> Installe et <b style="color:var(--text);">épingle</b> l’extension <b>meteo.nc Token</b><br>'
-    +'    <span style="color:#3dba8a;">②</span> Visite <a href="https://meteo.nc" target="_blank" style="color:#4fa3c7;">meteo.nc</a> — token capturé automatiquement<br>'
-    +'    <span style="color:#3dba8a;">③</span> Clique l’icône <b style="color:var(--text);">🔑</b> épinglée dans Chrome<br>'
-    +'    <span style="color:#3dba8a;">④</span> Clique <b style="color:var(--text);">📋 Copier</b> puis colle ci-dessous'
-    +'  </div>'
-    +'  <a href="https://thibsurf.github.io/surf-journal/tuto-extension.html" target="_blank" '
-    +'     style="display:inline-block;margin-top:8px;background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.25);'
-    +'color:#3dba8a;padding:5px 12px;border-radius:8px;font-size:11px;text-decoration:none;">📖 Guide installation extension</a>'
+    // ── Extension v2.1 — auto ──
+    +'<div style="background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.25);border-radius:10px;padding:11px;margin-bottom:10px;">'
+    +'<div style="font-size:11px;font-weight:700;color:#3dba8a;margin-bottom:7px;">⚡ Extension Chrome — automatique</div>'
+    +'<div style="font-size:10px;color:var(--muted);line-height:1.9;">'
+    +'<span style="color:#3dba8a;font-weight:600;">①</span> Installe l&#39;extension <b style="color:var(--text);">meteo.nc Token</b>'
+    +' <a href="https://thibsurf.github.io/surf-journal/tuto-extension.html" target="_blank" '
+    +'style="color:#4fa3c7;font-size:9px;text-decoration:none;">(📖 tuto)</a><br>'
+    +'<span style="color:#3dba8a;font-weight:600;">②</span> L&#39;extension ouvre meteo.nc automatiquement et capture le token<br>'
+    +'<span style="color:#3dba8a;font-weight:600;">③</span> Clique l&#39;ic&#244;ne <b style="color:var(--text);">🔑</b> '
+    +'&#233;pingl&#233;e &#8594; <b style="color:var(--text);">📋 Copier</b> &#8594; colle ci-dessous'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;margin-top:8px;">'
+    +'<a href="https://github.com/Thibsurf/surf-journal/raw/main/nc-token-extension.zip" download '
+    +'style="flex:1;text-align:center;background:rgba(61,186,138,.15);border:1px solid rgba(61,186,138,.3);'
+    +'color:#3dba8a;padding:5px 8px;border-radius:7px;font-size:10px;font-weight:600;text-decoration:none;">&#8595; T&#233;l&#233;charger</a>'
+    +'<a href="https://thibsurf.github.io/surf-journal/tuto-extension.html" target="_blank" '
+    +'style="flex:1;text-align:center;background:rgba(79,163,199,.1);border:1px solid rgba(79,163,199,.25);'
+    +'color:#4fa3c7;padding:5px 8px;border-radius:7px;font-size:10px;font-weight:600;text-decoration:none;">📖 Guide</a>'
+    +'<a href="https://meteo.nc" target="_blank" '
+    +'style="flex:1;text-align:center;background:var(--glass);border:1px solid var(--border);'
+    +'color:var(--muted);padding:5px 8px;border-radius:7px;font-size:10px;text-decoration:none;">&#8599; meteo.nc</a>'
+    +'</div>'
     +'</div>'
 
-    // Saisie manuelle
-    // Saisie manuelle
-    +'<div style="font-size:10px;color:var(--muted);margin-bottom:5px;">✏ Ou colle le token manuellement :</div>'
+    // ── Saisie manuelle ──
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:5px;">✏ Colle le token (depuis l&#39;extension ou DevTools) :</div>'
     +'<input id="tkn-manual" type="text" placeholder="eyJ0eXAiOiJKV1Qi…" value="'
     + (_ncToken ? _ncToken.substring(0,30)+'…' : '') + '" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;padding:7px 8px;'
     +'color:var(--text);font-size:10px;margin-bottom:8px;box-sizing:border-box;font-family:monospace;"/>'
-
     +'<button id="tkn-save" style="width:100%;background:var(--accent);color:#fff;border:none;'
     +'border-radius:6px;padding:8px;cursor:pointer;font-size:11px;font-weight:600;">💾 Enregistrer</button>';
 
   document.body.appendChild(div);
 
-  // Fermer
   document.getElementById('tkn-close').onclick = function(){ div.remove(); };
 
-  // Sauvegarder manuellement
   document.getElementById('tkn-save').onclick = function() {
     var t = document.getElementById('tkn-manual').value.trim().replace(/^Bearer\s+/i,'');
     if(!t || t.length < 20) { showToast('Token invalide'); return; }
@@ -1084,9 +1100,9 @@ async function loadForecast(i) {
   var omMarineUrl='https://marine-api.open-meteo.com/v1/marine?latitude='+s.lat+'&longitude='+s.lon
     +'&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period'
     +',wind_wave_height,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period'
-    +'&forecast_days=5&timezone=Pacific%2FNoumea';
+    +'&forecast_days=7&timezone=Pacific%2FNoumea';
   var omWindUrl  ='https://api.open-meteo.com/v1/forecast?latitude='+s.lat+'&longitude='+s.lon
-    +'&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&forecast_days=5&timezone=Pacific%2FNoumea';
+    +'&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&forecast_days=7&timezone=Pacific%2FNoumea';
 
   var _loadTimeout = null; // déclaré ici pour être accessible dans catch
   try {
@@ -1290,7 +1306,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     var ni=h.time.findIndex(function(t){return new Date(t)>=new Date(now.getTime()-3600000);}); 
     if(ni<0)ni=0;
     for(var i=ni;i<h.time.length;i+=3){
-      var dt2=new Date(h.time[i]); if((dt2-now)/864e5>5) break;
+      var dt2=new Date(h.time[i]); if((dt2-now)/864e5>7) break;
       dates.push(dt2);
       var lblOM=String(dt2.getHours()).padStart(2,'0')+'h';
       // Ajouter la date quand le jour change
@@ -1428,8 +1444,16 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
   if(charts[id]){try{charts[id].destroy();}catch(e){}}
   var cv=document.getElementById(id); if(!cv) return;
+  // Adapter la largeur du canvas au nombre de points (min 15px/point)
+  var wrapper = cv.parentElement;
+  if(wrapper && lbl.length > 0) {
+    var minW = Math.max(600, lbl.length * 15);
+    wrapper.style.minWidth = minW + 'px';
+  }
   var activeD = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
   var dates = (activeD && activeD.dates) || [];
+
+  // Afficher toutes les données disponibles (pas de filtre temporel)
 
   // Calculer les indices de changement de jour pour les séparateurs visuels
   var dayBreaks = []; // {idx, label: "Sam 19/4"}
@@ -1496,13 +1520,17 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
       },
       scales:{
         x:{stacked:true,
-          ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:16,
+          ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:false,
             callback:function(val,idx){
-              // Masquer les labels des ticks normaux, ne garder que les heures rondes
               var label = lbl[idx] || '';
-              // Enlever la date du label (déjà affiché via plugin)
-              var match = label.match(/\d{2}h$/);
-              return match ? match[0] : label;
+              // N'afficher que les heures rondes (0h, 6h, 12h, 18h) pour lisibilité
+              var hMatch = label.match(/^(\d{1,2})\/(\d{1,2}) (\d{2})h$|^(\d{2})h$/);
+              if (!hMatch) return label;
+              var h = parseInt(hMatch[3] || hMatch[4] || '0');
+              // Toujours afficher si contient une date (changement de jour)
+              if (label.includes('/')) return label;
+              // Sinon seulement 00h, 06h, 12h, 18h
+              return (h % 6 === 0) ? label : '';
             }
           },
           grid:{color:'rgba(255,255,255,.03)'}},
@@ -2091,6 +2119,7 @@ function deleteSpot(i) {
 function selectSpotFromMap(i){
   currentSpot=i;
   document.querySelectorAll('.stab').forEach(function(b,j){b.classList.toggle('active',j===i);});
+  saveActiveSpot();
   showTab('forecast',document.querySelector('.nav-tab'));
   loadForecast(i);
 }
@@ -3393,7 +3422,7 @@ function showScoreSettings() {
 
     // Direction idéale de la houle (compas)
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">'
-    +'Direction idéale de la houle <span style="color:var(--faint);font-size:10px;">(provenance — d’où vient la houle)</span>'
+    +'Direction idéale de la houle <span style="color:var(--faint);font-size:10px;">(provenance - d&#39;ou vient la houle)</span>'
     +'</div>'
     +compassWidget('swell','Houle - direction de provenance', p.swellDirIdeal||120, '#4fa3c7')
     +'<div style="font-size:9px;color:var(--faint);margin-bottom:14px;">Le score monte si la houle vient de cette direction ±45°</div>'
@@ -3405,7 +3434,7 @@ function showScoreSettings() {
 
     // Direction idéale du vent (compas) — on veut du vent OFFSHORE
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">'
-    +'Direction idéale du vent <span style="color:var(--faint);font-size:10px;">(vers où souffle le vent)</span>'
+    +'Direction idéale du vent <span style="color:var(--faint);font-size:10px;">(vers o&#249; souffle le vent)</span>'
     +'</div>'
     +compassWidget('wind','Vent - direction vers laquelle il souffle', p.windDirIdeal||270, '#e8a057')
     +'<div style="font-size:9px;color:var(--faint);margin-bottom:14px;">Le score monte si le vent est dans cette direction ±60° (offshore idéal = vent dos à la mer)</div>'
@@ -3522,8 +3551,11 @@ function degToCompass(d) {
 function compass(d){return(d===null||d===undefined)?'—':COMP[Math.round(d/22.5)%16];}
 function fmt(v,u){return(v===null||v===undefined)?'—':v+(u||'');}
 function svgArrow(deg,col){
+  // La flèche montre la direction de PROPAGATION (où va la houle/vent)
+  // deg = provenance météo (d'où ça vient) → on inverse pour montrer où ça va
   if(deg===null||deg===undefined) return '';
-  var r=(deg-90)*Math.PI/180;
+  var propDeg = (deg + 180) % 360; // direction de propagation
+  var r=(propDeg-90)*Math.PI/180;
   var x2=12+8*Math.cos(r), y2=12+8*Math.sin(r);
   var x1=12-8*Math.cos(r), y1=12-8*Math.sin(r);
   return '<svg width="24" height="24" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;">'
@@ -3538,6 +3570,20 @@ function pwrCol(v){return !v?'#3d5468':v<1?'#7a94aa':v<5?'#4fa3c7':v<15?'#3dba8a
 // ─── INIT FINALE ──────────────────────────────────────────────────────────
 (function(){
   buildSpotTabs();
+  // Restaurer le dernier spot actif
+  try {
+    var savedName = localStorage.getItem('surf-active-spot');
+    if (savedName) {
+      var savedIdx = SPOTS.findIndex(function(s){ return s.name === savedName; });
+      if (savedIdx >= 0) {
+        currentSpot = savedIdx;
+        // Marquer le bon onglet actif
+        document.querySelectorAll('.stab').forEach(function(b,j){
+          b.classList.toggle('active', j===savedIdx);
+        });
+      }
+    }
+  } catch(e) {}
   var btn = document.getElementById('token-btn');
   if(btn) {
     if(_ncToken) {
@@ -3550,7 +3596,7 @@ function pwrCol(v){return !v?'#3d5468':v<1?'#7a94aa':v<5?'#4fa3c7':v<15?'#3dba8a
       btn.textContent = 'Token';
     }
   }
-  loadForecast(0);
+  loadForecast(currentSpot);
   // Charger météo/UV dès le début (pas besoin d'ouvrir l'onglet marée)
   loadOpenMeteoMeteo();
 })();
