@@ -928,10 +928,14 @@ function showNcTokenPrompt() {
     +'    <span style="color:#3dba8a;">③</span> Clique l’icône <b style="color:var(--text);">🔑</b> épinglée dans Chrome<br>'
     +'    <span style="color:#3dba8a;">④</span> Clique <b style="color:var(--text);">📋 Copier</b> puis colle ci-dessous'
     +'  </div>'
+    +'  <a href="https://thibsurf.github.io/surf-journal/tuto-extension.html" target="_blank" '
+    +'     style="display:inline-block;margin-top:8px;background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.25);'
+    +'color:#3dba8a;padding:5px 12px;border-radius:8px;font-size:11px;text-decoration:none;">📖 Guide installation extension</a>'
     +'</div>'
 
     // Saisie manuelle
-    +'<div style="font-size:10px;color:var(--muted);margin-bottom:5px;">✏ Colle le token ici (via bookmarklet ou DevTools → Network → rpcache → authorization) :</div>'
+    // Saisie manuelle
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:5px;">✏ Ou colle le token manuellement :</div>'
     +'<input id="tkn-manual" type="text" placeholder="eyJ0eXAiOiJKV1Qi…" value="'
     + (_ncToken ? _ncToken.substring(0,30)+'…' : '') + '" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;padding:7px 8px;'
@@ -944,9 +948,6 @@ function showNcTokenPrompt() {
 
   // Fermer
   document.getElementById('tkn-close').onclick = function(){ div.remove(); };
-
-
-  if(blEl) blEl.href = 'javascript:%28function%28%29%7B%0A%20%20var%20s%3Dwindow.drupalSettings%3B%0A%20%20var%20t%3Ds%26%26s.mf_tools_common%26%26s.mf_tools_common.config%26%26s.mf_tools_common.config.token%3B%0A%20%20if%28%21t%29%7B%0A%20%20%20%20%2F%2F%20Fallback%3A%20chercher%20dans%20les%20cookies%20ou%20le%20DOM%0A%20%20%20%20var%20scripts%3Ddocument.querySelectorAll%28%27script%27%29%3B%0A%20%20%20%20for%28var%20i%3D0%3Bi%3Cscripts.length%3Bi%2B%2B%29%7B%0A%20%20%20%20%20%20var%20m%3Dscripts%5Bi%5D.textContent.match%28%2FeyJ%5BA-Za-z0-9_%5C-%5D%7B20%2C%7D%5C.%5BA-Za-z0-9_%5C-%5D%7B20%2C%7D%5C.%5BA-Za-z0-9_%5C-%5D%7B10%2C%7D%2F%29%3B%0A%20%20%20%20%20%20if%28m%29%7Bt%3Dm%5B0%5D%3Bbreak%3B%7D%0A%20%20%20%20%7D%0A%20%20%7D%0A%20%20if%28t%29%7B%0A%20%20%20%20navigator.clipboard.writeText%28t%29.then%28function%28%29%7B%0A%20%20%20%20%20%20alert%28%27Token%20copie%21%20%28%27%2Bt.substring%280%2C30%29%2B%27...%29%5CnColle-le%20dans%20Surf%20NC%20%3E%20menu%20token%27%29%3B%0A%20%20%20%20%7D%29.catch%28function%28%29%7B%0A%20%20%20%20%20%20prompt%28%27Copie%20ce%20token%3A%27%2Ct%29%3B%0A%20%20%20%20%7D%29%3B%0A%20%20%7D%20else%20%7B%0A%20%20%20%20alert%28%27Token%20non%20trouve%20sur%20cette%20page.%5CnAssure-toi%20d%5C%27etre%20sur%20meteo.nc%27%29%3B%0A%20%20%7D%0A%7D%29%28%29%3B';
 
   // Sauvegarder manuellement
   document.getElementById('tkn-save').onclick = function() {
