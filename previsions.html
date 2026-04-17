@@ -1258,7 +1258,13 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     }
     rows.forEach(function(d){
       var dt=new Date(new Date(d.time).getTime()+11*3600000);
-      dates.push(dt); lbl.push(String(dt.getUTCHours()).padStart(2,'0')+'h');
+      dates.push(dt);
+      var hNC=dt.getUTCHours(), lblStr=String(hNC).padStart(2,'0')+'h';
+      // Ajouter la date quand le jour NC change (comparer avec le point précédent)
+      var prevDate = dates.length>1 ? dates[dates.length-2] : null;
+      var dayChanged = !prevDate || prevDate.getUTCDate()!==dt.getUTCDate();
+      if(dayChanged) lblStr=(dt.getUTCDate())+'/'+(dt.getUTCMonth()+1)+' '+lblStr;
+      lbl.push(lblStr);
       var p1h=d.primary_swell_height, p1t=d.primary_swell_period, p1d=d.primary_swell_direction;
       var tot=d.wave_height, wwind=d.wind_waves_height||0;
       var s2h = (tot!==null && p1h!==null) ? Math.max(0, parseFloat((tot - p1h - wwind).toFixed(2))) : null;
@@ -1285,7 +1291,13 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     if(ni<0)ni=0;
     for(var i=ni;i<h.time.length;i+=3){
       var dt2=new Date(h.time[i]); if((dt2-now)/864e5>5) break;
-      dates.push(dt2); lbl.push(dt2.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}));
+      dates.push(dt2);
+      var lblOM=String(dt2.getHours()).padStart(2,'0')+'h';
+      // Ajouter la date quand le jour change
+      var prevDate2 = dates.length>1 ? dates[dates.length-2] : null;
+      var dayChanged2 = !prevDate2 || prevDate2.getDate()!==dt2.getDate();
+      if(dayChanged2) lblOM=(dt2.getDate())+'/'+(dt2.getMonth()+1)+' '+lblOM;
+      lbl.push(lblOM);
       sw1h.push(h.swell_wave_height[i]);
       sw2h.push(h.secondary_swell_wave_height?h.secondary_swell_wave_height[i]:null);
       wndH.push(h.wind_wave_height[i]); totH.push(h.wave_height[i]);
@@ -1416,18 +1428,66 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
   if(charts[id]){try{charts[id].destroy();}catch(e){}}
   var cv=document.getElementById(id); if(!cv) return;
-  // Récupérer vent depuis _fcastData (source active)
   var activeD = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
-  var ws = (activeD && activeD.wSpd) || [];
-  var wg = (activeD && activeD.wGst) || [];
+  var dates = (activeD && activeD.dates) || [];
+
+  // Calculer les indices de changement de jour pour les séparateurs visuels
+  var dayBreaks = []; // {idx, label: "Sam 19/4"}
+  var DAY_FR2 = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var prevDay = null;
+  dates.forEach(function(dt, i) {
+    if(!dt) return;
+    var d = dt.getDate ? dt : new Date(dt);
+    var dayKey = d.getDate() + '/' + d.getMonth();
+    if(dayKey !== prevDay) {
+      if(i > 0) dayBreaks.push({idx: i, label: DAY_FR2[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth()+1)});
+      prevDay = dayKey;
+    }
+  });
+
+  // Plugin inline pour tracer les séparateurs de jours
+  var dayPlugin = {
+    id: 'dayBreaks_'+id,
+    afterDraw: function(chart) {
+      var ctx2 = chart.ctx;
+      var ca = chart.chartArea;
+      if(!ca) return;
+      var xAxis = chart.scales.x;
+      var n = lbl.length;
+      ctx2.save();
+      dayBreaks.forEach(function(brk) {
+        var x = xAxis.getPixelForTick ? xAxis.getPixelForTick(brk.idx) : ca.left + (brk.idx / (n-1)) * (ca.right - ca.left);
+        if(!x || x < ca.left || x > ca.right) return;
+        // Ligne verticale
+        ctx2.beginPath();
+        ctx2.moveTo(x, ca.top);
+        ctx2.lineTo(x, ca.bottom);
+        ctx2.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx2.lineWidth = 1;
+        ctx2.setLineDash([4, 3]);
+        ctx2.stroke();
+        ctx2.setLineDash([]);
+        // Fond semi-transparent derrière le label
+        ctx2.font = 'bold 9px DM Sans, sans-serif';
+        var tw = ctx2.measureText(brk.label).width;
+        ctx2.fillStyle = 'rgba(13,31,60,0.85)';
+        ctx2.fillRect(x + 3, ca.top + 2, tw + 8, 14);
+        // Texte du jour
+        ctx2.fillStyle = 'rgba(232,160,87,0.9)';
+        ctx2.fillText(brk.label, x + 7, ca.top + 13);
+      });
+      ctx2.restore();
+    }
+  };
+
   charts[id]=new Chart(cv,{type:'bar',
+    plugins:[dayPlugin],
     data:{labels:lbl,datasets:[
       {label:'Houle 1', data:sw1h,backgroundColor:'#1a5f8a',stack:'hs',order:4,yAxisID:'y'},
       {label:'Houle 2'+(_currentHsSrc==='nc'&&_ncFcastData?' (résid.)':''), data:sw2h,backgroundColor:'rgba(106,180,212,0.7)',stack:'hs',order:3,yAxisID:'y'},
       {label:'Mer vent',data:wndH,backgroundColor:'rgba(232,160,87,.45)',stack:'hs',order:2,yAxisID:'y'},
       {label:'Hs tot.', data:totH,type:'line',borderColor:'rgba(255,255,255,.4)',
        backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:0.3,order:1,yAxisID:'y'},
-      // Note: vent/rafales retirés du graphe Hs (voir c-wind juste dessous)
     ]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{
@@ -1435,11 +1495,20 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
         tooltip:{enabled:false}
       },
       scales:{
-        x:{stacked:true,ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{color:'rgba(255,255,255,.03)'}},
+        x:{stacked:true,
+          ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:16,
+            callback:function(val,idx){
+              // Masquer les labels des ticks normaux, ne garder que les heures rondes
+              var label = lbl[idx] || '';
+              // Enlever la date du label (déjà affiché via plugin)
+              var match = label.match(/\d{2}h$/);
+              return match ? match[0] : label;
+            }
+          },
+          grid:{color:'rgba(255,255,255,.03)'}},
         y:{stacked:true,min:0,
            ticks:{color:'#7a94aa',callback:function(v){return v+'m';},font:{size:9}},
            grid:{color:'rgba(255,255,255,.04)'}},
-        // y2 supprimé (vent retiré du graphe Hs)
       }
     }
   });
