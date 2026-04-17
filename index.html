@@ -1043,6 +1043,11 @@ async function doLogout() {
 }
 
 // ══ STARTUP ══
+document.addEventListener('click', function(e) {
+  var el = e.target.closest && e.target.closest('.tap-author');
+  if (el) { e.stopPropagation(); var uid = el.getAttribute('data-uid'); if (uid) openUserProfile(uid); }
+});
+
 async function init() {
   if (window._appInit) return; window._appInit=true;
   console.log("🚀 init() appelé");
@@ -1189,10 +1194,10 @@ function sessionCardHTML(s) {
       <div class="session-meta">${_fmtMeta(s)}</div>
       ${tags.length ? `<div class="session-tags">${tags.join('')}</div>` : ''}
       ${(function(){
-        var isOwn = window.currentUser && s.user_id === window.currentUser.id;
-        if (isOwn) return '';
+        if (window.currentUser && s.user_id === window.currentUser.id) return '';
         var name = (window._profileCache && window._profileCache[s.user_id]) || '';
-        return name ? '<div style="font-size:10px;color:var(--accent);margin-top:3px;opacity:.7;">👤 '+name+'</div>' : '';
+        if (!name) return '';
+        return '<div class="tap-author" data-uid="' + s.user_id + '" style="font-size:10px;color:var(--accent);margin-top:3px;opacity:.8;cursor:pointer;">👤 ' + name + '</div>';
       })()}
     </div>
     <div class="session-right">
@@ -1432,7 +1437,13 @@ async function openDetail(id) {
   document.getElementById('detail-title').textContent=_spStr+' · '+d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
   // Afficher l'auteur si ce n'est pas soi-même
   var authorEl = document.getElementById('detail-author');
-  if (authorEl) authorEl.textContent = (!_isOwn && _authorName) ? '👤 ' + _authorName : '';
+  if (authorEl) {
+    if (!_isOwn && _authorName) {
+            authorEl.innerHTML = '<span class="tap-author" data-uid="' + s.user_id + '" style="cursor:pointer;">👤 ' + _authorName + ' <span style="font-size:9px;opacity:.6;">↗ voir profil</span></span>';
+    } else {
+      authorEl.textContent = '';
+    }
+  }
   document.getElementById('detail-content').innerHTML = `
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
       <span style="font-size:1.1rem;color:var(--star);">${stars}</span>
@@ -1648,6 +1659,72 @@ function renderStats(sessions, el) {
 }
 
 // ══ PROFILE ══
+async function openUserProfile(userId) {
+  var name = (window._profileCache && window._profileCache[userId]) || 'Surfeur';
+  var sessions = [];
+  try {
+    var res = await sb.from('sessions').select('*')
+      .eq('user_id', userId).eq('is_shared', true).order('date', {ascending: false});
+    sessions = res.data || [];
+  } catch(e) { console.warn(e); }
+
+  var totalH = sessions.reduce(function(a,x){return a+(x.duration_h||0);},0);
+  var qs = sessions.filter(function(s){return s.quality;});
+  var avgQ = qs.length ? (qs.reduce(function(a,x){return a+x.quality;},0)/qs.length).toFixed(1) : '—';
+  var tubes = sessions.filter(function(s){return s.moves&&s.moves.includes('tube');}).length;
+  var spotMap = {};
+  sessions.forEach(function(s){var sp=s.spot||'?';spotMap[sp]=(spotMap[sp]||0)+1;});
+  var topSpots = Object.entries(spotMap).sort(function(a,b){return b[1]-a[1];}).slice(0,5);
+
+  var ex = document.getElementById('user-profile-modal');
+  if (ex) ex.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'user-profile-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:1rem;';
+
+  var spotsHtml = topSpots.map(function(e){
+    return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);"><span>'+e[0]+'</span><span style="color:var(--accent);">'+e[1]+'x</span></div>';
+  }).join('');
+
+  var sessHtml = sessions.slice(0,5).map(function(s){
+    var d = new Date(s.date+'T00:00:00');
+    var dateStr = d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+    var stars = s.quality ? '★'.repeat(s.quality) : '—';
+    return '<div class="upm-sess" data-id="'+s.id+'" style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;">'
+      +'<span style="color:var(--text-muted);">'+dateStr+'</span>'
+      +'<span style="font-weight:500;">'+(s.spot||'—')+'</span>'
+      +'<span style="color:var(--star);">'+stars+'</span>'
+      +'</div>';
+  }).join('');
+
+  modal.innerHTML = '<div style="background:var(--deep);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:420px;width:100%;max-height:80vh;overflow-y:auto;">'
+    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">'
+    +'<div style="width:48px;height:48px;border-radius:50%;background:var(--mid);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:var(--accent);">'+name[0].toUpperCase()+'</div>'
+    +'<div><div style="font-size:1.1rem;font-weight:600;">'+name+'</div>'
+    +'<div style="font-size:11px;color:var(--text-muted);">'+sessions.length+' session'+(sessions.length>1?'s':'')+'</div></div>'
+    +'<button class="upm-close" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;padding:0 4px;">×</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:20px;">'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--accent);">'+sessions.length+'</div><div style="font-size:10px;color:var(--text-muted);">Sessions</div></div>'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--accent);">'+Math.floor(totalH)+'h</div><div style="font-size:10px;color:var(--text-muted);">eau</div></div>'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--star);">'+avgQ+'★</div><div style="font-size:10px;color:var(--text-muted);">Qualité</div></div>'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--tube);">'+tubes+'</div><div style="font-size:10px;color:var(--text-muted);">Tubes</div></div>'
+    +'</div>'
+    +(topSpots.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Spots favoris</div>'+spotsHtml+'</div>' : '')
+    +(sessions.length ? '<div><div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Dernières sessions</div>'+sessHtml+'</div>' : '')
+    +'</div>';
+
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) { modal.remove(); return; }
+    if (e.target.closest('.upm-close')) { modal.remove(); return; }
+    var sess = e.target.closest('.upm-sess');
+    if (sess) { var id = sess.getAttribute('data-id'); modal.remove(); if(id) openDetail(id); }
+  });
+  document.body.appendChild(modal);
+}
+
+
 function loadProfilePage() {
   if (!currentProfile) return;
   const initials = (currentProfile.username || '?')[0].toUpperCase();
