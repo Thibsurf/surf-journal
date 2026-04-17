@@ -419,6 +419,8 @@ const APP_NAME = 'Coups de surf NC';
   <button class="nav-btn" onclick="showPage('ranking')">Classement</button>
   <button class="nav-btn" onclick="showPage('boats')">Bateaux</button>
   <button class="nav-btn" onclick="showPage('stats')">Stats</button>
+  <a href="https://thibsurf.github.io/surf-journal/previsions.html"
+     class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;">🌊 Prévisions</a>
   <button class="nav-btn primary" onclick="openAddSession()">+ Session</button>
   <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')">?</div>
 </nav>
@@ -757,22 +759,26 @@ const APP_NAME = 'Coups de surf NC';
             <input type="text" class="form-input" id="f-tide" placeholder="1.2→0.4">
           </div>
         </div>
-        <!-- Widget marée SHOM -->
-        <div style="background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.15);border-radius:var(--radius-sm);padding:10px;margin-top:4px;">
+        <!-- Widget marée interactif -->
+        <div id="tide-widget" style="background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.15);border-radius:var(--radius-sm);padding:10px;margin-top:4px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-            <span style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">📈 Marée SHOM</span>
-            <select id="shom-port" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="updateShomLink()">
-              <option value="NOUMEA_NUMBO">Nouméa</option>
-              <option value="TOMO_NOUVELLE_CALEDONIE">Tomo (Dumbéa)</option>
+            <span style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">🌊 Marée — sélection des plages</span>
+            <select id="tide-port" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="renderTideWidget()">
+              <option value="noumea">Nouméa</option>
+              <option value="tomo">Tomo (Dumbéa)</option>
+              <option value="bourail">Bourail</option>
+              <option value="thio">Thio</option>
             </select>
           </div>
-          <a id="shom-link" href="#" target="_blank" rel="noopener"
-            style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;background:rgba(79,163,199,0.1);border:1px solid rgba(79,163,199,0.25);border-radius:var(--radius-sm);color:var(--accent);font-size:13px;text-decoration:none;transition:background .2s;"
-            onmouseover="this.style.background='rgba(79,163,199,0.2)'" onmouseout="this.style.background='rgba(79,163,199,0.1)'">
-            <span style="font-size:1.1rem;">🌊</span>
-            <span id="shom-link-label">Voir la courbe de marée du jour →</span>
-          </a>
-          <div style="font-size:10px;color:var(--text-faint);margin-top:6px;text-align:center;">Ouvre maree.shom.fr avec la date et le port sélectionnés · Renseigne le champ Marée ci-dessus</div>
+          <div id="tide-chart-wrap" style="position:relative;height:120px;background:#0a1628;border-radius:6px;padding:4px;margin-bottom:8px;cursor:crosshair;user-select:none;">
+            <canvas id="tide-canvas" width="600" height="112" style="width:100%;height:100%;"></canvas>
+            <div id="tide-hint" style="position:absolute;top:4px;right:6px;font-size:9px;color:rgba(255,255,255,.4);pointer-events:none;">Clique et glisse pour sélectionner une plage</div>
+          </div>
+          <div id="tide-plages" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+          <button type="button" id="tide-add-range" onclick="addTideRange()" style="background:rgba(79,163,199,0.15);border:1px solid rgba(79,163,199,0.3);color:var(--accent);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;margin-right:6px;">+ Ajouter une plage</button>
+          <button type="button" id="tide-reset" onclick="resetTideRanges()" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">Effacer</button>
+          <div id="tide-summary" style="font-size:10px;color:var(--text-muted);margin-top:8px;line-height:1.5;"></div>
+          <a id="shom-link" href="#" target="_blank" rel="noopener" style="display:block;margin-top:6px;font-size:10px;color:var(--text-faint);text-align:center;text-decoration:none;">↗ Voir sur SHOM (vérification)</a>
         </div>
       </div>
     </div>
@@ -793,6 +799,23 @@ const APP_NAME = 'Coups de surf NC';
         <span onclick="setStars(1)">★</span><span onclick="setStars(2)">★</span>
         <span onclick="setStars(3)">★</span><span onclick="setStars(4)">★</span>
         <span onclick="setStars(5)">★</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fiabilité des prévisions meteo.nc/GFS
+        <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:4px;">par rapport au réel</span>
+      </label>
+      <div id="f-forecast-accuracy" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
+        <button type="button" onclick="setForecastAccuracy(1)" data-acc="1" class="facc-btn" title="Écart important"
+          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">😴 Nul</button>
+        <button type="button" onclick="setForecastAccuracy(2)" data-acc="2" class="facc-btn"
+          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">😔 Moyen</button>
+        <button type="button" onclick="setForecastAccuracy(3)" data-acc="3" class="facc-btn"
+          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">🙂 Bien</button>
+        <button type="button" onclick="setForecastAccuracy(4)" data-acc="4" class="facc-btn"
+          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">😊 Très bien</button>
+        <button type="button" onclick="setForecastAccuracy(5)" data-acc="5" class="facc-btn"
+          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">🎯 Top</button>
       </div>
     </div>
     <div class="form-group">
@@ -964,6 +987,7 @@ let currentFilter = 'all';
 let editingSessionId = null;
 let currentDetailSession = null;
 let selectedQuality = 0;
+window._profileCache = {};  // Cache {userId: username} pour afficher les noms dans les cards
 let selectedCommentQuality = 0;
 let selectedMoves = [];
 let selectedTubeCount = 0;
@@ -1054,12 +1078,6 @@ async function init() {
   console.log("📡 sb initialisé ?", sb !== null);
   if (!sb) {
     document.getElementById('main-nav').style.display = 'flex';
-  // Charger le cache des profils pour afficher les noms dans les sessions
-  sb.from('profiles').select('id,username').then(function(res) {
-    if (res.data) res.data.forEach(function(p) {
-      window._profileCache[p.id] = p.username || 'Surfeur';
-    });
-  });
     document.getElementById('setup-banner').style.display = 'block';
     showPage('dashboard');
     renderDashStats([]); renderSessionsList([]);
@@ -1109,6 +1127,14 @@ async function onLogin(user) {
   document.getElementById('main-nav').style.display = 'flex';
   showPage('dashboard');
   if(typeof loadBoats==="function")await loadBoats();
+  // Charger le cache des profils AVANT les sessions pour afficher les noms
+  try {
+    var pr = await sb.from('profiles').select('id,username');
+    if (pr.data) pr.data.forEach(function(p) {
+      window._profileCache[p.id] = p.username || 'Surfeur';
+    });
+    console.log("👥 Profils en cache:", Object.keys(window._profileCache).length);
+  } catch(e) { console.warn("Cache profils:", e); }
   await loadMySessions();
   console.log("✅ onLogin terminé, dashboard affiché");
 }
@@ -1172,7 +1198,8 @@ function renderSessionsList(sessions) {
   el.innerHTML = sessions.map(s => sessionCardHTML(s)).join('');
 }
 
-function sessionCardHTML(s) {
+function sessionCardHTML(s, opts) {
+  opts = opts || {};
   const d = new Date(s.date + 'T00:00:00');
   const day = d.getDate();
   const month = d.toLocaleDateString('fr-FR', { month: 'short' });
@@ -1194,10 +1221,16 @@ function sessionCardHTML(s) {
       <div class="session-meta">${_fmtMeta(s)}</div>
       ${tags.length ? `<div class="session-tags">${tags.join('')}</div>` : ''}
       ${(function(){
-        if (window.currentUser && s.user_id === window.currentUser.id) return '';
         var name = (window._profileCache && window._profileCache[s.user_id]) || '';
         if (!name) return '';
-        return '<div class="tap-author" data-uid="' + s.user_id + '" style="font-size:10px;color:var(--accent);margin-top:3px;opacity:.8;cursor:pointer;">👤 ' + name + '</div>';
+        var isMe = window.currentUser && s.user_id === window.currentUser.id;
+        // Toujours afficher dans vue groupe, seulement les autres dans "mes sessions"
+        if (isMe && !opts.showAuthor) return '';
+        var style = isMe
+          ? 'font-size:10px;color:var(--text-muted);margin-top:3px;'
+          : 'font-size:10px;color:var(--accent);margin-top:3px;opacity:.8;cursor:pointer;';
+        var cls = isMe ? '' : 'tap-author';
+        return '<div class="' + cls + '" ' + (isMe ? '' : 'data-uid="' + s.user_id + '"') + ' style="' + style + '">👤 ' + name + '</div>';
       })()}
     </div>
     <div class="session-right">
@@ -1255,6 +1288,30 @@ function openAddSession() {
     var sel = document.getElementById('f-boat-id');
     if (sel && currentProfile && currentProfile.default_boat_id) sel.value = currentProfile.default_boat_id;
   });
+  // Init widget marée
+  tideRanges = [];
+  selectedForecastAccuracy = 0;
+  // Port selon launch point
+  var tportEl = document.getElementById('tide-port');
+  if (tportEl) tportEl.value = 'noumea';
+  // Reset btn accuracy
+  document.querySelectorAll('.facc-btn').forEach(function(b) {
+    b.style.background = 'transparent'; b.style.color = 'var(--text-muted)'; b.style.borderColor = 'var(--border)';
+  });
+  setTimeout(function() {
+    setupTideCanvas();
+    renderTideWidget();
+  }, 50);
+  // Écouter changement launch pour adapter le port
+  var launchEl = document.getElementById('f-launch');
+  if (launchEl && !launchEl._tideBound) {
+    launchEl._tideBound = true;
+    launchEl.addEventListener('input', function() {
+      var p = portFromLaunch(this.value);
+      var sel = document.getElementById('tide-port');
+      if (sel) { sel.value = p; renderTideWidget(); }
+    });
+  }
   document.getElementById('modal-add').classList.add('open');
   // Auto-fill conditions si session aujourd'hui
   var today = new Date().toISOString().split('T')[0];
@@ -1348,6 +1405,16 @@ function editSession() {
   document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
   document.getElementById('f-obs').value = s.observations || '';
   if(document.getElementById('f-distance'))document.getElementById('f-distance').value=s.distance_nm||'';
+  // Marée interactive
+  tideRanges = s.tide_ranges || [];
+  var tp = document.getElementById('tide-port');
+  if (tp) tp.value = s.tide_port || portFromLaunch(s.launch_point || '');
+  setTimeout(function() { setupTideCanvas(); renderTideWidget(); }, 50);
+  // Fiabilité prévisions
+  if (s.forecast_accuracy) setForecastAccuracy(s.forecast_accuracy);
+  else { selectedForecastAccuracy = 0;
+    document.querySelectorAll('.facc-btn').forEach(function(b){ b.style.background='transparent'; b.style.color='var(--text-muted)'; b.style.borderColor='var(--border)'; });
+  }
   // Directions
   setDirFields('f-swell-dir','f-swell-dir-card','f-swell-dir-deg', s.swell_dir||'');
   setDirFields('f-wind-dir','f-wind-dir-card','f-wind-dir-deg', s.wind_dir||'');
@@ -1365,6 +1432,269 @@ function editSession() {
     b.classList.toggle('active', selectedMoves.includes(move));
   });
   document.getElementById('modal-add').classList.add('open');
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// WIDGET MARÉE INTERACTIF
+// ═══════════════════════════════════════════════════════════════
+
+// Composantes harmoniques simplifiées (M2 + S2) pour approximation NC
+// Port de ref: marée semi-diurne, amplitude ~0.8m à Nouméa
+var TIDE_PORTS = {
+  noumea:  { name:'Nouméa',        amp:0.6, phase:0,    mean:0.9 },
+  tomo:    { name:'Tomo (Dumbéa)', amp:0.7, phase:0.15, mean:0.85 },
+  bourail: { name:'Bourail',       amp:0.55, phase:-0.2, mean:0.9 },
+  thio:    { name:'Thio',          amp:0.5, phase:0.35, mean:0.95 }
+};
+
+// Plages de marée sélectionnées [{start, end}] en heures décimales 0-24
+var tideRanges = [];
+var _tideDragStart = null;
+
+// Calculer le niveau d'eau à une heure donnée (0-24)
+function tideLevel(hour, port) {
+  var p = TIDE_PORTS[port] || TIDE_PORTS.noumea;
+  // Marée semi-diurne: 2 cycles de 12.42h par jour
+  // Simplification: 2 sinusoïdes par 24h
+  var phase = (hour / 12.42 + p.phase) * 2 * Math.PI;
+  return p.mean + p.amp * Math.sin(phase);
+}
+
+// Déterminer le port par défaut selon le launch point
+function portFromLaunch(launchPoint) {
+  if (!launchPoint) return 'noumea';
+  var l = launchPoint.toLowerCase();
+  if (l.includes('tomo') || l.includes('dumb')) return 'tomo';
+  if (l.includes('bourail') || l.includes('ouenghi')) return 'bourail';
+  if (l.includes('thio')) return 'thio';
+  return 'noumea';
+}
+
+function renderTideWidget() {
+  var cv = document.getElementById('tide-canvas');
+  if (!cv) return;
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
+  var port = document.getElementById('tide-port').value;
+  ctx.clearRect(0, 0, W, H);
+
+  // Fond
+  ctx.fillStyle = '#0a1628';
+  ctx.fillRect(0, 0, W, H);
+
+  // Calculer les niveaux min/max
+  var levels = [];
+  for (var h = 0; h <= 24; h += 0.1) levels.push(tideLevel(h, port));
+  var minL = Math.min.apply(null, levels);
+  var maxL = Math.max.apply(null, levels);
+  var rangeL = Math.max(0.1, maxL - minL);
+
+  function toX(hour) { return (hour / 24) * W; }
+  function toY(level) { return H - 15 - ((level - minL) / rangeL) * (H - 30); }
+
+  // Lignes verticales heures (toutes les 3h)
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.lineWidth = 1;
+  for (var hh = 0; hh <= 24; hh += 3) {
+    ctx.beginPath(); ctx.moveTo(toX(hh), 0); ctx.lineTo(toX(hh), H); ctx.stroke();
+  }
+
+  // Plages sélectionnées (background coloré)
+  tideRanges.forEach(function(r) {
+    ctx.fillStyle = 'rgba(79,163,199,.18)';
+    ctx.fillRect(toX(r.start), 0, toX(r.end) - toX(r.start), H);
+  });
+
+  // Courbe de marée
+  ctx.strokeStyle = '#4fa3c7';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (var h = 0; h <= 24; h += 0.1) {
+    var x = toX(h), y = toY(tideLevel(h, port));
+    if (h === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Zone sous la courbe
+  ctx.fillStyle = 'rgba(79,163,199,.08)';
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+
+  // Labels d'heures
+  ctx.fillStyle = 'rgba(255,255,255,.4)';
+  ctx.font = '9px DM Sans';
+  ['00h','06h','12h','18h','24h'].forEach(function(lbl, i) {
+    var x = (i * 6 / 24) * W;
+    ctx.fillText(lbl, Math.max(2, Math.min(x - 10, W - 24)), H - 3);
+  });
+
+  // Labels des plages
+  tideRanges.forEach(function(r, i) {
+    var startL = tideLevel(r.start, port);
+    var endL = tideLevel(r.end, port);
+    var avg = ((startL + endL) / 2).toFixed(2);
+    var midX = toX((r.start + r.end) / 2);
+    ctx.fillStyle = '#4fa3c7';
+    ctx.font = 'bold 10px DM Sans';
+    ctx.textAlign = 'center';
+    ctx.fillText(avg + 'm', midX, toY((startL + endL) / 2) - 8);
+    ctx.textAlign = 'left';
+  });
+
+  // Mettre à jour la liste des plages
+  var plagesDiv = document.getElementById('tide-plages');
+  plagesDiv.innerHTML = tideRanges.map(function(r, i) {
+    var dur = (r.end - r.start).toFixed(1);
+    var h1 = Math.floor(r.start), m1 = Math.round((r.start - h1) * 60);
+    var h2 = Math.floor(r.end), m2 = Math.round((r.end - h2) * 60);
+    var tStart = (h1<10?'0':'')+h1+'h'+(m1<10?'0':'')+m1;
+    var tEnd = (h2<10?'0':'')+h2+'h'+(m2<10?'0':'')+m2;
+    var avgL = ((tideLevel(r.start, port) + tideLevel(r.end, port)) / 2).toFixed(2);
+    return '<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.3);border-radius:14px;padding:2px 6px 2px 10px;font-size:11px;color:var(--accent);">'
+      + tStart + '→' + tEnd + ' <span style="opacity:.7;">(' + dur + 'h, ~' + avgL + 'm)</span>'
+      + '<button onclick="removeTideRange(' + i + ')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:14px;padding:0 4px;">×</button>'
+      + '</div>';
+  }).join('');
+
+  // Résumé + auto-fill des champs
+  if (tideRanges.length > 0) {
+    var totalDur = tideRanges.reduce(function(a, r) { return a + (r.end - r.start); }, 0);
+    var sumLevel = 0, nLev = 0;
+    tideRanges.forEach(function(r) {
+      for (var h = r.start; h <= r.end; h += 0.25) {
+        sumLevel += tideLevel(h, port); nLev++;
+      }
+    });
+    var avgLevel = nLev > 0 ? (sumLevel / nLev).toFixed(2) : '?';
+
+    document.getElementById('tide-summary').innerHTML =
+      '<b style="color:var(--accent);">Total:</b> ' + totalDur.toFixed(1) + 'h à l’eau · '
+      + '<b style="color:var(--accent);">Niveau moyen:</b> ' + avgLevel + 'm';
+
+    // Auto-remplir champ durée et marée si pas déjà rempli
+    var durEl = document.getElementById('f-duration');
+    if (durEl && (!durEl.value || durEl.dataset.fromTide === '1')) {
+      durEl.value = totalDur.toFixed(2);
+      durEl.dataset.fromTide = '1';
+    }
+    var tideEl = document.getElementById('f-tide');
+    if (tideEl && (!tideEl.value || tideEl.dataset.fromTide === '1')) {
+      // Format: "startMoy→endMoy" sur toutes les plages
+      var firstR = tideRanges[0];
+      var lastR = tideRanges[tideRanges.length - 1];
+      var s1 = tideLevel(firstR.start, port).toFixed(2);
+      var e1 = tideLevel(lastR.end, port).toFixed(2);
+      tideEl.value = s1 + '→' + e1 + ' (moy ' + avgLevel + 'm)';
+      tideEl.dataset.fromTide = '1';
+    }
+  } else {
+    document.getElementById('tide-summary').innerHTML = '';
+  }
+
+  // Lien SHOM
+  var portMap = { noumea: 'NOUMEA_NUMBO', tomo: 'TOMO_NOUVELLE_CALEDONIE', bourail: 'BOURAIL', thio: 'THIO' };
+  var date = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
+  var shom = document.getElementById('shom-link');
+  if (shom) shom.href = 'https://maree.shom.fr/harbor/' + (portMap[port] || 'NOUMEA_NUMBO') + '/hlt/0?date=' + date;
+}
+
+function addTideRange() {
+  tideRanges.push({ start: 8, end: 11 });
+  renderTideWidget();
+}
+function removeTideRange(i) {
+  tideRanges.splice(i, 1);
+  renderTideWidget();
+}
+function resetTideRanges() {
+  tideRanges = [];
+  var dEl = document.getElementById('f-duration'); if (dEl && dEl.dataset.fromTide === '1') { dEl.value = ''; delete dEl.dataset.fromTide; }
+  var tEl = document.getElementById('f-tide'); if (tEl && tEl.dataset.fromTide === '1') { tEl.value = ''; delete tEl.dataset.fromTide; }
+  renderTideWidget();
+}
+
+// Drag sur canvas pour sélectionner une plage
+function setupTideCanvas() {
+  var cv = document.getElementById('tide-canvas');
+  if (!cv || cv._bound) return;
+  cv._bound = true;
+
+  function hourFromEvent(e) {
+    var rect = cv.getBoundingClientRect();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var x = clientX - rect.left;
+    return Math.max(0, Math.min(24, (x / rect.width) * 24));
+  }
+
+  cv.addEventListener('mousedown', function(e) {
+    _tideDragStart = hourFromEvent(e);
+    e.preventDefault();
+  });
+  cv.addEventListener('mousemove', function(e) {
+    if (_tideDragStart === null) return;
+    var h = hourFromEvent(e);
+    // Afficher une plage temporaire
+    var tmp = [].concat(tideRanges);
+    tideRanges = tmp.concat([{ start: Math.min(_tideDragStart, h), end: Math.max(_tideDragStart, h) }]);
+    renderTideWidget();
+    tideRanges = tmp;
+  });
+  document.addEventListener('mouseup', function(e) {
+    if (_tideDragStart === null) return;
+    var h = hourFromEvent(e);
+    var s = Math.min(_tideDragStart, h), en = Math.max(_tideDragStart, h);
+    if (en - s > 0.25) {
+      tideRanges.push({ start: s, end: en });
+    }
+    _tideDragStart = null;
+    renderTideWidget();
+  });
+  // Touch
+  cv.addEventListener('touchstart', function(e) { _tideDragStart = hourFromEvent(e); e.preventDefault(); });
+  cv.addEventListener('touchmove', function(e) {
+    if (_tideDragStart === null) return;
+    var h = hourFromEvent(e);
+    var tmp = [].concat(tideRanges);
+    tideRanges = tmp.concat([{ start: Math.min(_tideDragStart, h), end: Math.max(_tideDragStart, h) }]);
+    renderTideWidget();
+    tideRanges = tmp;
+    e.preventDefault();
+  });
+  cv.addEventListener('touchend', function(e) {
+    if (_tideDragStart === null) return;
+    var touches = e.changedTouches;
+    if (touches && touches[0]) {
+      var rect = cv.getBoundingClientRect();
+      var x = touches[0].clientX - rect.left;
+      var h = Math.max(0, Math.min(24, (x / rect.width) * 24));
+      var s = Math.min(_tideDragStart, h), en = Math.max(_tideDragStart, h);
+      if (en - s > 0.25) tideRanges.push({ start: s, end: en });
+    }
+    _tideDragStart = null;
+    renderTideWidget();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// JAUGE QUALITÉ PRÉVISIONS
+// ═══════════════════════════════════════════════════════════════
+var selectedForecastAccuracy = 0;
+var ACCURACY_COLORS = {1:'#e05c5c', 2:'#e8a057', 3:'#4fa3c7', 4:'#3dba8a', 5:'#7b6cf6'};
+
+function setForecastAccuracy(val) {
+  selectedForecastAccuracy = val;
+  document.querySelectorAll('.facc-btn').forEach(function(b) {
+    var v = +b.getAttribute('data-acc');
+    if (v === val) {
+      b.style.background = ACCURACY_COLORS[val];
+      b.style.color = '#fff';
+      b.style.borderColor = ACCURACY_COLORS[val];
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = 'var(--text-muted)';
+      b.style.borderColor = 'var(--border)';
+    }
+  });
 }
 
 async function saveSession() {
@@ -1393,6 +1723,9 @@ async function saveSession() {
     shared_with: sharedWith,
     is_shared: sharedWith.length > 0,
     observations: document.getElementById('f-obs').value.trim(),
+    forecast_accuracy: selectedForecastAccuracy || null,
+    tide_ranges: tideRanges.length > 0 ? tideRanges : null,
+    tide_port: document.getElementById('tide-port') ? document.getElementById('tide-port').value : null,
   };
   const btn = document.getElementById('btn-save-session');
   btn.textContent = '…'; btn.disabled = true;
@@ -1528,7 +1861,7 @@ async function loadGroupSessions() {
     el.innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Aucune session partagée</div><div class="empty-sub">Ajoute une session et indique les surfeurs présents.</div></div>';
     return;
   }
-  el.innerHTML = sessions.map(s => sessionCardHTML(s)).join('');
+  el.innerHTML = sessions.map(function(s){ return sessionCardHTML(s, {showAuthor:true}); }).join('');
 }
 
 // ══ STATS ══
@@ -1630,6 +1963,128 @@ function renderStats(sessions, el) {
         +'</tr></thead>'
         +'<tbody>'+rows+'</tbody></table></div>';
     })()}
+    ${(function(){
+      // Parser un champ tide texte pour extraire un niveau moyen
+      function parseTideText(t) {
+        if (!t) return null;
+        t = String(t).replace(/,/g, '.');
+        // Trouver tous les nombres décimaux (max 2 chiffres avant virgule)
+        var nums = (t.match(/\d+(?:\.\d+)?/g) || []).map(parseFloat)
+          .filter(function(x) { return x >= 0 && x <= 3; }); // niveaux marée réalistes
+        if (!nums.length) return null;
+        // Si plusieurs valeurs (ex: "1.2→0.4"), prendre la moyenne
+        return nums.reduce(function(a, x) { return a + x; }, 0) / nums.length;
+      }
+
+      // Meilleur niveau d'eau par spot (pondéré par qualité étoiles)
+      // Utilise tide_ranges (nouveau format) OU tide texte (ancien)
+      var spotTide = {};
+      var portConfigs = {
+        noumea:{amp:0.6,phase:0,mean:0.9}, tomo:{amp:0.7,phase:0.15,mean:0.85},
+        bourail:{amp:0.55,phase:-0.2,mean:0.9}, thio:{amp:0.5,phase:0.35,mean:0.95}
+      };
+      sessions.forEach(function(s) {
+        if (!s.spot || !s.quality) return;
+        var avgLevel = null;
+
+        // 1) Nouveau format: tide_ranges calculé via sinusoïde
+        if (s.tide_ranges && s.tide_ranges.length && s.tide_port) {
+          var portCfg = portConfigs[s.tide_port] || portConfigs.noumea;
+          var sumL = 0, nL = 0;
+          s.tide_ranges.forEach(function(r) {
+            for (var h = r.start; h <= r.end; h += 0.25) {
+              sumL += portCfg.mean + portCfg.amp * Math.sin((h/12.42 + portCfg.phase) * 2 * Math.PI);
+              nL++;
+            }
+          });
+          if (nL > 0) avgLevel = sumL / nL;
+        }
+
+        // 2) Ancien format: parser le texte de champ tide
+        if (avgLevel === null && s.tide) {
+          avgLevel = parseTideText(s.tide);
+        }
+
+        if (avgLevel === null) return;
+
+        if (!spotTide[s.spot]) spotTide[s.spot] = { sum: 0, weight: 0, n: 0, hs: [], period: [], sources: {new:0, text:0} };
+        spotTide[s.spot].sum += avgLevel * s.quality;
+        spotTide[s.spot].weight += s.quality;
+        spotTide[s.spot].n++;
+        if (s.tide_ranges && s.tide_ranges.length) spotTide[s.spot].sources.new++;
+        else spotTide[s.spot].sources.text++;
+        if (s.hs) spotTide[s.spot].hs.push({val: s.hs, q: s.quality});
+        if (s.period) spotTide[s.spot].period.push({val: s.period, q: s.quality});
+      });
+      var spotTideRows = Object.entries(spotTide)
+        .filter(function(e) { return e[1].n >= 2 && e[1].weight > 0; })
+        .map(function(e) {
+          var avg = e[1].sum / e[1].weight;
+          // Hs et période pondérés par qualité
+          var hsAvg = '—', periodAvg = '—';
+          if (e[1].hs.length) {
+            var hsSum = e[1].hs.reduce(function(a,x){return a+x.val*x.q;},0);
+            var hsW = e[1].hs.reduce(function(a,x){return a+x.q;},0);
+            if (hsW > 0) hsAvg = (hsSum/hsW).toFixed(1) + 'm';
+          }
+          if (e[1].period.length) {
+            var pSum = e[1].period.reduce(function(a,x){return a+x.val*x.q;},0);
+            var pW = e[1].period.reduce(function(a,x){return a+x.q;},0);
+            if (pW > 0) periodAvg = (pSum/pW).toFixed(0) + 's';
+          }
+          return { spot: e[0], tide: avg, hs: hsAvg, period: periodAvg, n: e[1].n };
+        })
+        .sort(function(a, b) { return b.n - a.n; })
+        .slice(0, 8);
+      if (!spotTideRows.length) return '';
+      return '<div class="card" style="margin-top:14px;">'
+        +'<div class="section-title" style="margin-bottom:4px;">🌊 Conditions idéales par spot</div>'
+        +'<div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">Basé sur toutes les sessions notées (pondéré par étoiles) · inclut anciennes sessions via champ marée</div>'
+        +'<table style="width:100%;border-collapse:collapse;">'
+        +'<thead><tr style="border-bottom:1px solid var(--border);">'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Spot</th>'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Niveau idéal</th>'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Hs</th>'
+        +'<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">Période</th>'
+        +'<th style="text-align:right;font-size:10px;color:var(--text-muted);padding:4px;font-weight:500;">N</th>'
+        +'</tr></thead><tbody>'
+        + spotTideRows.map(function(r) {
+          return '<tr style="border-bottom:1px solid var(--border);">'
+            +'<td style="padding:6px 4px;font-size:11px;font-weight:500;">'+r.spot+'</td>'
+            +'<td style="padding:6px 4px;font-size:11px;color:var(--accent);">💧 '+r.tide.toFixed(2)+'m</td>'
+            +'<td style="padding:6px 4px;font-size:11px;">'+r.hs+'</td>'
+            +'<td style="padding:6px 4px;font-size:11px;">'+r.period+'</td>'
+            +'<td style="padding:6px 4px;font-size:10px;color:var(--text-muted);text-align:right;">'+r.n+'</td>'
+            +'</tr>';
+        }).join('')
+        +'</tbody></table></div>';
+    })()}
+    ${(function(){
+      // Fiabilité des prévisions
+      var accSessions = sessions.filter(function(s){return s.forecast_accuracy;});
+      if (accSessions.length < 3) return '';
+      var counts = {1:0,2:0,3:0,4:0,5:0};
+      accSessions.forEach(function(s){ counts[s.forecast_accuracy]++; });
+      var avg = accSessions.reduce(function(a,s){return a+s.forecast_accuracy;},0) / accSessions.length;
+      var labels = {1:'😴 Nul',2:'😔 Moyen',3:'🙂 Bien',4:'😊 Très bien',5:'🎯 Top'};
+      var colors = {1:'#e05c5c',2:'#e8a057',3:'#4fa3c7',4:'#3dba8a',5:'#7b6cf6'};
+      var total = accSessions.length;
+      var bars = [1,2,3,4,5].map(function(v){
+        var pct = (counts[v]/total*100);
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">'
+          +'<span style="min-width:90px;color:var(--text-muted);">'+labels[v]+'</span>'
+          +'<div style="flex:1;height:14px;background:var(--glass);border-radius:3px;overflow:hidden;">'
+          +'<div style="height:100%;width:'+pct+'%;background:'+colors[v]+';"></div>'
+          +'</div>'
+          +'<span style="min-width:40px;text-align:right;font-size:10px;color:var(--text-muted);">'+counts[v]+' ('+Math.round(pct)+'%)</span>'
+          +'</div>';
+      }).join('');
+      return '<div class="card" style="margin-top:14px;">'
+        +'<div class="section-title" style="margin-bottom:4px;">🎯 Fiabilité des prévisions</div>'
+        +'<div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">Sur '+total+' sessions évaluées · Moyenne: <b style="color:var(--accent);">'+avg.toFixed(1)+'/5</b></div>'
+        +bars
+        +'</div>';
+    })()}
   `;
   clearTimeout(window._statsT);
   window._statsT=setTimeout(function() {
@@ -1661,6 +2116,8 @@ function renderStats(sessions, el) {
 // ══ PROFILE ══
 async function openUserProfile(userId) {
   var name = (window._profileCache && window._profileCache[userId]) || 'Surfeur';
+
+  // Récupérer toutes les sessions partagées de l'utilisateur
   var sessions = [];
   try {
     var res = await sb.from('sessions').select('*')
@@ -1668,24 +2125,84 @@ async function openUserProfile(userId) {
     sessions = res.data || [];
   } catch(e) { console.warn(e); }
 
+  // Stats principales
   var totalH = sessions.reduce(function(a,x){return a+(x.duration_h||0);},0);
   var qs = sessions.filter(function(s){return s.quality;});
   var avgQ = qs.length ? (qs.reduce(function(a,x){return a+x.quality;},0)/qs.length).toFixed(1) : '—';
   var tubes = sessions.filter(function(s){return s.moves&&s.moves.includes('tube');}).length;
+
+  // Moyenne hebdo normalisée sur les 60 derniers jours
+  var now = new Date();
+  var cutoff = new Date(now.getTime() - 60*864e5);
+  var recentSessions = sessions.filter(function(s){ return new Date(s.date) >= cutoff; });
+  var weeksSpan = 60 / 7; // ~8.57 semaines
+  var sessionsPerWeek = (recentSessions.length / weeksSpan).toFixed(1);
+  var hoursPerWeek = (recentSessions.reduce(function(a,x){return a+(x.duration_h||0);},0) / weeksSpan).toFixed(1);
+
+  // Répartition spots
   var spotMap = {};
   sessions.forEach(function(s){var sp=s.spot||'?';spotMap[sp]=(spotMap[sp]||0)+1;});
-  var topSpots = Object.entries(spotMap).sort(function(a,b){return b[1]-a[1];}).slice(0,5);
+  var topSpots = Object.entries(spotMap).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+
+  // Répartition planches
+  var boardMap = {};
+  sessions.forEach(function(s){if(s.board)boardMap[s.board]=(boardMap[s.board]||0)+1;});
+  var topBoards = Object.entries(boardMap).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+
+  // Répartition bateaux
+  var boatMap = {};
+  sessions.forEach(function(s){if(s.boat_id)boatMap[s.boat_id]=(boatMap[s.boat_id]||0)+1;});
+  var boatIds = Object.keys(boatMap);
+  var boatNames = {};
+  if (boatIds.length > 0) {
+    try {
+      var br = await sb.from('boats').select('id,name').in('id', boatIds);
+      if (br.data) br.data.forEach(function(b){ boatNames[b.id] = b.name; });
+    } catch(e) {}
+  }
+  var topBoats = Object.entries(boatMap).map(function(e){return [boatNames[e[0]]||'?', e[1]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,4);
 
   var ex = document.getElementById('user-profile-modal');
   if (ex) ex.remove();
 
   var modal = document.createElement('div');
   modal.id = 'user-profile-modal';
-  modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:1rem;';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.7);display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow-y:auto;';
 
-  var spotsHtml = topSpots.map(function(e){
-    return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);"><span>'+e[0]+'</span><span style="color:var(--accent);">'+e[1]+'x</span></div>';
-  }).join('');
+  // Helper pour camembert SVG simple
+  function pieChart(data, colors) {
+    if (!data.length) return '';
+    var total = data.reduce(function(a,e){return a+e[1];},0);
+    if (total === 0) return '';
+    var cx = 60, cy = 60, r = 55;
+    var startAngle = -Math.PI/2;
+    var segs = '';
+    var legend = '';
+    data.forEach(function(e, i) {
+      var frac = e[1]/total;
+      var endAngle = startAngle + frac * 2 * Math.PI;
+      var large = frac > 0.5 ? 1 : 0;
+      var x1 = cx + r*Math.cos(startAngle);
+      var y1 = cy + r*Math.sin(startAngle);
+      var x2 = cx + r*Math.cos(endAngle);
+      var y2 = cy + r*Math.sin(endAngle);
+      var color = colors[i % colors.length];
+      segs += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + r + ',' + r + ' 0 ' + large + ',1 ' + x2 + ',' + y2 + ' Z" fill="' + color + '" stroke="#0d1f3c" stroke-width="1.5"/>';
+      var pct = Math.round(frac * 100);
+      var lbl = String(e[0]);
+      if (lbl.length > 16) lbl = lbl.slice(0,14) + '…';
+      legend += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:2px 0;"><span style="display:inline-block;width:10px;height:10px;background:' + color + ';border-radius:2px;flex-shrink:0;"></span><span style="color:var(--text);">' + lbl + '</span><span style="color:var(--text-muted);margin-left:auto;">' + pct + '%</span></div>';
+      startAngle = endAngle;
+    });
+    return '<div style="display:flex;align-items:center;gap:12px;">'
+      + '<svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0;">' + segs + '</svg>'
+      + '<div style="flex:1;min-width:0;">' + legend + '</div>'
+      + '</div>';
+  }
+
+  var SPOT_COLORS   = ['#4fa3c7','#3dba8a','#e8a057','#7b6cf6','#e05c5c','#7a94aa'];
+  var BOARD_COLORS  = ['#7b6cf6','#4fa3c7','#e8a057','#3dba8a','#e05c5c','#7a94aa'];
+  var BOAT_COLORS   = ['#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
 
   var sessHtml = sessions.slice(0,5).map(function(s){
     var d = new Date(s.date+'T00:00:00');
@@ -1698,21 +2215,43 @@ async function openUserProfile(userId) {
       +'</div>';
   }).join('');
 
-  modal.innerHTML = '<div style="background:var(--deep);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:420px;width:100%;max-height:80vh;overflow-y:auto;">'
-    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">'
-    +'<div style="width:48px;height:48px;border-radius:50%;background:var(--mid);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:var(--accent);">'+name[0].toUpperCase()+'</div>'
-    +'<div><div style="font-size:1.1rem;font-weight:600;">'+name+'</div>'
-    +'<div style="font-size:11px;color:var(--text-muted);">'+sessions.length+' session'+(sessions.length>1?'s':'')+'</div></div>'
-    +'<button class="upm-close" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;padding:0 4px;">×</button>'
+  modal.innerHTML = '<div style="background:var(--deep);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;margin-top:4vh;">'
+    // Entête
+    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">'
+    +'<div style="width:52px;height:52px;border-radius:50%;background:var(--mid);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:var(--accent);">'+name[0].toUpperCase()+'</div>'
+    +'<div><div style="font-size:1.15rem;font-weight:600;">'+name+'</div>'
+    +'<div style="font-size:11px;color:var(--text-muted);">'+sessions.length+' session'+(sessions.length>1?'s':'')+' partagée'+(sessions.length>1?'s':'')+'</div></div>'
+    +'<button class="upm-close" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:22px;padding:0 4px;">×</button>'
     +'</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:20px;">'
-    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--accent);">'+sessions.length+'</div><div style="font-size:10px;color:var(--text-muted);">Sessions</div></div>'
-    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--accent);">'+Math.floor(totalH)+'h</div><div style="font-size:10px;color:var(--text-muted);">eau</div></div>'
-    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--star);">'+avgQ+'★</div><div style="font-size:10px;color:var(--text-muted);">Qualité</div></div>'
-    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.4rem;font-weight:700;color:var(--tube);">'+tubes+'</div><div style="font-size:10px;color:var(--text-muted);">Tubes</div></div>'
+
+    // Stats principales
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:14px;">'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:var(--accent);">'+sessions.length+'</div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Sessions</div></div>'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:var(--accent);">'+Math.floor(totalH)+'h</div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Heures</div></div>'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:var(--star);">'+avgQ+'★</div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Qualité</div></div>'
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:var(--tube);">'+tubes+'</div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Tubes</div></div>'
     +'</div>'
-    +(topSpots.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Spots favoris</div>'+spotsHtml+'</div>' : '')
-    +(sessions.length ? '<div><div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Dernières sessions</div>'+sessHtml+'</div>' : '')
+
+    // Régularité normalisée
+    +'<div style="background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.2);border-radius:8px;padding:10px;margin-bottom:16px;">'
+    +'<div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Régularité (60 derniers jours)</div>'
+    +'<div style="display:flex;gap:16px;align-items:baseline;">'
+    +'<div><span style="font-size:1.3rem;font-weight:700;color:var(--accent);">'+sessionsPerWeek+'</span><span style="font-size:10px;color:var(--text-muted);"> sessions/sem</span></div>'
+    +'<div><span style="font-size:1.1rem;font-weight:600;color:var(--accent);">'+hoursPerWeek+'h</span><span style="font-size:10px;color:var(--text-muted);">/sem</span></div>'
+    +'<div style="margin-left:auto;font-size:10px;color:var(--text-muted);">'+recentSessions.length+' sessions récentes</div>'
+    +'</div></div>'
+
+    // Spots favoris
+    +(topSpots.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🏄 Spots</div>' + pieChart(topSpots, SPOT_COLORS) + '</div>' : '')
+
+    // Planches
+    +(topBoards.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🛹 Planches</div>' + pieChart(topBoards, BOARD_COLORS) + '</div>' : '')
+
+    // Bateaux
+    +(topBoats.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">⛵ Bateaux</div>' + pieChart(topBoats, BOAT_COLORS) + '</div>' : '')
+
+    // Dernières sessions
+    +(sessions.length ? '<div><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Dernières sessions</div>' + sessHtml + '</div>' : '')
     +'</div>';
 
   modal.addEventListener('click', function(e) {
@@ -1723,7 +2262,6 @@ async function openUserProfile(userId) {
   });
   document.body.appendChild(modal);
 }
-
 
 function loadProfilePage() {
   if (!currentProfile) return;
