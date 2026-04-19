@@ -1021,20 +1021,7 @@ try {
   if (SUPABASE_URL !== 'VOTRE_URL_SUPABASE_ICI') {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // "Se souvenir de moi" : si flag présent dans sessionStorage, déconnecter à la fermeture de l'onglet
-  window.addEventListener('beforeunload', function() {
-    try {
-      if (sessionStorage.getItem('surf-no-persist') === '1') {
-        // Nettoyer la session Supabase du localStorage à la fermeture
-        var keys = [];
-        for (var i = 0; i < localStorage.length; i++) {
-          var k = localStorage.key(i);
-          if (k && k.indexOf('sb-') === 0 && k.indexOf('-auth-token') > 0) keys.push(k);
-        }
-        keys.forEach(function(k) { localStorage.removeItem(k); });
-      }
-    } catch(e) {}
-  });
+
   }
 } catch(e) { console.error("❌ Supabase init error:", e); }
 
@@ -1062,12 +1049,15 @@ async function doLogin() {
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
     console.log("✅ Réponse Supabase:", { data, error });
-    // Si pas de remember: stocker un flag pour déconnecter à la fermeture
-    if (!error && !remember) {
-      sessionStorage.setItem('surf-no-persist', '1');
-      console.log("🔓 Mode session (déconnexion à la fermeture)");
-    } else {
-      sessionStorage.removeItem('surf-no-persist');
+    // Stocker le flag de persistance (permanent si coché, temporaire sinon)
+    if (!error) {
+      if (remember) {
+        localStorage.setItem('surf-persistent', '1');
+        sessionStorage.removeItem('surf-session-only');
+      } else {
+        localStorage.removeItem('surf-persistent');
+        sessionStorage.setItem('surf-session-only', '1');
+      }
     }
     if (error) {
       showToast(error.message, 'error');
@@ -1132,12 +1122,27 @@ async function init() {
     return;
   }
   const { data: { session } } = await sb.auth.getSession();
-  if (session) await onLogin(session.user);
+  if (session) {
+    // Vérifier la politique "Se souvenir de moi"
+    var persistent = localStorage.getItem('surf-persistent') === '1';
+    var sessionOnly = sessionStorage.getItem('surf-session-only') === '1';
+    if (!persistent && !sessionOnly) {
+      // Pas de flag = session orpheline (ancien comportement, ou onglet fermé)
+      console.log("🔓 Session orpheline détectée → déconnexion (Se souvenir était décoché)");
+      await sb.auth.signOut();
+      document.getElementById('main-nav').style.display = 'none';
+      showPage('auth');
+    } else {
+      await onLogin(session.user);
+    }
+  }
   sb.auth.onAuthStateChange(async function(event, sess) {
     if (event==='SIGNED_IN' && sess && !window._loginDone) {
       window._loginDone=true; await onLogin(sess.user);
     } else if (event==='SIGNED_OUT') {
       window._loginDone=false; window._appInit=false;
+      // Nettoyer les flags "Se souvenir de moi"
+      try { localStorage.removeItem('surf-persistent'); sessionStorage.removeItem('surf-session-only'); } catch(e){}
       document.getElementById('main-nav').style.display='none'; showPage('auth');
     }
   });

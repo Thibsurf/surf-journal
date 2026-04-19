@@ -634,9 +634,8 @@ nav a.back:hover{color:var(--text);}
 const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { storageKey: 'surf-nc-auth', persistSession: true }
-});
+// IMPORTANT: même config auth que index.html pour partager la session
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 var currentUser = null, currentProfile = null;
 var allSorties = [];

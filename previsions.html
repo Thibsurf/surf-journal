@@ -891,10 +891,10 @@ function buildSpotTabs() {
 var _tokenSbClient = null;
 try {
   if (window.supabase && typeof window.supabase.createClient === 'function') {
+    // IMPORTANT: pas de storageKey customisée pour partager la session avec index.html et sorties.html
     _tokenSbClient = window.supabase.createClient(
       'https://tiiptlozingmgzcnexpu.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0',
-      { auth: { storageKey: 'surf-nc-auth', persistSession: true } }
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0'
     );
   }
 } catch(e) { console.warn('[NC Token Sync] Supabase unavailable:', e); }
