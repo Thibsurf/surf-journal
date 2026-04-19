@@ -163,6 +163,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 
 <nav>
   <a href="https://thibsurf.github.io/surf-journal/" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Retour au journal">← Journal</a>
+  <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Sorties">🏄 Sorties</a>
   <div class="logo">Surf <span>NC</span> — Prévisions</div>
   <button class="nav-tab active" onclick="showTab('forecast',this)">📊 Prévisions</button>
   <button class="nav-tab" onclick="showTab('map',this)">🗺️ Carte spots</button>
@@ -191,8 +192,17 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <a class="ql" href="https://maree.shom.fr/harbor/NOUMEA_NUMBO/hlt/0?utc=11" target="_blank">📈 SHOM — Nouméa</a>
   </div>
 
-  <!-- Spot tabs -->
-  <div class="section-label">📍 Spot</div>
+  <!-- Spot tabs + bouton réglages spot -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+    <div class="section-label" style="margin-bottom:0;">📍 Spot</div>
+    <button onclick="showSpotSettings()" id="spot-settings-btn"
+      title="Réglages du spot actif (port, source houle, score...)"
+      style="background:none;border:1px solid var(--border);color:var(--muted);
+      padding:2px 8px;border-radius:var(--rs);cursor:pointer;font-size:10px;
+      font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
+      ⚙ Réglages spot
+    </button>
+  </div>
   <div class="spot-tabs" id="spot-tabs"></div>
 
   <!-- Conditions actuelles -->
@@ -711,6 +721,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 
 // SPOTS
@@ -848,11 +859,17 @@ function buildSpotTabs() {
   SPOTS.forEach(function(s,i){
     var btn=document.createElement('button');
     btn.className='stab'+(i===0?' active':'');
-    btn.textContent=s.name;
+    var spotLabel = s.name;
+    if (s.scoreParams) spotLabel += ' ⚙';  // Indique des réglages custom
+    btn.textContent = spotLabel;
     btn.onclick=function(){
       currentSpot=i;
       document.querySelectorAll('.stab').forEach(function(b,j){b.classList.toggle('active',j===i);});
       saveActiveSpot();
+      loadScoreParams(); // Charger les params de score du spot
+      // Appliquer la source houle préférée du spot
+      var sp = SPOTS[i];
+      if (sp && sp.hsSrc) { _currentHsSrc = sp.hsSrc; updateHsToggleUI(); }
       loadForecast(i);
     };
     el.appendChild(btn);
@@ -869,6 +886,46 @@ function buildSpotTabs() {
 // Il se trouve dans DevTools → Network → requête rpcache.meteo.nc → Request Headers → Authorization
 // Token Bearer meteo.nc (récupéré depuis DevTools → Network → Authorization)
 // + headers origin/referer requis pour le CORS (same-site: meteo.nc ↔ rpcache.meteo.nc)
+// ─── Client Supabase pour partage token mobile/desktop ────────
+// Permet au desktop (via extension) de pousser le token pour le mobile
+var _tokenSbClient = null;
+try {
+  if (window.supabase && typeof window.supabase.createClient === 'function') {
+    _tokenSbClient = window.supabase.createClient(
+      'https://tiiptlozingmgzcnexpu.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0',
+      { auth: { storageKey: 'surf-nc-auth', persistSession: true } }
+    );
+  }
+} catch(e) { console.warn('[NC Token Sync] Supabase unavailable:', e); }
+
+async function _pushTokenToSupabase(token) {
+  if (!_tokenSbClient || !token || token.length < 30) return;
+  try {
+    await _tokenSbClient.from('shared_tokens').upsert({
+      id: 'meteo-nc',
+      token: token,
+      updated_at: new Date().toISOString()
+    });
+    console.log('[NC Token Sync] Token partage via Supabase');
+  } catch(e) { console.warn('[NC Token Sync] push failed:', e && e.message); }
+}
+
+async function _loadTokenFromSupabase() {
+  if (!_tokenSbClient) return null;
+  try {
+    var res = await _tokenSbClient.from('shared_tokens').select('token,updated_at').eq('id', 'meteo-nc').maybeSingle();
+    if (res && res.data && res.data.token) {
+      var age = Date.now() - new Date(res.data.updated_at).getTime();
+      if (age < 22 * 3600 * 1000) { // moins de 22h
+        console.log('[NC Token Sync] Token recupere depuis Supabase (age ' + Math.round(age/3600000) + 'h)');
+        return res.data.token;
+      }
+    }
+  } catch(e) { console.warn('[NC Token Sync] load failed:', e && e.message); }
+  return null;
+}
+
 var _ncToken = (function(){
   try {
     return localStorage.getItem('nc-token')
@@ -881,6 +938,7 @@ var _ncToken = (function(){
 function setNcToken(t) {
   _ncToken = t.trim();
   try { localStorage.setItem('nc-token', _ncToken); } catch(e){}
+  _pushTokenToSupabase(_ncToken);
   showToast('Token sauvegardé — rechargement...');
   var btn=document.getElementById('token-btn');
   if(btn){btn.style.color='var(--ok)';btn.style.borderColor='var(--ok)';btn.textContent='🔑';}
@@ -1038,6 +1096,7 @@ function updateHsToggleUI() {
 }
 
 async function loadForecast(i) {
+  loadScoreParams();
   var s = SPOTS[i];
   document.getElementById('current-cond').innerHTML = '<div class="loading"><div class="spin"></div> '+s.name+'…</div>';
   document.getElementById('table-wrap').innerHTML = '<div class="loading"><div class="spin"></div></div>';
@@ -1569,20 +1628,34 @@ function updateHsHover(i){
 
 // ─── SCORE SURF ──────────────────────────────────────────────────────────────
 // Paramètres de score (modifiables via menu)
-var SCORE_PARAMS = (function(){
-  try { var s=localStorage.getItem('surf-score-params'); if(s) return JSON.parse(s); } catch(e){}
-  return {
-    minHs: 0.4,         // Hs mini pour surfer (m)
-    maxHs: 4.0,         // Hs maxi acceptable (m)
-    minPeriod: 8,       // Période minimale houle (s)
-    swellDirIdeal: 120, // Direction idéale de provenance houle (°) — ENE pour côte O NC
-    windDirIdeal: 270,  // Direction idéale vers laquelle souffle le vent (°) — O = offshore côte O NC
-    onshoreLimit: 45,   // Conservé pour compat
-    offshoreMin: 135,   // Conservé pour compat
-    windMalusKt: 18,
-    gustMalusKt: 25,
-  };
-})();
+var _DEFAULT_SCORE = {
+  minHs: 0.4, maxHs: 4.0, minPeriod: 8,
+  swellDirIdeal: 120, windDirIdeal: 270,
+  onshoreLimit: 45, offshoreMin: 135,
+  windMalusKt: 18, gustMalusKt: 25
+};
+var SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE);
+
+// Charger les params du spot actif (depuis SPOTS[currentSpot].scoreParams ou global)
+function loadScoreParams() {
+  var spot = SPOTS[currentSpot];
+  if (spot && spot.scoreParams) {
+    SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE, spot.scoreParams);
+  } else {
+    // Fallback: anciens params globaux
+    try { var s = localStorage.getItem('surf-score-params'); if(s) SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE, JSON.parse(s)); } catch(e) {}
+  }
+  return SCORE_PARAMS;
+}
+
+// Sauvegarder les params dans le spot actif
+function saveScoreParams(params) {
+  SCORE_PARAMS = Object.assign({}, params);
+  var spot = SPOTS[currentSpot];
+  if (spot) { spot.scoreParams = Object.assign({}, params); saveSpots(); }
+  // Compatibilité: aussi en global
+  try { localStorage.setItem('surf-score-params', JSON.stringify(params)); } catch(e) {}
+}
 
 function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
   if(!hs || hs < SCORE_PARAMS.minHs) return {score:0, label:'Trop petit', col:'#3d5468', details:['Hs < '+SCORE_PARAMS.minHs+'m']};
@@ -3349,6 +3422,211 @@ function loadBaroData() {
 
 
 // ─── MENU SCORE SURF ──────────────────────────────────────────────────────
+function showSpotSettings() {
+  var ex = document.getElementById('spot-settings-dialog');
+  if (ex) { ex.remove(); return; }
+  var spot = SPOTS[currentSpot];
+  if (!spot) return;
+
+  loadScoreParams(); // s'assurer que SCORE_PARAMS est à jour pour ce spot
+  var p = SCORE_PARAMS;
+
+  var div = document.createElement('div');
+  div.id = 'spot-settings-dialog';
+  div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;'
+    + 'background:var(--deep);border:1px solid var(--accent);border-radius:14px;padding:20px;'
+    + 'max-width:400px;width:93%;box-shadow:0 16px 48px rgba(0,0,0,.7);font-size:12px;'
+    + 'color:var(--text);max-height:92vh;overflow-y:auto;';
+
+  // ── Listes de référence ──
+  var PORTS_LIST = [
+    {id:'9881852', name:'Nouméa / Amédée'},
+    {id:'9880352', name:'Koumac / Bourail'},
+    {id:'9880804', name:'Lifou'},
+  ];
+  var OBS_LIST = [
+    {id:'9881836', name:'Phare Amédée'},
+    {id:'9880904', name:'Bourake'},
+    {id:'98800003', name:'Koumac'},
+    {id:'98818019', name:'Magenta'},
+    {id:'98818001', name:'Tontouta'},
+  ];
+
+  var curTide = spot.tideId || '9881852';
+  var curObs  = spot.obsId  || '9881836';
+  var curHsSrc = spot.hsSrc || 'nc'; // 'nc' ou 'gfs'
+
+  var portOptions = PORTS_LIST.map(function(p) {
+    return '<option value="'+p.id+'"'+(p.id===curTide?' selected':'')+'>'+p.name+'</option>';
+  }).join('');
+  var obsOptions = OBS_LIST.map(function(o) {
+    return '<option value="'+o.id+'"'+(o.id===curObs?' selected':'')+'>'+o.name+'</option>';
+  }).join('');
+
+  div.innerHTML =
+    // Titre
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'
+    +'<div style="font-weight:700;color:var(--accent);font-size:14px;">⚙ '+spot.name+'</div>'
+    +'<button id="ss-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;">×</button>'
+    +'</div>'
+
+    // ── SECTION DONNÉES ──
+    +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;'
+    +'letter-spacing:.5px;margin-bottom:10px;">📡 Sources de données</div>'
+
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
+    // Port de marée
+    +'<div>'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Port de marée</div>'
+    +'<select id="ss-tide" style="width:100%;background:var(--mid);border:1px solid var(--border);'
+    +'border-radius:6px;padding:6px;color:var(--text);font-size:11px;">'
+    +portOptions+'</select></div>'
+    // Station vent
+    +'<div>'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Station vent obs.</div>'
+    +'<select id="ss-obs" style="width:100%;background:var(--mid);border:1px solid var(--border);'
+    +'border-radius:6px;padding:6px;color:var(--text);font-size:11px;">'
+    +obsOptions+'</select></div>'
+    +'</div>'
+    // Source houle
+    +'<div style="margin-bottom:16px;">'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Source houle par défaut</div>'
+    +'<div style="display:flex;gap:6px;">'
+    +'<button id="ss-nc" class="ss-src-btn" data-src="nc" '
+    +'style="flex:1;padding:7px;border:1px solid rgba(61,186,138,.3);border-radius:6px;'
+    +'cursor:pointer;font-size:11px;background:'+(curHsSrc==='nc'?'rgba(61,186,138,.2)':'none')
+    +';color:'+(curHsSrc==='nc'?'#3dba8a':'var(--muted)')+';">meteo.nc</button>'
+    +'<button id="ss-gfs" class="ss-src-btn" data-src="gfs" '
+    +'style="flex:1;padding:7px;border:1px solid rgba(79,163,199,.3);border-radius:6px;'
+    +'cursor:pointer;font-size:11px;background:'+(curHsSrc==='gfs'?'rgba(79,163,199,.2)':'none')
+    +';color:'+(curHsSrc==='gfs'?'#4fa3c7':'var(--muted)')+';">GFS</button>'
+    +'</div></div>'
+
+    // ── SECTION SCORE ──
+    +'<div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:12px;">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;'
+    +'letter-spacing:.5px;margin-bottom:10px;">🏄 Score surf — paramètres pour ce spot</div>'
+
+    // Hs
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Hs min (m)</div>'
+    +'<input type="number" id="ss-minHs" value="'+p.minHs+'" min="0.1" max="2" step="0.1" '
+    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
+    +'padding:6px;color:var(--text);font-size:11px;"></div>'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Période min (s)</div>'
+    +'<input type="number" id="ss-minPeriod" value="'+p.minPeriod+'" min="4" max="20" step="1" '
+    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
+    +'padding:6px;color:var(--text);font-size:11px;"></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Vent malus (kt)</div>'
+    +'<input type="number" id="ss-wind" value="'+p.windMalusKt+'" min="5" max="40" step="1" '
+    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
+    +'padding:6px;color:var(--text);font-size:11px;"></div>'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Rafales malus (kt)</div>'
+    +'<input type="number" id="ss-gust" value="'+p.gustMalusKt+'" min="5" max="50" step="1" '
+    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
+    +'padding:6px;color:var(--text);font-size:11px;"></div></div>'
+
+    // Directions compas — version mini inline
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
+    +'<div style="text-align:center;">'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🌊 Houle idéale (vient de)</div>'
+    +'<input type="number" id="ss-swell" value="'+(p.swellDirIdeal||120)+'" min="0" max="359" step="5" '
+    +'style="width:70px;background:var(--mid);border:1px solid rgba(79,163,199,.4);border-radius:6px;'
+    +'padding:6px;color:#4fa3c7;font-size:14px;font-weight:700;text-align:center;">'
+    +'<div style="font-size:9px;color:var(--faint);margin-top:2px;" id="ss-swell-dir">'+degToCompass(p.swellDirIdeal||120)+'</div>'
+    +'</div>'
+    +'<div style="text-align:center;">'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">💨 Vent idéal (vers)</div>'
+    +'<input type="number" id="ss-wind-dir" value="'+(p.windDirIdeal||270)+'" min="0" max="359" step="5" '
+    +'style="width:70px;background:var(--mid);border:1px solid rgba(232,160,87,.4);border-radius:6px;'
+    +'padding:6px;color:#e8a057;font-size:14px;font-weight:700;text-align:center;">'
+    +'<div style="font-size:9px;color:var(--faint);margin-top:2px;" id="ss-wind-dir-txt">'+degToCompass(p.windDirIdeal||270)+'</div>'
+    +'</div></div>'
+    +'</div>'
+
+    // Boutons
+    +'<div style="display:flex;gap:8px;">'
+    +'<button id="ss-save" style="flex:1;background:var(--accent);color:#fff;border:none;'
+    +'border-radius:6px;padding:9px;cursor:pointer;font-weight:600;font-size:12px;">✓ Enregistrer</button>'
+    +'<button id="ss-reset" style="background:var(--glass);border:1px solid var(--border);'
+    +'color:var(--muted);border-radius:6px;padding:9px 14px;cursor:pointer;font-size:11px;">Reset</button>'
+    +'</div>';
+
+  document.body.appendChild(div);
+
+  // Boutons source houle
+  div.querySelectorAll('.ss-src-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      div.querySelectorAll('.ss-src-btn').forEach(function(b) {
+        b.style.background = 'none';
+        b.style.color = 'var(--muted)';
+      });
+      var src = this.getAttribute('data-src');
+      if (src === 'nc') { this.style.background='rgba(61,186,138,.2)'; this.style.color='#3dba8a'; }
+      else              { this.style.background='rgba(79,163,199,.2)'; this.style.color='#4fa3c7'; }
+    });
+  });
+
+  // Live preview compass labels
+  document.getElementById('ss-swell').addEventListener('input', function() {
+    var el = document.getElementById('ss-swell-dir');
+    if (el) el.textContent = degToCompass(+this.value||0);
+  });
+  document.getElementById('ss-wind-dir').addEventListener('input', function() {
+    var el = document.getElementById('ss-wind-dir-txt');
+    if (el) el.textContent = degToCompass(+this.value||0);
+  });
+
+  document.getElementById('ss-close').onclick = function() { div.remove(); };
+
+  document.getElementById('ss-reset').onclick = function() {
+    // Reset score params pour ce spot
+    if (spot) { delete spot.scoreParams; saveSpots(); }
+    loadScoreParams();
+    div.remove();
+    loadForecast(currentSpot);
+    showToast('Réglages réinitialisés pour '+spot.name);
+  };
+
+  document.getElementById('ss-save').onclick = function() {
+    // Sauvegarder les 3 champs techniques dans le spot
+    var newTide = document.getElementById('ss-tide').value;
+    var newObs  = document.getElementById('ss-obs').value;
+    var ncBtn = document.getElementById('ss-nc');
+    var gfsBtn = document.getElementById('ss-gfs');
+    var newHsSrc = (ncBtn && ncBtn.style.color && ncBtn.style.color.includes('3dba8a')) ? 'nc' : 'gfs';
+
+    // Trouver les noms correspondants
+    var portObj = PORTS_LIST.find ? PORTS_LIST.find(function(p){return p.id===newTide;}) : null;
+    var obsObj  = OBS_LIST.find  ? OBS_LIST.find(function(o){return o.id===newObs;})   : null;
+
+    spot.tideId   = newTide;
+    spot.tideName = portObj ? portObj.name : spot.tideName;
+    spot.obsId    = newObs;
+    spot.obsName  = obsObj  ? obsObj.name  : spot.obsName;
+    spot.hsSrc    = newHsSrc;
+
+    // Sauvegarder les params de score dans le spot
+    var newScore = {
+      minHs:     +document.getElementById('ss-minHs').value     || 0.4,
+      minPeriod: +document.getElementById('ss-minPeriod').value || 8,
+      windMalusKt: +document.getElementById('ss-wind').value    || 18,
+      gustMalusKt: +document.getElementById('ss-gust').value    || 25,
+      swellDirIdeal: +document.getElementById('ss-swell').value    || 120,
+      windDirIdeal:  +document.getElementById('ss-wind-dir').value || 270,
+      maxHs: p.maxHs || 4.0,
+      onshoreLimit: p.onshoreLimit || 45,
+      offshoreMin: p.offshoreMin || 135,
+    };
+    saveScoreParams(newScore);
+    saveSpots();
+    div.remove();
+    loadForecast(currentSpot);
+    showToast('Réglages enregistrés pour '+spot.name+' ✓');
+  };
+}
+
 function showScoreSettings() {
   var ex=document.getElementById('score-settings-dialog'); if(ex){ex.remove();return;}
   var p=SCORE_PARAMS;
@@ -3404,7 +3682,7 @@ function showScoreSettings() {
 
   div.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
-    +'<div style="font-weight:700;color:var(--accent);font-size:13px;">⚙ Score surf</div>'
+    +'<div style="font-weight:700;color:var(--accent);font-size:13px;">⚙ Score — ' + SPOTS[currentSpot].name + '</div>'
     +'<button id="sc-close-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;">×</button>'
     +'</div>'
 
@@ -3509,7 +3787,9 @@ function showScoreSettings() {
   document.getElementById('sc-reset').onclick=function(){
     SCORE_PARAMS={minHs:0.4,maxHs:4.0,minPeriod:8,swellDirIdeal:120,windDirIdeal:270,
       onshoreLimit:45,offshoreMin:135,windMalusKt:18,gustMalusKt:25};
+    var sp=SPOTS[currentSpot]; if(sp){delete sp.scoreParams;saveSpots();}
     try{localStorage.removeItem('surf-score-params');}catch(e){}
+    SCORE_PARAMS=Object.assign({},_DEFAULT_SCORE);
     div.remove(); loadForecast(currentSpot); showToast('Score réinitialisé');
   };
   document.getElementById('sc-save').onclick=function(){
@@ -3519,8 +3799,8 @@ function showScoreSettings() {
     SCORE_PARAMS.gustMalusKt=+document.getElementById('sc-gustMalusKt').value;
     SCORE_PARAMS.swellDirIdeal=+document.getElementById('hid-swell').value;
     SCORE_PARAMS.windDirIdeal=+document.getElementById('hid-wind').value;
-    try{localStorage.setItem('surf-score-params',JSON.stringify(SCORE_PARAMS));}catch(e){}
-    div.remove(); loadForecast(currentSpot); showToast('Score mis à jour ✓');
+    saveScoreParams(p);
+    div.remove(); loadForecast(currentSpot); showToast('Score sauvegardé pour '+SPOTS[currentSpot].name);
   };
 }
 
@@ -3559,6 +3839,46 @@ function svgArrow(deg,col){
 function hsCol(v){return !v?'#3d5468':v<0.5?'#5a7080':v<1?'#7a94aa':v<1.5?'#4fa3c7':v<2?'#3dba8a':v<2.5?'#e8a057':'#e05c5c';}
 function windCol(v){return !v?'#3d5468':v<5?'#3dba8a':v<12?'#4fa3c7':v<20?'#e8a057':'#e05c5c';}
 function pwrCol(v){return !v?'#3d5468':v<1?'#7a94aa':v<5?'#4fa3c7':v<15?'#3dba8a':v<30?'#e8a057':'#7b6cf6';}
+
+// ─── LISTENER EXTENSION TOKEN ────────────────────────────────────────────────
+// Reçoit le token depuis l'extension Chrome (content-app.js via postMessage)
+window.addEventListener('message', function(e) {
+  if (!e.data || e.data.type !== '__nc_set_token__') return;
+  var tok = e.data.token;
+  if (!tok || tok.length < 30) return;
+  try { localStorage.setItem('nc-token', tok); } catch(err) {}
+  // Partager le token vers Supabase pour le mobile
+  _pushTokenToSupabase(tok);
+  if (tok !== _ncToken) {
+    _ncToken = tok;
+    var btn = document.getElementById('token-btn');
+    if (btn) { btn.style.color='var(--ok)'; btn.textContent='🔑'; }
+    console.log('[Surf NC] Token reçu depuis extension, rechargement...');
+    loadForecast(currentSpot);
+  }
+});
+
+// ─── Sync initial token Supabase (utile mobile ou premier lancement) ──
+// S'execute en parallele sans bloquer le chargement
+(async function() {
+  var needSync = false;
+  var localAge = null;
+  try {
+    var stored = localStorage.getItem('nc-token');
+    if (!stored) needSync = true;
+  } catch(e) {}
+  // Toujours tenter la sync au demarrage pour avoir le token le plus recent
+  var remoteTok = await _loadTokenFromSupabase();
+  if (remoteTok && remoteTok !== _ncToken) {
+    console.log('[NC Token Sync] Token plus recent trouve sur Supabase');
+    _ncToken = remoteTok;
+    try { localStorage.setItem('nc-token', remoteTok); } catch(e) {}
+    // Recharger les donnees si spot actif
+    if (typeof loadForecast === 'function' && typeof currentSpot !== 'undefined') {
+      setTimeout(function() { loadForecast(currentSpot); }, 100);
+    }
+  }
+})();
 
 // ─── INIT FINALE ──────────────────────────────────────────────────────────
 (function(){

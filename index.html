@@ -421,6 +421,8 @@ const APP_NAME = 'Coups de surf NC';
   <button class="nav-btn" onclick="showPage('stats')">Stats</button>
   <a href="https://thibsurf.github.io/surf-journal/previsions.html"
      class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;">🌊 Prévisions</a>
+  <a href="https://thibsurf.github.io/surf-journal/sorties.html"
+     class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;">🏄 Sorties</a>
   <button class="nav-btn primary" onclick="openAddSession()">+ Session</button>
   <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')">?</div>
 </nav>
@@ -438,6 +440,10 @@ const APP_NAME = 'Coups de surf NC';
       <div class="form-group">
         <label class="form-label">Mot de passe</label>
         <input type="password" class="form-input" id="auth-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <input type="checkbox" id="auth-remember" checked style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+        <label for="auth-remember" style="font-size:13px;color:var(--text-muted);cursor:pointer;user-select:none;">Se souvenir de moi</label>
       </div>
       <button class="btn btn-primary btn-full" onclick="doLogin()" id="btn-login">Se connecter</button>
       <div style="text-align:center;margin-top:1rem;font-size:13px;color:var(--text-muted)">
@@ -499,6 +505,7 @@ const APP_NAME = 'Coups de surf NC';
     <div class="page-header">
       <div class="page-title">Sessions du groupe</div>
       <div class="page-sub">Toutes les sorties partagées entre surfers</div>
+      <button onclick="showAliasTool()" style="background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.25);color:var(--accent);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;margin-bottom:12px;">🔗 Alias &amp; Co-navigateurs</button>
     </div>
     <div id="group-list">
       <div class="loading-state"><div class="spinner"></div> Chargement…</div>
@@ -904,6 +911,20 @@ const APP_NAME = 'Coups de surf NC';
       </div>
       <div style="background:var(--ocean);border:1px solid var(--border);border-radius:8px;padding:1rem;font-size:12px;font-family:monospace;color:var(--text);margin-bottom:1rem;overflow-x:auto;white-space:pre-wrap;">
 -- Profils utilisateurs
+-- Table pour les alias (optionnel, fonctionne aussi sans via localStorage)
+create table aliases (
+  id uuid default gen_random_uuid() primary key,
+  alias_text text not null,
+  user_id uuid references auth.users not null,
+  created_by uuid references auth.users,
+  created_at timestamptz default now()
+);
+alter table aliases enable row level security;
+create policy "Aliases lisibles par tous les membres" on aliases
+  for select using (auth.uid() is not null);
+create policy "Membres peuvent créer des alias" on aliases
+  for insert with check (auth.uid() = created_by);
+
 create table profiles (
   id uuid references auth.users primary key,
   username text,
@@ -2114,6 +2135,316 @@ function renderStats(sessions, el) {
 }
 
 // ══ PROFILE ══
+
+// ═══════════════════════════════════════════════════════════════
+// SYSTÈME D'ALIAS — lier les noms libres dans shared_with aux users
+// ═══════════════════════════════════════════════════════════════
+
+var _aliasMap = {};  // {text_normalisé → user_id}
+
+// Normaliser un nom pour comparaison (minuscules, sans accents, sans ponctuation)
+function normalizeAlias(s) {
+  if (!s) return '';
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+// Distance de Levenshtein
+function levenshtein(a, b) {
+  a = normalizeAlias(a); b = normalizeAlias(b);
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  var m = [];
+  for (var i = 0; i <= b.length; i++) { m[i] = [i]; }
+  for (var j = 1; j <= a.length; j++) { m[0][j] = j; }
+  for (var i = 1; i <= b.length; i++) {
+    for (var j = 1; j <= a.length; j++) {
+      m[i][j] = b[i-1] === a[j-1]
+        ? m[i-1][j-1]
+        : 1 + Math.min(m[i-1][j-1], m[i][j-1], m[i-1][j]);
+    }
+  }
+  return m[b.length][a.length];
+}
+
+// Chercher le meilleur match dans _profileCache pour un texte donné
+function findBestMatch(text) {
+  var norm = normalizeAlias(text);
+  if (!norm || norm.length < 2) return null;
+  var best = null, bestDist = Infinity;
+  Object.entries(window._profileCache || {}).forEach(function(entry) {
+    var uid = entry[0], username = entry[1];
+    var normU = normalizeAlias(username);
+    // Match exact
+    if (normU === norm) { best = { uid: uid, username: username, dist: 0, exact: true }; return; }
+    // Match partiel (contient)
+    if (normU.includes(norm) || norm.includes(normU)) {
+      var d = Math.abs(normU.length - norm.length);
+      if (d < bestDist) { bestDist = d; best = { uid: uid, username: username, dist: d, partial: true }; }
+      return;
+    }
+    // Levenshtein
+    var d = levenshtein(norm, normU);
+    var threshold = Math.max(2, Math.floor(Math.max(norm.length, normU.length) * 0.4));
+    if (d <= threshold && d < bestDist) {
+      bestDist = d; best = { uid: uid, username: username, dist: d };
+    }
+  });
+  return best;
+}
+
+// Charger les alias depuis Supabase (table aliases) + localStorage
+async function loadAliases() {
+  _aliasMap = {};
+  // 1. localStorage (validations locales)
+  try {
+    var local = JSON.parse(localStorage.getItem('surf-aliases') || '{}');
+    Object.assign(_aliasMap, local);
+  } catch(e) {}
+  // 2. Supabase si disponible
+  if (sb) {
+    try {
+      var { data } = await sb.from('aliases').select('alias_text,user_id');
+      if (data) data.forEach(function(a) {
+        _aliasMap[normalizeAlias(a.alias_text)] = a.user_id;
+      });
+    } catch(e) {
+      // Table aliases peut ne pas exister — silencieux
+    }
+  }
+}
+
+// Analyser toutes les sessions et trouver les shared_with non liés
+function scanAliasMatches(sessions) {
+  var suggestions = [];
+  var seen = new Set();
+  sessions.forEach(function(s) {
+    if (!s.shared_with || !s.shared_with.length) return;
+    s.shared_with.forEach(function(name) {
+      var norm = normalizeAlias(name);
+      if (!norm || seen.has(norm)) return;
+      seen.add(norm);
+      // Déjà lié ?
+      if (_aliasMap[norm]) return;
+      // Chercher un match
+      var match = findBestMatch(name);
+      if (match) {
+        suggestions.push({
+          text: name,
+          norm: norm,
+          match: match,
+          count: sessions.filter(function(ss) {
+            return ss.shared_with && ss.shared_with.some(function(n) {
+              return normalizeAlias(n) === norm;
+            });
+          }).length
+        });
+      }
+    });
+  });
+  // Trier: exact > partial > levenshtein, puis par fréquence
+  suggestions.sort(function(a, b) {
+    if (a.match.exact && !b.match.exact) return -1;
+    if (!a.match.exact && b.match.exact) return 1;
+    if (a.match.dist !== b.match.dist) return a.match.dist - b.match.dist;
+    return b.count - a.count;
+  });
+  return suggestions;
+}
+
+// Valider un alias (text → userId)
+async function applyAlias(text, userId) {
+  var norm = normalizeAlias(text);
+  _aliasMap[norm] = userId;
+  // Sauvegarder localement
+  try {
+    var local = JSON.parse(localStorage.getItem('surf-aliases') || '{}');
+    local[norm] = userId;
+    localStorage.setItem('surf-aliases', JSON.stringify(local));
+  } catch(e) {}
+  // Sauvegarder dans Supabase si disponible
+  if (sb) {
+    try {
+      await sb.from('aliases').upsert({ alias_text: text, user_id: userId, created_by: currentUser.id });
+    } catch(e) { /* table peut ne pas exister */ }
+  }
+}
+
+// Obtenir les co-navigateurs réels (après résolution des alias)
+function getCoNavigators(sessions) {
+  var coNav = {};  // {user_id → {count, sessions[]}}
+  sessions.forEach(function(s) {
+    if (!s.shared_with || !s.shared_with.length) return;
+    s.shared_with.forEach(function(name) {
+      var norm = normalizeAlias(name);
+      var uid = _aliasMap[norm];
+      if (!uid) return;
+      if (!coNav[uid]) coNav[uid] = { count: 0, sessions: [] };
+      coNav[uid].count++;
+      coNav[uid].sessions.push(s);
+    });
+  });
+  return coNav;
+}
+
+// ─── MODAL ALIAS TOOL ───────────────────────────────────────────────────────
+async function showAliasTool() {
+  var ex = document.getElementById('alias-modal');
+  if (ex) { ex.remove(); return; }
+
+  // Charger toutes les sessions (perso + groupe)
+  var allSess = [];
+  if (sb) {
+    try {
+      var { data } = await sb.from('sessions').select('id,shared_with,date,spot,user_id');
+      allSess = (data || []).filter(function(s) { return s.shared_with && s.shared_with.length; });
+    } catch(e) {}
+  }
+
+  await loadAliases();
+  var suggestions = scanAliasMatches(allSess);
+
+  // Stats co-navigateurs
+  var coNav = getCoNavigators(allSess);
+  var coNavEntries = Object.entries(coNav)
+    .map(function(e) { return { uid: e[0], name: window._profileCache[e[0]] || e[0].slice(0,8), count: e[1].count }; })
+    .sort(function(a, b) { return b.count - a.count; });
+
+  // Noms non liés (fréquents mais sans match)
+  var unmatched = [];
+  var seen2 = new Set();
+  allSess.forEach(function(s) {
+    (s.shared_with || []).forEach(function(name) {
+      var norm = normalizeAlias(name);
+      if (seen2.has(norm) || _aliasMap[norm]) return;
+      seen2.add(norm);
+      if (!findBestMatch(name)) unmatched.push(name);
+    });
+  });
+
+  var modal = document.createElement('div');
+  modal.id = 'alias-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.7);'
+    + 'display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow-y:auto;';
+
+  var suggHtml = suggestions.length === 0
+    ? '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Aucune suggestion — tous les noms sont déjà liés ou sans correspondance.</div>'
+    : suggestions.map(function(s, i) {
+        var confidence = s.match.exact ? '✅ Exact' : s.match.partial ? '🔵 Partiel' : '🟡 Approx. (dist '+s.match.dist+')';
+        return '<div id="sug-'+i+'" style="display:flex;align-items:center;gap:10px;padding:8px;'
+          + 'background:var(--glass);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;">'
+          + '<div style="flex:1;min-width:0;">'
+          + '<span style="font-weight:600;color:var(--text);">"'+s.text+'"</span>'
+          + '<span style="color:var(--text-muted);font-size:10px;"> ('+s.count+'x)</span>'
+          + ' → <span style="color:var(--accent);">'+s.match.username+'</span>'
+          + '<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">'+confidence+'</span>'
+          + '</div>'
+          + '<div style="display:flex;gap:6px;flex-shrink:0;">'
+          + '<button class="alias-validate" data-text="'+encodeURIComponent(s.text)+'" data-uid="'+s.match.uid+'" data-idx="'+i+'" '
+          + 'style="background:#3dba8a;border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;">✓ Valider</button>'
+          + '<button class="alias-ignore" data-idx="'+i+'" '
+          + 'style="background:var(--glass);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;">✗ Ignorer</button>'
+          + '</div></div>';
+      }).join('');
+
+  var coNavHtml = coNavEntries.length === 0
+    ? '<div style="color:var(--text-muted);font-size:12px;">Aucun co-navigateur identifié encore.</div>'
+    : coNavEntries.slice(0,8).map(function(e) {
+        return '<div style="display:flex;justify-content:space-between;font-size:12px;'
+          + 'padding:5px 0;border-bottom:1px solid var(--border);">'
+          + '<span style="font-weight:500;">'+e.name+'</span>'
+          + '<span style="color:var(--accent);">'+e.count+' sortie'+(e.count>1?'s':'')+'</span>'
+          + '</div>';
+      }).join('');
+
+  var unmatchedHtml = unmatched.length === 0 ? '' :
+    '<div style="margin-top:14px;">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--accent-warm);margin-bottom:6px;">'
+    + '⚠ Noms sans correspondance ('+unmatched.length+')</div>'
+    + '<div style="font-size:11px;color:var(--text-muted);">'
+    + unmatched.map(function(n){return '"'+n+'"';}).join(', ')
+    + '</div><div style="font-size:10px;color:var(--text-faint);margin-top:4px;">'
+    + 'Ces noms ne correspondent à aucun pseudo connu. Vérifie l’orthographe ou invite ces personnes à créer un compte.</div></div>';
+
+  modal.innerHTML = '<div style="background:var(--deep);border:1px solid var(--border);border-radius:16px;'
+    + 'padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;margin-top:3vh;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">'
+    + '<div style="font-size:15px;font-weight:700;">🔗 Alias & Co-navigateurs</div>'
+    + '<button class="upm-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;">×</button>'
+    + '</div>'
+
+    // Suggestions
+    + '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;'
+    + 'letter-spacing:.05em;margin-bottom:10px;">Suggestions de liens</div>'
+    + suggHtml
+    + unmatchedHtml
+
+    // Co-navigateurs identifiés
+    + '<div style="margin-top:18px;font-size:11px;font-weight:700;color:var(--text-muted);'
+    + 'text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">'
+    + '🤝 Co-navigateurs identifiés</div>'
+    + coNavHtml
+
+    // Alias manuels
+    + '<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">Ajouter un alias manuellement</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+    + '<input id="alias-text-input" placeholder="Nom tapé dans les sessions" '
+    + 'style="flex:1;min-width:120px;background:var(--mid);border:1px solid var(--border);'
+    + 'border-radius:6px;padding:7px;color:var(--text);font-size:12px;">'
+    + '<select id="alias-user-select" style="flex:1;min-width:120px;background:var(--mid);'
+    + 'border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:12px;">'
+    + Object.entries(window._profileCache || {}).map(function(e) {
+        return '<option value="'+e[0]+'">'+e[1]+'</option>';
+      }).join('')
+    + '</select>'
+    + '<button id="alias-add-btn" '
+    + 'style="background:var(--accent);border:none;color:#fff;border-radius:6px;'
+    + 'padding:7px 14px;cursor:pointer;font-size:12px;font-weight:600;">+ Ajouter</button>'
+    + '</div></div>'
+    + '</div>';
+
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) { modal.remove(); return; }
+    if (e.target.closest && e.target.closest('.upm-close')) { modal.remove(); return; }
+    // Valider un alias suggéré
+    var valBtn = e.target.closest && e.target.closest('.alias-validate');
+    if (valBtn) {
+      var text = decodeURIComponent(valBtn.getAttribute('data-text'));
+      var uid  = valBtn.getAttribute('data-uid');
+      var idx2 = valBtn.getAttribute('data-idx');
+      applyAlias(text, uid).then(function() {
+        var row = document.getElementById('sug-' + idx2);
+        if (row) row.style.opacity = '.3';
+        showToast('Alias enregistré ✓', 'success');
+      });
+      return;
+    }
+    // Ignorer une suggestion
+    var ignBtn = e.target.closest && e.target.closest('.alias-ignore');
+    if (ignBtn) {
+      var row = document.getElementById('sug-' + ignBtn.getAttribute('data-idx'));
+      if (row) row.style.opacity = '.3';
+      return;
+    }
+  });
+  // Bouton + Ajouter alias manuel
+  var addBtn = document.getElementById('alias-add-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', async function() {
+      var t = document.getElementById('alias-text-input').value.trim();
+      var u = document.getElementById('alias-user-select').value;
+      if (!t || !u) { showToast('Remplis les deux champs', 'error'); return; }
+      await applyAlias(t, u);
+      document.getElementById('alias-text-input').value = '';
+      showToast('Alias enregistré ✓', 'success');
+    });
+  }
+  document.body.appendChild(modal);
+}
+
 async function openUserProfile(userId) {
   var name = (window._profileCache && window._profileCache[userId]) || 'Surfeur';
 

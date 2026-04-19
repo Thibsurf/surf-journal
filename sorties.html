@@ -1,0 +1,2495 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+<title>Sorties surf — Surf NC</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏄%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a1628; --deep:#0d1f3c; --mid:#14283f; --glass:rgba(255,255,255,.03);
+  --border:rgba(255,255,255,.08); --text:#e8eef4; --text-muted:#7a94aa; --text-faint:rgba(255,255,255,.35);
+  --accent:#4fa3c7; --ok:#3dba8a; --warm:#e8a057; --bad:#e05c5c; --purple:#7b6cf6;
+  --star:#e8a057; --radius:14px; --radius-sm:10px;
+  --font-d:'Playfair Display',serif; --font-b:'DM Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:linear-gradient(180deg,#0a1628 0%,#0d1d35 100%);color:var(--text);
+  font-family:var(--font-b);font-size:14px;line-height:1.55;min-height:100vh;}
+nav{background:rgba(10,22,40,.92);backdrop-filter:blur(18px);border-bottom:1px solid var(--border);
+  padding:0 1.25rem;height:54px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;}
+nav .logo{font-family:var(--font-d);font-size:1.15rem;font-weight:600;color:var(--text);}
+nav .logo span{color:var(--accent);}
+nav a.back{color:var(--text-muted);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;}
+nav a.back:hover{color:var(--text);}
+.main-wrap{max-width:920px;margin:0 auto;padding:1.25rem;}
+
+/* Header */
+.page-header{margin-bottom:24px;}
+.page-title{font-family:var(--font-d);font-size:2rem;font-weight:600;color:var(--text);margin-bottom:4px;letter-spacing:-.02em;}
+.page-sub{color:var(--text-muted);font-size:13px;margin-bottom:14px;}
+
+/* Action bar */
+.action-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px;align-items:center;}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);
+  padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;
+  display:inline-flex;align-items:center;gap:6px;font-family:inherit;}
+.btn:hover{opacity:.9;transform:translateY(-1px);}
+.btn-ghost{background:var(--glass);border:1px solid var(--border);color:var(--text-muted);}
+.btn-ghost:hover{color:var(--text);}
+.filter-pill{background:var(--glass);border:1px solid var(--border);color:var(--text-muted);
+  border-radius:999px;padding:6px 14px;font-size:12px;cursor:pointer;font-family:inherit;}
+.filter-pill.active{background:rgba(79,163,199,.15);color:var(--accent);border-color:rgba(79,163,199,.4);}
+
+/* Cards */
+.sortie-card{background:var(--deep);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;margin-bottom:14px;position:relative;transition:.2s;}
+.sortie-card:hover{border-color:rgba(79,163,199,.3);}
+.sortie-card.past{opacity:.55;}
+.sortie-card.full{border-color:rgba(232,160,87,.3);}
+.sortie-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.sortie-title-block{flex:1;min-width:0;}
+.sortie-type-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;
+  letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px;}
+.type-session{background:rgba(79,163,199,.15);color:var(--accent);}
+.type-camping{background:rgba(123,108,246,.15);color:var(--purple);}
+.sortie-spot{font-family:var(--font-d);font-size:1.3rem;font-weight:600;color:var(--text);line-height:1.2;margin-bottom:4px;}
+.sortie-date{color:var(--text-muted);font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.sortie-date .pipe{opacity:.3;}
+.sortie-author{font-size:11px;color:var(--text-faint);}
+
+.places-badge{background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.3);color:var(--ok);
+  border-radius:10px;padding:8px 14px;font-size:12px;font-weight:600;text-align:center;min-width:100px;flex-shrink:0;}
+.places-badge.warning{background:rgba(232,160,87,.12);border-color:rgba(232,160,87,.3);color:var(--warm);}
+.places-badge.full{background:rgba(224,92,92,.12);border-color:rgba(224,92,92,.3);color:var(--bad);}
+.places-badge .n{font-size:1.4rem;font-family:var(--font-d);line-height:1;display:block;margin-bottom:2px;}
+.places-badge .lbl{font-size:9px;font-weight:500;opacity:.8;}
+
+.sortie-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+.info-cell{background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:8px 10px;}
+.info-label{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:2px;}
+.info-val{font-size:12px;color:var(--text);font-weight:500;}
+.info-val .sub{color:var(--text-muted);font-size:11px;font-weight:400;}
+
+/* Meteo box */
+.meteo-box{background:linear-gradient(135deg,rgba(79,163,199,.08),rgba(61,186,138,.04));
+  border:1px solid rgba(79,163,199,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;
+  display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:12px;}
+.meteo-box .m-item{display:flex;flex-direction:column;gap:2px;}
+.meteo-box .m-item .v{font-size:16px;font-weight:700;color:var(--accent);font-family:var(--font-d);}
+.meteo-box .m-item .l{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.04em;}
+.meteo-loading{font-size:11px;color:var(--text-muted);font-style:italic;}
+
+/* Inscrits list */
+.inscrits-wrap{background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;}
+.inscrits-title{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+.inscrit-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed rgba(255,255,255,.04);font-size:12px;flex-wrap:wrap;}
+.inscrit-row:last-child{border-bottom:none;}
+.inscrit-avatar{width:26px;height:26px;border-radius:50%;background:var(--mid);
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;}
+.inscrit-name{font-weight:600;color:var(--text);}
+.inscrit-details{color:var(--text-muted);font-size:11px;margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;}
+.inscrit-details .chip{background:var(--mid);padding:2px 7px;border-radius:999px;font-size:10px;}
+.inscrit-status{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:500;}
+.status-owner{background:rgba(232,160,87,.15);color:var(--warm);}
+.owner-badge{font-size:9px;background:linear-gradient(135deg,rgba(232,160,87,.2),rgba(232,160,87,.1));color:var(--warm);padding:2px 7px;border-radius:999px;font-weight:700;border:1px solid rgba(232,160,87,.3);text-transform:uppercase;letter-spacing:.04em;}
+.avatar-owner{background:linear-gradient(135deg,rgba(232,160,87,.25),rgba(232,160,87,.1)) !important;color:var(--warm) !important;border:1.5px solid rgba(232,160,87,.4);}
+.inscrit-row.is-owner{background:linear-gradient(to right,rgba(232,160,87,.04),transparent);border-radius:6px;padding-left:4px;}
+.status-in{background:rgba(61,186,138,.15);color:var(--ok);}
+.status-out{background:rgba(224,92,92,.15);color:var(--bad);}
+.status-maybe{background:rgba(232,160,87,.15);color:var(--warm);}
+
+/* Actions */
+.sortie-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.btn-sm{padding:7px 14px;font-size:11px;border-radius:8px;border:1px solid;cursor:pointer;
+  font-family:inherit;font-weight:600;display:inline-flex;align-items:center;gap:5px;background:transparent;}
+.btn-in{border-color:rgba(61,186,138,.4);color:var(--ok);background:rgba(61,186,138,.08);}
+.btn-in:hover{background:rgba(61,186,138,.18);}
+.btn-in.active{background:var(--ok);color:#fff;border-color:var(--ok);}
+.btn-out{border-color:rgba(224,92,92,.3);color:var(--bad);background:transparent;}
+.btn-out:hover{background:rgba(224,92,92,.1);}
+.btn-out.active{background:var(--bad);color:#fff;border-color:var(--bad);}
+.btn-maybe{border-color:rgba(232,160,87,.4);color:var(--warm);background:rgba(232,160,87,.06);}
+.btn-maybe.active{background:var(--warm);color:#fff;border-color:var(--warm);}
+.btn-share{border-color:rgba(79,163,199,.3);color:var(--accent);background:rgba(79,163,199,.06);}
+.btn-share:hover{background:rgba(79,163,199,.14);}
+.btn-more{border-color:var(--border);color:var(--text-muted);background:var(--glass);margin-left:auto;}
+
+/* Comments */
+.comments-section{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);}
+.comment-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:12px;}
+.comment-author{font-weight:600;color:var(--accent);font-size:11px;}
+.comment-text{color:var(--text-muted);font-size:12px;margin-top:2px;}
+.comment-date{font-size:9px;color:var(--text-faint);margin-top:1px;}
+
+/* Modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;
+  display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow-y:auto;}
+.modal-content{background:var(--deep);border:1px solid var(--border);border-radius:var(--radius);
+  max-width:600px;width:100%;padding:24px;margin-top:2vh;max-height:94vh;overflow-y:auto;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+.modal-title{font-family:var(--font-d);font-size:1.4rem;font-weight:600;color:var(--text);}
+.modal-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:24px;padding:0 4px;}
+
+/* Form */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.form-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.form-full{grid-column:1/-1;}
+.form-group{margin-bottom:14px;}
+.form-label{display:block;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;
+  font-weight:600;margin-bottom:5px;}
+.form-input, .form-select, .form-textarea{
+  width:100%;background:var(--mid);border:1px solid var(--border);border-radius:8px;
+  padding:9px 11px;color:var(--text);font-size:13px;font-family:inherit;transition:.2s;}
+.form-input:focus, .form-select:focus, .form-textarea:focus{
+  outline:none;border-color:var(--accent);background:rgba(79,163,199,.04);}
+.form-textarea{resize:vertical;min-height:70px;}
+.form-hint{font-size:10px;color:var(--text-faint);margin-top:3px;}
+
+/* Type toggle */
+.type-toggle{display:flex;gap:8px;margin-bottom:16px;}
+.type-btn{flex:1;padding:12px;border:1px solid var(--border);background:var(--glass);
+  border-radius:10px;cursor:pointer;color:var(--text-muted);font-size:12px;text-align:center;transition:.2s;font-family:inherit;font-weight:600;}
+.type-btn .icon{font-size:20px;display:block;margin-bottom:4px;}
+.type-btn.active.sessions{border-color:var(--accent);background:rgba(79,163,199,.1);color:var(--accent);}
+.type-btn.active.camping{border-color:var(--purple);background:rgba(123,108,246,.1);color:var(--purple);}
+
+/* Ideas chips */
+.idea-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.idea-chip{font-size:11px;padding:4px 10px;background:var(--glass);border:1px solid var(--border);
+  border-radius:999px;cursor:pointer;color:var(--text-muted);transition:.2s;}
+.idea-chip:hover{background:rgba(79,163,199,.1);color:var(--accent);border-color:rgba(79,163,199,.3);}
+
+/* Share modal */
+.share-btns{display:flex;flex-direction:column;gap:8px;margin-top:16px;}
+.share-btn{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;
+  text-decoration:none;color:var(--text);border:1px solid var(--border);background:var(--glass);
+  font-size:13px;font-weight:500;transition:.2s;cursor:pointer;font-family:inherit;width:100%;}
+.share-btn:hover{transform:translateX(2px);border-color:var(--accent);}
+.share-btn .icon{font-size:22px;flex-shrink:0;}
+.share-btn.messenger{border-color:rgba(0,132,255,.3);}
+.share-btn.whatsapp{border-color:rgba(37,211,102,.3);}
+.share-msg-preview{background:var(--mid);border:1px solid var(--border);border-radius:8px;
+  padding:12px;font-size:12px;color:var(--text-muted);white-space:pre-wrap;font-family:monospace;
+  max-height:180px;overflow-y:auto;margin-bottom:12px;}
+
+.empty{text-align:center;padding:60px 20px;color:var(--text-muted);}
+.empty-icon{font-size:48px;margin-bottom:12px;}
+.empty-title{font-family:var(--font-d);font-size:1.2rem;color:var(--text);margin-bottom:6px;}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--deep);
+  border:1px solid var(--border);color:var(--text);padding:12px 18px;border-radius:10px;z-index:2000;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);font-size:13px;opacity:0;transition:.3s;pointer-events:none;}
+.toast.show{opacity:1;}
+.toast.ok{border-color:rgba(61,186,138,.5);color:var(--ok);}
+.toast.err{border-color:rgba(224,92,92,.5);color:var(--bad);}
+
+.auth-warning{background:rgba(232,160,87,.08);border:1px solid rgba(232,160,87,.2);
+  border-radius:10px;padding:16px;color:var(--warm);font-size:13px;text-align:center;margin-bottom:20px;}
+.auth-warning a{color:var(--warm);font-weight:600;}
+
+/* Rappel veille */
+.reminder-banner{background:linear-gradient(135deg,rgba(232,160,87,.12),rgba(232,160,87,.04));
+  border:1px solid rgba(232,160,87,.3);border-radius:var(--radius);padding:14px 18px;margin-bottom:18px;
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+.reminder-banner .ico{font-size:22px;flex-shrink:0;}
+.reminder-banner .txt{flex:1;min-width:0;font-size:13px;color:var(--warm);}
+.reminder-banner .txt b{color:var(--text);}
+.reminder-banner .actions{display:flex;gap:6px;flex-shrink:0;}
+.reminder-banner .actions button{background:rgba(232,160,87,.15);border:1px solid rgba(232,160,87,.3);
+  color:var(--warm);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;}
+
+/* Timeline */
+.timeline{display:flex;gap:0;margin:14px 0;padding:12px;background:var(--glass);border-radius:10px;border:1px solid var(--border);overflow-x:auto;}
+.tl-step{display:flex;flex-direction:column;align-items:center;min-width:72px;flex:1;position:relative;padding:0 4px;}
+.tl-step:not(:last-child):after{content:'';position:absolute;top:14px;right:-50%;width:100%;height:2px;
+  background:linear-gradient(to right,var(--accent),rgba(79,163,199,.2));}
+.tl-dot{width:28px;height:28px;border-radius:50%;background:var(--deep);border:2px solid var(--accent);
+  display:flex;align-items:center;justify-content:center;font-size:13px;margin-bottom:6px;position:relative;z-index:1;}
+.tl-time{font-size:10px;font-weight:700;color:var(--accent);font-family:var(--font-d);}
+.tl-label{font-size:9px;color:var(--text-muted);text-align:center;margin-top:2px;line-height:1.3;}
+
+/* Covoit */
+.covoit-box{background:rgba(123,108,246,.06);border:1px solid rgba(123,108,246,.2);border-radius:10px;
+  padding:12px;margin-bottom:14px;}
+.covoit-title{font-size:10px;font-weight:700;color:#a99ff8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.covoit-car{background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.covoit-car:last-child{margin-bottom:0;}
+.covoit-driver{font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:4px;}
+.covoit-seats{font-size:11px;color:var(--text-muted);margin-left:auto;}
+.covoit-pax{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;width:100%;}
+.covoit-pax .pax{font-size:10px;background:rgba(123,108,246,.12);color:#a99ff8;padding:2px 8px;border-radius:999px;}
+.covoit-pax .empty{font-size:10px;color:var(--text-faint);font-style:italic;}
+.covoit-join-btn{background:rgba(123,108,246,.1);border:1px solid rgba(123,108,246,.3);color:#a99ff8;
+  padding:3px 10px;border-radius:6px;font-size:10px;cursor:pointer;font-family:inherit;font-weight:600;}
+.covoit-join-btn:hover{background:rgba(123,108,246,.2);}
+.covoit-join-btn.active{background:#a99ff8;color:#fff;}
+
+/* Commentaires */
+.comments-box{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);}
+.comments-title{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
+.comment-item{display:flex;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.03);}
+.comment-item:last-child{border-bottom:none;}
+.comment-avatar{width:26px;height:26px;border-radius:50%;background:var(--mid);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);}
+.comment-body{flex:1;min-width:0;}
+.comment-head{display:flex;gap:8px;align-items:baseline;margin-bottom:2px;flex-wrap:wrap;}
+.comment-author{font-size:12px;font-weight:600;color:var(--text);}
+.comment-time{font-size:10px;color:var(--text-faint);}
+.comment-text{font-size:12px;color:var(--text-muted);line-height:1.5;white-space:pre-wrap;word-break:break-word;}
+.comment-input{display:flex;gap:6px;margin-top:10px;}
+.comment-input input{flex:1;background:var(--mid);border:1px solid var(--border);border-radius:6px;
+  padding:7px 10px;color:var(--text);font-size:12px;font-family:inherit;}
+.comment-input input:focus{outline:none;border-color:var(--accent);}
+.comment-input button{background:var(--accent);border:none;color:#fff;border-radius:6px;padding:7px 14px;
+  font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+
+/* Bouton retour session */
+.feedback-btn{background:linear-gradient(135deg,#3dba8a,#4fa3c7);border:none;color:#fff;
+  padding:10px 18px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;
+  display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 12px rgba(61,186,138,.3);}
+.feedback-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(61,186,138,.4);}
+.opt-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:var(--glass);
+  border:1px solid var(--border);border-radius:999px;cursor:pointer;font-size:11px;color:var(--text-muted);
+  transition:.15s;user-select:none;}
+.opt-chip:hover{border-color:rgba(79,163,199,.3);}
+.opt-chip:has(input:checked){background:rgba(79,163,199,.12);border-color:rgba(79,163,199,.4);color:var(--accent);}
+.opt-chip input{accent-color:var(--accent);width:13px;height:13px;cursor:pointer;}
+
+.sortie-options{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;}
+.opt-badge{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;background:rgba(79,163,199,.1);
+  border:1px solid rgba(79,163,199,.25);border-radius:999px;font-size:10px;color:var(--accent);}
+
+.return-constraint{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:10px;margin-bottom:10px;}
+.rc-flexible{background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.25);color:var(--ok);}
+.rc-fixed{background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:var(--bad);}
+.rc-rtt{background:rgba(123,108,246,.1);border:1px solid rgba(123,108,246,.25);color:#a99ff8;}
+
+.miton-section{background:rgba(232,160,87,.06);border:1px solid rgba(232,160,87,.2);border-radius:10px;
+  padding:10px 12px;margin-bottom:12px;}
+.miton-title{font-size:11px;font-weight:700;color:var(--warm);margin-bottom:6px;display:flex;align-items:center;gap:5px;}
+.miton-place{font-size:12px;color:var(--text);margin-bottom:8px;}
+.miton-orders{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;}
+.miton-order{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 8px;background:var(--glass);border-radius:6px;}
+.miton-order .who{font-weight:600;color:var(--text);min-width:60px;}
+.miton-order .what{flex:1;color:var(--text-muted);}
+.miton-order.done{opacity:.5;text-decoration:line-through;}
+.miton-order .toggle-done{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;}
+.miton-order .remove{background:none;border:none;color:var(--bad);cursor:pointer;font-size:12px;opacity:.5;}
+.miton-order .remove:hover{opacity:1;}
+.miton-add{display:flex;gap:5px;}
+.miton-add input{flex:1;background:var(--mid);border:1px solid var(--border);border-radius:6px;
+  padding:5px 8px;color:var(--text);font-size:11px;font-family:inherit;}
+.miton-add button{background:rgba(232,160,87,.15);border:1px solid rgba(232,160,87,.3);color:var(--warm);
+  padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:600;}
+
+.feedback-done{background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.3);color:var(--ok);
+  padding:6px 14px;border-radius:8px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;}
+
+/* Modal feedback */
+.quality-picker{display:flex;gap:6px;justify-content:space-between;}
+.q-btn{flex:1;padding:8px;border:1px solid var(--border);background:var(--glass);border-radius:8px;
+  cursor:pointer;font-size:11px;color:var(--text-muted);transition:.2s;font-family:inherit;text-align:center;}
+.q-btn .emoji{font-size:20px;display:block;margin-bottom:2px;}
+.q-btn.active{border-color:var(--accent);background:rgba(79,163,199,.15);color:var(--accent);}
+
+@media (max-width:600px){
+  .form-grid, .form-grid-3{grid-template-columns:1fr;}
+  .sortie-head{flex-direction:column;}
+  .places-badge{width:100%;}
+  nav{padding:0 1rem;gap:10px;}
+  nav .logo{font-size:1rem;}
+  .page-title{font-size:1.6rem;}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="https://thibsurf.github.io/surf-journal/" class="back">← Journal</a>
+  <div class="logo">Surf <span>NC</span></div>
+  <a href="https://thibsurf.github.io/surf-journal/previsions.html" class="back" style="margin-left:auto;">🌊 Prévisions</a>
+</nav>
+
+<div class="main-wrap">
+
+  <div class="page-header">
+    <div class="page-title">🏄‍♂️ Sorties surf</div>
+    <div class="page-sub">Propose une session ou un camping ilôt · inscris-toi aux sorties prévues · partage avec le groupe</div>
+  </div>
+
+  <div id="auth-gate" style="display:none;">
+    <div class="auth-warning">
+      Tu dois être connecté pour proposer ou t'inscrire à une sortie.<br>
+      <a href="https://thibsurf.github.io/surf-journal/">← Connecte-toi depuis le journal</a>
+    </div>
+  </div>
+
+  <div id="content-area">
+    <div class="action-bar">
+      <button class="btn" onclick="openCreateModal()">+ Proposer une sortie</button>
+      <button class="filter-pill active" data-filter="upcoming" onclick="setFilter('upcoming')">À venir</button>
+      <button class="filter-pill" data-filter="past" onclick="setFilter('past')">Passées</button>
+      <button class="filter-pill" data-filter="mine" onclick="setFilter('mine')">Mes sorties</button>
+    </div>
+
+    <div id="reminder-area"></div>
+    <div id="sorties-list">
+      <div class="empty"><div class="empty-icon">⏳</div>Chargement…</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal création -->
+<div class="modal" id="modal-create" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title-text">Proposer une sortie</div>
+      <button class="modal-close" onclick="closeModal('modal-create')">×</button>
+    </div>
+
+    <div class="type-toggle">
+      <button class="type-btn sessions active" data-type="session" onclick="setSortieType('session')">
+        <span class="icon">🏄</span>Session surf
+      </button>
+      <button class="type-btn camping" data-type="camping" onclick="setSortieType('camping')">
+        <span class="icon">⛺</span>Camping ilôt
+      </button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Spot / Lieu</label>
+        <input type="text" class="form-input" id="f-spot" placeholder="ex: Passe de Dumbéa" list="spots-list">
+        <datalist id="spots-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mise à l'eau</label>
+        <input type="text" class="form-input" id="f-launch" placeholder="ex: Port Tomo">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input type="date" class="form-input" id="f-date">
+      </div>
+      <div class="form-group" id="f-date-end-wrap" style="display:none;">
+        <label class="form-label">Date retour (camping)</label>
+        <input type="date" class="form-input" id="f-date-end">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Heure départ</label>
+        <input type="time" class="form-input" id="f-time-start" value="06:00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Heure retour (estimée)</label>
+        <input type="time" class="form-input" id="f-time-end" value="12:00">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Bateau(x) — sépare par virgule si plusieurs</label>
+      <input type="text" class="form-input" id="f-boats" placeholder="ex: Zodiac de Raph, Vedette de Lucas">
+      <div class="form-hint">Plusieurs bateaux ? Liste-les tous — les places totales s’additionnent</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">⭐ Copropriétaires (places prioritaires)</label>
+      <select class="form-select" id="f-owners" multiple style="min-height:90px;"></select>
+      <div class="form-hint">Les copropriétaires ont une place réservée d’office (Ctrl/Cmd + clic pour en choisir plusieurs)</div>
+    </div>
+
+    <div class="form-grid-3">
+      <div class="form-group">
+        <label class="form-label">Places totales</label>
+        <input type="number" class="form-input" id="f-places" min="1" max="20" value="4">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Planches à prendre</label>
+        <input type="number" class="form-input" id="f-boards" min="0" max="20" value="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prix estimé / pers (CFP)</label>
+        <input type="number" class="form-input" id="f-price" min="0" step="100" placeholder="2500">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">À prévoir / apporter</label>
+      <textarea class="form-textarea" id="f-apports" placeholder="ex: Chacun apporte eau et bouffe. Prévoir crème solaire, lycra, fins de rechange..."></textarea>
+      <div class="idea-chips">
+        <span class="idea-chip" onclick="addToApports('🍺 Bières fraîches')">🍺 Bières</span>
+        <span class="idea-chip" onclick="addToApports('🥖 Pique-nique')">🥖 Pique-nique</span>
+        <span class="idea-chip" onclick="addToApports('🍗 BBQ / grillades')">🍗 BBQ</span>
+        <span class="idea-chip" onclick="addToApports('☕ Café / thermos')">☕ Café</span>
+        <span class="idea-chip" onclick="addToApports('🥥 Eau fraîche ×5L')">🥥 Eau</span>
+        <span class="idea-chip" onclick="addToApports('🧴 Crème solaire')">🧴 Crème solaire</span>
+        <span class="idea-chip" onclick="addToApports('🛖 Tente ×1')">🛖 Tente</span>
+        <span class="idea-chip" onclick="addToApports('🔥 Bois / allume-feu')">🔥 Bois</span>
+        <span class="idea-chip" onclick="addToApports('🎣 Matos pêche')">🎣 Pêche</span>
+        <span class="idea-chip" onclick="addToApports('🎶 Enceinte')">🎶 Enceinte</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Voitures / covoiturage</label>
+      <input type="text" class="form-input" id="f-cars" placeholder="ex: 2 voitures prévues, RDV parking Anse Vata 5h30">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">🥐 Arrêt boulangerie / mitron</label>
+      <input type="text" class="form-input" id="f-miton" placeholder="ex: Boulangerie Vallée du Tir à 5h45">
+      <div class="form-hint">Les autres pourront te commander des viennoiseries avant le départ</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">🎯 Options de la sortie</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <label class="opt-chip"><input type="checkbox" id="f-opt-chasse"> 🔫 Chasse sous-marine</label>
+        <label class="opt-chip"><input type="checkbox" id="f-opt-peche"> 🎣 Pêche</label>
+        <label class="opt-chip"><input type="checkbox" id="f-opt-snorkel"> 🤿 Snorkeling</label>
+        <label class="opt-chip"><input type="checkbox" id="f-opt-paddle"> 🛶 Paddle</label>
+        <label class="opt-chip"><input type="checkbox" id="f-opt-apero"> 🍻 Apéro post-surf</label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">⏱ Contrainte horaire retour</label>
+      <select class="form-select" id="f-return-constraint">
+        <option value="flexible">Flexible — on verra sur place</option>
+        <option value="fixed-work">Fixe (boulot après)</option>
+        <option value="fixed-family">Fixe (famille / enfants)</option>
+        <option value="rtt">RTT / congé — tout le temps</option>
+        <option value="weekend">Weekend — relax</option>
+        <option value="sundown">Jusqu'au coucher du soleil</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Commentaire / détails</label>
+      <textarea class="form-textarea" id="f-notes" placeholder="Conditions prévues, motivation, humeur du jour..."></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn" onclick="saveSortie()" id="btn-save" style="flex:1;">✓ Publier la sortie</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-create')">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal partage -->
+<div class="modal" id="modal-share" style="display:none;">
+  <div class="modal-content" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title">📤 Partager cette sortie</div>
+      <button class="modal-close" onclick="closeModal('modal-share')">×</button>
+    </div>
+    <div class="share-msg-preview" id="share-msg-preview"></div>
+    <div class="share-btns">
+      <a href="#" id="share-messenger" target="_blank" class="share-btn messenger">
+        <span class="icon">💬</span>
+        <div><div style="font-weight:700;">Messenger</div>
+        <div style="font-size:11px;color:var(--text-muted);">Ouvre Messenger — choisis ta conversation</div></div>
+      </a>
+      <a href="#" id="share-whatsapp" target="_blank" class="share-btn whatsapp">
+        <span class="icon">📱</span>
+        <div><div style="font-weight:700;">WhatsApp</div>
+        <div style="font-size:11px;color:var(--text-muted);">Ouvre WhatsApp avec le message</div></div>
+      </a>
+      <button class="share-btn" onclick="copyMsg()">
+        <span class="icon">📋</span>
+        <div><div style="font-weight:700;">Copier le texte</div>
+        <div style="font-size:11px;color:var(--text-muted);">Pour coller où tu veux</div></div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal inscription détails -->
+<div class="modal" id="modal-inscription" style="display:none;">
+  <div class="modal-content" style="max-width:440px;">
+    <div class="modal-header">
+      <div class="modal-title" id="ins-title">Je m'inscris</div>
+      <button class="modal-close" onclick="closeModal('modal-inscription')">×</button>
+    </div>
+    <input type="hidden" id="ins-sortie-id">
+    <input type="hidden" id="ins-status">
+    <div class="form-group">
+      <label class="form-label">Planche(s) que j'apporte</label>
+      <input type="text" class="form-input" id="ins-boards" placeholder="ex: Pukas 5'10, JS shortboard">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ce que j'apporte</label>
+      <input type="text" class="form-input" id="ins-brings" placeholder="ex: 6 bières + pique-nique">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Voiture / covoit</label>
+      <input type="text" class="form-input" id="ins-car" placeholder="ex: Je prends ma voiture, 3 places dispo">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Commentaire</label>
+      <textarea class="form-textarea" id="ins-comment" rows="2" placeholder="Optionnel..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn" onclick="confirmInscription()" style="flex:1;">Confirmer</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-inscription')">Annuler</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal retour post-session -->
+<div class="modal" id="modal-feedback" style="display:none;">
+  <div class="modal-content" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title">✍️ Retour de session</div>
+      <button class="modal-close" onclick="closeModal('modal-feedback')">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+      Évalue les conditions réelles — ça crée une session dans ton journal et alimente les stats du groupe.
+    </div>
+    <input type="hidden" id="fb-sortie-id">
+
+    <div class="form-group">
+      <label class="form-label">Qualité de la session</label>
+      <div class="quality-picker" id="fb-quality">
+        <button class="q-btn" data-q="1" onclick="setFbQuality(1)"><span class="emoji">😴</span>Nul</button>
+        <button class="q-btn" data-q="2" onclick="setFbQuality(2)"><span class="emoji">😐</span>Moyen</button>
+        <button class="q-btn" data-q="3" onclick="setFbQuality(3)"><span class="emoji">🙂</span>Bien</button>
+        <button class="q-btn" data-q="4" onclick="setFbQuality(4)"><span class="emoji">😊</span>Très bien</button>
+        <button class="q-btn" data-q="5" onclick="setFbQuality(5)"><span class="emoji">🔥</span>Épique</button>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Hs ressentie (m)</label>
+        <input type="number" class="form-input" id="fb-hs" step="0.1" min="0" max="10" placeholder="ex: 1.5">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Période (s)</label>
+        <input type="number" class="form-input" id="fb-period" step="1" min="0" max="30" placeholder="ex: 12">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vent (kt)</label>
+        <input type="number" class="form-input" id="fb-wind" step="1" min="0" max="60" placeholder="ex: 10">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fiabilité prévisions</label>
+        <div style="display:flex;gap:3px;align-items:center;height:38px;">
+          <button class="q-btn" data-acc="1" onclick="setFbAcc(1)" style="flex:1;padding:4px;font-size:10px;">😴</button>
+          <button class="q-btn" data-acc="2" onclick="setFbAcc(2)" style="flex:1;padding:4px;font-size:10px;">😐</button>
+          <button class="q-btn" data-acc="3" onclick="setFbAcc(3)" style="flex:1;padding:4px;font-size:10px;">🙂</button>
+          <button class="q-btn" data-acc="4" onclick="setFbAcc(4)" style="flex:1;padding:4px;font-size:10px;">😊</button>
+          <button class="q-btn" data-acc="5" onclick="setFbAcc(5)" style="flex:1;padding:4px;font-size:10px;">🎯</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Planche utilisée</label>
+      <input type="text" class="form-input" id="fb-board" placeholder="ex: Pukas 5'10">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Commentaire</label>
+      <textarea class="form-textarea" id="fb-comment" rows="2" placeholder="Comment c'était ?"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button class="btn" onclick="saveFeedback()" style="flex:1;">💾 Créer ma session</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-feedback')">Plus tard</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal météogramme image -->
+<div class="modal" id="modal-meteogram" style="display:none;">
+  <div class="modal-content" style="max-width:840px;">
+    <div class="modal-header">
+      <div class="modal-title">📊 Météogramme — à partager</div>
+      <button class="modal-close" data-act="close-modal" data-target="modal-meteogram">×</button>
+    </div>
+    <div style="background:#0a1628;border-radius:10px;padding:8px;margin-bottom:14px;text-align:center;overflow-x:auto;">
+      <canvas id="meteogram-canvas" width="800" height="900" style="max-width:100%;height:auto;display:inline-block;"></canvas>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" id="btn-download-img" style="flex:1;min-width:140px;">⬇ Télécharger image</button>
+      <button class="btn btn-ghost" id="btn-copy-img" style="flex:1;min-width:140px;">📋 Copier image</button>
+      <button class="btn btn-ghost" id="btn-share-img" style="flex:1;min-width:140px;">📤 Partager</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ════════════════════════════════════════════════════════════════
+// CONFIG (même Supabase que le journal principal)
+// ════════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { storageKey: 'surf-nc-auth', persistSession: true }
+});
+
+var currentUser = null, currentProfile = null;
+var allSorties = [];
+var profileCache = {};
+var currentSortieType = 'session';
+var currentFilter = 'upcoming';
+var currentShareMsg = '';
+
+// ════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    try {
+      const { data: p } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+      currentProfile = p || { username: session.user.email.split('@')[0] };
+    } catch(e) { currentProfile = { username: 'Surfeur' }; }
+    await loadProfiles();
+  } else {
+    document.getElementById('auth-gate').style.display = 'block';
+  }
+  await loadSorties();
+  loadSpotsList();
+  // Pré-remplir date du jour
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+}
+
+async function loadProfiles() {
+  try {
+    const { data } = await sb.from('profiles').select('id,username');
+    if (data) data.forEach(p => { profileCache[p.id] = p.username || 'Surfeur'; });
+  } catch(e) { console.warn('loadProfiles:', e); }
+}
+
+function loadSpotsList() {
+  const spots = [
+    'Passe de Dumbéa', 'Ilot Ténia', 'Passe de Boulari', 'Passe de Ouano',
+    'Passe de Mato', 'Trois Cailloux', 'Large Nouméa',
+    'Ilôt Maître', 'Ilôt Signal', 'Ilôt Amédée', 'Ilôt Larégnère',
+    'Port Bouquet', 'Poé', 'Gouaro', 'Roche Percée', 'Ouvéa'
+  ];
+  const dl = document.getElementById('spots-list');
+  dl.innerHTML = spots.map(s => '<option value="' + s + '">').join('');
+}
+
+// ════════════════════════════════════════════════════════════════
+// LOAD SORTIES
+// ════════════════════════════════════════════════════════════════
+async function loadSorties() {
+  try {
+    const { data, error } = await sb.from('sorties').select('*').order('date_start', { ascending: true });
+    if (error) throw error;
+    allSorties = data || [];
+    renderSorties();
+  } catch(e) {
+    console.error('loadSorties:', e);
+    document.getElementById('sorties-list').innerHTML =
+      '<div class="empty"><div class="empty-icon">⚠</div><div class="empty-title">Impossible de charger les sorties</div>'
+      + '<div style="font-size:12px;">La table <code style="background:var(--mid);padding:2px 6px;border-radius:4px;">sorties</code> n\'existe peut-être pas encore — voir <a href="#" onclick="showSQL();return false;" style="color:var(--accent);">le SQL Supabase</a></div></div>';
+  }
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-pill').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+  renderSorties();
+}
+
+function renderSorties() {
+  const now = new Date(); now.setHours(0,0,0,0);
+  let list = allSorties.slice();
+  if (currentFilter === 'upcoming') list = list.filter(s => new Date(s.date_start) >= now);
+  else if (currentFilter === 'past') list = list.filter(s => new Date(s.date_start) < now).reverse();
+  else if (currentFilter === 'mine' && currentUser) {
+    list = list.filter(s => s.created_by === currentUser.id ||
+      (s.inscriptions || []).some(i => i.user_id === currentUser.id));
+  }
+
+  const el = document.getElementById('sorties-list');
+  if (list.length === 0) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">🏄</div>'
+      + '<div class="empty-title">Aucune sortie ' + (currentFilter === 'upcoming' ? 'prévue' : currentFilter === 'past' ? 'passée' : '') + '</div>'
+      + '<div style="font-size:12px;">Sois le premier à en proposer une !</div></div>';
+    return;
+  }
+
+  el.innerHTML = list.map(sortieCard).join('');
+  // Charger les prévisions meteo.nc pour chaque sortie à venir
+  list.forEach(s => { if (new Date(s.date_start) >= now) loadMeteoForSortie(s); });
+  // Bandeau rappel veille
+  buildReminder();
+}
+
+function sortieCard(s) {
+  const inscriptions = s.inscriptions || [];
+  const ownerIds = s.boat_owners || [];
+  const ownersNotInscrits = ownerIds.filter(function(uid) { return !inscriptions.some(function(i) { return i.user_id === uid; }); });
+  const inCount = inscriptions.filter(i => i.status === 'in').length + ownersNotInscrits.length;
+  const totalPlaces = s.places || 0;
+  const isPast = new Date(s.date_start) < new Date(new Date().setHours(0,0,0,0));
+  const isFull = inCount >= totalPlaces;
+  const placesClass = isFull ? 'full' : inCount >= totalPlaces - 1 ? 'warning' : '';
+  const authorName = profileCache[s.created_by] || 'Surfeur';
+
+  const dateStr = formatSortieDate(s);
+  const inscriptionsHtml = renderInscriptions(inscriptions, s);
+
+  const myStatus = currentUser ? (inscriptions.find(i => i.user_id === currentUser.id) || {}).status : null;
+  const isCreator = currentUser && s.created_by === currentUser.id;
+
+  const meteoId = 'meteo-' + s.id;
+
+  return '<div class="sortie-card ' + (isPast ? 'past' : '') + ' ' + (isFull && !isPast ? 'full' : '') + '" id="sortie-' + s.id + '">'
+    + '<div class="sortie-head">'
+      + '<div class="sortie-title-block">'
+        + '<div class="sortie-type-badge ' + (s.type === 'camping' ? 'type-camping' : 'type-session') + '">'
+        + (s.type === 'camping' ? '⛺ Camping ilôt' : '🏄 Session') + '</div>'
+        + '<div class="sortie-spot">' + escapeHtml(s.spot || '—') + '</div>'
+        + '<div class="sortie-date">' + dateStr + '<span class="pipe">·</span>'
+        + '<span class="sortie-author">proposée par ' + escapeHtml(authorName) + '</span></div>'
+      + '</div>'
+      + '<div class="places-badge ' + placesClass + '">'
+        + '<span class="n">' + inCount + '/' + totalPlaces + '</span>'
+        + '<span class="lbl">place' + (totalPlaces > 1 ? 's' : '') + '</span>'
+      + '</div>'
+    + '</div>'
+
+    + buildOptionsBar(s)
+
+    + '<div class="meteo-box" id="' + meteoId + '"><span class="meteo-loading">🌊 Chargement prévisions…</span></div>'
+
+        + buildMitonBox(s)
+
+    + buildTimeline(s)
+
+    + '<div class="sortie-grid">'
+      + (s.time_start ? cell('⏰ Départ', s.time_start + (s.time_end ? ' → ' + s.time_end : '')) : '')
+      + (s.launch_point ? cell('🚤 Mise à l\'eau', s.launch_point) : '')
+      + (s.boats ? cell('⛵ Bateau(x)', s.boats) : '')
+      + (s.boards_needed ? cell('🏄 Planches', s.boards_needed + ' à prendre') : '')
+      + (s.price_estimate ? cell('💰 Prix/pers', s.price_estimate.toLocaleString('fr') + ' CFP') : '')
+      + (s.cars ? cell('🚗 Voitures', s.cars) : '')
+    + '</div>'
+
+    + (s.apports ? '<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;">'
+      + '<div style="font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:4px;">🎒 À apporter</div>'
+      + '<div style="font-size:12px;color:var(--text);white-space:pre-wrap;">' + escapeHtml(s.apports) + '</div></div>' : '')
+
+    + (s.notes ? '<div style="background:rgba(79,163,199,.05);border:1px solid rgba(79,163,199,.15);border-radius:8px;padding:10px 12px;margin-bottom:14px;">'
+      + '<div style="font-size:11px;color:var(--text-muted);white-space:pre-wrap;font-style:italic;">"' + escapeHtml(s.notes) + '"</div></div>' : '')
+
+    + inscriptionsHtml
+
+    + buildCovoitBox(s)
+
+    + buildCommentsBox(s)
+
+    + '<div class="sortie-actions">'
+      + (currentUser && !isPast ? (
+        '<button class="btn-sm btn-in ' + (myStatus === 'in' ? 'active' : '') + '" onclick="openInscription(\'' + s.id + '\', \'in\')"' + ((isFull && myStatus !== 'in' && (!currentUser || (s.boat_owners || []).indexOf(currentUser.id) < 0)) ? ' disabled title="Sortie complète"' : '') + '>✓ Je viens</button>'
+        + '<button class="btn-sm btn-maybe ' + (myStatus === 'maybe' ? 'active' : '') + '" onclick="openInscription(\'' + s.id + '\', \'maybe\')">? Peut-être</button>'
+        + '<button class="btn-sm btn-out ' + (myStatus === 'out' ? 'active' : '') + '" onclick="updateStatus(\'' + s.id + '\', \'out\')">✗ Je ne peux pas</button>'
+      ) : '')
+      + (isPast && currentUser && myStatus === 'in' ? (function() {
+        var done = (s.feedbacks || []).some(function(f) { return f.user_id === currentUser.id; });
+        return done
+          ? '<span class="feedback-done">✓ Retour envoyé</span>'
+          : '<button class="feedback-btn" onclick="openFeedback(\'' + s.id + '\')">✍️ Retour de session</button>';
+      })() : '')
+      + '<button class="btn-sm btn-share" onclick="openMeteogram(\'' + s.id + '\')">📊 Météogramme</button>'
+      + '<button class="btn-sm btn-share" onclick="openShare(\'' + s.id + '\')">📤 Partager</button>'
+      + (isCreator ? '<button class="btn-sm btn-more" onclick="deleteSortie(\'' + s.id + '\')">🗑</button>' : '')
+    + '</div>'
+    + '</div>';
+}
+
+function cell(label, value) {
+  return '<div class="info-cell"><div class="info-label">' + label + '</div>'
+    + '<div class="info-val">' + escapeHtml(value) + '</div></div>';
+}
+
+function formatSortieDate(s) {
+  const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+  const d1 = new Date(s.date_start).toLocaleDateString('fr-FR', opts);
+  if (s.date_end && s.date_end !== s.date_start) {
+    const d2 = new Date(s.date_end).toLocaleDateString('fr-FR', opts);
+    return '📅 ' + d1 + ' → ' + d2;
+  }
+  return '📅 ' + d1;
+}
+
+function renderInscriptions(inscriptions, sortie) {
+  var owners = (sortie && sortie.boat_owners) || [];
+  var inscrMap = {};
+  inscriptions.forEach(function(i) { inscrMap[i.user_id] = i; });
+  owners.forEach(function(uid) {
+    if (!inscrMap[uid]) {
+      inscriptions = inscriptions.concat([{
+        user_id: uid,
+        username: profileCache[uid] || 'Copropriétaire',
+        status: 'owner-reserved',
+        implicit: true
+      }]);
+    }
+  });
+
+  if (!inscriptions.length) {
+    return '<div class="inscrits-wrap"><div class="inscrits-title">👥 Inscrits (0)</div>'
+      + '<div style="font-size:12px;color:var(--text-faint);text-align:center;padding:10px;">Sois le premier à t’inscrire !</div></div>';
+  }
+
+  var statusOrder = { 'owner-reserved': 0, 'in': 1, 'maybe': 2, 'out': 3 };
+  var sorted = inscriptions.slice().sort(function(a, b) {
+    var aOwner = owners.indexOf(a.user_id) >= 0;
+    var bOwner = owners.indexOf(b.user_id) >= 0;
+    if (aOwner && !bOwner) return -1;
+    if (!aOwner && bOwner) return 1;
+    return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+  });
+
+  var confirmedCount = sorted.filter(function(i) {
+    return i.status === 'in' || i.status === 'owner-reserved';
+  }).length;
+
+  var html = '<div class="inscrits-wrap">'
+    + '<div class="inscrits-title">👥 Inscrits <span style="color:var(--accent);">('
+    + confirmedCount + ' sûr' + (confirmedCount > 1 ? 's' : '') + ')</span></div>';
+
+  sorted.forEach(function(i) {
+    var isOwner = owners.indexOf(i.user_id) >= 0;
+    var name = profileCache[i.user_id] || i.username || 'Surfeur';
+    var initial = name[0].toUpperCase();
+    var info = {
+      'in': { cls: 'status-in', ico: '✓', lbl: 'présent' },
+      'maybe': { cls: 'status-maybe', ico: '?', lbl: 'peut-être' },
+      'out': { cls: 'status-out', ico: '✗', lbl: 'indisponible' },
+      'owner-reserved': { cls: 'status-owner', ico: '⭐', lbl: 'place réservée' }
+    }[i.status] || { cls: 'status-in', ico: '✓', lbl: i.status };
+
+    html += '<div class="inscrit-row' + (isOwner ? ' is-owner' : '') + '">'
+      + '<div class="inscrit-avatar' + (isOwner ? ' avatar-owner' : '') + '">' + initial + '</div>'
+      + '<span class="inscrit-name">' + escapeHtml(name) + '</span>'
+      + (isOwner ? '<span class="owner-badge">⭐ Copro</span>' : '')
+      + '<span class="inscrit-status ' + info.cls + '">' + info.ico + ' ' + info.lbl + '</span>'
+      + '<div class="inscrit-details">'
+      + (i.boards ? '<span class="chip">🏄 ' + escapeHtml(i.boards) + '</span>' : '')
+      + (i.brings ? '<span class="chip">🎒 ' + escapeHtml(i.brings) + '</span>' : '')
+      + (i.car ? '<span class="chip">🚗 ' + escapeHtml(i.car) + '</span>' : '')
+      + '</div>'
+      + '</div>';
+    if (i.comment) {
+      html += '<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-left:34px;margin-top:-2px;padding-bottom:4px;">"'
+        + escapeHtml(i.comment) + '"</div>';
+    }
+  });
+  html += '</div>';
+  return html;
+}
+
+// ════════════════════════════════════════════════════════════════
+// METEO PRÉVISIONS
+// ════════════════════════════════════════════════════════════════
+async function loadMeteoForSortie(s) {
+  const el = document.getElementById('meteo-' + s.id);
+  if (!el) return;
+  const now = new Date(), date = new Date(s.date_start);
+  const daysAhead = Math.round((date - now) / 86400000);
+  if (daysAhead > 7 || daysAhead < -1) {
+    el.innerHTML = '<span class="meteo-loading">📅 Prévisions disponibles ~7 jours avant</span>';
+    return;
+  }
+  // Coords approximatives depuis le spot
+  let lat = -22.27, lon = 166.43;
+  const spotCoords = {
+    'dumbéa':[-22.215,166.285],'ténia':[-22.275,166.205],'boulari':[-22.415,166.325],
+    'ouano':[-21.855,165.790],'mato':[-22.105,166.165],'maître':[-22.335,166.41],
+    'signal':[-22.295,166.29],'amédée':[-22.478,166.467],'poé':[-21.633,165.383]
+  };
+  const spotLower = (s.spot || '').toLowerCase();
+  for (const k in spotCoords) if (spotLower.includes(k)) { lat = spotCoords[k][0]; lon = spotCoords[k][1]; break; }
+
+  try {
+    const dateStr = date.toISOString().split('T')[0];
+    const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon
+      + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction'
+      + '&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
+    const urlW = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+      + '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn'
+      + '&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
+    const [marine, wind] = await Promise.all([
+      fetch(url).then(r => r.json()), fetch(urlW).then(r => r.json())
+    ]);
+
+    const hourIdx = s.time_start ? parseInt(s.time_start.split(':')[0]) : 9;
+    const mh = marine.hourly || {}, wh = wind.hourly || {};
+    const hs = mh.swell_wave_height ? mh.swell_wave_height[hourIdx] : null;
+    const per = mh.swell_wave_period ? mh.swell_wave_period[hourIdx] : null;
+    const sDir = mh.swell_wave_direction ? mh.swell_wave_direction[hourIdx] : null;
+    const ws = wh.wind_speed_10m ? wh.wind_speed_10m[hourIdx] : null;
+    const wd = wh.wind_direction_10m ? wh.wind_direction_10m[hourIdx] : null;
+
+    el.innerHTML = (hs ? '<div class="m-item"><span class="v">' + hs.toFixed(1) + 'm</span><span class="l">Houle</span></div>' : '')
+      + (per ? '<div class="m-item"><span class="v">' + Math.round(per) + 's</span><span class="l">Période</span></div>' : '')
+      + (sDir !== null ? '<div class="m-item"><span class="v">' + degCompass(sDir) + '</span><span class="l">Direction</span></div>' : '')
+      + (ws ? '<div class="m-item"><span class="v">' + Math.round(ws) + 'kt</span><span class="l">Vent</span></div>' : '')
+      + (wd !== null ? '<div class="m-item"><span class="v">' + degCompass(wd) + '</span><span class="l">Vent dir</span></div>' : '')
+      + '<a href="https://thibsurf.github.io/surf-journal/previsions.html" target="_blank" style="margin-left:auto;font-size:10px;color:var(--text-muted);text-decoration:none;">↗ Détails</a>';
+  } catch(e) {
+    el.innerHTML = '<span class="meteo-loading">⚠ Impossible de charger</span>';
+  }
+}
+
+function degCompass(d) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  return dirs[Math.round(((d%360)+360)%360/22.5)%16];
+}
+
+// ════════════════════════════════════════════════════════════════
+// CREATE / EDIT SORTIE
+// ════════════════════════════════════════════════════════════════
+function openCreateModal() {
+  if (!currentUser) { toast('Connecte-toi d\'abord', 'err'); return; }
+  var ownersSelect = document.getElementById('f-owners');
+  if (ownersSelect) {
+    ownersSelect.innerHTML = Object.entries(profileCache).map(function(e){return '<option value="'+e[0]+'">'+escapeHtml(e[1])+'</option>';}).join('');
+  }
+  document.getElementById('modal-create').style.display = 'flex';
+  setSortieType('session');
+}
+
+function setSortieType(type) {
+  currentSortieType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  document.getElementById('f-date-end-wrap').style.display = type === 'camping' ? 'block' : 'none';
+  document.getElementById('modal-title-text').textContent = type === 'camping' ? 'Proposer un camping ilôt' : 'Proposer une session surf';
+}
+
+function addToApports(txt) {
+  const el = document.getElementById('f-apports');
+  el.value = el.value ? el.value + '\n' + txt : txt;
+}
+
+async function saveSortie() {
+  const spot = document.getElementById('f-spot').value.trim();
+  const date = document.getElementById('f-date').value;
+  if (!spot || !date) { toast('Spot et date obligatoires', 'err'); return; }
+
+  const payload = {
+    type: currentSortieType,
+    spot: spot,
+    launch_point: document.getElementById('f-launch').value.trim() || null,
+    date_start: date,
+    date_end: currentSortieType === 'camping' ? (document.getElementById('f-date-end').value || date) : date,
+    time_start: document.getElementById('f-time-start').value,
+    time_end: document.getElementById('f-time-end').value,
+    boats: document.getElementById('f-boats').value.trim() || null,
+    boat_owners: Array.from(document.getElementById('f-owners').selectedOptions).map(function(o){return o.value;}),
+    places: parseInt(document.getElementById('f-places').value) || 4,
+    boards_needed: parseInt(document.getElementById('f-boards').value) || null,
+    price_estimate: parseInt(document.getElementById('f-price').value) || null,
+    apports: document.getElementById('f-apports').value.trim() || null,
+    cars: document.getElementById('f-cars').value.trim() || null,
+    miton: document.getElementById('f-miton').value.trim() || null,
+    options: [
+      document.getElementById('f-opt-chasse').checked ? 'chasse' : null,
+      document.getElementById('f-opt-peche').checked ? 'peche' : null,
+      document.getElementById('f-opt-snorkel').checked ? 'snorkel' : null,
+      document.getElementById('f-opt-paddle').checked ? 'paddle' : null,
+      document.getElementById('f-opt-apero').checked ? 'apero' : null
+    ].filter(Boolean),
+    return_constraint: document.getElementById('f-return-constraint').value,
+    notes: document.getElementById('f-notes').value.trim() || null,
+    created_by: currentUser.id,
+    inscriptions: []
+  };
+
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const { error } = await sb.from('sorties').insert(payload);
+    if (error) throw error;
+    toast('Sortie publiée ✓', 'ok');
+    closeModal('modal-create');
+    resetForm();
+    await loadSorties();
+  } catch(e) {
+    console.error(e);
+    toast('Erreur: ' + (e.message || 'inconnu'), 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ Publier la sortie';
+  }
+}
+
+function resetForm() {
+  ['f-spot','f-launch','f-boats','f-apports','f-cars','f-miton','f-notes','f-price'].forEach(id => document.getElementById(id).value = '');
+  Array.from(document.getElementById('f-owners').options).forEach(function(o){o.selected=false;});
+  ['f-opt-chasse','f-opt-peche','f-opt-snorkel','f-opt-paddle','f-opt-apero'].forEach(id => document.getElementById(id).checked = false);
+  document.getElementById('f-return-constraint').value = 'flexible';
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f-places').value = 4;
+  document.getElementById('f-boards').value = 1;
+}
+
+async function deleteSortie(id) {
+  if (!confirm('Supprimer cette sortie ?')) return;
+  try {
+    const { error } = await sb.from('sorties').delete().eq('id', id);
+    if (error) throw error;
+    toast('Sortie supprimée', 'ok');
+    await loadSorties();
+  } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// INSCRIPTIONS
+// ════════════════════════════════════════════════════════════════
+function openInscription(sortieId, status) {
+  if (!currentUser) { toast('Connecte-toi d\'abord', 'err'); return; }
+  const s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  const existing = (s.inscriptions || []).find(i => i.user_id === currentUser.id);
+
+  document.getElementById('ins-sortie-id').value = sortieId;
+  document.getElementById('ins-status').value = status;
+  document.getElementById('ins-title').textContent = status === 'in' ? 'Je m\'inscris' : 'Je viens peut-être';
+  document.getElementById('ins-boards').value = existing ? (existing.boards || '') : '';
+  document.getElementById('ins-brings').value = existing ? (existing.brings || '') : '';
+  document.getElementById('ins-car').value = existing ? (existing.car || '') : '';
+  document.getElementById('ins-comment').value = existing ? (existing.comment || '') : '';
+  document.getElementById('modal-inscription').style.display = 'flex';
+}
+
+async function confirmInscription() {
+  const sortieId = document.getElementById('ins-sortie-id').value;
+  const status = document.getElementById('ins-status').value;
+  const inscription = {
+    user_id: currentUser.id,
+    username: currentProfile.username || 'Surfeur',
+    status: status,
+    boards: document.getElementById('ins-boards').value.trim() || null,
+    brings: document.getElementById('ins-brings').value.trim() || null,
+    car: document.getElementById('ins-car').value.trim() || null,
+    comment: document.getElementById('ins-comment').value.trim() || null,
+    created_at: new Date().toISOString()
+  };
+  await saveInscription(sortieId, inscription);
+  closeModal('modal-inscription');
+}
+
+async function updateStatus(sortieId, status) {
+  if (!currentUser) { toast('Connecte-toi d\'abord', 'err'); return; }
+  const inscription = {
+    user_id: currentUser.id,
+    username: currentProfile.username || 'Surfeur',
+    status: status,
+    created_at: new Date().toISOString()
+  };
+  await saveInscription(sortieId, inscription);
+}
+
+async function saveInscription(sortieId, inscription) {
+  const s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  const current = (s.inscriptions || []).filter(i => i.user_id !== currentUser.id);
+  current.push(inscription);
+  try {
+    const { error } = await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
+    if (error) throw error;
+    toast(inscription.status === 'in' ? 'Inscription confirmée ✓' : inscription.status === 'maybe' ? 'Noté : peut-être' : 'Noté : tu ne peux pas', 'ok');
+    await loadSorties();
+  } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// SHARE
+// ════════════════════════════════════════════════════════════════
+function openShare(sortieId) {
+  const s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  const msg = buildShareMessage(s);
+  currentShareMsg = msg;
+  document.getElementById('share-msg-preview').textContent = msg;
+  const enc = encodeURIComponent(msg);
+  document.getElementById('share-messenger').href = 'https://www.messenger.com/new?text=' + enc;
+  document.getElementById('share-whatsapp').href = 'https://wa.me/?text=' + enc;
+  document.getElementById('modal-share').style.display = 'flex';
+}
+
+function buildShareMessage(s) {
+  const dateStr = formatSortieDate(s).replace('📅 ', '');
+  const inCount = (s.inscriptions || []).filter(i => i.status === 'in').length;
+  let msg = (s.type === 'camping' ? '⛺ ' : '🏄 ') + 'SORTIE ' + (s.type === 'camping' ? 'CAMPING' : 'SURF') + '\n\n';
+  msg += '📍 ' + s.spot + '\n';
+  msg += '📅 ' + dateStr + '\n';
+  if (s.time_start) msg += '⏰ ' + s.time_start + (s.time_end ? ' → ' + s.time_end : '') + '\n';
+  if (s.launch_point) msg += '🚤 Mise à l\'eau : ' + s.launch_point + '\n';
+  if (s.boats) msg += '⛵ Bateau(x) : ' + s.boats + '\n';
+  if (s.boat_owners && s.boat_owners.length) {
+    var oNames = s.boat_owners.map(function(u){return profileCache[u]||'Copro';}).join(', ');
+    msg += '⭐ Copropriétaires (places réservées) : ' + oNames + '\n';
+  }
+  msg += '👥 ' + inCount + '/' + s.places + ' places prises\n';
+  if (s.boards_needed) msg += '🏄 ' + s.boards_needed + ' planche(s) à prendre\n';
+  if (s.price_estimate) msg += '💰 ~' + s.price_estimate.toLocaleString('fr') + ' CFP/pers\n';
+  if (s.apports) msg += '\n🎒 À prévoir :\n' + s.apports + '\n';
+  if (s.cars) msg += '\n🚗 ' + s.cars + '\n';
+  if (s.notes) msg += '\n💬 ' + s.notes + '\n';
+  msg += '\n👉 S\'inscrire : https://thibsurf.github.io/surf-journal/sorties.html';
+  return msg;
+}
+
+async function copyMsg() {
+  try {
+    await navigator.clipboard.writeText(currentShareMsg);
+    toast('Message copié ✓', 'ok');
+  } catch(e) { toast('Erreur copie', 'err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// SQL HELPER
+// ════════════════════════════════════════════════════════════════
+function showSQL() {
+  alert('Exécute ce SQL dans Supabase → SQL Editor :\n\n'
+    + 'create table sorties (\n'
+    + '  id uuid default gen_random_uuid() primary key,\n'
+    + '  type text default \'session\',\n'
+    + '  spot text not null,\n'
+    + '  launch_point text,\n'
+    + '  date_start date not null,\n'
+    + '  date_end date,\n'
+    + '  time_start time,\n'
+    + '  time_end time,\n'
+    + '  boats text,\n'
+    + '  boat_owners uuid[] default \'{}\',\n'
+    + '  places int default 4,\n'
+    + '  boards_needed int,\n'
+    + '  price_estimate int,\n'
+    + '  apports text,\n'
+    + '  cars text,\n'
+    + '  notes text,\n'
+    + '  created_by uuid references auth.users,\n'
+    + '  inscriptions jsonb default \'[]\',\n'
+    + '  comments jsonb default \'[]\',\n'
+    + '  covoit_passengers jsonb default \'{}\',\n'
+    + '  feedbacks jsonb default \'[]\',\n'
+    + '  miton text,\n'
+    + '  miton_orders jsonb default \'[]\',\n'
+    + '  options text[] default \'{}\',\n'
+    + '  return_constraint text,\n'
+    + '  created_at timestamptz default now()\n'
+    + ');\n\n'
+    + '-- Ajouter la colonne from_sortie_id sur sessions (pour lier un feedback)\n'
+    + 'alter table sessions add column if not exists from_sortie_id uuid;\n\n'
+    + 'alter table sorties enable row level security;\n'
+    + 'create policy "Tous peuvent lire" on sorties for select using (true);\n'
+    + 'create policy "Auth peuvent créer" on sorties for insert with check (auth.uid() = created_by);\n'
+    + 'create policy "Tous peuvent mettre à jour inscriptions" on sorties for update using (auth.uid() is not null);\n'
+    + 'create policy "Créateur peut supprimer" on sorties for delete using (auth.uid() = created_by);');
+}
+
+// ════════════════════════════════════════════════════════════════
+// OPTIONS + CONTRAINTE RETOUR
+// ════════════════════════════════════════════════════════════════
+var OPT_LABELS = {
+  chasse: 'FUSIL Chasse SM', peche: 'Peche', snorkel: 'Snorkel',
+  paddle: 'Paddle', apero: 'Apero'
+};
+var RETURN_LABELS = {
+  flexible: { text: 'Retour flexible', cls: 'rc-flexible' },
+  'fixed-work': { text: 'Retour fixe (boulot)', cls: 'rc-fixed' },
+  'fixed-family': { text: 'Retour fixe (famille)', cls: 'rc-fixed' },
+  rtt: { text: 'RTT / conge', cls: 'rc-rtt' },
+  weekend: { text: 'Weekend relax', cls: 'rc-rtt' },
+  sundown: { text: 'Jusqu au coucher', cls: 'rc-rtt' }
+};
+// Remplacer les labels avec les bons emojis
+OPT_LABELS.chasse = String.fromCodePoint(0x1F52B) + ' Chasse SM';
+OPT_LABELS.peche = String.fromCodePoint(0x1F3A3) + ' Peche';
+OPT_LABELS.snorkel = String.fromCodePoint(0x1F93F) + ' Snorkel';
+OPT_LABELS.paddle = String.fromCodePoint(0x1F6F6) + ' Paddle';
+OPT_LABELS.apero = String.fromCodePoint(0x1F37B) + ' Apero';
+RETURN_LABELS.flexible.text = String.fromCodePoint(0x1F31F) + ' Retour flexible';
+RETURN_LABELS['fixed-work'].text = String.fromCodePoint(0x1F4BC) + ' Retour fixe (boulot)';
+RETURN_LABELS['fixed-family'].text = String.fromCodePoint(0x1F46A) + ' Retour fixe (famille)';
+RETURN_LABELS.rtt.text = String.fromCodePoint(0x1F334) + ' RTT / conge';
+RETURN_LABELS.weekend.text = String.fromCodePoint(0x1F389) + ' Weekend relax';
+RETURN_LABELS.sundown.text = String.fromCodePoint(0x1F305) + ' Jusqu au coucher du soleil';
+
+function buildOptionsBar(s) {
+  var opts = s.options || [];
+  var rc = s.return_constraint && RETURN_LABELS[s.return_constraint];
+  if (!opts.length && !rc) return '';
+  var html = '<div class="sortie-options">';
+  if (rc) html += '<span class="return-constraint ' + rc.cls + '">' + rc.text + '</span>';
+  opts.forEach(function(o) {
+    if (OPT_LABELS[o]) html += '<span class="opt-badge">' + OPT_LABELS[o] + '</span>';
+  });
+  html += '</div>';
+  return html;
+}
+
+// ════════════════════════════════════════════════════════════════
+// MITON / BOULANGERIE
+// ════════════════════════════════════════════════════════════════
+function buildMitonBox(s) {
+  if (!s.miton) return '';
+  var orders = s.miton_orders || [];
+  var isDriver = currentUser && s.created_by === currentUser.id;
+
+  var html = '<div class="miton-section">'
+    + '<div class="miton-title">' + String.fromCodePoint(0x1F950) + ' Arret mitron</div>'
+    + '<div class="miton-place">' + escapeHtml(s.miton) + '</div>';
+
+  if (orders.length) {
+    html += '<div class="miton-orders">';
+    orders.forEach(function(o, i) {
+      var name = profileCache[o.user_id] || o.username || 'Surfeur';
+      var mine = currentUser && o.user_id === currentUser.id;
+      html += '<div class="miton-order ' + (o.done ? 'done' : '') + '">'
+        + '<span class="who">' + escapeHtml(name) + '</span>'
+        + '<span class="what">' + String.fromCodePoint(0x2192) + ' ' + escapeHtml(o.what) + '</span>'
+        + (isDriver || mine ? '<button class="toggle-done" data-act="toggle-miton" data-sid="'+s.id+'" data-idx="'+i+'">'
+            + (o.done ? String.fromCodePoint(0x2705) : String.fromCodePoint(0x2B55)) + '</button>' : '')
+        + (mine ? '<button class="remove" data-act="remove-miton" data-sid="'+s.id+'" data-idx="'+i+'">' + String.fromCodePoint(0xD7) + '</button>' : '')
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  if (currentUser) {
+    html += '<div class="miton-add">'
+      + '<input id="miton-input-'+s.id+'" placeholder="ex: 2 pains au chocolat + cafe" data-sid="'+s.id+'" data-act="miton-keypress">'
+      + '<button data-act="miton-add" data-sid="'+s.id+'">+ Commander</button>'
+      + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+async function addMitonOrder(sortieId) {
+  if (!currentUser) return;
+  var input = document.getElementById('miton-input-' + sortieId);
+  if (!input) return;
+  var what = input.value.trim();
+  if (!what) return;
+  var s = allSorties.find(x => x.id === sortieId);
+  var orders = (s.miton_orders || []).slice();
+  orders.push({
+    user_id: currentUser.id,
+    username: currentProfile.username || 'Surfeur',
+    what: what,
+    done: false,
+    at: new Date().toISOString()
+  });
+  try {
+    await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    input.value = '';
+    await loadSorties();
+    toast('Commande ajoutee', 'ok');
+  } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+}
+
+async function toggleMitonDone(sortieId, idx) {
+  var s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  var orders = (s.miton_orders || []).slice();
+  if (!orders[idx]) return;
+  orders[idx].done = !orders[idx].done;
+  try {
+    await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    await loadSorties();
+  } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+}
+
+async function removeMitonOrder(sortieId, idx) {
+  var s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  var orders = (s.miton_orders || []).slice();
+  if (!orders[idx]) return;
+  if (orders[idx].user_id !== currentUser.id) return;
+  orders.splice(idx, 1);
+  try {
+    await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    await loadSorties();
+  } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+}
+
+// Event delegation pour les boutons miton (pas d'onclick inline)
+document.addEventListener('click', function(e) {
+  var el = e.target.closest && e.target.closest('[data-act]');
+  if (!el) return;
+  var act = el.getAttribute('data-act');
+  var sid = el.getAttribute('data-sid');
+  var idx = parseInt(el.getAttribute('data-idx'));
+  if (act === 'miton-add') addMitonOrder(sid);
+  else if (act === 'toggle-miton') toggleMitonDone(sid, idx);
+  else if (act === 'remove-miton') removeMitonOrder(sid, idx);
+});
+document.addEventListener('keypress', function(e) {
+  if (e.key !== 'Enter') return;
+  var el = e.target.closest && e.target.closest('[data-act="miton-keypress"]');
+  if (!el) return;
+  var sid = el.getAttribute('data-sid');
+  if (sid) addMitonOrder(sid);
+});
+
+// ════════════════════════════════════════════════════════════════
+// TIMELINE JOURNÉE TYPE
+// ════════════════════════════════════════════════════════════════
+function buildTimeline(s) {
+  if (!s.time_start) return '';
+  var t0 = s.time_start, tEnd = s.time_end || '';
+  // Reconstituer une timeline intelligente
+  function addMin(t, n) {
+    var [h, m] = t.split(':').map(Number);
+    var tot = h * 60 + m + n;
+    h = Math.floor(tot / 60) % 24; m = tot % 60;
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+  var steps = [
+    { time: addMin(t0, -30), label: 'RDV parking', icon: String.fromCodePoint(0x1F697) }
+  ];
+  if (s.miton) {
+    steps.push({ time: addMin(t0, -15), label: 'Arret mitron', icon: String.fromCodePoint(0x1F950) });
+  }
+  steps.push({ time: t0, label: 'Embarquement', icon: String.fromCodePoint(0x26F5) });
+  steps.push({ time: addMin(t0, 30), label: s.type === 'camping' ? 'Installation' : 'Debut surf', icon: s.type === 'camping' ? String.fromCodePoint(0x26FA) : String.fromCodePoint(0x1F3C4) });
+  if (s.type === 'camping') {
+    steps.push({ time: addMin(t0, 180), label: 'Apéro / bouffe', icon: '🍺' });
+    steps.push({ time: tEnd || addMin(t0, 720), label: 'Retour', icon: '🏠' });
+  } else {
+    steps.push({ time: addMin(t0, 180), label: 'Surf', icon: '🌊' });
+    if (tEnd) steps.push({ time: tEnd, label: 'Retour', icon: '🏠' });
+  }
+  return '<div class="timeline">'
+    + steps.map(function(st) {
+      return '<div class="tl-step">'
+        + '<div class="tl-dot">' + st.icon + '</div>'
+        + '<div class="tl-time">' + st.time + '</div>'
+        + '<div class="tl-label">' + st.label + '</div>'
+        + '</div>';
+    }).join('')
+    + '</div>';
+}
+
+// ════════════════════════════════════════════════════════════════
+// COVOIT INTELLIGENT
+// ════════════════════════════════════════════════════════════════
+function extractCarOffers(sortie) {
+  // Parcourt les inscriptions, détecte les conducteurs
+  var cars = [];
+  (sortie.inscriptions || []).forEach(function(i) {
+    if (i.status !== 'in' || !i.car) return;
+    // Parser "3 places dispo" ou "2 places"
+    var m = i.car.match(/(\d+)\s*places?/i);
+    var seats = m ? parseInt(m[1]) : 0;
+    cars.push({
+      driver_id: i.user_id,
+      driver_name: i.username || profileCache[i.user_id] || 'Surfeur',
+      car_text: i.car,
+      seats: seats,
+      passengers: sortie.covoit_passengers && sortie.covoit_passengers[i.user_id] || []
+    });
+  });
+  return cars;
+}
+
+function buildCovoitBox(sortie) {
+  var cars = extractCarOffers(sortie);
+  if (!cars.length) return '';
+  return '<div class="covoit-box">'
+    + '<div class="covoit-title">🚗 Covoiturage</div>'
+    + cars.map(function(car) {
+      var isFull = car.passengers.length >= car.seats;
+      var imIn = currentUser && car.passengers.indexOf(currentUser.id) >= 0;
+      var imDriver = currentUser && car.driver_id === currentUser.id;
+      var paxNames = car.passengers.map(function(uid) { return profileCache[uid] || 'Surfeur'; });
+      return '<div class="covoit-car">'
+        + '<div class="covoit-driver">🚙 ' + escapeHtml(car.driver_name) + '</div>'
+        + '<div class="covoit-seats">' + car.passengers.length + '/' + (car.seats || '?') + ' places</div>'
+        + (!imDriver && currentUser ? '<button class="covoit-join-btn ' + (imIn ? 'active' : '') + '" onclick="toggleCovoit(\''+sortie.id+'\',\''+car.driver_id+'\')" '
+          + ((isFull && !imIn) ? 'disabled' : '') + '>'
+          + (imIn ? '✓ Je pars avec' : (isFull ? 'Complet' : '+ Rejoindre')) + '</button>' : '')
+        + '<div class="covoit-pax">'
+        + (paxNames.length ? paxNames.map(function(n) { return '<span class="pax">' + escapeHtml(n) + '</span>'; }).join('')
+          : '<span class="empty">Aucun passager pour le moment</span>')
+        + '</div>'
+        + '<div style="width:100%;font-size:10px;color:var(--text-faint);margin-top:4px;">' + escapeHtml(car.car_text) + '</div>'
+        + '</div>';
+    }).join('')
+    + '</div>';
+}
+
+async function toggleCovoit(sortieId, driverId) {
+  if (!currentUser) return;
+  var s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  var covoit = s.covoit_passengers || {};
+  if (!covoit[driverId]) covoit[driverId] = [];
+  var idx = covoit[driverId].indexOf(currentUser.id);
+  if (idx >= 0) covoit[driverId].splice(idx, 1);
+  else {
+    // Retirer des autres voitures (un passager dans une seule voiture)
+    Object.keys(covoit).forEach(function(did) {
+      covoit[did] = covoit[did].filter(function(u) { return u !== currentUser.id; });
+    });
+    covoit[driverId].push(currentUser.id);
+  }
+  try {
+    await sb.from('sorties').update({ covoit_passengers: covoit }).eq('id', sortieId);
+    toast(idx >= 0 ? 'Retiré du covoit' : 'Ajouté au covoit ✓', 'ok');
+    await loadSorties();
+  } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// COMMENTAIRES
+// ════════════════════════════════════════════════════════════════
+function buildCommentsBox(sortie) {
+  var comments = sortie.comments || [];
+  return '<div class="comments-box">'
+    + '<div class="comments-title">💬 Discussion (' + comments.length + ')</div>'
+    + (comments.length ? comments.map(function(c) {
+      var name = profileCache[c.user_id] || c.username || 'Surfeur';
+      var initial = name[0].toUpperCase();
+      var t = timeAgo(c.created_at);
+      return '<div class="comment-item">'
+        + '<div class="comment-avatar">' + initial + '</div>'
+        + '<div class="comment-body">'
+        + '<div class="comment-head"><span class="comment-author">' + escapeHtml(name) + '</span><span class="comment-time">' + t + '</span></div>'
+        + '<div class="comment-text">' + escapeHtml(c.text) + '</div>'
+        + '</div></div>';
+    }).join('') : '<div style="font-size:11px;color:var(--text-faint);font-style:italic;">Aucun commentaire — lance la discussion !</div>')
+    + (currentUser ? '<div class="comment-input">'
+      + '<input id="cmt-' + sortie.id + '" placeholder="Écris un message…" onkeypress="if(event.key===\'Enter\')postComment(\''+sortie.id+'\')">'
+      + '<button onclick="postComment(\''+sortie.id+'\')">Envoyer</button>'
+      + '</div>' : '')
+    + '</div>';
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  var d = new Date(iso), now = new Date();
+  var diff = (now - d) / 1000;
+  if (diff < 60) return "à l'instant";
+  if (diff < 3600) return Math.floor(diff/60) + 'min';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h';
+  if (diff < 7*86400) return Math.floor(diff/86400) + 'j';
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+async function postComment(sortieId) {
+  if (!currentUser) { toast('Connecte-toi', 'err'); return; }
+  var input = document.getElementById('cmt-' + sortieId);
+  if (!input) return;
+  var text = input.value.trim();
+  if (!text) return;
+  var s = allSorties.find(x => x.id === sortieId);
+  var comments = (s.comments || []).slice();
+  comments.push({
+    user_id: currentUser.id,
+    username: currentProfile.username || 'Surfeur',
+    text: text,
+    created_at: new Date().toISOString()
+  });
+  try {
+    await sb.from('sorties').update({ comments: comments }).eq('id', sortieId);
+    input.value = '';
+    await loadSorties();
+  } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// RAPPEL VEILLE
+// ════════════════════════════════════════════════════════════════
+function buildReminder() {
+  if (!currentUser) return;
+  var el = document.getElementById('reminder-area');
+  if (!el) return;
+  var now = new Date();
+  var tomorrow = new Date(now.getTime() + 86400000);
+  var tomorrowStr = tomorrow.toISOString().split('T')[0];
+  var todayStr = now.toISOString().split('T')[0];
+
+  // Sorties de demain où l'utilisateur n'a pas répondu
+  var tomorrowSorties = allSorties.filter(function(s) {
+    if (s.date_start !== tomorrowStr && s.date_start !== todayStr) return false;
+    var ins = (s.inscriptions || []).find(function(i) { return i.user_id === currentUser.id; });
+    return !ins; // pas encore répondu
+  });
+
+  // Sorties où je suis inscrit pour demain
+  var confirmedTomorrow = allSorties.filter(function(s) {
+    if (s.date_start !== tomorrowStr) return false;
+    var ins = (s.inscriptions || []).find(function(i) { return i.user_id === currentUser.id; });
+    return ins && ins.status === 'in';
+  });
+
+  var html = '';
+  confirmedTomorrow.forEach(function(s) {
+    html += '<div class="reminder-banner">'
+      + '<div class="ico">⏰</div>'
+      + '<div class="txt">Demain à <b>' + (s.time_start || '?') + '</b> — <b>' + escapeHtml(s.spot) + '</b><br>'
+      + '<span style="font-size:11px;opacity:.8;">N’oublie pas ta lycra, le bouffe et la crème solaire !</span></div>'
+      + '<div class="actions">'
+      + '<button onclick="document.getElementById(\'sortie-'+s.id+'\').scrollIntoView({behavior:\'smooth\'})">Voir détails</button>'
+      + '</div></div>';
+  });
+  tomorrowSorties.forEach(function(s) {
+    html += '<div class="reminder-banner">'
+      + '<div class="ico">🔔</div>'
+      + '<div class="txt">Tu viens' + (s.date_start === todayStr ? ' aujourd\'hui' : ' demain') + ' sur <b>' + escapeHtml(s.spot) + '</b> ?<br>'
+      + '<span style="font-size:11px;opacity:.8;">Merci de répondre pour que les autres s’organisent.</span></div>'
+      + '<div class="actions">'
+      + '<button onclick="openInscription(\''+s.id+'\',\'in\')">✓ Je viens</button>'
+      + '<button onclick="updateStatus(\''+s.id+'\',\'out\')">✗ Non</button>'
+      + '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════════════════
+// RETOUR POST-SESSION
+// ════════════════════════════════════════════════════════════════
+var _fbQuality = 0, _fbAcc = 0;
+
+function setFbQuality(n) {
+  _fbQuality = n;
+  document.querySelectorAll('#fb-quality .q-btn').forEach(function(b) {
+    b.classList.toggle('active', +b.dataset.q === n);
+  });
+}
+function setFbAcc(n) {
+  _fbAcc = n;
+  document.querySelectorAll('[data-acc]').forEach(function(b) {
+    b.classList.toggle('active', +b.dataset.acc === n);
+  });
+}
+
+function openFeedback(sortieId) {
+  if (!currentUser) { toast('Connecte-toi', 'err'); return; }
+  var s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  _fbQuality = 0; _fbAcc = 0;
+  document.getElementById('fb-sortie-id').value = sortieId;
+  ['fb-hs','fb-period','fb-wind','fb-board','fb-comment'].forEach(function(id){ document.getElementById(id).value = ''; });
+  document.querySelectorAll('.q-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('modal-feedback').style.display = 'flex';
+}
+
+async function saveFeedback() {
+  var sortieId = document.getElementById('fb-sortie-id').value;
+  var s = allSorties.find(x => x.id === sortieId);
+  if (!s) return;
+  if (!_fbQuality) { toast('Choisis une qualité', 'err'); return; }
+
+  // Créer une session dans le journal
+  var payload = {
+    user_id: currentUser.id,
+    date: s.date_start,
+    spot: s.spot,
+    launch_point: s.launch_point || null,
+    duration_h: s.time_start && s.time_end ? hoursBetween(s.time_start, s.time_end) : null,
+    hs: parseFloat(document.getElementById('fb-hs').value) || null,
+    period: parseInt(document.getElementById('fb-period').value) || null,
+    wind: parseInt(document.getElementById('fb-wind').value) || null,
+    quality: _fbQuality,
+    forecast_accuracy: _fbAcc || null,
+    board: document.getElementById('fb-board').value.trim() || null,
+    observations: document.getElementById('fb-comment').value.trim() || null,
+    is_shared: true,
+    from_sortie_id: sortieId
+  };
+
+  try {
+    await sb.from('sessions').insert(payload);
+    // Marquer dans la sortie que cet user a donné son retour
+    var feedbacks = (s.feedbacks || []);
+    feedbacks = feedbacks.filter(function(f){ return f.user_id !== currentUser.id; });
+    feedbacks.push({ user_id: currentUser.id, quality: _fbQuality, at: new Date().toISOString() });
+    await sb.from('sorties').update({ feedbacks: feedbacks }).eq('id', sortieId);
+    toast('Session créée dans ton journal ✓', 'ok');
+    closeModal('modal-feedback');
+    await loadSorties();
+  } catch(e) {
+    console.error(e);
+    toast('Erreur: ' + (e.message || 'inconnu'), 'err');
+  }
+}
+
+function hoursBetween(t1, t2) {
+  var [h1, m1] = t1.split(':').map(Number);
+  var [h2, m2] = t2.split(':').map(Number);
+  return Math.round(((h2 * 60 + m2) - (h1 * 60 + m1)) / 6) / 10;
+}
+
+// ════════════════════════════════════════════════════════════════
+// METEOGRAMME v2 — Format compact partage Messenger (650x1000)
+// Utilise meteo.nc si token dispo, fallback Open-Meteo (GFS)
+// ════════════════════════════════════════════════════════════════
+var _currentMeteogramSortie = null;
+
+async function openMeteogram(sortieId) {
+  var s = allSorties.find(function(x) { return x.id === sortieId; });
+  if (!s) return;
+  _currentMeteogramSortie = s;
+  document.getElementById('modal-meteogram').style.display = 'flex';
+  toast('Generation en cours...', 'ok');
+
+  var coords = getCoordsForSpot(s.spot);
+  var dateStr = s.date_start;
+
+  try {
+    // Tenter meteo.nc d'abord (via token Supabase)
+    var ncData = await fetchMeteoNC(coords.lat, coords.lon, dateStr);
+    if (ncData && ncData.hours && ncData.hours.length > 0) {
+      var tide = computeTideForDay(coords.lat, coords.lon, dateStr);
+      drawMeteogramV2(s, ncData, tide, coords, 'meteo.nc');
+      return;
+    }
+  } catch(e) { console.warn('meteo.nc failed:', e.message); }
+
+  // Fallback Open-Meteo
+  try {
+    var omData = await fetchOpenMeteoComplete(coords.lat, coords.lon, dateStr);
+    var tide = computeTideForDay(coords.lat, coords.lon, dateStr);
+    drawMeteogramV2(s, omData, tide, coords, 'GFS (Open-Meteo)');
+  } catch(e) {
+    console.error(e);
+    toast('Erreur chargement meteo', 'err');
+  }
+}
+
+function getCoordsForSpot(spot) {
+  var spots = {
+    'dumb': [-22.215, 166.285, 'Passe de Dumbea'],
+    'tenia': [-22.275, 166.205, 'Ilot Tenia'],
+    'boulari': [-22.415, 166.325, 'Passe de Boulari'],
+    'ouano': [-21.855, 165.790, 'Passe de Ouano'],
+    'mato': [-22.105, 166.165, 'Passe de Mato'],
+    'maitre': [-22.335, 166.41, 'Ilot Maitre'],
+    'signal': [-22.295, 166.29, 'Ilot Signal'],
+    'amedee': [-22.478, 166.467, 'Ilot Amedee'],
+    'amédée': [-22.478, 166.467, 'Ilot Amedee'],
+    'poé': [-21.633, 165.383, 'Poe'],
+    'poe': [-21.633, 165.383, 'Poe'],
+    'gouaro': [-21.55, 165.42, 'Gouaro Bay'],
+    'roche': [-21.61, 165.43, 'Roche Percee'],
+    'larégnère': [-22.31, 166.30, 'Ilot Laregnere'],
+    'ténia': [-22.275, 166.205, 'Ilot Tenia'],
+    'dumbéa': [-22.215, 166.285, 'Passe de Dumbea']
+  };
+  var spotLower = (spot || '').toLowerCase();
+  for (var k in spots) {
+    if (spotLower.indexOf(k) >= 0) {
+      return { lat: spots[k][0], lon: spots[k][1], name: spots[k][2] };
+    }
+  }
+  return { lat: -22.27, lon: 166.43, name: spot || 'Spot inconnu' };
+}
+
+// Tente de récupérer les données meteo.nc via le token Supabase shared
+async function fetchMeteoNC(lat, lon, dateStr) {
+  // Lire le token depuis Supabase shared_tokens (mis à jour par l'extension)
+  var token = null;
+  try {
+    var res = await sb.from('shared_tokens').select('token,updated_at').eq('id', 'meteo-nc').maybeSingle();
+    if (res && res.data && res.data.token) {
+      var age = Date.now() - new Date(res.data.updated_at).getTime();
+      if (age < 22 * 3600 * 1000) token = res.data.token;
+    }
+  } catch(e) {}
+
+  if (!token) {
+    console.log('Pas de token meteo.nc dispo, fallback Open-Meteo');
+    return null;
+  }
+
+  var url = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine?lat=' + lat + '&lon=' + lon + '&id=';
+  var res = await fetch(url, {
+    headers: { 'Authorization': 'Bearer ' + token },
+    credentials: 'omit'
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  var data = await res.json();
+  var rows = data && data.properties && data.properties.marine;
+  if (!rows || !rows.length) return null;
+
+  // Filtrer sur la date demandée (UTC -> NC = UTC+11)
+  var targetDate = new Date(dateStr + 'T00:00:00+11:00');
+  var dayStart = targetDate.getTime();
+  var dayEnd = dayStart + 86400000;
+
+  var hours = [];
+  rows.forEach(function(r) {
+    var t = new Date(r.time).getTime();
+    if (t >= dayStart && t < dayEnd) {
+      var localDate = new Date(t + 11 * 3600000);
+      hours.push({
+        h: localDate.getUTCHours(),
+        hs: r.primary_swell_height,
+        hsExtreme: r.wave_height_max || (r.wave_height ? r.wave_height * 1.6 : null),
+        period: r.primary_swell_period,
+        swellDir: r.primary_swell_direction,
+        windWave: r.wind_waves_height || 0,
+        wind: r.wind_speed_kt,
+        gust: r.wind_gust_kt || (r.wind_speed_kt ? r.wind_speed_kt * 1.4 : null),
+        windDir: r.wind_direction,
+        sst: r.T_sea
+      });
+    }
+  });
+
+  return { hours: hours, source: 'meteo.nc', resolution: '3h' };
+}
+
+// Fallback Open-Meteo (toutes les heures)
+async function fetchOpenMeteoComplete(lat, lon, dateStr) {
+  var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + lat
+    + '&longitude=' + lon
+    + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction,wave_height,wind_wave_height'
+    + '&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
+  var windUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat
+    + '&longitude=' + lon
+    + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m'
+    + '&wind_speed_unit=kn&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
+  var [marine, wind] = await Promise.all([
+    fetch(marineUrl).then(function(r) { return r.json(); }),
+    fetch(windUrl).then(function(r) { return r.json(); })
+  ]);
+
+  var hours = [];
+  var mh = (marine && marine.hourly) || {};
+  var wh = (wind && wind.hourly) || {};
+  if (mh.time) {
+    for (var i = 0; i < mh.time.length; i++) {
+      var hs = mh.swell_wave_height ? mh.swell_wave_height[i] : null;
+      var totH = mh.wave_height ? mh.wave_height[i] : null;
+      hours.push({
+        h: i,
+        hs: hs,
+        hsExtreme: totH ? totH * 1.6 : (hs ? hs * 1.6 : null), // Hmax estimé = 1.6 × Hs
+        period: mh.swell_wave_period ? mh.swell_wave_period[i] : null,
+        swellDir: mh.swell_wave_direction ? mh.swell_wave_direction[i] : null,
+        windWave: mh.wind_wave_height ? mh.wind_wave_height[i] : 0,
+        wind: wh.wind_speed_10m ? wh.wind_speed_10m[i] : null,
+        gust: wh.wind_gusts_10m ? wh.wind_gusts_10m[i] : null,
+        windDir: wh.wind_direction_10m ? wh.wind_direction_10m[i] : null,
+        sst: null
+      });
+    }
+  }
+  return { hours: hours, source: 'GFS (Open-Meteo)', resolution: '1h' };
+}
+
+function computeTideForDay(lat, lon, dateStr) {
+  // Sinusoïde simplifiée port Nouméa (semi-diurne, M2 dominante)
+  var tides = [];
+  for (var h = 0; h <= 24; h += 0.25) {
+    var phase = (h / 12.42) * 2 * Math.PI;
+    var level = 0.9 + 0.6 * Math.sin(phase);
+    tides.push({ hour: h, level: level });
+  }
+  return tides;
+}
+
+// ════════════════════════════════════════════════════════════════
+// RENDU CANVAS — Format vertical compact 650x1000
+// ════════════════════════════════════════════════════════════════
+function drawMeteogramV2(sortie, data, tide, coords, sourceLabel) {
+  var cv = document.getElementById('meteogram-canvas');
+  cv.width = 650;
+  cv.height = 1100;
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
+
+  // Fond
+  var bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#0a1628');
+  bg.addColorStop(0.5, '#0d1d35');
+  bg.addColorStop(1, '#0a1628');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  var hours = data.hours || [];
+  var marginX = 50;
+  var graphW = W - marginX * 2;
+  var sectionGap = 8;
+  var headerH = 130;
+
+  // ═══ HEADER ═══
+  var hg = ctx.createLinearGradient(0, 0, W, 0);
+  hg.addColorStop(0, 'rgba(79,163,199,.18)');
+  hg.addColorStop(0.5, 'rgba(61,186,138,.12)');
+  hg.addColorStop(1, 'rgba(123,108,246,.18)');
+  ctx.fillStyle = hg;
+  ctx.fillRect(0, 0, W, headerH);
+
+  // Logo compact
+  ctx.fillStyle = '#4fa3c7';
+  ctx.font = 'bold 24px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Coups de surf', 24, 38);
+  ctx.fillStyle = '#3dba8a';
+  ctx.fillText(' NC', 199, 38);
+
+  ctx.fillStyle = 'rgba(255,255,255,.4)';
+  ctx.font = '10px sans-serif';
+  ctx.fillText('METEOGRAMME', 24, 54);
+
+  // Date à droite
+  var dateD = new Date(sortie.date_start + 'T00:00:00');
+  var optsD = { weekday: 'long', day: 'numeric', month: 'long' };
+  var dateStr = dateD.toLocaleDateString('fr-FR', optsD);
+  ctx.fillStyle = '#e8eef4';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), W - 24, 36);
+  ctx.fillStyle = '#4fa3c7';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(coords.name, W - 24, 54);
+
+  // Séparateur
+  ctx.strokeStyle = 'rgba(255,255,255,.08)';
+  ctx.beginPath();
+  ctx.moveTo(24, 70);
+  ctx.lineTo(W - 24, 70);
+  ctx.stroke();
+
+  // Infos compactes
+  var infoY = 90;
+  ctx.textAlign = 'left';
+  var infoX = 24;
+  function pushInfo(icon, txt, color) {
+    ctx.fillStyle = color;
+    ctx.font = '13px sans-serif';
+    ctx.fillText(icon, infoX, infoY);
+    ctx.fillStyle = '#e8eef4';
+    ctx.font = '11px sans-serif';
+    var w = ctx.measureText(txt).width;
+    ctx.fillText(txt, infoX + 18, infoY);
+    infoX += 22 + w + 14;
+  }
+  if (sortie.time_start) pushInfo('\u23F0', sortie.time_start + (sortie.time_end ? '-' + sortie.time_end : ''), '#4fa3c7');
+  if (sortie.boats) pushInfo('\u26F5', sortie.boats.length > 18 ? sortie.boats.substring(0, 17) + '\u2026' : sortie.boats, '#3dba8a');
+  if (sortie.places) {
+    var inCount = (sortie.inscriptions || []).filter(function(i) { return i.status === 'in'; }).length;
+    var owners = (sortie.boat_owners || []);
+    var ownersNoIns = owners.filter(function(uid) { return !(sortie.inscriptions || []).some(function(i) { return i.user_id === uid; }); });
+    pushInfo('\u{1F465}', (inCount + ownersNoIns.length) + '/' + sortie.places, '#e8a057');
+  }
+  if (sortie.type === 'camping') pushInfo('\u26FA', 'Camping', '#7b6cf6');
+
+  // Source data badge
+  ctx.fillStyle = 'rgba(255,255,255,.3)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('Source : ' + sourceLabel, W - 24, 110);
+
+  // ═══ SECTIONS GRAPHIQUES ═══
+  var curY = headerH + 10;
+
+  // Calculer les sections (toutes même style)
+  // Format: {title, color, height, drawFn}
+  var sections = [
+    {
+      title: '\u{1F30A} HOULE',
+      sub: 'Hs significative + Hmax extreme',
+      color: '#4fa3c7',
+      h: 180,
+      draw: function(x, y, w, h) { drawHsSection(ctx, hours, x, y, w, h); }
+    },
+    {
+      title: '\u23F1 PERIODE & DIRECTION HOULE',
+      sub: 'Plus c\'est long, plus c\'est puissant',
+      color: '#3dba8a',
+      h: 130,
+      draw: function(x, y, w, h) { drawPeriodAndSwellDir(ctx, hours, x, y, w, h); }
+    },
+    {
+      title: '\u{1F4A8} VENT',
+      sub: 'Direction + force + rafales (kt)',
+      color: '#e8a057',
+      h: 170,
+      draw: function(x, y, w, h) { drawWindSection(ctx, hours, x, y, w, h); }
+    },
+    {
+      title: '\u{1F30A} MAREE',
+      sub: 'Niveau d\'eau (m) - Port Noumea',
+      color: '#5cb8e0',
+      h: 130,
+      draw: function(x, y, w, h) { drawTideSection(ctx, tide, x, y, w, h); }
+    }
+  ];
+
+  sections.forEach(function(sec) {
+    drawSectionFrame(ctx, marginX, curY, graphW, sec.h, sec.title, sec.sub, sec.color);
+    sec.draw(marginX, curY + 38, graphW, sec.h - 56);
+    drawTimeAxis(ctx, marginX, curY + sec.h - 20, graphW);
+    curY += sec.h + sectionGap;
+  });
+
+  // ═══ FOOTER ═══
+  var footerY = H - 50;
+  ctx.fillStyle = 'rgba(255,255,255,.04)';
+  ctx.fillRect(0, footerY, W, 50);
+
+  ctx.fillStyle = 'rgba(255,255,255,.4)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'left';
+  if (sortie.miton) {
+    ctx.fillStyle = '#e8a057';
+    ctx.fillText('\u{1F950} ' + truncateMG(sortie.miton, 60), 24, footerY + 20);
+  }
+  if (sortie.launch_point) {
+    ctx.fillStyle = '#3dba8a';
+    ctx.fillText('\u{1F6A4} ' + truncateMG(sortie.launch_point, 60), 24, footerY + 35);
+  }
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,255,255,.35)';
+  ctx.font = 'italic 9px sans-serif';
+  ctx.fillText('thibsurf.github.io/surf-journal', W - 24, footerY + 35);
+}
+
+// ─── FRAME COMMUN ───
+function drawSectionFrame(ctx, x, y, w, h, title, subtitle, color) {
+  // Fond leger
+  ctx.fillStyle = 'rgba(255,255,255,.018)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,.08)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+  // Bandeau titre coloré
+  ctx.fillStyle = 'rgba(' + hexToRgb(color) + ',.10)';
+  ctx.fillRect(x, y, w, 30);
+  ctx.fillStyle = color;
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(title, x + 12, y + 18);
+  ctx.fillStyle = 'rgba(255,255,255,.4)';
+  ctx.font = '10px sans-serif';
+  ctx.fillText(subtitle, x + 12, y + 28);
+}
+
+function hexToRgb(hex) {
+  var r = parseInt(hex.substr(1, 2), 16);
+  var g = parseInt(hex.substr(3, 2), 16);
+  var b = parseInt(hex.substr(5, 2), 16);
+  return r + ',' + g + ',' + b;
+}
+
+// ─── HOULE Hs + Hmax ───
+function drawHsSection(ctx, hours, x, y, w, h) {
+  if (!hours.length) {
+    drawNoData(ctx, x, y, w, h);
+    return;
+  }
+  var maxVal = Math.max(2.5, Math.max.apply(null, hours.map(function(p) {
+    return Math.max(p.hs || 0, p.hsExtreme || 0);
+  })) * 1.1);
+
+  // Grille horizontale
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.lineWidth = 1;
+  for (var g = 0; g <= 4; g++) {
+    var gy = y + (g / 4) * h;
+    ctx.beginPath();
+    ctx.moveTo(x, gy);
+    ctx.lineTo(x + w, gy);
+    ctx.stroke();
+    var val = (maxVal * (1 - g / 4)).toFixed(1);
+    ctx.fillStyle = 'rgba(255,255,255,.4)';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(val + 'm', x - 6, gy + 3);
+  }
+
+  var maxH = Math.max.apply(null, hours.map(function(p) { return p.h; }));
+  if (maxH < 23) maxH = 23;
+
+  // ─ AIRE Hmax (en arrière-plan, transparente) ─
+  var grad2 = ctx.createLinearGradient(0, y, 0, y + h);
+  grad2.addColorStop(0, 'rgba(224,92,92,.25)');
+  grad2.addColorStop(1, 'rgba(224,92,92,.02)');
+  ctx.fillStyle = grad2;
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  hours.forEach(function(p) {
+    var px = x + (p.h / maxH) * w;
+    var py = y + h - ((p.hsExtreme || 0) / maxVal) * h;
+    ctx.lineTo(px, py);
+  });
+  ctx.lineTo(x + (hours[hours.length-1].h / maxH) * w, y + h);
+  ctx.closePath();
+  ctx.fill();
+
+  // ─ AIRE Hs principale ─
+  var grad = ctx.createLinearGradient(0, y, 0, y + h);
+  grad.addColorStop(0, 'rgba(79,163,199,.55)');
+  grad.addColorStop(1, 'rgba(79,163,199,.05)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  hours.forEach(function(p) {
+    var px = x + (p.h / maxH) * w;
+    var py = y + h - ((p.hs || 0) / maxVal) * h;
+    ctx.lineTo(px, py);
+  });
+  ctx.lineTo(x + (hours[hours.length-1].h / maxH) * w, y + h);
+  ctx.closePath();
+  ctx.fill();
+
+  // Trait Hmax (pointille)
+  ctx.strokeStyle = 'rgba(224,92,92,.7)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  hours.forEach(function(p, i) {
+    var px = x + (p.h / maxH) * w;
+    var py = y + h - ((p.hsExtreme || 0) / maxVal) * h;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Trait Hs
+  ctx.strokeStyle = '#4fa3c7';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  hours.forEach(function(p, i) {
+    var px = x + (p.h / maxH) * w;
+    var py = y + h - ((p.hs || 0) / maxVal) * h;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  // Valeurs Hs sur graphique
+  ctx.fillStyle = '#4fa3c7';
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center';
+  hours.forEach(function(p, i) {
+    if (!p.hs) return;
+    if (hours.length <= 8 || i % Math.ceil(hours.length / 8) === 0) {
+      var px = x + (p.h / maxH) * w;
+      var py = y + h - (p.hs / maxVal) * h;
+      ctx.fillText(p.hs.toFixed(1), px, py - 5);
+    }
+  });
+
+  // Légende compacte
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#4fa3c7';
+  ctx.fillText('— Hs (significative)', x + w - 90, y - 22);
+  ctx.fillStyle = 'rgba(224,92,92,.8)';
+  ctx.fillText('··· Hmax (extreme)', x + w - 4, y - 22);
+}
+
+// ─── PERIODE (barres) + DIRECTION HOULE (flèches en bas) ───
+function drawPeriodAndSwellDir(ctx, hours, x, y, w, h) {
+  if (!hours.length) { drawNoData(ctx, x, y, w, h); return; }
+  var maxP = 18;
+  var barH = h * 0.65;
+  var dirY = y + h * 0.85;
+
+  var maxH = Math.max.apply(null, hours.map(function(p) { return p.h; }));
+  if (maxH < 23) maxH = 23;
+
+  // Barres période
+  var bw = w / hours.length * 0.7;
+  hours.forEach(function(p) {
+    if (!p.period) return;
+    var px = x + (p.h / maxH) * w;
+    var bh = (p.period / maxP) * barH;
+    var col = p.period >= 13 ? '#3dba8a' : p.period >= 10 ? '#4fa3c7' : p.period >= 7 ? '#e8a057' : '#7a94aa';
+    ctx.fillStyle = col;
+    ctx.fillRect(px - bw / 2, y + barH - bh, bw, bh);
+    // Valeur
+    ctx.fillStyle = '#e8eef4';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.round(p.period) + 's', px, y + barH - bh - 3);
+  });
+
+  // Ligne séparatrice
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.beginPath();
+  ctx.moveTo(x, y + barH + 5);
+  ctx.lineTo(x + w, y + barH + 5);
+  ctx.stroke();
+
+  // Label "direction houle" à gauche
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('Direction', x - 6, dirY - 8);
+  ctx.fillText('houle', x - 6, dirY + 4);
+
+  // Flèches direction houle
+  hours.forEach(function(p) {
+    if (p.swellDir == null) return;
+    var px = x + (p.h / maxH) * w;
+    drawArrowV2(ctx, px, dirY, p.swellDir, '#4fa3c7', 14);
+    // Cardinal
+    ctx.fillStyle = 'rgba(255,255,255,.45)';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(degToCard(p.swellDir), px, dirY + 16);
+  });
+}
+
+// ─── VENT (vitesse + rafales + flèches direction) ───
+function drawWindSection(ctx, hours, x, y, w, h) {
+  if (!hours.length) { drawNoData(ctx, x, y, w, h); return; }
+  var maxW = Math.max(20, Math.max.apply(null, hours.map(function(p) { return Math.max(p.gust || 0, p.wind || 0); })) * 1.1);
+
+  var graphH = h * 0.65;
+  var dirY = y + h * 0.88;
+
+  // Grille
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  for (var g = 0; g <= 4; g++) {
+    var gy = y + (g / 4) * graphH;
+    ctx.beginPath();
+    ctx.moveTo(x, gy);
+    ctx.lineTo(x + w, gy);
+    ctx.stroke();
+    var val = (maxW * (1 - g / 4)).toFixed(0);
+    ctx.fillStyle = 'rgba(255,255,255,.4)';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(val + 'kt', x - 6, gy + 3);
+  }
+
+  var maxH = Math.max.apply(null, hours.map(function(p) { return p.h; }));
+  if (maxH < 23) maxH = 23;
+
+  // Aire vent
+  var grad = ctx.createLinearGradient(0, y, 0, y + graphH);
+  grad.addColorStop(0, 'rgba(232,160,87,.5)');
+  grad.addColorStop(1, 'rgba(232,160,87,.05)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(x, y + graphH);
+  hours.forEach(function(p) {
+    var px = x + (p.h / maxH) * w;
+    var py = y + graphH - ((p.wind || 0) / maxW) * graphH;
+    ctx.lineTo(px, py);
+  });
+  ctx.lineTo(x + (hours[hours.length-1].h / maxH) * w, y + graphH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Trait vent
+  ctx.strokeStyle = '#e8a057';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  hours.forEach(function(p, i) {
+    var px = x + (p.h / maxH) * w;
+    var py = y + graphH - ((p.wind || 0) / maxW) * graphH;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  // Trait rafales (pointille rouge)
+  if (hours.some(function(p) { return p.gust; })) {
+    ctx.strokeStyle = 'rgba(224,92,92,.8)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    var first = true;
+    hours.forEach(function(p) {
+      if (!p.gust) return;
+      var px = x + (p.h / maxH) * w;
+      var py = y + graphH - (p.gust / maxW) * graphH;
+      if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Légende
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#e8a057';
+  ctx.fillText('— Vent', x + w - 80, y - 22);
+  ctx.fillStyle = 'rgba(224,92,92,.8)';
+  ctx.fillText('··· Rafales', x + w - 4, y - 22);
+
+  // Valeurs vent
+  ctx.textAlign = 'center';
+  hours.forEach(function(p, i) {
+    if (!p.wind) return;
+    if (hours.length <= 8 || i % Math.ceil(hours.length / 8) === 0) {
+      var px = x + (p.h / maxH) * w;
+      var py = y + graphH - (p.wind / maxW) * graphH;
+      ctx.fillStyle = '#e8a057';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(Math.round(p.wind), px, py - 5);
+    }
+  });
+
+  // Séparateur
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.beginPath();
+  ctx.moveTo(x, y + graphH + 5);
+  ctx.lineTo(x + w, y + graphH + 5);
+  ctx.stroke();
+
+  // Direction vent (flèches)
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('Direction', x - 6, dirY - 8);
+  ctx.fillText('vent', x - 6, dirY + 4);
+  hours.forEach(function(p) {
+    if (p.windDir == null) return;
+    var px = x + (p.h / maxH) * w;
+    drawArrowV2(ctx, px, dirY, p.windDir, '#e8a057', 14);
+    ctx.fillStyle = 'rgba(255,255,255,.45)';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(degToCard(p.windDir), px, dirY + 16);
+  });
+}
+
+// ─── MAREE ───
+function drawTideSection(ctx, tide, x, y, w, h) {
+  if (!tide || !tide.length) { drawNoData(ctx, x, y, w, h); return; }
+  var levels = tide.map(function(t) { return t.level; });
+  var minL = Math.min.apply(null, levels);
+  var maxL = Math.max.apply(null, levels);
+  var range = Math.max(0.3, maxL - minL);
+  var pad = range * 0.1;
+  minL -= pad; maxL += pad; range = maxL - minL;
+
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  for (var g = 0; g <= 4; g++) {
+    var gy = y + (g / 4) * h;
+    ctx.beginPath();
+    ctx.moveTo(x, gy);
+    ctx.lineTo(x + w, gy);
+    ctx.stroke();
+    var val = (maxL - (range * g / 4)).toFixed(2);
+    ctx.fillStyle = 'rgba(255,255,255,.4)';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(val + 'm', x - 6, gy + 3);
+  }
+
+  // Aire
+  var grad = ctx.createLinearGradient(0, y, 0, y + h);
+  grad.addColorStop(0, 'rgba(92,184,224,.5)');
+  grad.addColorStop(1, 'rgba(92,184,224,.05)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  tide.forEach(function(t) {
+    var px = x + (t.hour / 24) * w;
+    var py = y + h - ((t.level - minL) / range) * h;
+    ctx.lineTo(px, py);
+  });
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#5cb8e0';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  tide.forEach(function(t, i) {
+    var px = x + (t.hour / 24) * w;
+    var py = y + h - ((t.level - minL) / range) * h;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  // Pleines / basses mers
+  for (var i = 1; i < tide.length - 1; i++) {
+    var prev = tide[i-1].level, curr = tide[i].level, next = tide[i+1].level;
+    if ((curr > prev && curr >= next) || (curr < prev && curr <= next)) {
+      // Eviter doublons (sinusoide => 2 max et 2 min)
+      var px = x + (tide[i].hour / 24) * w;
+      var py = y + h - ((curr - minL) / range) * h;
+      var isHigh = curr > prev;
+      ctx.fillStyle = isHigh ? '#3dba8a' : '#e8a057';
+      ctx.beginPath();
+      ctx.arc(px, py, 5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#0a1628';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Label heure + niveau
+      var hh = Math.floor(tide[i].hour);
+      var mm = Math.round((tide[i].hour - hh) * 60);
+      var lbl = hh + 'h' + (mm < 10 ? '0' : '') + (mm > 0 ? mm : '');
+      ctx.fillStyle = '#e8eef4';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      var labelY = isHigh ? py - 12 : py + 18;
+      ctx.fillText(lbl, px, labelY);
+      ctx.fillStyle = isHigh ? '#3dba8a' : '#e8a057';
+      ctx.font = '8px sans-serif';
+      ctx.fillText(curr.toFixed(2) + 'm', px, labelY + 10);
+    }
+  }
+}
+
+// ─── AXE TEMPS COMMUN ───
+function drawTimeAxis(ctx, x, y, w) {
+  ctx.fillStyle = 'rgba(255,255,255,.45)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  for (var hh = 0; hh <= 24; hh += 3) {
+    var px = x + (hh / 24) * w;
+    ctx.fillText(hh + 'h', px, y);
+  }
+}
+
+// ─── HELPERS ───
+function drawArrowV2(ctx, x, y, dir, color, size) {
+  // Direction = d'où vient (convention météo) → flèche vers propagation
+  var rad = ((dir + 180) % 360 - 90) * Math.PI / 180;
+  var x1 = x - Math.cos(rad) * size / 2;
+  var y1 = y - Math.sin(rad) * size / 2;
+  var x2 = x + Math.cos(rad) * size / 2;
+  var y2 = y + Math.sin(rad) * size / 2;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 5 * Math.cos(rad - 0.4), y2 - 5 * Math.sin(rad - 0.4));
+  ctx.lineTo(x2 - 5 * Math.cos(rad + 0.4), y2 - 5 * Math.sin(rad + 0.4));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function degToCard(d) {
+  if (d == null) return '';
+  var dirs = ['N','NE','E','SE','S','SO','O','NO'];
+  return dirs[Math.round(((d % 360) + 360) % 360 / 45) % 8];
+}
+
+function drawNoData(ctx, x, y, w, h) {
+  ctx.fillStyle = 'rgba(255,255,255,.3)';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Donnees indisponibles', x + w / 2, y + h / 2);
+}
+
+function truncateMG(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.substring(0, n - 1) + '…' : s;
+}
+
+// ─── ACTIONS ───
+function downloadMeteogramImg() {
+  var cv = document.getElementById('meteogram-canvas');
+  if (!cv) return;
+  var s = _currentMeteogramSortie;
+  var name = 'meteogramme_' + (s ? s.spot.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'sortie') + '_' + (s ? s.date_start : '') + '.png';
+  cv.toBlob(function(blob) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+    toast('Image telechargee', 'ok');
+  }, 'image/png');
+}
+
+async function copyMeteogramImg() {
+  var cv = document.getElementById('meteogram-canvas');
+  if (!cv) return;
+  cv.toBlob(async function(blob) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast('Image copiee', 'ok');
+    } catch(e) { toast('Copie non supportee - utilise Telecharger', 'err'); }
+  }, 'image/png');
+}
+
+async function shareMeteogramImg() {
+  var cv = document.getElementById('meteogram-canvas');
+  if (!cv) return;
+  var s = _currentMeteogramSortie;
+  cv.toBlob(async function(blob) {
+    try {
+      var file = new File([blob], 'meteogramme.png', { type: 'image/png' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Meteogramme - ' + (s ? s.spot : ''),
+          text: 'Conditions prevues pour ' + (s ? s.spot + ' le ' + s.date_start : '')
+        });
+      } else { downloadMeteogramImg(); }
+    } catch(e) { console.warn(e); }
+  }, 'image/png');
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════════
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// Close modal on background click
+document.querySelectorAll('.modal').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.style.display = 'none'; });
+});
+
+// Bouton fermer (data-act)
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest && e.target.closest('[data-act="close-modal"]');
+  if (btn) {
+    var target = btn.getAttribute('data-target');
+    if (target) closeModal(target);
+  }
+});
+
+// Boutons meteogramme
+window.addEventListener('DOMContentLoaded', function() {
+  var btnDl = document.getElementById('btn-download-img');
+  var btnCopy = document.getElementById('btn-copy-img');
+  var btnShare = document.getElementById('btn-share-img');
+  if (btnDl) btnDl.addEventListener('click', downloadMeteogramImg);
+  if (btnCopy) btnCopy.addEventListener('click', copyMeteogramImg);
+  if (btnShare) btnShare.addEventListener('click', shareMeteogramImg);
+});
+
+// Start
+init();
+</script>
+
+</body>
+</html>
