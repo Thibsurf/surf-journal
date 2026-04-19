@@ -1,0 +1,753 @@
+<!DOCTYPE html><html lang="fr"><head>
+
+
+
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Météogramme Surf — Story 1080×1920</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&amp;family=DM+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#060c18;font-family:'DM Sans',system-ui,sans-serif;color:#e8eef4;min-height:100vh;display:flex;flex-direction:column;align-items:center;}
+.toolbar{display:flex;gap:12px;align-items:center;padding:14px 24px;width:100%;max-width:720px;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;}
+.toolbar .title{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:600;color:#e8eef4;margin-right:auto;}
+.toolbar .title span{color:#4fa3c7;}
+.btn{background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.35);color:#4fa3c7;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:.2s;}
+.btn:hover{background:rgba(79,163,199,.28);}
+.btn-ghost{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:#7a94aa;}
+.btn-ghost:hover{color:#e8eef4;}
+.canvas-wrap{padding:24px;display:flex;justify-content:center;}
+canvas#story{display:block;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.8);}
+#tweaks-panel{display:none;position:fixed;bottom:24px;right:24px;background:#0d1f3c;border:1px solid rgba(79,163,199,.25);border-radius:14px;padding:20px;width:300px;box-shadow:0 12px 40px rgba(0,0,0,.7);z-index:100;}
+#tweaks-panel h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#4fa3c7;margin-bottom:16px;}
+.tw-row{margin-bottom:12px;}
+.tw-label{font-size:11px;color:#7a94aa;margin-bottom:4px;display:block;text-transform:uppercase;letter-spacing:.05em;}
+.tw-input{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 10px;color:#e8eef4;font-size:12px;font-family:inherit;}
+.tw-input:focus{outline:none;border-color:#4fa3c7;}
+.tw-row select.tw-input option{background:#0d1f3c;}
+</style>
+<style type="text/css">:root img[width="728"][height="90"], :root [href="https://adstub.net/cina777/"], :root [href="https://adstub.net/arab777/"], :root [href="https://adstub.net/ratu89/"], :root [href="https://adstub.net/judi89/"], :root [href^="//mage98rquewz.com/"], :root [href^="//x4pollyxxpush.com/"], :root div.content-showcase-itru-sufficient-2d:not(.q7d5z1l):not(.x9a7b3k), :root div[class*="publift-widget-"]:has(.fuse-slot-sticky), :root span[id^="ezoic-pub-ad-placeholder-"], :root ins.adsbygoogle[data-ad-slot], :root ins.adsbygoogle[data-ad-client], :root img[src^="https://s-img.adskeeper.com/"], :root guj-ad, :root gpt-ad, :root div[ow-ad-unit-wrapper], :root div[id^="zergnet-widget"], :root div[id^="vuukle-ad-"], :root div[id^="taboola-stream-"], :root div[id^="sticky_ad_"], :root div[id^="st"][style^="z-index: 999999999;"], :root div[id^="rc-widget-"], :root div[id^="mrec-leaderboard-"], :root div[id^="gpt_ad_"], :root div[id^="ezoic-pub-ad-"], :root div[id^="dfp-ad-"], :root div[id^="crt-"][style], :root div[id^="apn_native_ad_slot_"], :root div[id^="adspot-"], :root div[id^="adrotate_widgets-"], :root ps-connatix-module, :root div[id^="ad_position_"], :root div[id^="ad-div-"], :root div[id*="ScriptRoot"], :root div[id*="MarketGid"], :root [href="https://adstub.net/rusia777/"], :root div[data-id-advertdfpconf], :root div[data-dfp-id], :root hl-adsense, :root div[data-contentexchange-widget], :root div[data-alias="300x250 Ad 2"], :root div[data-adunit-path], :root div[data-adname], :root div[data-ad-placeholder], :root a[href^="https://osfultrbriolenai.info/"], :root div[class^="Adstyled__AdWrapper-"], :root a[href^="https://go.xlviiirdr.com"], :root div[class$="-adlabel"], :root display-ads, :root a[href^="https://go.grinsbest.com/"], :root citrus-ad-wrapper, :root a[href^="https://s.zlinkd.com/"], :root bottomadblock, :root amp-fx-flying-carpet, :root amp-embed[type="taboola"], :root amp-connatix-player, :root div[id^="google_dfp_"], :root ad-slot, :root a[href^="https://www.purevpn.com/"][href*="&utm_source=aff-"], :root a[href^="https://www.privateinternetaccess.com/"] > img, :root a[href^="https://www.onlineusershielder.com/"], :root a[href^="https://financeads.net/tc.php?"], :root a[href^="https://www.mrskin.com/tour"], :root a[href^="https://www.infowarsstore.com/"] > img, :root a[href^="https://ak.psaltauw.net/"], :root broadstreet-zone-container, :root a[href^="https://www.highperformancecpmgate.com/"], :root amp-ad, :root a[href^="https://www.highcpmrevenuenetwork.com/"], :root a[href^="https://www.get-express-vpn.com/offer/"], :root a[href^="https://lnkxt.bannerator.com/"], :root a[href^="https://www.geekbuying.com/dynamic-ads/"], :root [href^="https://groorsoa.net/"], :root a[href^="https://www.financeads.net/tc.php?"], :root a[href^="https://www.effectiveratecpm.com/"], :root [href^="https://www.herbanomic.com/"] > img, :root a[href^="https://www.dql2clk.com/"], :root a[href^="https://www.nutaku.net/signup/landing/"], :root a[href^="https://www.dating-finder.com/signup/?ai_d="], :root a[href^="https://explore-site.com/"], :root a[href^="https://www.brazzersnetwork.com/landing/"], :root [data-template-type="nativead"], :root a[href^="https://www.adultempire.com/"][href*="?partner_id="], :root a[href^="https://voluum.prom-xcams.com/"], :root a[href^="https://twinrdsyte.com/"], :root div[data-type="_mgwidget"]:not(.eyeo), :root a[href^="https://twinrdsrv.com/"], :root a[href^="https://syndicate.contentsserved.com/"], :root div[data-alias="300x250 Ad 1"], :root a[href^="https://trk.nfl-online-streams.club/"], :root a[href^="https://tracking.avapartner.com/"], :root a[href^="https://track.wg-aff.com"], :root a[href^="https://track.ultravpn.com/"], :root a[href^="https://track.afcpatrk.com/"], :root a[href^="https://track.adform.net/"], :root a[href^="https://torguard.net/aff.php"] > img, :root [data-identity="adhesive-ad"], :root a[href^="https://tc.tradetracker.net/"] > img, :root a[href^="https://tatrck.com/"], :root [href^="https://zstacklife.com/"] img, :root a[href^="https://click.candyoffers.com/"], :root a[href^="https://t.aslnk.link/"], :root a[onmousedown^="this.href='https://paid.outbrain.com/network/redir?"], :root a[href^="https://t.ajump1.com/"], :root a[href^="https://t.adating.link/"], :root a[href^="https://go.trackitalltheway.com/"], :root [href^="https://track.fiverr.com/visit/"] > img, :root a[href^="https://syndication.exoclick.com/"], :root a[href^="https://syndication.dynsrvtbg.com/"], :root .gnt_em_vp_c[data-g-s="vp_dk"], :root div[data-ad-wrapper], :root a[href^="https://svb-analytics.trackerrr.com/"], :root a[onmousedown^="this.href='https://paid.outbrain.com/network/redir?"] + .ob_source, :root a[href^="http://www.iyalc.com/"], :root a[href^="https://claring-loccelkin.com/"], :root a[href^="https://stardomcoit.com/"], :root a[href^="https://track.aftrk5.com/"], :root a[href^="https://slkmis.com/"], :root a[href^="https://myclick-2.com/"], :root a[href^="https://sexynearme.com/"], :root [data-ad-manager-id], :root a[href^="https://s.zlinkr.com/"], :root [href="https://adstub.net/gaza88/"], :root a[href^="https://ad.doubleclick.net/"], :root a[href^="https://static.fleshlight.com/images/banners/"], :root a[href^="https://s.zlink7.com/"], :root a[href^="https://s.ma3ion.com/"], :root a[href^="https://s.eunow4u.com/"], :root a[href^="https://random-affiliate.atimaze.com/"], :root #kt_player > div[style$="display: block;"][style*="inset: 0px;"], :root [href$="/sexdating.php"], :root a[href^="https://quotationfirearmrevision.com/"], :root a[href^="https://pubads.g.doubleclick.net/"], :root a[href^="https://prf.hn/click/"][href*="/camref:"] > img, :root a[href^="https://serve.awmdelivery.com/"], :root a[href^="https://www.dating-finder.com/?ai_d="], :root a[href^="https://prf.hn/click/"][href*="/adref:"] > img, :root [href^="https://ap.octopuspop.com/click/"] > img, :root app-ad, :root a[href^="https://postback1win.com/"], :root a[href^="https://a.adtng.com/"], :root a[href^="https://playnano.online/offerwalls/?ref="], :root a[href^="https://mmwebhandler.aff-online.com/"], :root a[href^="https://www.bet365.com/"][href*="affiliate="], :root a[href^="https://pb-track.com/"], :root a[href^="https://pb-front.com/"], :root a[href^="https://paid.outbrain.com/network/redir?"], :root a[href^="https://streamate.com/landing/click/"], :root a[href^="https://upsups.click/"], :root a[href^="https://ndt5.net/"], :root a[href^="https://natour.naughtyamerica.com/track/"], :root a[href^="https://mediaserver.entainpartners.com/renderBanner.do?"], :root [data-ad-name], :root a[href^="https://loboclick.com/"], :root a[href^="https://lead1.pl/"], :root a[href^="https://landing.brazzersnetwork.com/"], :root a[href^="https://juicyads.in/"], :root a[href^="https://snowdayonline.xyz/"], :root a[href^="https://join.dreamsexworld.com/"], :root a[href^="https://join.bannedsextapes.com/track/"], :root a[href^="https://jaxofuna.com/"], :root a[href^="https://italarizege.xyz/"], :root a[href^="https://identicaldrench.com/"], :root ad-shield-ads, :root a[href^="https://hot-growngames.life/"], :root a[href^="https://helmethomicidal.com/"], :root display-ad-component, :root a[href^="https://golinks.work/"], :root a[href^="https://s.zlinkn.com/"], :root a[href^="https://go.xxxvjmp.com/"], :root a[href^="https://go.xxxjmp.com"], :root a[href^="https://zirdough.net/"], :root [class^="tile-picker__CitrusBannerContainer-sc-"], :root a[href^="https://go.xxxiijmp.com"], :root a[href^="https://go.xtbaffiliates.com/"], :root [data-role="tile-ads-module"], :root a[href^="https://go.xlviirdr.com"], :root a[href^="https://go.xlivrdr.com"], :root a[href^="https://ismlks.com/"], :root [href^="https://www.mypillow.com/"] > img, :root a[href^="https://go.xlirdr.com"], :root [data-css-class="dfp-inarticle"], :root a[href^="https://go.tmrjmp.com"], :root a[href^="https://go.markets.com/visit/?bta="], :root a[href^="https://billing.purevpn.com/aff.php"] > img, :root a[href^="https://go.hpyrdr.com/"], :root a[href^="https://lijavaxa.com/"], :root a[href^="https://go.goaserv.com/"], :root app-large-ad, :root [href^="https://turtlebids.irauctions.com/"] img, :root div[data-adunit], :root a[href^="https://go.etoro.com/"] > img, :root a[href^="https://go.dmzjmp.com"], :root a[href^="https://www.bang.com/?aff="], :root #mgb-container > #mgb, :root a[href^="https://go.admjmp.com"], :root a[href^="https://get.surfshark.net/aff_c?"][href*="&aff_id="] > img, :root a[href^="https://datewhisper.life/"], :root a[href^="https://click.linksynergy.com/fs-bin/"] > img, :root a[href^="https://get-link.xyz/"], :root a[href^="https://www.mrskin.com/account/"], :root a[href^="https://www.adskeeper.com"], :root a[data-redirect^="https://paid.outbrain.com/network/redir?"], :root [href^="https://clicks.affstrack.com/"] > img, :root a[href^="https://engine.phn.doublepimp.com/"], :root a[href^="https://dl-protect.net/"], :root a[href*=".foxqck.com/"], :root a[href^="https://ctosrd.com/"], :root a[href^="https://go.bushheel.com/"], :root a[href^="https://ctjdwm.com/"], :root [href="//sexcams.plus/"], :root a[href^="https://camfapr.com/landing/click/"], :root a[href^="https://prf.hn/click/"][href*="/creativeref:"] > img, :root a[href*="&maxads="], :root a[href^="http://www.adultempire.com/unlimited/promo?"][href*="&partner_id="], :root a[href^="https://1betandgonow.com/"], :root a[href^="https://chaturbate.com/in/?"], :root a[href^="https://t.ajrkm1.com/"], :root a[href^="https://bongacams10.com/track?"], :root a[href*=".g2afse.com/"], :root a[href^="https://bodelen.com/"], :root a[href^="//hoodingluster.com/"], :root a[href^="https://black77854.com/"], :root a[href^="https://getmatchedlocally.com/"], :root app-advertisement, :root a[href^="https://rixofa.com/"], :root a[href^="https://best-experience-cool.com/"], :root [data-taboola-options], :root a[href^="https://believessway.com/"], :root a[href^="https://Click.ggpickaff.com/"], :root a[href^="https://banners.livepartners.com/"], :root a[href^="http://revolvemockerycopper.com/"], :root a[href^="https://awptjmp.com/"], :root a[href^="https://join.sexworld3d.com/track/"], :root a[href^="https://aweptjmp.com/"], :root a[href^="https://ausoafab.net/"], :root a[href^="https://clicks.pipaffiliates.com/"], :root a[href^="https://aj1070.online/"], :root a[href^="https://a.bestcontentoperation.top/"], :root a[href^="https://adultfriendfinder.com/go/"], :root a[href^="https://ads.planetwin365affiliate.com/"], :root a[href^="https://ads.leovegas.com/"], :root a[href^="https://go.xlvirdr.com"], :root img[src^="https://images.purevpnaffiliates.com"], :root a[href^="https://porntubemate.com/"], :root a[href^="https://click.dtiserv2.com/"], :root a[href^="https://clickadilla.com/"], :root a[href^="https://a.medfoodhome.com/"], :root a[href^="https://cam4com.go2cloud.org/"], :root .nya-slot[style], :root a[href^="https://a.bestcontentweb.top/"], :root atf-ad-slot, :root a[href^="https://a2.adform.net/"], :root a[href^="https://a.candyai.love/"], :root .banner-img > .pbl, :root [data-m-ad-id], :root a[href^="https://a-ads.com/"], :root a[href^="https://1winpb.com/"], :root div[id^="optidigital-adslot"], :root [href^="https://wsup.ai/"], :root a[href^="https://123-stream.org/"], :root a[href^="https://in.rabbtrk.com/"], :root a[href^="http://www.h4trck.com/"], :root [href^="https://a.acebet.com/api/click?"], :root a[href^="http://www.friendlyduck.com/AF_"], :root a[href^="http://partners.etoro.com/"], :root [href="https://chaturbate.jjgirls.com/"] > img, :root a[href^="http://cam4com.go2cloud.org/aff_c?"], :root a[href^="https://ads.betfair.com/redirect.aspx?"], :root amp-ad-custom, :root a[href^="http://trk.globwo.online/"], :root a[onclick^="window.location.replace('https://random-affiliate.atimaze.com/"], :root a[href^="https://bongacams2.com/track?"], :root a-ad, :root a[href^="https://offhandpump.com/"], :root a[href^="http://stickingrepute.com/"], :root #slashboxes > .deals-rail, :root div[aria-label="Ads"], :root [href^="http://mypillow.com/"] > img, :root a[href^="http://bongacams.com/track?"], :root a[href^="//startgaming.net/tienda/" i], :root a[href^="https://a.medfoodsafety.com/"], :root a[href^="//go.eabids.com/"], :root a[href^=" https://www.friendlyduck.com/AF_"], :root [data-cl-spot-id], :root a[href*="/jump/next.php?r="], :root a[href^="https://go.nordvpn.net/aff"] > img, :root .\[\&_\.gdprAdTransparencyCogWheelButton\]\:\!pjra-z-\[5\], :root [href^="http://clicks.totemcash.com/"], :root a[href^="https://ad.zanox.com/ppc/"] > img, :root [data-d-ad-id], :root a[href*=".engine.adglare.net/"], :root div[id^="lazyad-"], :root a[href^="http://com-1.pro/"], :root [href^="https://www.profitablegatecpm.com/"], :root a[href*=".cfm?domain="][href*="&fp="], :root a[href^="https://ab.advertiserurl.com/aff/"], :root a[data-oburl^="https://paid.outbrain.com/network/redir?"], :root [id^="section-ad-banner"], :root [id^="ad_slider"], :root a[href^="https://www.goldenfrog.com/vyprvpn?offer_id="][href*="&aff_id="], :root a[href^="https://wmctjd.com/"], :root a[href*="//jjgirls.com/sex/Chaturbate"], :root [id^="ad-wrap-"], :root [href^="https://zone.gotrackier.com/"], :root a[href^="http://sarcasmadvisor.com/"], :root [href^="https://www.restoro.com/"], :root a[href^="https://track.totalav.com/"], :root a[href^="https://ctrdwm.com/"], :root [href^="https://www.targetingpartner.com/"], :root a[href^="https://join.virtuallust3d.com/"], :root .section-subheader > .section-hotel-prices-header, :root [href^="https://www.hostg.xyz/"] > img, :root a[href^="https://bngpt.com/"], :root a[href^="https://www.sheetmusicplus.com/"][href*="?aff_id="], :root a[href^="http://adultfriendfinder.com/go/"], :root a[href^="https://fastestvpn.com/lifetime-special-deal?a_aid="], :root a[href^="https://tour.mrskin.com/"], :root div[id^="ad-position-"], :root a[href^="https://www.toprevenuegate.com/"], :root a[href^="https://bc.game/"], :root a[href^="http://join.brokestraightboys.com/track/"], :root div[id^="div-ads-"], :root [href^="https://rapidgator.net/article/premium/ref/"], :root [href^="https://join.girlsoutwest.com/"], :root a[href^="https://activate-game.com/"], :root .scroll-fixable.rail-right > .deals-rail, :root [data-wpas-zoneid], :root a[href^="https://track.aftrk3.com/"], :root [href^="https://join3.bannedsextapes.com"], :root div[data-adzone], :root div[id^="adngin-"], :root [data-rc-widget], :root span[data-ez-ph-id], :root [href^="https://track.aftrk1.com/"], :root [href^="https://join.playboyplus.com/track/"], :root a[href^="https://go.xxxijmp.com"], :root [href^="https://istlnkcl.com/"], :root a[href^="https://trk.softonixs.xyz/"], :root a[href^="https://iqbroker.com/"][href*="?aff="], :root [href^="https://rpwmct.com/"], :root [href^="https://wct.link/click?"], :root a[href^="https://t.acam.link/"], :root a[href^="https://go.strpjmp.com/"], :root [href^="https://url.totaladblock.com/"], :root a[href^="https://go.rmishe.com/"], :root [href^="https://ilovemyfreedoms.com/landing-"], :root [href="https://adstub.net/indo666/"], :root [href^="https://glersakr.com/"], :root a[href^="https://tm-offers.gamingadult.com/"], :root [href^="https://charmingdatings.life/"], :root [data-id^="div-gpt-ad"], :root a[href^="https://tracker.loropartners.com/"], :root [href^="https://awbbjmp.com/"], :root a[href^="https://www.friendlyduck.com/AF_"], :root [href^="https://ad1.adfarm1.adition.com/"], :root a[href^="https://t.ajrkm3.com/"], :root [href^="https://aads.com/campaigns/"], :root a[href^="https://fc.lc/ref/"], :root a[href^="https://go.bbrdbr.com"], :root a[href^="http://tc.tradetracker.net/"] > img, :root a[href^="https://s.zlink3.com/"], :root a[href^="http://sneakyadministration.com/"], :root [href^="https://www.brighteonstore.com/products/"] img, :root a[href^="https://bngprm.com/"], :root [href^="https://shiftnetwork.infusionsoft.com/go/"] > img, :root [href^="http://www.mypillow.com/"] > img, :root .ob_container .item-container-obpd, :root [id^="div-gpt-ad"], :root [href="https://jdrucker.com/gold"] > img, :root a[href^="https://join.virtualtaboo.com/track/"], :root [id^="ad_sky"], :root [name^="google_ads_iframe"], :root aside[id^="adrotate_widgets-"], :root a[href^="https://www.liquidfire.mobi/"], :root DFP-AD, :root .grid > .container > #aside-promotion, :root [data-type="ad-vertical"], :root [href^="https://go.xlrdr.com"], :root a[href^="https://s.cant3am.com/"], :root [data-testid^="taboola-"], :root [data-testid^="section-AdRowBillboard"], :root a[href^="https://track.1234sd123.com/"], :root zeus-ad, :root [data-testid="prism-ad-wrapper"], :root [href^="https://ad.admitad.com/"], :root [href^="https://mypillow.com/"] > img, :root [data-testid="ad_testID"], :root [data-mobile-ad-id], :root [data-dynamic-ads], :root a[href^="https://gamingadlt.com/?offer="], :root [data-desktop-ad-id], :root a[href^="https://go.rmhfrtnd.com"], :root a[href^="https://pb-imc.com/"], :root a[href^="https://www8.smartadserver.com/"], :root topadblock, :root a[href^="//s.zlinkd.com/"], :root [href^="https://mypatriotsupply.com/"] > img, :root [data-testid="adBanner-wrapper"], :root [href^="https://mylead.global/stl/"] > img, :root a[href*=".adsrv.eacdn.com/"], :root [href^="https://antiagingbed.com/discount/"] > img, :root #teaser1[style^="width:autopx;"], :root [href^="https://www.cloudways.com/en/?id"], :root [data-asg-ins], :root [data-block-type="ad"], :root [data-ad-width], :root a[href^="https://clickins.slixa.com/"], :root [onclick*="content.ad/"], :root a[href^="https://go.cmtaffiliates.com/"], :root [href^="https://optimizedelite.com/"] > img, :root div[data-ad-region], :root AMP-AD, :root [data-ad-cls], :root a[href^="https://www.adxsrve.com/"], :root a[href^="https://click.Ggpickaff.com/"], :root [data-ez-name], :root a[href^="https://go.mnaspm.com/"], :root a[href^="https://service.bv-aff-trx.com/"], :root a[href^="https://6-partner.com/"], :root [class^="s2nPlayer"], :root [href^="https://affiliate.fastcomet.com/"] > img, :root [class^="adDisplay-module"], :root a[href^="https://adclick.g.doubleclick.net/"], :root [data-freestar-ad][id], :root AD-SLOT, :root a[href^="https://combodef.com/"], :root a[href^="https://click.hoolig.app/"], :root a[href^="https://www.googleadservices.com/pagead/aclk?"] > img, :root [data-ad-module], :root a[href^="https://a.bestcontentfood.top/"], :root #kt_player > a[target="_blank"], :root a[href^="https://go.skinstrip.net"][href*="?campaignId="], :root #teaser2[style^="width:autopx;"], :root [data-revive-zoneid], :root a[href^="https://losingoldfry.com/"], :root div[id^="div-gpt-"], :root a[href^="https://gml-grp.com/"], :root .ob_dual_right > .ob_ads_header ~ .odb_div, :root div[data-ad-targeting], :root a[style="width:100%;height:100%;z-index:10000000000000000;position:absolute;top:0;left:0;"], :root [href^="https://www.avantlink.com/click.php"] img, :root [data-testid="commercial-label-taboola"], :root [class^="div-gpt-ad"], :root a[href^="https://traffdaq.com/"], :root #teaser3[style^="width:autopx;"], :root a[href^="https://go.hpyjmp.com"], :root iframe[scrolling="no"][sandbox*="allow-popups allow-modals"][style^="width: 100%; height: 100%; border: none;"], :root [href^="https://mystore.com/"] > img, :root [class^="amp-ad-"], :root div[id*="ScriptRoot"]:not(.eyeo), :root a[href^="https://clixtrac.com/"], :root a[href^="https://wittered-mainging.com/"], :root #teaser3[style="width: 100%;text-align: center;display: scroll;position:fixed;bottom: 0;margin: 0 auto;z-index: 103;"] { display: none !important; }</style><style type="text/css">:root img[width="728"][height="90"], :root [href="https://adstub.net/cina777/"], :root [href="https://adstub.net/arab777/"], :root [href="https://adstub.net/ratu89/"], :root [href="https://adstub.net/judi89/"], :root [href^="//mage98rquewz.com/"], :root [href^="//x4pollyxxpush.com/"], :root div.content-showcase-itru-sufficient-2d:not(.q7d5z1l):not(.x9a7b3k), :root div[class*="publift-widget-"]:has(.fuse-slot-sticky), :root span[id^="ezoic-pub-ad-placeholder-"], :root ins.adsbygoogle[data-ad-slot], :root ins.adsbygoogle[data-ad-client], :root img[src^="https://s-img.adskeeper.com/"], :root guj-ad, :root gpt-ad, :root div[ow-ad-unit-wrapper], :root div[id^="zergnet-widget"], :root div[id^="vuukle-ad-"], :root div[id^="taboola-stream-"], :root div[id^="sticky_ad_"], :root div[id^="st"][style^="z-index: 999999999;"], :root div[id^="rc-widget-"], :root div[id^="mrec-leaderboard-"], :root div[id^="gpt_ad_"], :root div[id^="ezoic-pub-ad-"], :root div[id^="dfp-ad-"], :root div[id^="crt-"][style], :root div[id^="apn_native_ad_slot_"], :root div[id^="adspot-"], :root div[id^="adrotate_widgets-"], :root ps-connatix-module, :root div[id^="ad_position_"], :root div[id^="ad-div-"], :root div[id*="ScriptRoot"], :root div[id*="MarketGid"], :root [href="https://adstub.net/rusia777/"], :root div[data-id-advertdfpconf], :root div[data-dfp-id], :root hl-adsense, :root div[data-contentexchange-widget], :root div[data-alias="300x250 Ad 2"], :root div[data-adunit-path], :root div[data-adname], :root div[data-ad-placeholder], :root a[href^="https://osfultrbriolenai.info/"], :root div[class^="Adstyled__AdWrapper-"], :root a[href^="https://go.xlviiirdr.com"], :root div[class$="-adlabel"], :root display-ads, :root a[href^="https://go.grinsbest.com/"], :root citrus-ad-wrapper, :root a[href^="https://s.zlinkd.com/"], :root bottomadblock, :root amp-fx-flying-carpet, :root amp-embed[type="taboola"], :root amp-connatix-player, :root div[id^="google_dfp_"], :root ad-slot, :root a[href^="https://www.purevpn.com/"][href*="&utm_source=aff-"], :root a[href^="https://www.privateinternetaccess.com/"] > img, :root a[href^="https://www.onlineusershielder.com/"], :root a[href^="https://financeads.net/tc.php?"], :root a[href^="https://www.mrskin.com/tour"], :root a[href^="https://www.infowarsstore.com/"] > img, :root a[href^="https://ak.psaltauw.net/"], :root broadstreet-zone-container, :root a[href^="https://www.highperformancecpmgate.com/"], :root amp-ad, :root a[href^="https://www.highcpmrevenuenetwork.com/"], :root a[href^="https://www.get-express-vpn.com/offer/"], :root a[href^="https://lnkxt.bannerator.com/"], :root a[href^="https://www.geekbuying.com/dynamic-ads/"], :root [href^="https://groorsoa.net/"], :root a[href^="https://www.financeads.net/tc.php?"], :root a[href^="https://www.effectiveratecpm.com/"], :root [href^="https://www.herbanomic.com/"] > img, :root a[href^="https://www.dql2clk.com/"], :root a[href^="https://www.nutaku.net/signup/landing/"], :root a[href^="https://www.dating-finder.com/signup/?ai_d="], :root a[href^="https://explore-site.com/"], :root a[href^="https://www.brazzersnetwork.com/landing/"], :root [data-template-type="nativead"], :root a[href^="https://www.adultempire.com/"][href*="?partner_id="], :root a[href^="https://voluum.prom-xcams.com/"], :root a[href^="https://twinrdsyte.com/"], :root div[data-type="_mgwidget"]:not(.eyeo), :root a[href^="https://twinrdsrv.com/"], :root a[href^="https://syndicate.contentsserved.com/"], :root div[data-alias="300x250 Ad 1"], :root a[href^="https://trk.nfl-online-streams.club/"], :root a[href^="https://tracking.avapartner.com/"], :root a[href^="https://track.wg-aff.com"], :root a[href^="https://track.ultravpn.com/"], :root a[href^="https://track.afcpatrk.com/"], :root a[href^="https://track.adform.net/"], :root a[href^="https://torguard.net/aff.php"] > img, :root [data-identity="adhesive-ad"], :root a[href^="https://tc.tradetracker.net/"] > img, :root a[href^="https://tatrck.com/"], :root [href^="https://zstacklife.com/"] img, :root a[href^="https://click.candyoffers.com/"], :root a[href^="https://t.aslnk.link/"], :root a[onmousedown^="this.href='https://paid.outbrain.com/network/redir?"], :root a[href^="https://t.ajump1.com/"], :root a[href^="https://t.adating.link/"], :root a[href^="https://go.trackitalltheway.com/"], :root [href^="https://track.fiverr.com/visit/"] > img, :root a[href^="https://syndication.exoclick.com/"], :root a[href^="https://syndication.dynsrvtbg.com/"], :root .gnt_em_vp_c[data-g-s="vp_dk"], :root div[data-ad-wrapper], :root a[href^="https://svb-analytics.trackerrr.com/"], :root a[onmousedown^="this.href='https://paid.outbrain.com/network/redir?"] + .ob_source, :root a[href^="http://www.iyalc.com/"], :root a[href^="https://claring-loccelkin.com/"], :root a[href^="https://stardomcoit.com/"], :root a[href^="https://track.aftrk5.com/"], :root a[href^="https://slkmis.com/"], :root a[href^="https://myclick-2.com/"], :root a[href^="https://sexynearme.com/"], :root [data-ad-manager-id], :root a[href^="https://s.zlinkr.com/"], :root [href="https://adstub.net/gaza88/"], :root a[href^="https://ad.doubleclick.net/"], :root a[href^="https://static.fleshlight.com/images/banners/"], :root a[href^="https://s.zlink7.com/"], :root a[href^="https://s.ma3ion.com/"], :root a[href^="https://s.eunow4u.com/"], :root a[href^="https://random-affiliate.atimaze.com/"], :root #kt_player > div[style$="display: block;"][style*="inset: 0px;"], :root [href$="/sexdating.php"], :root a[href^="https://quotationfirearmrevision.com/"], :root a[href^="https://pubads.g.doubleclick.net/"], :root a[href^="https://prf.hn/click/"][href*="/camref:"] > img, :root a[href^="https://serve.awmdelivery.com/"], :root a[href^="https://www.dating-finder.com/?ai_d="], :root a[href^="https://prf.hn/click/"][href*="/adref:"] > img, :root [href^="https://ap.octopuspop.com/click/"] > img, :root app-ad, :root a[href^="https://postback1win.com/"], :root a[href^="https://a.adtng.com/"], :root a[href^="https://playnano.online/offerwalls/?ref="], :root a[href^="https://mmwebhandler.aff-online.com/"], :root a[href^="https://www.bet365.com/"][href*="affiliate="], :root a[href^="https://pb-track.com/"], :root a[href^="https://pb-front.com/"], :root a[href^="https://paid.outbrain.com/network/redir?"], :root a[href^="https://streamate.com/landing/click/"], :root a[href^="https://upsups.click/"], :root a[href^="https://ndt5.net/"], :root a[href^="https://natour.naughtyamerica.com/track/"], :root a[href^="https://mediaserver.entainpartners.com/renderBanner.do?"], :root [data-ad-name], :root a[href^="https://loboclick.com/"], :root a[href^="https://lead1.pl/"], :root a[href^="https://landing.brazzersnetwork.com/"], :root a[href^="https://juicyads.in/"], :root a[href^="https://snowdayonline.xyz/"], :root a[href^="https://join.dreamsexworld.com/"], :root a[href^="https://join.bannedsextapes.com/track/"], :root a[href^="https://jaxofuna.com/"], :root a[href^="https://italarizege.xyz/"], :root a[href^="https://identicaldrench.com/"], :root ad-shield-ads, :root a[href^="https://hot-growngames.life/"], :root a[href^="https://helmethomicidal.com/"], :root display-ad-component, :root a[href^="https://golinks.work/"], :root a[href^="https://s.zlinkn.com/"], :root a[href^="https://go.xxxvjmp.com/"], :root a[href^="https://go.xxxjmp.com"], :root a[href^="https://zirdough.net/"], :root [class^="tile-picker__CitrusBannerContainer-sc-"], :root a[href^="https://go.xxxiijmp.com"], :root a[href^="https://go.xtbaffiliates.com/"], :root [data-role="tile-ads-module"], :root a[href^="https://go.xlviirdr.com"], :root a[href^="https://go.xlivrdr.com"], :root a[href^="https://ismlks.com/"], :root [href^="https://www.mypillow.com/"] > img, :root a[href^="https://go.xlirdr.com"], :root [data-css-class="dfp-inarticle"], :root a[href^="https://go.tmrjmp.com"], :root a[href^="https://go.markets.com/visit/?bta="], :root a[href^="https://billing.purevpn.com/aff.php"] > img, :root a[href^="https://go.hpyrdr.com/"], :root a[href^="https://lijavaxa.com/"], :root a[href^="https://go.goaserv.com/"], :root app-large-ad, :root [href^="https://turtlebids.irauctions.com/"] img, :root div[data-adunit], :root a[href^="https://go.etoro.com/"] > img, :root a[href^="https://go.dmzjmp.com"], :root a[href^="https://www.bang.com/?aff="], :root #mgb-container > #mgb, :root a[href^="https://go.admjmp.com"], :root a[href^="https://get.surfshark.net/aff_c?"][href*="&aff_id="] > img, :root a[href^="https://datewhisper.life/"], :root a[href^="https://click.linksynergy.com/fs-bin/"] > img, :root a[href^="https://get-link.xyz/"], :root a[href^="https://www.mrskin.com/account/"], :root a[href^="https://www.adskeeper.com"], :root a[data-redirect^="https://paid.outbrain.com/network/redir?"], :root [href^="https://clicks.affstrack.com/"] > img, :root a[href^="https://engine.phn.doublepimp.com/"], :root a[href^="https://dl-protect.net/"], :root a[href*=".foxqck.com/"], :root a[href^="https://ctosrd.com/"], :root a[href^="https://go.bushheel.com/"], :root a[href^="https://ctjdwm.com/"], :root [href="//sexcams.plus/"], :root a[href^="https://camfapr.com/landing/click/"], :root a[href^="https://prf.hn/click/"][href*="/creativeref:"] > img, :root a[href*="&maxads="], :root a[href^="http://www.adultempire.com/unlimited/promo?"][href*="&partner_id="], :root a[href^="https://1betandgonow.com/"], :root a[href^="https://chaturbate.com/in/?"], :root a[href^="https://t.ajrkm1.com/"], :root a[href^="https://bongacams10.com/track?"], :root a[href*=".g2afse.com/"], :root a[href^="https://bodelen.com/"], :root a[href^="//hoodingluster.com/"], :root a[href^="https://black77854.com/"], :root a[href^="https://getmatchedlocally.com/"], :root app-advertisement, :root a[href^="https://rixofa.com/"], :root a[href^="https://best-experience-cool.com/"], :root [data-taboola-options], :root a[href^="https://believessway.com/"], :root a[href^="https://Click.ggpickaff.com/"], :root a[href^="https://banners.livepartners.com/"], :root a[href^="http://revolvemockerycopper.com/"], :root a[href^="https://awptjmp.com/"], :root a[href^="https://join.sexworld3d.com/track/"], :root a[href^="https://aweptjmp.com/"], :root a[href^="https://ausoafab.net/"], :root a[href^="https://clicks.pipaffiliates.com/"], :root a[href^="https://aj1070.online/"], :root a[href^="https://a.bestcontentoperation.top/"], :root a[href^="https://adultfriendfinder.com/go/"], :root a[href^="https://ads.planetwin365affiliate.com/"], :root a[href^="https://ads.leovegas.com/"], :root a[href^="https://go.xlvirdr.com"], :root img[src^="https://images.purevpnaffiliates.com"], :root a[href^="https://porntubemate.com/"], :root a[href^="https://click.dtiserv2.com/"], :root a[href^="https://clickadilla.com/"], :root a[href^="https://a.medfoodhome.com/"], :root a[href^="https://cam4com.go2cloud.org/"], :root .nya-slot[style], :root a[href^="https://a.bestcontentweb.top/"], :root atf-ad-slot, :root a[href^="https://a2.adform.net/"], :root a[href^="https://a.candyai.love/"], :root .banner-img > .pbl, :root [data-m-ad-id], :root a[href^="https://a-ads.com/"], :root a[href^="https://1winpb.com/"], :root div[id^="optidigital-adslot"], :root [href^="https://wsup.ai/"], :root a[href^="https://123-stream.org/"], :root a[href^="https://in.rabbtrk.com/"], :root a[href^="http://www.h4trck.com/"], :root [href^="https://a.acebet.com/api/click?"], :root a[href^="http://www.friendlyduck.com/AF_"], :root a[href^="http://partners.etoro.com/"], :root [href="https://chaturbate.jjgirls.com/"] > img, :root a[href^="http://cam4com.go2cloud.org/aff_c?"], :root a[href^="https://ads.betfair.com/redirect.aspx?"], :root amp-ad-custom, :root a[href^="http://trk.globwo.online/"], :root a[onclick^="window.location.replace('https://random-affiliate.atimaze.com/"], :root a[href^="https://bongacams2.com/track?"], :root a-ad, :root a[href^="https://offhandpump.com/"], :root a[href^="http://stickingrepute.com/"], :root #slashboxes > .deals-rail, :root div[aria-label="Ads"], :root [href^="http://mypillow.com/"] > img, :root a[href^="http://bongacams.com/track?"], :root a[href^="//startgaming.net/tienda/" i], :root a[href^="https://a.medfoodsafety.com/"], :root a[href^="//go.eabids.com/"], :root a[href^=" https://www.friendlyduck.com/AF_"], :root [data-cl-spot-id], :root a[href*="/jump/next.php?r="], :root a[href^="https://go.nordvpn.net/aff"] > img, :root .\[\&_\.gdprAdTransparencyCogWheelButton\]\:\!pjra-z-\[5\], :root [href^="http://clicks.totemcash.com/"], :root a[href^="https://ad.zanox.com/ppc/"] > img, :root [data-d-ad-id], :root a[href*=".engine.adglare.net/"], :root div[id^="lazyad-"], :root a[href^="http://com-1.pro/"], :root [href^="https://www.profitablegatecpm.com/"], :root a[href*=".cfm?domain="][href*="&fp="], :root a[href^="https://ab.advertiserurl.com/aff/"], :root a[data-oburl^="https://paid.outbrain.com/network/redir?"], :root [id^="section-ad-banner"], :root [id^="ad_slider"], :root a[href^="https://www.goldenfrog.com/vyprvpn?offer_id="][href*="&aff_id="], :root a[href^="https://wmctjd.com/"], :root a[href*="//jjgirls.com/sex/Chaturbate"], :root [id^="ad-wrap-"], :root [href^="https://zone.gotrackier.com/"], :root a[href^="http://sarcasmadvisor.com/"], :root [href^="https://www.restoro.com/"], :root a[href^="https://track.totalav.com/"], :root a[href^="https://ctrdwm.com/"], :root [href^="https://www.targetingpartner.com/"], :root a[href^="https://join.virtuallust3d.com/"], :root .section-subheader > .section-hotel-prices-header, :root [href^="https://www.hostg.xyz/"] > img, :root a[href^="https://bngpt.com/"], :root a[href^="https://www.sheetmusicplus.com/"][href*="?aff_id="], :root a[href^="http://adultfriendfinder.com/go/"], :root a[href^="https://fastestvpn.com/lifetime-special-deal?a_aid="], :root a[href^="https://tour.mrskin.com/"], :root div[id^="ad-position-"], :root a[href^="https://www.toprevenuegate.com/"], :root a[href^="https://bc.game/"], :root a[href^="http://join.brokestraightboys.com/track/"], :root div[id^="div-ads-"], :root [href^="https://rapidgator.net/article/premium/ref/"], :root [href^="https://join.girlsoutwest.com/"], :root a[href^="https://activate-game.com/"], :root .scroll-fixable.rail-right > .deals-rail, :root [data-wpas-zoneid], :root a[href^="https://track.aftrk3.com/"], :root [href^="https://join3.bannedsextapes.com"], :root div[data-adzone], :root div[id^="adngin-"], :root [data-rc-widget], :root span[data-ez-ph-id], :root [href^="https://track.aftrk1.com/"], :root [href^="https://join.playboyplus.com/track/"], :root a[href^="https://go.xxxijmp.com"], :root [href^="https://istlnkcl.com/"], :root a[href^="https://trk.softonixs.xyz/"], :root a[href^="https://iqbroker.com/"][href*="?aff="], :root [href^="https://rpwmct.com/"], :root [href^="https://wct.link/click?"], :root a[href^="https://t.acam.link/"], :root a[href^="https://go.strpjmp.com/"], :root [href^="https://url.totaladblock.com/"], :root a[href^="https://go.rmishe.com/"], :root [href^="https://ilovemyfreedoms.com/landing-"], :root [href="https://adstub.net/indo666/"], :root [href^="https://glersakr.com/"], :root a[href^="https://tm-offers.gamingadult.com/"], :root [href^="https://charmingdatings.life/"], :root [data-id^="div-gpt-ad"], :root a[href^="https://tracker.loropartners.com/"], :root [href^="https://awbbjmp.com/"], :root a[href^="https://www.friendlyduck.com/AF_"], :root [href^="https://ad1.adfarm1.adition.com/"], :root a[href^="https://t.ajrkm3.com/"], :root [href^="https://aads.com/campaigns/"], :root a[href^="https://fc.lc/ref/"], :root a[href^="https://go.bbrdbr.com"], :root a[href^="http://tc.tradetracker.net/"] > img, :root a[href^="https://s.zlink3.com/"], :root a[href^="http://sneakyadministration.com/"], :root [href^="https://www.brighteonstore.com/products/"] img, :root a[href^="https://bngprm.com/"], :root [href^="https://shiftnetwork.infusionsoft.com/go/"] > img, :root [href^="http://www.mypillow.com/"] > img, :root .ob_container .item-container-obpd, :root [id^="div-gpt-ad"], :root [href="https://jdrucker.com/gold"] > img, :root a[href^="https://join.virtualtaboo.com/track/"], :root [id^="ad_sky"], :root [name^="google_ads_iframe"], :root aside[id^="adrotate_widgets-"], :root a[href^="https://www.liquidfire.mobi/"], :root DFP-AD, :root .grid > .container > #aside-promotion, :root [data-type="ad-vertical"], :root [href^="https://go.xlrdr.com"], :root a[href^="https://s.cant3am.com/"], :root [data-testid^="taboola-"], :root [data-testid^="section-AdRowBillboard"], :root a[href^="https://track.1234sd123.com/"], :root zeus-ad, :root [data-testid="prism-ad-wrapper"], :root [href^="https://ad.admitad.com/"], :root [href^="https://mypillow.com/"] > img, :root [data-testid="ad_testID"], :root [data-mobile-ad-id], :root [data-dynamic-ads], :root a[href^="https://gamingadlt.com/?offer="], :root [data-desktop-ad-id], :root a[href^="https://go.rmhfrtnd.com"], :root a[href^="https://pb-imc.com/"], :root a[href^="https://www8.smartadserver.com/"], :root topadblock, :root a[href^="//s.zlinkd.com/"], :root [href^="https://mypatriotsupply.com/"] > img, :root [data-testid="adBanner-wrapper"], :root [href^="https://mylead.global/stl/"] > img, :root a[href*=".adsrv.eacdn.com/"], :root [href^="https://antiagingbed.com/discount/"] > img, :root #teaser1[style^="width:autopx;"], :root [href^="https://www.cloudways.com/en/?id"], :root [data-asg-ins], :root [data-block-type="ad"], :root [data-ad-width], :root a[href^="https://clickins.slixa.com/"], :root [onclick*="content.ad/"], :root a[href^="https://go.cmtaffiliates.com/"], :root [href^="https://optimizedelite.com/"] > img, :root div[data-ad-region], :root AMP-AD, :root [data-ad-cls], :root a[href^="https://www.adxsrve.com/"], :root a[href^="https://click.Ggpickaff.com/"], :root [data-ez-name], :root a[href^="https://go.mnaspm.com/"], :root a[href^="https://service.bv-aff-trx.com/"], :root a[href^="https://6-partner.com/"], :root [class^="s2nPlayer"], :root [href^="https://affiliate.fastcomet.com/"] > img, :root [class^="adDisplay-module"], :root a[href^="https://adclick.g.doubleclick.net/"], :root [data-freestar-ad][id], :root AD-SLOT, :root a[href^="https://combodef.com/"], :root a[href^="https://click.hoolig.app/"], :root a[href^="https://www.googleadservices.com/pagead/aclk?"] > img, :root [data-ad-module], :root a[href^="https://a.bestcontentfood.top/"], :root #kt_player > a[target="_blank"], :root a[href^="https://go.skinstrip.net"][href*="?campaignId="], :root #teaser2[style^="width:autopx;"], :root [data-revive-zoneid], :root a[href^="https://losingoldfry.com/"], :root div[id^="div-gpt-"], :root a[href^="https://gml-grp.com/"], :root .ob_dual_right > .ob_ads_header ~ .odb_div, :root div[data-ad-targeting], :root a[style="width:100%;height:100%;z-index:10000000000000000;position:absolute;top:0;left:0;"], :root [href^="https://www.avantlink.com/click.php"] img, :root [data-testid="commercial-label-taboola"], :root [class^="div-gpt-ad"], :root a[href^="https://traffdaq.com/"], :root #teaser3[style^="width:autopx;"], :root a[href^="https://go.hpyjmp.com"], :root iframe[scrolling="no"][sandbox*="allow-popups allow-modals"][style^="width: 100%; height: 100%; border: none;"], :root [href^="https://mystore.com/"] > img, :root [class^="amp-ad-"], :root div[id*="ScriptRoot"]:not(.eyeo), :root a[href^="https://clixtrac.com/"], :root a[href^="https://wittered-mainging.com/"], :root #teaser3[style="width: 100%;text-align: center;display: scroll;position:fixed;bottom: 0;margin: 0 auto;z-index: 103;"] { display: none !important; }</style></head>
+<body style="font-size: 16px; cursor: crosshair;" data-cc-id="cc-1">
+<div class="toolbar">
+  <div class="title">Surf <span>NC</span> — Météogramme story</div>
+  <button class="btn btn-ghost" id="btn-tweaks">⚙ Tweaks</button>
+  <button class="btn" id="btn-regen">↻ Générer</button>
+  <button class="btn" id="btn-dl">⬇ Télécharger</button>
+</div>
+<div class="canvas-wrap"><canvas id="story" width="1080" height="1920" style="width: 560px; height: 996px;"></canvas></div>
+
+<div id="tweaks-panel" style="display: block;">
+  <h3>Tweaks</h3>
+  <div class="tw-row"><label class="tw-label">Spot</label><input class="tw-input" id="tw-spot" value="Passe de Dumbéa"></div>
+  <div class="tw-row"><label class="tw-label">Date</label><input class="tw-input" type="date" id="tw-date" value="2026-04-26"></div>
+  <div class="tw-row"><label class="tw-label">Bateau</label><input class="tw-input" id="tw-boat" value="Zodiac de Raph"></div>
+  <div class="tw-row"><label class="tw-label">Note (0–5)</label><input class="tw-input" type="number" id="tw-rating" min="0" max="5" step="0.5" value="3.5"></div>
+  <div class="tw-row"><label class="tw-label">Session départ (index)</label><input class="tw-input" type="number" id="tw-si" min="0" max="11" value="2"></div>
+  <div class="tw-row"><label class="tw-label">Session fin (index)</label><input class="tw-input" type="number" id="tw-ei" min="0" max="11" value="6"></div>
+  <div class="tw-row"><label class="tw-label">Accent</label>
+    <select class="tw-input" id="tw-accent">
+      <option value="#4DA3FF">Océan (#4DA3FF)</option>
+      <option value="#3DBA8A">Vert (#3DBA8A)</option>
+      <option value="#E8A057">Chaud (#E8A057)</option>
+      <option value="#7B6CF6">Violet (#7B6CF6)</option>
+    </select>
+  </div>
+  <button class="btn" id="tw-apply" style="width:100%;margin-top:4px;justify-content:center;">Appliquer</button>
+</div>
+
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <rect width="100" height="100" fill="#0b0f1a"></rect>
+    <rect x="30" y="20" width="40" height="60" rx="4" fill="#121826"></rect>
+    <rect x="34" y="26" width="32" height="8" rx="2" fill="#4da3ff" opacity=".7"></rect>
+    <rect x="34" y="38" width="32" height="16" rx="2" fill="#1e2d42"></rect>
+    <rect x="34" y="58" width="32" height="10" rx="2" fill="#1e2d42"></rect>
+  </svg>
+</template>
+
+<script>
+// ══════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════
+var DATA = {
+  spot: 'Passe de Dumbéa',
+  date: '2026-04-26',
+  rating: 3.5,
+  hours:    ['0h','3h','6h','9h','12h','15h','18h','21h'],
+  houle:    [0.6, 0.8, 1.2, 1.5, 1.6, 1.4, 1.1, 0.9],
+  houleDir: [215, 218, 222, 220, 225, 228, 230, 228],
+  periode:  [10, 11, 12, 13, 13, 12, 11, 10],
+  vent:     [4, 5, 7, 10, 12, 13, 10, 7],
+  rafales:  [6, 7, 10, 14, 17, 16, 13, 9],
+  ventDir:  [135, 140, 145, 150, 155, 160, 155, 148],
+  maree: [
+    {h:0,v:0.45},{h:1,v:0.32},{h:2,v:0.25},{h:3,v:0.28},{h:4,v:0.42},{h:5,v:0.65},
+    {h:6,v:0.92},{h:7,v:1.18},{h:8,v:1.38},{h:9,v:1.48},{h:10,v:1.45},{h:11,v:1.28},
+    {h:12,v:1.02},{h:13,v:0.75},{h:14,v:0.52},{h:15,v:0.38},{h:16,v:0.35},{h:17,v:0.42},
+    {h:18,v:0.60},{h:19,v:0.82},{h:20,v:1.02},{h:21,v:1.18},{h:22,v:1.28},{h:23,v:1.30},{h:24,v:1.25}
+  ],
+  session: { startIndex: 2, endIndex: 6 },
+  boat: { name: 'Zodiac de Raph', places: 5, depart: '06h00', retour: '12h30', meeting: 'Port Tomo — Parking principal' }
+};
+
+var CFG = {
+  W:1080, H:1920,
+  bg:'#0B0F1A', card:'#121826',
+  accent:'#4DA3FF', ok:'#3DBA8A', warn:'#E8A057', danger:'#E05C5C',
+  purple:'#7B6CF6', text:'#E8EEF4', muted:'#7A8599',
+  border:'rgba(255,255,255,0.07)',
+  mX:60, gap:32
+};
+
+// ══════════════════════════════════════════
+// MAIN RENDER
+// ══════════════════════════════════════════
+function render(data, cfg) {
+  var cv = document.getElementById('story');
+  cv.width  = cfg.W; cv.height = cfg.H;
+  var maxW = Math.min(window.innerWidth - 48, 560);
+  var scale = maxW / cfg.W;
+  cv.style.width  = Math.round(cfg.W * scale) + 'px';
+  cv.style.height = Math.round(cfg.H * scale) + 'px';
+  var ctx = cv.getContext('2d');
+
+  // Background
+  ctx.fillStyle = cfg.bg;
+  ctx.fillRect(0, 0, cfg.W, cfg.H);
+  var gn = ctx.createRadialGradient(cfg.W*.5, 0, 0, cfg.W*.5, cfg.H*.4, cfg.H*.8);
+  gn.addColorStop(0,'rgba(77,163,255,0.05)'); gn.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle = gn; ctx.fillRect(0, 0, cfg.W, cfg.H);
+
+  var mX = cfg.mX, cW = cfg.W - mX*2, curY = 60;
+
+  drawHeader(ctx, data, cfg, mX, curY, cW, 310);       curY += 310 + cfg.gap;
+  drawSwellWind(ctx, data, cfg, mX, curY, cW, 580);    curY += 580 + cfg.gap;
+  drawTide(ctx, data, cfg, mX, curY, cW, 340);         curY += 340 + cfg.gap;
+  drawSessionCard(ctx, data, cfg, mX, curY, cW, 280);  curY += 280 + cfg.gap;
+  drawFooter(ctx, data, cfg, mX, curY, cW);
+}
+
+// ══════════════════════════════════════════
+// 1. HEADER — spot + date + stars + 4 stat cells
+// ══════════════════════════════════════════
+function drawHeader(ctx, data, cfg, x, y, w, h) {
+  drawCard(ctx, x, y, w, h, 20, cfg.card, cfg.border);
+  accentTopLine(ctx, x, y, w, cfg.accent, cfg.ok);
+
+  // Clip to card
+  ctx.save();
+  clipCard(ctx, x, y, w, h, 20);
+
+  var px = x+52, py = y+60;
+
+  // Brand
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  setFont(ctx, 400, 26, 'DM Sans');
+  ctx.fillText('SURF', px, py);
+  ctx.fillStyle = cfg.accent;
+  ctx.fillText(' NC', px + ctx.measureText('SURF').width, py);
+  ctx.fillStyle = cfg.muted;
+  setFont(ctx, 400, 22, 'DM Sans');
+  ctx.fillText('MÉTÉOGRAMME', px, py+34);
+
+  // Spot name — truncate if needed
+  ctx.fillStyle = cfg.text;
+  setFont(ctx, 700, 52, 'Playfair Display');
+  var spot = data.spot || '';
+  while (ctx.measureText(spot).width > w-104 && spot.length > 4) spot = spot.slice(0,-1);
+  if (spot !== data.spot) spot += '…';
+  ctx.fillText(spot, px, py+100);
+
+  // Date
+  var dt = data.date ? new Date(data.date+'T12:00:00') : null;
+  var ds = dt ? dt.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : '';
+  if (ds) ds = ds.charAt(0).toUpperCase()+ds.slice(1);
+  ctx.fillStyle = cfg.muted; setFont(ctx, 500, 26, 'DM Sans');
+  ctx.fillText(ds, px, py+144);
+
+  // Stars
+  var rating = data.rating||0, ssz=30, sx=px, sy=py+188;
+  for (var i=0;i<5;i++) {
+    ctx.fillStyle = i < Math.round(rating) ? '#E8A057' : 'rgba(255,255,255,0.15)';
+    setFont(ctx, 400, ssz, 'sans-serif');
+    ctx.fillText(i<Math.round(rating)?'★':'☆', sx+i*(ssz+4), sy);
+  }
+
+  // ── 4 STAT CELLS ──
+  var cellH = 84, cellY = y + h - cellH - 20;
+  var n = data.hours.length;
+
+  // Compute stats
+  var maxHs    = n ? Math.max.apply(null, data.houle) : 0;
+  var avgPer   = n ? Math.round(data.periode.reduce(function(a,b){return a+b;},0)/n) : 0;
+  var avgSwDir = n ? Math.round(data.houleDir.reduce(function(a,b){return a+b;},0)/n) : 0;
+  var avgWind  = n ? Math.round(data.vent.reduce(function(a,b){return a+b;},0)/n) : 0;
+  var avgWDir  = n ? Math.round(data.ventDir.reduce(function(a,b){return a+b;},0)/n) : 0;
+
+  var cells = [
+    { icon: 'wave',  color: cfg.accent, label: 'HS MAX',     value: maxHs.toFixed(1)+'m' },
+    { icon: 'clock', color: cfg.ok,     label: 'PÉRIODE',    value: avgPer+'s'            },
+    { icon: 'arrow', color: '#a99ff8',  label: 'DIR. HOULE', value: degToCard(avgSwDir), angle: avgSwDir },
+    { icon: 'wind',  color: cfg.warn,   label: 'VENT MOY.',  value: avgWind+'kt '+degToCard(avgWDir), angle: avgWDir }
+  ];
+
+  var colW = (w - 80) / 4;
+  cells.forEach(function(cell, ci) {
+    var cx2 = x + 40 + ci * colW;
+    // Solid dark base first so underlying text never bleeds through
+    ctx.fillStyle = '#0c1522';
+    roundRectFill(ctx, cx2, cellY, colW-10, cellH, 12);
+    // Colored tint + border
+    drawCard(ctx, cx2, cellY, colW-10, cellH, 12, hexA(cell.color, 0.14), hexA(cell.color, 0.28));
+
+    // Icon
+    var iconCx = cx2 + 28, iconCy = cellY + 26;
+    drawStatIcon(ctx, cell.icon, iconCx, iconCy, cell.color, cell.angle);
+
+    // Label
+    ctx.fillStyle = cfg.muted; setFont(ctx, 500, 16, 'DM Sans');
+    ctx.textAlign = 'left';
+    ctx.fillText(cell.label, cx2+12, cellY+50);
+
+    // Value — truncate to fit
+    ctx.fillStyle = cfg.text; setFont(ctx, 700, 22, 'DM Sans');
+    var val = cell.value;
+    while (ctx.measureText(val).width > colW-22 && val.length > 2) val = val.slice(0,-1);
+    if (val !== cell.value) val += '…';
+    ctx.fillText(val, cx2+12, cellY+72);
+    ctx.textAlign = 'left';
+  });
+
+  ctx.restore();
+}
+
+// Draw a small thematic icon
+function drawStatIcon(ctx, type, cx, cy, color, angle) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 2; ctx.lineCap = 'round';
+  var sz = 14;
+  if (type === 'wave') {
+    // Simple wave: 2 arcs
+    ctx.beginPath();
+    ctx.moveTo(cx-sz, cy);
+    ctx.bezierCurveTo(cx-sz*0.5, cy-sz*0.5, cx-sz*0.15, cy+sz*0.4, cx, cy);
+    ctx.bezierCurveTo(cx+sz*0.15, cy-sz*0.4, cx+sz*0.5, cy+sz*0.5, cx+sz, cy);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx-sz*0.6, cy+sz*0.45);
+    ctx.bezierCurveTo(cx-sz*0.3, cy+sz*0.05, cx, cy+sz*0.8, cx+sz*0.6, cy+sz*0.45);
+    ctx.stroke();
+  } else if (type === 'clock') {
+    // Circle with hands
+    ctx.beginPath(); ctx.arc(cx, cy, sz*0.8, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy-sz*0.55); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx+sz*0.4, cy+sz*0.1); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI*2); ctx.fill();
+  } else if (type === 'arrow') {
+    // Directional arrow rotated to bearing
+    ctx.translate(cx, cy);
+    ctx.rotate((((angle||0)+180)%360) * Math.PI / 180);
+    ctx.beginPath(); ctx.moveTo(0, sz); ctx.lineTo(0, -sz); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-sz); ctx.lineTo(-sz*0.4,-sz*0.3); ctx.lineTo(sz*0.4,-sz*0.3); ctx.closePath(); ctx.fill();
+  } else if (type === 'wind') {
+    // Wind lines + arrow
+    ctx.translate(cx, cy);
+    ctx.rotate((((angle||0)+90)%360) * Math.PI / 180);
+    [-sz*0.45, 0, sz*0.45].forEach(function(oy, i) {
+      ctx.beginPath(); ctx.moveTo(-sz, oy); ctx.lineTo(sz*(i===1?1:0.6), oy); ctx.stroke();
+    });
+    ctx.beginPath(); ctx.moveTo(sz,0); ctx.lineTo(sz-sz*0.4,-sz*0.35); ctx.lineTo(sz-sz*0.4,sz*0.35); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════
+// 2. SWELL + WIND CHART — stacked bands, zero overlap
+// ══════════════════════════════════════════
+function drawSwellWind(ctx, data, cfg, x, y, w, h) {
+  drawCard(ctx, x, y, w, h, 20, cfg.card, cfg.border);
+  var n = data.hours.length;
+  if (!n) return;
+
+  var iX = x+90, iW = w-90-60;
+  var titleH   = 52;
+  var arrowT   = 54;   // wind direction arrows zone
+  var arrowB   = 54;   // swell direction arrows zone
+  var xAxisH   = 40;
+  var divGap   = 16;   // gap between wind band and hs band
+
+  // Available height for the two chart bands
+  var totalBands = h - titleH - arrowT - arrowB - xAxisH - divGap - 20;
+  var windBandH = Math.floor(totalBands * 0.38);
+  var hsBandH   = totalBands - windBandH;
+
+  var windTop  = y + titleH + arrowT;
+  var windBot  = windTop + windBandH;
+  var hsTop    = windBot + divGap;
+  var hsBot    = hsTop + hsBandH;
+  var arrowBY  = hsBot + 6;
+  var xAxisY   = arrowBY + arrowB;
+
+  // ── Title + legend ──
+  ctx.fillStyle=cfg.text; setFont(ctx,700,30,'DM Sans'); ctx.textAlign='left';
+  ctx.fillText('HOULE  &  VENT', x+40, y+40);
+  ctx.textAlign='right';
+  var legX = x+w-44;
+  [{color:cfg.accent,l:'■ Houle Hs'},{color:cfg.warn,l:'— Vent'},{color:cfg.danger,l:'● Rafales'}]
+    .forEach(function(li){
+      ctx.fillStyle=li.color; setFont(ctx,500,17,'DM Sans');
+      ctx.fillText(li.l, legX, y+40); legX -= ctx.measureText(li.l).width + 28;
+    });
+  ctx.textAlign='left';
+
+  // ── Divider line between bands ──
+  ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1;
+  ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(iX, windBot+divGap/2); ctx.lineTo(iX+iW, windBot+divGap/2); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── Scales ──
+  var maxHs    = Math.max(2.0, Math.max.apply(null,data.houle)) * 1.22;
+  var maxWind  = Math.max(20,  Math.max.apply(null,data.rafales)) * 1.2;
+  maxHs   = Math.ceil(maxHs/0.5)*0.5;
+  maxWind = Math.ceil(maxWind/5)*5;
+
+  function xP(i)   { return iX + (i+0.5)/n * iW; }
+  function yWind(v){ return windBot - (v/maxWind)*windBandH; }
+  function yHs(v)  { return hsBot   - (v/maxHs)*hsBandH; }
+  var barW = Math.floor(iW/n * 0.55);
+
+  // ── Wind band Y-axis labels ──
+  for (var g=0;g<=3;g++) {
+    var wgy = windTop + (g/3)*windBandH;
+    ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(iX,wgy); ctx.lineTo(iX+iW,wgy); ctx.stroke();
+    var wval = (maxWind*(1-g/3)).toFixed(0);
+    ctx.fillStyle=cfg.warn; setFont(ctx,400,18,'DM Sans'); ctx.textAlign='right';
+    ctx.fillText(wval+'kt', iX-8, wgy+6);
+  }
+  // Y label
+  ctx.save();
+  ctx.translate(x+22, windTop+windBandH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle=cfg.warn; setFont(ctx,500,17,'DM Sans'); ctx.textAlign='center';
+  ctx.fillText('Vent (kt)',0,0); ctx.restore();
+
+  // ── Hs band Y-axis labels ──
+  for (var g=0;g<=3;g++) {
+    var hgy = hsTop + (g/3)*hsBandH;
+    ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(iX,hgy); ctx.lineTo(iX+iW,hgy); ctx.stroke();
+    var hval = (maxHs*(1-g/3)).toFixed(1);
+    ctx.fillStyle=cfg.accent; setFont(ctx,400,18,'DM Sans'); ctx.textAlign='right';
+    ctx.fillText(hval+'m', iX-8, hgy+6);
+  }
+  ctx.save();
+  ctx.translate(x+22, hsTop+hsBandH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle=cfg.accent; setFont(ctx,500,17,'DM Sans'); ctx.textAlign='center';
+  ctx.fillText('Hs (m)',0,0); ctx.restore();
+
+  // ── SESSION highlight across both bands ──
+  var si=data.session.startIndex, ei=data.session.endIndex;
+  var ssx = xP(si)-barW/2-4, sex = xP(ei)+barW/2+4;
+  ctx.fillStyle=hexA(cfg.ok,0.07);
+  ctx.fillRect(ssx, windTop, sex-ssx, hsBot-windTop);
+
+  // ══ WIND BAND — clip and draw ══
+  ctx.save();
+  ctx.beginPath(); ctx.rect(iX, windTop, iW, windBandH); ctx.clip();
+
+  // Wind area fill
+  var wg=ctx.createLinearGradient(0,windTop,0,windBot);
+  wg.addColorStop(0,hexA(cfg.warn,0.25)); wg.addColorStop(1,hexA(cfg.warn,0.02));
+  ctx.fillStyle=wg; ctx.beginPath();
+  ctx.moveTo(xP(0),windBot);
+  smoothLine(ctx, data.vent.map(function(v,i){return{x:xP(i),y:yWind(v)};}));
+  ctx.lineTo(xP(n-1),windBot); ctx.closePath(); ctx.fill();
+
+  // Wind curve
+  ctx.strokeStyle=cfg.warn; ctx.lineWidth=3; ctx.lineJoin='round';
+  ctx.beginPath();
+  smoothLine(ctx, data.vent.map(function(v,i){return{x:xP(i),y:yWind(v)};}));
+  ctx.stroke();
+
+  // Rafale dots
+  for (var i=0;i<n;i++) {
+    var rd=yWind(data.rafales[i]);
+    ctx.fillStyle=cfg.danger;
+    ctx.beginPath(); ctx.arc(xP(i),rd,6,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=cfg.card; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(xP(i),rd,6,0,Math.PI*2); ctx.stroke();
+  }
+  ctx.restore(); // end wind clip
+
+  // Wind value labels (above wind curve, inside wind band)
+  var lastWRight=-999;
+  for (var i=0;i<n;i++) {
+    var wy = clamp(yWind(data.vent[i])-12, windTop+10, windBot-4);
+    var lbl = Math.round(data.vent[i])+'';
+    setFont(ctx,600,18,'DM Sans');
+    var lw=ctx.measureText(lbl).width, lx=xP(i)-lw/2;
+    if (lx>lastWRight+4) {
+      ctx.fillStyle=cfg.warn; ctx.textAlign='left'; ctx.fillText(lbl,lx,wy);
+      lastWRight=lx+lw;
+    }
+  }
+
+  // ══ HS BAND — clip and draw ══
+  ctx.save();
+  ctx.beginPath(); ctx.rect(iX, hsTop, iW, hsBandH); ctx.clip();
+
+  for (var i=0;i<n;i++) {
+    var bx=xP(i)-barW/2;
+    var bh=Math.max(2,(data.houle[i]/maxHs)*hsBandH), by=hsBot-bh;
+    var bg2=ctx.createLinearGradient(0,by,0,hsBot);
+    bg2.addColorStop(0,hexA(cfg.accent,0.9)); bg2.addColorStop(1,hexA(cfg.accent,0.2));
+    ctx.fillStyle=bg2; roundRectFill(ctx,bx,by,barW,bh,5);
+    // Session highlight stroke
+    if (i>=si&&i<=ei) {
+      ctx.strokeStyle=hexA(cfg.accent,0.65); ctx.lineWidth=2;
+      roundRectStroke(ctx,bx-2.5,by-2.5,barW+5,bh+2.5,6);
+    }
+  }
+  ctx.restore(); // end hs clip
+
+  // Hs value labels — ABOVE bars, clamped within hs band top
+  var lastHRight=-999;
+  for (var i=0;i<n;i++) {
+    var bh=Math.max(2,(data.houle[i]/maxHs)*hsBandH), by=hsBot-bh;
+    var lbl=data.houle[i].toFixed(1);
+    setFont(ctx,700,21,'DM Sans');
+    var lw=ctx.measureText(lbl).width, lx=xP(i)-lw/2;
+    var ly=clamp(by-8, hsTop+14, hsBot-4);
+    if (lx>lastHRight+4) {
+      ctx.fillStyle=cfg.text; ctx.textAlign='left'; ctx.fillText(lbl,lx,ly);
+      lastHRight=lx+lw;
+    }
+  }
+  ctx.textAlign='left';
+
+  // ── Wind direction arrows ABOVE wind band ──
+  var wArrowCY = y+titleH + arrowT/2 + 4;
+  ctx.fillStyle=cfg.muted; setFont(ctx,500,16,'DM Sans'); ctx.textAlign='left';
+  ctx.fillText('VENT ↑', x+40, wArrowCY+5);
+  for (var i=0;i<n;i++) {
+    drawArrow(ctx, xP(i), wArrowCY-6, data.ventDir[i], cfg.warn, 14);
+    ctx.fillStyle=cfg.muted; setFont(ctx,400,13,'DM Sans'); ctx.textAlign='center';
+    ctx.fillText(degToCard(data.ventDir[i]), xP(i), wArrowCY+16);
+  }
+
+  // ── Swell direction arrows BELOW hs band ──
+  var sArrowCY = arrowBY + arrowB/2;
+  ctx.fillStyle=cfg.muted; setFont(ctx,500,16,'DM Sans'); ctx.textAlign='left';
+  ctx.fillText('HOULE ↓', x+40, sArrowCY-2);
+  for (var i=0;i<n;i++) {
+    drawArrow(ctx, xP(i), sArrowCY-2, data.houleDir[i], cfg.accent, 14);
+    ctx.fillStyle=cfg.muted; setFont(ctx,400,13,'DM Sans'); ctx.textAlign='center';
+    ctx.fillText(degToCard(data.houleDir[i]), xP(i), sArrowCY+20);
+  }
+
+  // ── X axis ──
+  ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(iX,xAxisY); ctx.lineTo(iX+iW,xAxisY); ctx.stroke();
+  ctx.fillStyle=cfg.muted; setFont(ctx,500,19,'DM Sans'); ctx.textAlign='center';
+  for (var i=0;i<n;i++) ctx.fillText(data.hours[i], xP(i), xAxisY+26);
+  ctx.textAlign='left';
+}
+// ══════════════════════════════════════════
+// 3. TIDE CHART
+// ══════════════════════════════════════════
+function drawTide(ctx, data, cfg, x, y, w, h) {
+  drawCard(ctx, x, y, w, h, 20, cfg.card, cfg.border);
+
+  var iX=x+90, iW=w-90-50;
+  var titleH=56, xAxisH=44;
+  var chartT=y+titleH, chartH=h-titleH-xAxisH-16;
+
+  ctx.fillStyle=cfg.text; setFont(ctx,700,30,'DM Sans'); ctx.textAlign='left';
+  ctx.fillText('MARÉE', x+40, y+42);
+
+  var levels=(data.maree||[]).map(function(p){return p.v;});
+  if (!levels.length) {
+    ctx.fillStyle=cfg.muted; setFont(ctx,400,22,'DM Sans'); ctx.textAlign='center';
+    ctx.fillText('Données indisponibles', x+w/2, y+h/2);
+    return;
+  }
+  var minL=Math.min.apply(null,levels), maxL=Math.max.apply(null,levels);
+  var rng=maxL-minL, pad=rng*0.18; minL-=pad; maxL+=pad; rng=maxL-minL;
+
+  function xT(hh){ return iX+(hh/24)*iW; }
+  function yT(v){ return chartT+chartH-((v-minL)/rng)*chartH; }
+
+  // Grid
+  for (var g=0;g<=4;g++) {
+    var gy=chartT+(g/4)*chartH;
+    ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(iX,gy); ctx.lineTo(iX+iW,gy); ctx.stroke();
+    ctx.fillStyle='#5cb8e0'; setFont(ctx,400,19,'DM Sans'); ctx.textAlign='right';
+    ctx.fillText((maxL-(rng*g/4)).toFixed(2), iX-10, gy+7);
+  }
+  ctx.textAlign='left';
+
+  // Session window (behind the curve)
+  function hFromIdx(idx){return parseInt((data.hours[idx]||'0h').replace('h',''));}
+  var sx=xT(hFromIdx(data.session.startIndex)), ex=xT(hFromIdx(data.session.endIndex));
+  ctx.fillStyle=hexA(cfg.ok,0.1); ctx.fillRect(sx, chartT, ex-sx, chartH);
+  ctx.strokeStyle=hexA(cfg.ok,0.35); ctx.lineWidth=1.5;
+  ctx.setLineDash([6,4]); ctx.strokeRect(sx,chartT,ex-sx,chartH); ctx.setLineDash([]);
+  // SESSION label — above card border, centered on window
+  ctx.fillStyle=cfg.ok; setFont(ctx,700,22,'DM Sans'); ctx.textAlign='center';
+  ctx.fillText('SESSION', (sx+ex)/2, chartT-10);
+  ctx.textAlign='left';
+
+  // Clip curve + fill to chart area
+  ctx.save();
+  ctx.beginPath(); ctx.rect(iX, chartT, iW, chartH); ctx.clip();
+
+  // Area fill
+  var tg=ctx.createLinearGradient(0,chartT,0,chartT+chartH);
+  tg.addColorStop(0,'rgba(92,184,224,0.45)'); tg.addColorStop(1,'rgba(92,184,224,0.03)');
+  ctx.fillStyle=tg; ctx.beginPath();
+  ctx.moveTo(xT(data.maree[0].h), chartT+chartH);
+  bezierTide(ctx, data.maree, xT, yT);
+  ctx.lineTo(xT(data.maree[data.maree.length-1].h), chartT+chartH);
+  ctx.closePath(); ctx.fill();
+
+  // Curve
+  ctx.strokeStyle='#5cb8e0'; ctx.lineWidth=3; ctx.lineJoin='round';
+  ctx.beginPath(); bezierTide(ctx, data.maree, xT, yT); ctx.stroke();
+  ctx.restore();
+
+  // High/low markers (outside clip but checked to be within y range)
+  var prevMarker = { x: -999, isH: null };
+  for (var i=1;i<data.maree.length-1;i++) {
+    var prev=data.maree[i-1].v, curr=data.maree[i].v, next=data.maree[i+1].v;
+    var isH=curr>=prev&&curr>=next, isL=curr<=prev&&curr<=next;
+    if (!isH&&!isL) continue;
+    // Avoid same type in quick succession
+    if (prevMarker.isH===isH && xT(data.maree[i].h)-prevMarker.x < iW*0.15) continue;
+    var dx=xT(data.maree[i].h), dy=clamp(yT(curr), chartT+10, chartT+chartH-10);
+    var col=isH?cfg.ok:cfg.warn;
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(dx,dy,8,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=cfg.bg; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(dx,dy,8,0,Math.PI*2); ctx.stroke();
+    var hh2=Math.floor(data.maree[i].h), mm2=Math.round((data.maree[i].h-hh2)*60);
+    var ts=hh2+'h'+(mm2<10?'0'+mm2:mm2>0?mm2:'');
+    var lbY = isH ? Math.max(chartT+30, dy-22) : Math.min(chartT+chartH-18, dy+40);
+    ctx.fillStyle=cfg.text; setFont(ctx,700,20,'DM Sans'); ctx.textAlign='center';
+    ctx.fillText(ts, dx, lbY);
+    ctx.fillStyle=col; setFont(ctx,500,18,'DM Sans');
+    ctx.fillText(curr.toFixed(2)+'m', dx, lbY+(isH?-20:18));
+    prevMarker = { x: dx, isH: isH };
+  }
+
+  // X axis
+  var xAY=chartT+chartH+12;
+  ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(iX,xAY); ctx.lineTo(iX+iW,xAY); ctx.stroke();
+  ctx.fillStyle=cfg.muted; setFont(ctx,500,20,'DM Sans'); ctx.textAlign='center';
+  for (var hh3=0;hh3<=24;hh3+=3) ctx.fillText(hh3+'h', xT(hh3), xAY+26);
+  ctx.textAlign='left';
+}
+
+// ══════════════════════════════════════════
+// 4. SESSION CARD
+// ══════════════════════════════════════════
+function drawSessionCard(ctx, data, cfg, x, y, w, h) {
+  var cg=ctx.createLinearGradient(x,y,x+w,y+h);
+  cg.addColorStop(0,hexA(cfg.ok,0.12)); cg.addColorStop(0.5,hexA(cfg.accent,0.08)); cg.addColorStop(1,hexA(cfg.ok,0.06));
+  drawCardFill(ctx, x,y,w,h,20, cg, hexA(cfg.ok,0.3));
+
+  ctx.save(); clipCard(ctx,x,y,w,h,20);
+
+  var iSz=72, iX=x+48, iY=y+36;
+  // Icon box
+  ctx.fillStyle=hexA(cfg.ok,0.15);
+  roundRectFill(ctx, iX,iY,iSz,iSz,12);
+  setFont(ctx,400,40,'sans-serif'); ctx.textAlign='center';
+  ctx.fillText('⛵', iX+iSz/2, iY+iSz/2+13);
+
+  // Boat name
+  ctx.fillStyle=cfg.text; setFont(ctx,700,38,'Playfair Display'); ctx.textAlign='left';
+  var bname=data.boat.name||'Bateau';
+  while(ctx.measureText(bname).width>w-iSz-140 && bname.length>4) bname=bname.slice(0,-1);
+  if(bname!==data.boat.name) bname+='…';
+  ctx.fillText(bname, iX+iSz+24, iY+46);
+  ctx.fillStyle=cfg.ok; setFont(ctx,600,22,'DM Sans');
+  ctx.fillText('SESSION CONFIRMÉE', iX+iSz+24, iY+74);
+
+  // Divider
+  ctx.strokeStyle=hexA(cfg.ok,0.15); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(x+48,y+132); ctx.lineTo(x+w-48,y+132); ctx.stroke();
+
+  // Info grid 2×2
+  var items=[
+    {l:'DÉPART → RETOUR', v:data.boat.depart+' → '+data.boat.retour},
+    {l:'PLACES',          v:data.boat.places+' surfeurs'},
+    {l:'RENDEZ-VOUS',     v:data.boat.meeting||'—'},
+    {l:'CONDITIONS',      v:'★ '+(data.rating||0).toFixed(1)+'/5'},
+  ];
+  var colW=(w-96)/2;
+  [[0,1],[2,3]].forEach(function(pair,ri){
+    pair.forEach(function(idx,ci){
+      var it=items[idx], ix=x+48+ci*colW, iy=y+154+ri*66;
+      ctx.fillStyle=cfg.muted; setFont(ctx,500,17,'DM Sans'); ctx.textAlign='left';
+      ctx.fillText(it.l, ix, iy);
+      ctx.fillStyle=cfg.text; setFont(ctx,600,24,'DM Sans');
+      var v=it.v||'—';
+      while(ctx.measureText(v).width>colW-16 && v.length>3) v=v.slice(0,-1);
+      if(v!==it.v) v+='…';
+      ctx.fillText(v, ix, iy+28);
+    });
+  });
+
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════
+// 5. FOOTER
+// ══════════════════════════════════════════
+function drawFooter(ctx, data, cfg, x, y, w) {
+  ctx.fillStyle=cfg.muted; setFont(ctx,400,20,'DM Sans'); ctx.textAlign='center';
+  ctx.fillText('thibsurf.github.io/surf-journal  ·  Sources : GFS / meteo.nc', x+w/2, y+24);
+  ctx.fillStyle='rgba(255,255,255,0.1)'; setFont(ctx,400,18,'DM Sans');
+  ctx.fillText('Généré le '+new Date().toLocaleDateString('fr-FR'), x+w/2, y+50);
+  ctx.textAlign='left';
+}
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+function setFont(ctx, weight, size, family) {
+  ctx.font = weight+' '+size+'px "'+family+'",sans-serif';
+}
+function hexA(hex, a) {
+  var r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+function clamp(v,mn,mx){ return Math.max(mn,Math.min(mx,v)); }
+function degToCard(d) {
+  var dirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  return dirs[Math.round(((d%360)+360)%360/22.5)%16];
+}
+
+// Card drawing
+function drawCard(ctx, x, y, w, h, r, fill, stroke) {
+  rrPath(ctx,x,y,w,h,r); ctx.fillStyle=fill||'#121826'; ctx.fill();
+  if(stroke){ rrPath(ctx,x,y,w,h,r); ctx.strokeStyle=stroke; ctx.lineWidth=1.5; ctx.stroke(); }
+}
+function drawCardFill(ctx, x, y, w, h, r, fillStyle, stroke) {
+  rrPath(ctx,x,y,w,h,r); ctx.fillStyle=fillStyle; ctx.fill();
+  if(stroke){ rrPath(ctx,x,y,w,h,r); ctx.strokeStyle=stroke; ctx.lineWidth=1.5; ctx.stroke(); }
+}
+function clipCard(ctx, x, y, w, h, r) {
+  rrPath(ctx,x,y,w,h,r); ctx.clip();
+}
+function accentTopLine(ctx, x, y, w, c1, c2) {
+  ctx.save(); ctx.beginPath(); ctx.moveTo(x+20,y); ctx.lineTo(x+w-20,y);
+  var al=ctx.createLinearGradient(x,y,x+w,y);
+  al.addColorStop(0,'rgba(77,163,255,0)'); al.addColorStop(0.35,c1);
+  al.addColorStop(0.65,c2); al.addColorStop(1,'rgba(61,186,138,0)');
+  ctx.strokeStyle=al; ctx.lineWidth=2.5; ctx.stroke(); ctx.restore();
+}
+function rrPath(ctx,x,y,w,h,r){
+  r=r||0; ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+}
+function roundRectFill(ctx,x,y,w,h,r){ rrPath(ctx,x,y,w,h,r); ctx.fill(); }
+function roundRectStroke(ctx,x,y,w,h,r){ rrPath(ctx,x,y,w,h,r); ctx.stroke(); }
+
+function drawArrow(ctx, cx, cy, fromDeg, color, sz) {
+  var rad=((fromDeg+180)%360)*Math.PI/180;
+  var tx=cx+Math.sin(rad)*sz, ty=cy-Math.cos(rad)*sz;
+  var bx=cx-Math.sin(rad)*sz*.5, by=cy+Math.cos(rad)*sz*.5;
+  ctx.strokeStyle=color; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(tx,ty); ctx.stroke();
+  var hr=rad+Math.PI, hw=sz*.45;
+  ctx.fillStyle=color; ctx.beginPath();
+  ctx.moveTo(tx,ty);
+  ctx.lineTo(tx+Math.sin(hr+.5)*hw, ty-Math.cos(hr+.5)*hw);
+  ctx.lineTo(tx+Math.sin(hr-.5)*hw, ty-Math.cos(hr-.5)*hw);
+  ctx.closePath(); ctx.fill();
+}
+
+function smoothLine(ctx, pts) {
+  if (!pts.length) return;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (var i=1;i<pts.length-1;i++) {
+    var mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
+    ctx.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);
+  }
+  ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+}
+function bezierTide(ctx, maree, xT, yT) {
+  if (!maree.length) return;
+  ctx.moveTo(xT(maree[0].h), yT(maree[0].v));
+  for (var i=0;i<maree.length-1;i++) {
+    var x0=xT(maree[i].h), y0=yT(maree[i].v), x1=xT(maree[i+1].h), y1=yT(maree[i+1].v);
+    ctx.bezierCurveTo((x0+x1)/2,y0,(x0+x1)/2,y1,x1,y1);
+  }
+}
+
+// ══════════════════════════════════════════
+// TWEAKS
+// ══════════════════════════════════════════
+var TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "spot": "Passe de Dumbéa",
+  "date": "2026-04-26",
+  "boat": "Zodiac de Raph",
+  "rating": 3.5,
+  "sessionStart": 2,
+  "sessionEnd": 6,
+  "accent": "#4DA3FF"
+}/*EDITMODE-END*/;
+
+function applyTweaks() {
+  DATA.spot = document.getElementById('tw-spot').value || DATA.spot;
+  DATA.date = document.getElementById('tw-date').value || DATA.date;
+  DATA.boat.name = document.getElementById('tw-boat').value || DATA.boat.name;
+  DATA.rating = parseFloat(document.getElementById('tw-rating').value) || DATA.rating;
+  DATA.session.startIndex = parseInt(document.getElementById('tw-si').value);
+  DATA.session.endIndex   = parseInt(document.getElementById('tw-ei').value);
+  CFG.accent = document.getElementById('tw-accent').value;
+  render(DATA, CFG);
+  window.parent.postMessage({type:'__edit_mode_set_keys', edits:{
+    spot:DATA.spot, date:DATA.date, boat:DATA.boat.name,
+    rating:DATA.rating, sessionStart:DATA.session.startIndex,
+    sessionEnd:DATA.session.endIndex, accent:CFG.accent
+  }}, '*');
+}
+
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type==='__activate_edit_mode')   document.getElementById('tweaks-panel').style.display='block';
+  if (e.data && e.data.type==='__deactivate_edit_mode') document.getElementById('tweaks-panel').style.display='none';
+});
+window.parent.postMessage({type:'__edit_mode_available'}, '*');
+
+document.getElementById('btn-tweaks').addEventListener('click', function(){
+  var p=document.getElementById('tweaks-panel');
+  p.style.display = p.style.display==='none'?'block':'none';
+});
+document.getElementById('btn-regen').addEventListener('click', function(){ render(DATA,CFG); });
+document.getElementById('tw-apply').addEventListener('click', applyTweaks);
+document.getElementById('btn-dl').addEventListener('click', function(){
+  var cv=document.getElementById('story');
+  render(DATA,CFG);
+  cv.toBlob(function(blob){
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url; a.download='meteogramme_'+DATA.spot.replace(/[^a-z0-9]/gi,'_').toLowerCase()+'_'+DATA.date+'.png';
+    a.click(); setTimeout(function(){URL.revokeObjectURL(url);},2000);
+  },'image/png');
+});
+
+render(DATA, CFG);
+window.addEventListener('resize', function(){ render(DATA, CFG); });
+</script>
+
+
+</body></html>
