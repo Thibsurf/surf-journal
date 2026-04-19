@@ -3858,30 +3858,62 @@ window.addEventListener('message', function(e) {
   }
 });
 
-// ─── Sync initial token Supabase (utile mobile ou premier lancement) ──
-// S'execute en parallele sans bloquer le chargement
-(async function() {
-  var needSync = false;
-  var localAge = null;
+// ─── Sync initial token Supabase (critique pour mobile) ──
+// Execute synchrone AVANT le chargement forecast pour avoir le bon token
+async function _syncTokenFromSupabase() {
   try {
-    var stored = localStorage.getItem('nc-token');
-    if (!stored) needSync = true;
-  } catch(e) {}
-  // Toujours tenter la sync au demarrage pour avoir le token le plus recent
-  var remoteTok = await _loadTokenFromSupabase();
-  if (remoteTok && remoteTok !== _ncToken) {
-    console.log('[NC Token Sync] Token plus recent trouve sur Supabase');
-    _ncToken = remoteTok;
-    try { localStorage.setItem('nc-token', remoteTok); } catch(e) {}
-    // Recharger les donnees si spot actif
-    if (typeof loadForecast === 'function' && typeof currentSpot !== 'undefined') {
-      setTimeout(function() { loadForecast(currentSpot); }, 100);
+    var remoteTok = await _loadTokenFromSupabase();
+    if (remoteTok && remoteTok !== _ncToken) {
+      console.log('[NC Token Sync] Token Supabase utilise (plus recent que local)');
+      _ncToken = remoteTok;
+      try { localStorage.setItem('nc-token', remoteTok); } catch(e) {}
+      return true;
     }
+  } catch(e) { console.warn('[NC Token Sync] echec:', e && e.message); }
+  return false;
+}
+
+// Afficher un indicateur de sync pour l'utilisateur
+function _showTokenSyncStatus(msg, color) {
+  var el = document.getElementById('token-sync-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'token-sync-status';
+    el.style.cssText = 'position:fixed;top:58px;right:12px;background:var(--mid,#14283f);border:1px solid var(--border,rgba(255,255,255,.08));color:var(--text,#e8eef4);padding:6px 10px;border-radius:8px;font-size:11px;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.3);transition:opacity .3s;';
+    document.body.appendChild(el);
   }
-})();
+  if (color) el.style.color = color;
+  el.textContent = msg;
+  el.style.opacity = '1';
+}
+function _hideTokenSyncStatus(delay) {
+  setTimeout(function() {
+    var el = document.getElementById('token-sync-status');
+    if (el) { el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 300); }
+  }, delay || 2000);
+}
 
 // ─── INIT FINALE ──────────────────────────────────────────────────────────
-(function(){
+(async function(){
+  // CRITIQUE MOBILE : recuperer le token Supabase avant tout chargement forecast
+  _showTokenSyncStatus('Synchronisation token...', '#4fa3c7');
+  var synced = await _syncTokenFromSupabase();
+  if (synced) {
+    _showTokenSyncStatus('Token synchronise ✓', '#3dba8a');
+    _hideTokenSyncStatus(2000);
+  } else {
+    // Verifier si on a deja un token valide (non-fallback)
+    var hasLocal = false;
+    try { hasLocal = !!localStorage.getItem('nc-token'); } catch(e) {}
+    if (hasLocal) {
+      _showTokenSyncStatus('Token local utilise', '#7a94aa');
+      _hideTokenSyncStatus(1500);
+    } else {
+      _showTokenSyncStatus('⚠ Pas de token meteo.nc', '#e05c5c');
+      _hideTokenSyncStatus(4000);
+    }
+  }
+
   buildSpotTabs();
   // Restaurer le dernier spot actif
   try {

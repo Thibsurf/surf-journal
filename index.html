@@ -505,7 +505,10 @@ const APP_NAME = 'Coups de surf NC';
     <div class="page-header">
       <div class="page-title">Sessions du groupe</div>
       <div class="page-sub">Toutes les sorties partagées entre surfers</div>
-      <button onclick="showAliasTool()" style="background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.25);color:var(--accent);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;margin-bottom:12px;">🔗 Alias &amp; Co-navigateurs</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <button onclick="showAliasTool()" style="background:linear-gradient(135deg,rgba(79,163,199,.18),rgba(61,186,138,.12));border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">🔗 Alias &amp; Co-navigateurs</button>
+        <span style="font-size:11px;color:var(--text-faint);font-style:italic;">Relie les surfeurs mentionnés avec des noms différents de leur pseudo</span>
+      </div>
     </div>
     <div id="group-list">
       <div class="loading-state"><div class="spinner"></div> Chargement…</div>
@@ -1017,6 +1020,21 @@ let statsMode = 'me';
 try {
   if (SUPABASE_URL !== 'VOTRE_URL_SUPABASE_ICI') {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // "Se souvenir de moi" : si flag présent dans sessionStorage, déconnecter à la fermeture de l'onglet
+  window.addEventListener('beforeunload', function() {
+    try {
+      if (sessionStorage.getItem('surf-no-persist') === '1') {
+        // Nettoyer la session Supabase du localStorage à la fermeture
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf('sb-') === 0 && k.indexOf('-auth-token') > 0) keys.push(k);
+        }
+        keys.forEach(function(k) { localStorage.removeItem(k); });
+      }
+    } catch(e) {}
+  });
   }
 } catch(e) { console.error("❌ Supabase init error:", e); }
 
@@ -1039,9 +1057,18 @@ async function doLogin() {
   console.log("📧 Tentative login pour:", email);
   const btn = document.getElementById('btn-login');
   btn.textContent = '…'; btn.disabled = true;
+  // Gérer "Se souvenir de moi"
+  const remember = document.getElementById('auth-remember')?.checked !== false;
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
     console.log("✅ Réponse Supabase:", { data, error });
+    // Si pas de remember: stocker un flag pour déconnecter à la fermeture
+    if (!error && !remember) {
+      sessionStorage.setItem('surf-no-persist', '1');
+      console.log("🔓 Mode session (déconnexion à la fermeture)");
+    } else {
+      sessionStorage.removeItem('surf-no-persist');
+    }
     if (error) {
       showToast(error.message, 'error');
       console.error("❌ Erreur login:", error);
