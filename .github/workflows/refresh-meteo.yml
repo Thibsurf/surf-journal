@@ -38,3 +38,13 @@ jobs:
         with:
           name: debug
           path: bot/debug.png
+
+      - name: Show logs clearly
+        run: echo "Running bot in debug mode..."
+
+      - name: Upload debug screenshot
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: debug
+          path: bot/debug.png
