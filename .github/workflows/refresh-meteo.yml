@@ -1,11 +1,8 @@
 name: Refresh meteo.nc token
 
-env:
-  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */6 * * *" # toutes les 6h
   workflow_dispatch:
 
 jobs:
@@ -13,18 +10,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install bot deps
+      - name: Install dependencies
         working-directory: ./bot
         run: npm install
+
+      - name: Install Playwright browsers
+        working-directory: ./bot
+        run: npx playwright install --with-deps
 
       - name: Run bot
         working-directory: ./bot
         run: node refresh.js
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
+      - name: Upload debug screenshot (if fail)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: debug
+          path: bot/debug.png
