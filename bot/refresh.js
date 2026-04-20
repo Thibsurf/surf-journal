@@ -19,63 +19,85 @@ async function pushToSupabase(token) {
     })
   });
 
-  console.log("📡 Supabase status:", res.status);
-  const text = await res.text();
-  console.log("📡 Supabase response:", text);
+  console.log("📡 Supabase:", res.status);
 }
 
 async function run() {
-  console.log("🚀 START BOT");
-
-  if (!SUPABASE_KEY) {
-    throw new Error("MISSING_SUPABASE_KEY");
-  }
+  console.log("🚀 BOT START");
 
   const browser = await chromium.launch({
-    headless: true,
-    slowMo: 200
+    headless: true
   });
 
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
 
-  page.on("console", msg => console.log("🌐 PAGE:", msg.text()));
+  let token = null;
 
-  console.log("🌍 Opening meteo.nc...");
+  // 🧠 CAPTURE GLOBAL (LE PLUS IMPORTANT)
+  page.on("response", async (res) => {
+    try {
+      const url = res.url();
+
+      // si API renvoie token dans headers ou JSON
+      if (url.includes("rpcache.meteo.nc")) {
+        const text = await res.text().catch(() => null);
+
+        if (text && text.includes("token")) {
+          console.log("📡 API RESPONSE DETECTED");
+        }
+      }
+    } catch {}
+  });
+
+  console.log("🌍 Loading meteo.nc");
 
   await page.goto("https://meteo.nc", {
-    waitUntil: "domcontentloaded",
-    timeout: 60000
+    waitUntil: "domcontentloaded"
   });
 
-  console.log("⏳ Waiting extra hydration time...");
+  // 🧠 STEP 1 — laisser JS s'exécuter
+  await page.waitForTimeout(15000);
 
-  // ⚠️ plus long = plus fiable
-  await page.waitForTimeout(20000);
+  // 🧠 STEP 2 — tentative localStorage
+  token = await page.evaluate(() => localStorage.getItem("nc-token"));
 
-  console.log("🔍 Checking localStorage...");
+  console.log("🔑 localStorage token:", token);
 
-  const token = await page.evaluate(() => {
-    return localStorage.getItem("nc-token");
-  });
-
-  console.log("🔑 TOKEN:", token);
-
+  // 🧠 STEP 3 — fallback cookies
   if (!token) {
+    const cookies = await context.cookies();
+    const sessionCookie = cookies.find(c => c.name.includes("session") || c.name.includes("auth"));
+
+    console.log("🍪 cookies:", cookies.map(c => c.name));
+
+    if (sessionCookie) {
+      token = sessionCookie.value;
+    }
+  }
+
+  // 🧠 STEP 4 — retry intelligent
+  if (!token) {
+    console.log("⏳ retry waiting...");
+    await page.waitForTimeout(10000);
+
+    token = await page.evaluate(() => localStorage.getItem("nc-token"));
+  }
+
+  // 🧠 FINAL CHECK
+  if (!token || token.length < 20) {
     await page.screenshot({ path: "debug.png", fullPage: true });
     throw new Error("TOKEN_NOT_FOUND");
   }
 
-  console.log("📤 Sending to Supabase...");
-  await pushToSupabase(token);
+  console.log("✅ TOKEN OK:", token.slice(0, 30));
 
-  console.log("✅ DONE");
+  await pushToSupabase(token);
 
   await browser.close();
 }
 
-run().catch(async (e) => {
-  console.error("❌ FATAL ERROR");
-  console.error(e?.stack || e);
-
+run().catch((e) => {
+  console.error("❌ FATAL:", e);
   process.exit(1);
 });
