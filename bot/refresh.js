@@ -4,7 +4,7 @@ const SUPABASE_URL = "https://tiiptlozingmgzcnexpu.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 async function pushToSupabase(token) {
-  await fetch(`${SUPABASE_URL}/rest/v1/shared_tokens`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/shared_tokens`, {
     method: "POST",
     headers: {
       apikey: SUPABASE_KEY,
@@ -18,32 +18,49 @@ async function pushToSupabase(token) {
       updated_at: new Date().toISOString()
     })
   });
+
+  console.log("📡 Supabase status:", res.status);
+  const text = await res.text();
+  console.log("📡 Supabase response:", text);
 }
 
 async function run() {
+  console.log("🚀 START BOT");
+
+  if (!SUPABASE_KEY) {
+    throw new Error("MISSING_SUPABASE_KEY");
+  }
+
   const browser = await chromium.launch({
-    headless: true
+    headless: true,
+    slowMo: 200
   });
 
   const page = await browser.newPage();
 
-  console.log("🌐 Opening meteo.nc...");
+  page.on("console", msg => console.log("🌐 PAGE:", msg.text()));
+
+  console.log("🌍 Opening meteo.nc...");
 
   await page.goto("https://meteo.nc", {
-    waitUntil: "networkidle"
+    waitUntil: "domcontentloaded",
+    timeout: 60000
   });
 
-  console.log("⏳ Waiting for token injection...");
+  console.log("⏳ Waiting extra hydration time...");
 
-  await page.waitForTimeout(10000);
+  // ⚠️ plus long = plus fiable
+  await page.waitForTimeout(20000);
+
+  console.log("🔍 Checking localStorage...");
 
   const token = await page.evaluate(() => {
     return localStorage.getItem("nc-token");
   });
 
-  console.log("🔑 Token found:", token?.slice(0, 30));
+  console.log("🔑 TOKEN:", token);
 
-  if (!token || token.length < 20) {
+  if (!token) {
     await page.screenshot({ path: "debug.png", fullPage: true });
     throw new Error("TOKEN_NOT_FOUND");
   }
@@ -51,13 +68,14 @@ async function run() {
   console.log("📤 Sending to Supabase...");
   await pushToSupabase(token);
 
-  console.log("✅ Done");
+  console.log("✅ DONE");
 
   await browser.close();
 }
 
 run().catch(async (e) => {
   console.error("❌ FATAL ERROR");
-  console.error(e);
+  console.error(e?.stack || e);
+
   process.exit(1);
 });
