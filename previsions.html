@@ -967,9 +967,9 @@ function ncFetch(url) {
 }
 
 // ─── Token meteo.nc ────────────────────────────────────────────────────────
-// Le token JWT est généré côté client par Drupal (drupalSettings injecté par JS).
+// Token géré automatiquement par l’extension Chrome meteo.nc Token v3.2.
 // Il ne peut pas être récupéré via proxy CORS car le HTML statique ne le contient pas.
-// Solution: bookmarklet à utiliser sur meteo.nc directement.
+// Fallback manuel uniquement si l’extension est désactivée.
 
 function showNcTokenPrompt() {
   var existing = document.getElementById('nc-token-banner');
@@ -991,8 +991,8 @@ function showNcTokenPrompt() {
     +'<div style="background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.3);border-radius:10px;padding:12px;margin-bottom:10px;">'
     +'<div style="font-size:11px;font-weight:700;color:#3dba8a;margin-bottom:8px;">⚡ Extension Chrome — zéro action</div>'
     +'<div style="font-size:10px;color:var(--muted);line-height:1.8;">'
-    +'L’extension <b style="color:var(--text);">meteo.nc Token v3.0</b> capture et <b style="color:var(--text);">synchronise automatiquement</b> le token avec cette app. '
-    +'Aucun copier-coller. Installe-la une fois et oublie.'
+    +'L’extension <b style="color:var(--text);">meteo.nc Token v3.2</b> synchronise automatiquement le token avec cette app. '
+    +'Aucune action nécessaire. Le token est mis à jour en arrière-plan.'
     +'</div>'
     +'<div style="display:flex;gap:6px;margin-top:10px;">'
     +'<a href="https://github.com/Thibsurf/surf-journal/raw/main/nc-token-extension.zip" download '
@@ -1005,7 +1005,7 @@ function showNcTokenPrompt() {
 
     // ── Saisie manuelle ──
     // ── Saisie manuelle ──
-    +'<div style="font-size:10px;color:var(--muted);margin-bottom:5px;">✏ Colle le token (depuis l&#39;extension ou DevTools) :</div>'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:5px;">✏ Mode manuel (fallback si l’extension est désactivée) :</div>'
     +'<input id="tkn-manual" type="text" placeholder="eyJ0eXAiOiJKV1Qi…" value="'
     + (_ncToken ? _ncToken.substring(0,30)+'…' : '') + '" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;padding:7px 8px;'
@@ -1025,7 +1025,18 @@ function showNcTokenPrompt() {
   };
 }
 // ────────────────────────────────────────────────────────────────────────────
+// 🔁 Sync automatique depuis extension
+window.addEventListener('nc-token-updated', (e) => {
+  setNcToken(e.detail);
+  showToast('Token synchronisé automatiquement');
+});
 
+// 💾 fallback si extension déjà injectée
+const extToken = localStorage.getItem('nc-token');
+if (extToken) {
+  setNcToken(extToken);
+}
+  
 // Stockage global des données courantes pour le hover
 var _fcastData = {};
 var _ncFcastData = null; // données meteo.nc séparées (pour le toggle)
