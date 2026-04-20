@@ -1,39 +1,46 @@
-name: Refresh meteo.nc token (stable)
+import fetch from "node-fetch";
 
-on:
-  schedule:
-    - cron: "0 */6 * * *"
-  workflow_dispatch:
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
-jobs:
-  bot:
-    runs-on: ubuntu-latest
+const RPC_URL = "https://rpcache.meteo.nc/internet2018client/2.0/forecast?lat=-22&lon=166";
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+async function run() {
+  console.log("[BOT] clean start");
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+  // 1. récupérer dernier token stocké (fallback simple)
+  const res = await fetch("https://tiiptlozingmgzcttgxbs.supabase.co/rest/v1/shared_tokens?id=eq.meteo-nc", {
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`
+    }
+  });
 
-      - name: Install dependencies
-        working-directory: ./bot
-        run: npm install
+  const data = await res.json();
+  const token = data?.[0]?.token;
 
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
+  if (!token) {
+    throw new Error("No token in Supabase");
+  }
 
-      - name: Run bot
-        working-directory: ./bot
-        run: node refresh.js
-        env:
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+  // 2. test API direct (SANS navigateur)
+  const test = await fetch(RPC_URL, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      origin: "https://meteo.nc"
+    }
+  });
 
-      - name: Upload debug (fail only)
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: debug
-          path: bot/debug.png
+  console.log("[BOT] status:", test.status);
+
+  if (test.status === 200) {
+    console.log("[BOT] token OK");
+  } else {
+    console.log("[BOT] token expired or invalid");
+  }
+}
+
+run().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
