@@ -9,6 +9,10 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
 
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -24,5 +28,5 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Run refresh bot
+      - name: Run bot
         run: node bot/refresh.js
