@@ -1,5 +1,8 @@
 name: Refresh meteo.nc token
 
+env:
+  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
 on:
   schedule:
     - cron: "0 */6 * * *"
