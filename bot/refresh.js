@@ -12,10 +12,11 @@ async function run() {
   const page = await browser.newPage();
 
   await page.goto("https://meteo.nc", {
-    waitUntil: "networkidle"
+    waitUntil: "domcontentloaded"
   });
 
-  await page.waitForTimeout(5000);
+  // 🔥 important : laisser le JS finir
+  await page.waitForTimeout(8000);
 
   const token = await page.evaluate(() =>
     localStorage.getItem("nc-token")
@@ -24,9 +25,7 @@ async function run() {
   console.log("[TOKEN]", token);
 
   if (!token) {
-    console.log("[ERROR] no token");
-    await browser.close();
-    process.exit(1);
+    throw new Error("TOKEN_NOT_FOUND");
   }
 
   const res = await fetch(SUPABASE_URL, {
@@ -49,4 +48,7 @@ async function run() {
   await browser.close();
 }
 
-run();
+run().catch((e) => {
+  console.error("[FATAL]", e);
+  process.exit(1);
+});
