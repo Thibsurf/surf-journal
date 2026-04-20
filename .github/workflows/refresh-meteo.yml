@@ -19,14 +19,19 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        working-directory: ./bot
-        run: npm install
+        run: cd bot && npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
       - name: Run bot
-        working-directory: ./bot
-        run: node refresh.js
+        run: node bot/refresh.js
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
+      - name: Upload debug screenshot (on failure)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: debug
+          path: bot/debug.png
