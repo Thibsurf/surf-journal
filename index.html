@@ -723,6 +723,7 @@ const APP_NAME = 'Coups de surf NC';
               <span id="autofill-hint" style="font-size:10px;color:var(--text-muted);"></span>
             </div>
             <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
+            <div id="autofill-station-info" style="font-size:10px;color:var(--accent);margin-top:3px;opacity:0.7;display:flex;align-items:center;gap:4px;"></div>
           </div>
           <div class="form-group" style="margin-bottom:10px;">
             <label class="form-label">Période (s)</label>
@@ -782,11 +783,28 @@ const APP_NAME = 'Coups de surf NC';
           </div>
           <div id="tide-chart-wrap" style="position:relative;height:120px;background:#0a1628;border-radius:6px;padding:4px;margin-bottom:8px;cursor:crosshair;user-select:none;">
             <canvas id="tide-canvas" width="600" height="112" style="width:100%;height:100%;"></canvas>
-            <div id="tide-hint" style="position:absolute;top:4px;right:6px;font-size:9px;color:rgba(255,255,255,.4);pointer-events:none;">Clique et glisse pour sélectionner une plage</div>
+            <div id="tide-hint" style="position:absolute;top:4px;right:6px;font-size:9px;color:rgba(255,255,255,.4);pointer-events:none;">Clique &amp; glisse · ou entre les heures ci-dessous</div>
           </div>
           <div id="tide-plages" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
-          <button type="button" id="tide-add-range" onclick="addTideRange()" style="background:rgba(79,163,199,0.15);border:1px solid rgba(79,163,199,0.3);color:var(--accent);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;margin-right:6px;">+ Ajouter une plage</button>
+          <!-- Éditeur d heure précise par plage -->
+          <div id="tide-time-editor" style="display:none;background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.2);border-radius:6px;padding:8px;margin-bottom:8px;">
+            <div style="font-size:10px;color:var(--accent);font-weight:500;margin-bottom:6px;">⏱ Heure exacte de la plage sélectionnée</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <label style="font-size:10px;color:var(--text-muted);">Début</label>
+              <input type="time" id="tide-edit-start" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 6px;width:90px;" oninput="applyTideTimeEdit()">
+              <label style="font-size:10px;color:var(--text-muted);">Fin</label>
+              <input type="time" id="tide-edit-end" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 6px;width:90px;" oninput="applyTideTimeEdit()">
+              <span id="tide-edit-idx" style="display:none;"></span>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+          <button type="button" id="tide-add-range" onclick="addTideRange()" style="background:rgba(79,163,199,0.15);border:1px solid rgba(79,163,199,0.3);color:var(--accent);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">+ Ajouter plage</button>
           <button type="button" id="tide-reset" onclick="resetTideRanges()" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">Effacer</button>
+          </div>
+          <div id="tide-time-editor" style="display:none;margin-top:8px;background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.2);border-radius:6px;padding:8px;">
+            <div style="font-size:10px;color:var(--accent);margin-bottom:6px;font-weight:500;">⏱ Affiner l'heure exacte</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" id="tide-time-inputs"></div>
+          </div>
           <div id="tide-summary" style="font-size:10px;color:var(--text-muted);margin-top:8px;line-height:1.5;"></div>
           <a id="shom-link" href="#" target="_blank" rel="noopener" style="display:block;margin-top:6px;font-size:10px;color:var(--text-faint);text-align:center;text-decoration:none;">↗ Voir sur SHOM (vérification)</a>
         </div>
@@ -1373,63 +1391,152 @@ function openAddSession() {
   }
 }
 
+// ── Mapping spot → station Meteo.nc la plus proche ──────────────────────
+var _SPOT_STATIONS = {
+  'Grand bac':            { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 },
+  'Petit U':              { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 },
+  'Gros nem':             { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 },
+  'Fausse passe Dumbéa':  { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 },
+  'Gauche de Dumbéa':     { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 },
+  'Droite de Dumbéa':     { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 },
+  'La roche percée':      { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 },
+  'Ouano':                { name:'Port Ouenghi',     lat:-21.773, lon:165.839 },
+  'Skatepark':            { name:'Nouméa',           lat:-22.280, lon:166.450 },
+  'Trois cailloux':       { name:'Nouméa',           lat:-22.280, lon:166.450 },
+};
+var _DEFAULT_STATION = { name:'Passe de Dumbéa', lat:-22.215, lon:166.285 };
+
+// Convertit degrés → cardinal FR (16 points)
+function _degToCardinal(deg) {
+  if (deg === null || deg === undefined) return null;
+  var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  return dirs[Math.round(((+deg % 360) + 360) % 360 / 22.5) % 16];
+}
+
 async function _autoFillConditions() {
-  // Indiquer que le chargement est en cours
   var hint = document.getElementById('autofill-hint');
   if (hint) { hint.textContent = '⏳ Récupération des conditions…'; hint.style.color = 'var(--text-muted)'; }
-  try {
-    // Utiliser Open-Meteo marine (pas besoin de token)
-    // Coordonnées Nouméa par défaut (proche de la plupart des spots)
-    var lat = -22.27, lon = 166.43;
-    // Essayer de lire le spot sélectionné pour ajuster les coords
-    var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
-    
-    var [marine, wind] = await Promise.all([
-      fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lon
-        +'&current=wave_height,swell_wave_height,swell_wave_period,swell_wave_direction&timezone=Pacific%2FNoumea')
-        .then(function(r){return r.json();}),
-      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon
-        +'&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Pacific%2FNoumea')
-        .then(function(r){return r.json();})
-    ]);
 
-    var cur = marine.current || {};
-    var wcur = wind.current || {};
+  var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
+  var station = _SPOT_STATIONS[spotVal] || _DEFAULT_STATION;
+  var lat = station.lat, lon = station.lon;
 
-    // Remplir seulement les champs vides
-    var hsEl = document.getElementById('f-hs');
-    if (hsEl && !hsEl.value && cur.swell_wave_height != null)
-      hsEl.value = cur.swell_wave_height.toFixed(1);
+  // Afficher la station de référence
+  var stInfoEl = document.getElementById('autofill-station-info');
+  if (stInfoEl) stInfoEl.textContent = 'Station : ' + station.name;
 
-    var perEl = document.getElementById('f-period');
-    if (perEl && !perEl.value && cur.swell_wave_period != null)
-      perEl.value = Math.round(cur.swell_wave_period);
+  var _ncToken = null;
+  try { _ncToken = localStorage.getItem('nc-token'); } catch(e) {}
 
-    var wdEl = document.getElementById('f-wind');
-    if (wdEl && !wdEl.value && wcur.wind_speed_10m != null)
-      wdEl.value = Math.round(wcur.wind_speed_10m);
+  var ncData = null, omData = null;
 
-    // Directions: utiliser setDirFields si disponible
-    if (typeof setDirFields === 'function') {
-      if (cur.swell_wave_direction != null) {
-        setDirFields('f-swell-dir','f-swell-dir-card','f-swell-dir-deg', Math.round(cur.swell_wave_direction)+'');
+  // ── Priorité 1 : Meteo.nc ─────────────────────────────────────────────
+  if (_ncToken) {
+    try {
+      var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'
+        + '?lat=' + lat + '&lon=' + lon + '&range=24&output=json';
+      var ncRes = await fetch(ncUrl, {
+        headers: { 'Authorization': 'Bearer ' + _ncToken },
+        credentials: 'omit'
+      });
+      if (ncRes.ok) {
+        var ncJson = await ncRes.json();
+        var rows = ncJson && ncJson.properties && ncJson.properties.marine;
+        if (rows && rows.length > 0) {
+          var now = Date.now();
+          var best = rows.reduce(function(b, r) {
+            return Math.abs(new Date(r.time).getTime() - now) < Math.abs(new Date(b.time).getTime() - now) ? r : b;
+          }, rows[0]);
+          ncData = {
+            hs:       best.primary_swell_height  != null ? best.primary_swell_height  : best.wave_height,
+            period:   best.primary_swell_period  != null ? best.primary_swell_period  : null,
+            swellDir: best.primary_swell_direction != null ? best.primary_swell_direction : null,
+            windKt:   best.wind_speed_kt         != null ? best.wind_speed_kt          : null,
+            windDir:  best.wind_direction        != null ? best.wind_direction         : null,
+          };
+        }
       }
-      if (wcur.wind_direction_10m != null) {
-        setDirFields('f-wind-dir','f-wind-dir-card','f-wind-dir-deg', Math.round(wcur.wind_direction_10m)+'');
-      }
-    }
+    } catch(e) { console.warn('[autofill] NC error:', e); }
+  }
 
-    if (hint) {
-      var parts = [];
-      if (cur.swell_wave_height) parts.push('Hs '+cur.swell_wave_height.toFixed(1)+'m');
-      if (cur.swell_wave_period) parts.push(Math.round(cur.swell_wave_period)+'s');
-      if (wcur.wind_speed_10m) parts.push('Vent '+Math.round(wcur.wind_speed_10m)+'kt');
-      hint.textContent = parts.length ? '✅ Conditions GFS · ' + parts.join(' · ') : '⚠ Pas de données';
-      hint.style.color = parts.length ? 'var(--success)' : 'var(--accent-warm)';
+  // ── Fallback : GFS Open-Meteo ────────────────────────────────────────
+  if (!ncData) {
+    try {
+      var responses = await Promise.all([
+        fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lon
+          +'&current=wave_height,swell_wave_height,swell_wave_period,swell_wave_direction&timezone=Pacific%2FNoumea')
+          .then(function(r){return r.json();}),
+        fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon
+          +'&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Pacific%2FNoumea')
+          .then(function(r){return r.json();})
+      ]);
+      var cur = responses[0].current || {}, wcur = responses[1].current || {};
+      if (cur.swell_wave_height != null || wcur.wind_speed_10m != null) {
+        omData = {
+          hs:       cur.swell_wave_height,
+          period:   cur.swell_wave_period,
+          swellDir: cur.swell_wave_direction,
+          windKt:   wcur.wind_speed_10m,
+          windDir:  wcur.wind_direction_10m,
+        };
+      }
+    } catch(e) { console.warn('[autofill] GFS error:', e); }
+  }
+
+  var data = ncData || omData;
+  var isNC = !!ncData;
+  var sourceLabel = isNC ? ('✅ meteo.nc · ' + station.name) : (omData ? '⚠️ GFS fallback' : null);
+
+  if (!data) {
+    if (hint) { hint.textContent = '⚠ Données indisponibles'; hint.style.color = 'var(--accent-warm)'; }
+    return;
+  }
+
+  // ── Remplissage des champs (ne remplace pas une valeur déjà saisie) ──
+  var hsEl = document.getElementById('f-hs');
+  if (hsEl && !hsEl.value && data.hs != null) hsEl.value = (+data.hs).toFixed(1);
+
+  var perEl = document.getElementById('f-period');
+  if (perEl && !perEl.value && data.period != null) perEl.value = Math.round(data.period);
+
+  var wdEl = document.getElementById('f-wind');
+  if (wdEl && !wdEl.value && data.windKt != null) wdEl.value = Math.round(data.windKt);
+
+  // ── Directions : injecter le cardinal textuel directement ────────────
+  // (Meteo.nc renvoie wind_direction en degrés numériques, on convertit en cardinal)
+  var _cardDegMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,
+    S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
+  if (typeof setDirFields === 'function') {
+    if (data.swellDir != null) {
+      var swCard = _degToCardinal(data.swellDir);
+      var swDeg  = Math.round(data.swellDir);
+      setDirFields('f-swell-dir','f-swell-dir-card','f-swell-dir-deg',
+        swCard ? swCard + ' (' + swDeg + '°)' : swDeg + '°');
     }
-  } catch(e) {
-    if (hint) { hint.textContent = '⚠ Conditions indisponibles'; hint.style.color = 'var(--accent-warm)'; }
-    console.warn('autofill:', e);
+    if (data.windDir != null) {
+      var wdRaw = data.windDir;
+      var wCard, wDeg2;
+      if (typeof wdRaw === 'string' && isNaN(+wdRaw)) {
+        // Déjà un cardinal textuel
+        wCard = wdRaw.trim();
+        wDeg2 = _cardDegMap[wCard] !== undefined ? _cardDegMap[wCard] : null;
+      } else {
+        wDeg2 = Math.round(+wdRaw);
+        wCard = _degToCardinal(wDeg2);
+      }
+      setDirFields('f-wind-dir','f-wind-dir-card','f-wind-dir-deg',
+        (wCard && wDeg2 !== null) ? wCard + ' (' + wDeg2 + '°)' : (wCard || wDeg2 + '°'));
+    }
+  }
+
+  // ── Hint de confirmation ─────────────────────────────────────────────
+  if (hint) {
+    var parts = [];
+    if (data.hs != null) parts.push('Hs ' + (+data.hs).toFixed(1) + 'm');
+    if (data.period != null) parts.push(Math.round(data.period) + 's');
+    if (data.windKt != null) parts.push('Vent ' + Math.round(data.windKt) + 'kt');
+    hint.textContent = sourceLabel + (parts.length ? ' · ' + parts.join(' · ') : '');
+    hint.style.color = isNC ? 'var(--success)' : 'var(--accent-warm)';
   }
 }
 
@@ -1605,9 +1712,39 @@ function renderTideWidget() {
     var avgL = ((tideLevel(r.start, port) + tideLevel(r.end, port)) / 2).toFixed(2);
     return '<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.3);border-radius:14px;padding:2px 6px 2px 10px;font-size:11px;color:var(--accent);">'
       + tStart + '→' + tEnd + ' <span style="opacity:.7;">(' + dur + 'h, ~' + avgL + 'm)</span>'
+      + '<button onclick="openTideTimeEditor(' + i + ')" title="Heure précise" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;padding:0 3px;opacity:.7;">✏️</button>'
       + '<button onclick="removeTideRange(' + i + ')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:14px;padding:0 4px;">×</button>'
       + '</div>';
   }).join('');
+
+  // Éditeur d'heure précise par plage
+  var timeEditor = document.getElementById('tide-time-editor');
+  var timeInputsEl = document.getElementById('tide-time-inputs');
+  if (timeEditor && timeInputsEl) {
+    if (tideRanges.length > 0) {
+      timeEditor.style.display = 'block';
+      timeInputsEl.innerHTML = tideRanges.map(function(r, i) {
+        var h1s = Math.floor(r.start), m1s = Math.round((r.start - h1s) * 60);
+        var h2s = Math.floor(r.end),   m2s = Math.round((r.end   - h2s) * 60);
+        var v1 = (h1s<10?'0':'')+h1s+':'+(m1s<10?'0':'')+m1s;
+        var v2 = (h2s<10?'0':'')+h2s+':'+(m2s<10?'0':'')+m2s;
+        return '<div style="display:flex;align-items:center;gap:4px;font-size:11px;">'
+          + '<span style="color:var(--text-muted);min-width:48px;">Plage '+(i+1)+'</span>'
+          + '<input type="time" value="'+v1+'" min="00:00" max="23:59" '
+          + 'onchange="updateTideRangeTime('+i+',0,this.value)" '
+          + 'style="background:var(--deep);border:1px solid rgba(79,163,199,0.4);border-radius:4px;'
+          + 'color:var(--accent);font-size:11px;padding:2px 4px;width:75px;">'
+          + '<span style="color:var(--faint);">→</span>'
+          + '<input type="time" value="'+v2+'" min="00:00" max="23:59" '
+          + 'onchange="updateTideRangeTime('+i+',1,this.value)" '
+          + 'style="background:var(--deep);border:1px solid rgba(79,163,199,0.4);border-radius:4px;'
+          + 'color:var(--accent);font-size:11px;padding:2px 4px;width:75px;">'
+          + '</div>';
+      }).join('<div style="width:1px;height:20px;background:var(--border);margin:0 6px;"></div>');
+    } else {
+      timeEditor.style.display = 'none';
+    }
+  }
 
   // Résumé + auto-fill des champs
   if (tideRanges.length > 0) {
@@ -1651,14 +1788,71 @@ function renderTideWidget() {
   if (shom) shom.href = 'https://maree.shom.fr/harbor/' + (portMap[port] || 'NOUMEA_NUMBO') + '/hlt/0?date=' + date;
 }
 
+// Ouvrir l'éditeur d'heure précise pour la plage i
+function openTideTimeEditor(i) {
+  var r = tideRanges[i];
+  if (!r) return;
+  var ed = document.getElementById('tide-time-editor');
+  var edIdx = document.getElementById('tide-edit-idx');
+  var edStart = document.getElementById('tide-edit-start');
+  var edEnd   = document.getElementById('tide-edit-end');
+  if (!ed) return;
+  function toTime(decH) {
+    var h = Math.floor(decH), m = Math.round((decH - h) * 60);
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  }
+  edStart.value = toTime(r.start);
+  edEnd.value   = toTime(r.end);
+  edIdx.textContent = i;
+  ed.style.display = 'block';
+  edStart.focus();
+}
+
+// Appliquer la modification de l'éditeur d'heure
+function applyTideTimeEdit() {
+  var edIdx = document.getElementById('tide-edit-idx');
+  var edStart = document.getElementById('tide-edit-start');
+  var edEnd   = document.getElementById('tide-edit-end');
+  if (!edIdx || !edStart || !edEnd) return;
+  var i = parseInt(edIdx.textContent);
+  if (isNaN(i) || !tideRanges[i]) return;
+  function fromTime(t) {
+    var parts = t.split(':');
+    return parseInt(parts[0]) + (parseInt(parts[1] || '0') / 60);
+  }
+  var s = fromTime(edStart.value), e = fromTime(edEnd.value);
+  if (!isNaN(s) && !isNaN(e) && e > s) {
+    tideRanges[i] = { start: s, end: e };
+    renderTideWidget();
+  }
+}
+
 function addTideRange() {
   tideRanges.push({ start: 8, end: 11 });
   renderTideWidget();
+  // Auto-ouvrir l'éditeur pour la nouvelle plage
+  setTimeout(function() { openTideTimeEditor(tideRanges.length - 1); }, 50);
 }
 function removeTideRange(i) {
   tideRanges.splice(i, 1);
   renderTideWidget();
 }
+function updateTideRangeTime(rangeIdx, which, timeStr) {
+  // which: 0=start, 1=end
+  if (!tideRanges[rangeIdx]) return;
+  var parts = timeStr.split(':');
+  var h = parseInt(parts[0]) || 0, m = parseInt(parts[1]) || 0;
+  var decimal = h + m / 60;
+  if (which === 0) {
+    tideRanges[rangeIdx].start = decimal;
+    if (tideRanges[rangeIdx].end <= decimal) tideRanges[rangeIdx].end = decimal + 0.5;
+  } else {
+    tideRanges[rangeIdx].end = decimal;
+    if (tideRanges[rangeIdx].start >= decimal) tideRanges[rangeIdx].start = Math.max(0, decimal - 0.5);
+  }
+  renderTideWidget();
+}
+
 function resetTideRanges() {
   tideRanges = [];
   var dEl = document.getElementById('f-duration'); if (dEl && dEl.dataset.fromTide === '1') { dEl.value = ''; delete dEl.dataset.fromTide; }
