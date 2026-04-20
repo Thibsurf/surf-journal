@@ -1,4 +1,4 @@
-name: Refresh meteo.nc token
+name: Refresh Meteo Token
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  bot:
+  refresh:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,24 +18,14 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install bot dependencies
-        run: cd bot && npm install
+      - name: Install dependencies
+        run: npm install
 
-      # 🔥 IMPORTANT: force Playwright + browser en UNE SEULE étape
-      - name: Install Playwright + browsers
-        run: |
-          cd bot
-          npm install playwright
-          npx playwright install chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
 
       - name: Run bot
         run: node bot/refresh.js
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-
-      - name: Upload debug screenshot (if failure)
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: debug
-          path: bot/debug.png
