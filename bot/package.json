@@ -1,8 +1,8 @@
 {
-  "name": "surf-journal-bot",
-  "version": "1.0.0",
+  "name": "surf-journal",
   "type": "module",
   "dependencies": {
-    "node-fetch": "^3.0.0"
+    "node-fetch": "^3.3.2",
+    "playwright": "^1.40.0"
   }
 }
