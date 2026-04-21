@@ -2,50 +2,58 @@ import fetch from "node-fetch";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY; // Clé de service pour l'admin
 
 const METEO_TEST_URL =
-  "https://rpcache.meteo.nc/internet2018client/2.0/forecast?lat=-22&lon=166";
+  "https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine?lat=-22.38056&lon=166.22314";
 
 async function run() {
-  console.log("[BOT] start");
+  console.log("[BOT] 🚀 Démarrage du rafraîchissement du token...");
 
-  // 1. récupérer token
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/shared_tokens?id=eq.meteo-nc`,
-    {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-      },
-    }
-  );
+  // 1. Récupérer le token depuis Supabase (en utilisant la clé de service)
+  const headers = {
+    apikey: SUPABASE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, // Clé de service pour l'admin
+    "Content-Type": "application/json",
+  };
 
-  const json = await res.json();
-  const token = json?.[0]?.token;
+  const { data: tokenData, error: fetchError } = await fetch(
+    `${SUPABASE_URL}/rest/v1/shared_token?select=token&app_name=eq.meteo-nc`,
+    { headers }
+  ).then((res) => res.json());
 
-  if (!token) throw new Error("No token");
+  if (fetchError || !tokenData || !tokenData[0]?.token) {
+    throw new Error("❌ Impossible de récupérer le token depuis Supabase");
+  }
 
-  // 2. test réel API
-  const test = await fetch(METEO_TEST_URL, {
-    headers: { Authorization: "Bearer " + token },
+  const token = tokenData[0].token;
+  console.log("[BOT] 🔍 Token actuel:", token.substring(0, 20) + "...");
+
+  // 2. Tester le token avec l'API Météo.nc
+  const testResponse = await fetch(METEO_TEST_URL, {
+    headers: { Authorization: `Bearer ${token}` },
   });
 
-  console.log("[BOT] status:", test.status);
+  console.log("[BOT] 📊 Statut de l'API Météo.nc:", testResponse.status);
 
-  if (test.status !== 200) {
-    console.log("[BOT] ❌ token invalide → stop");
+  if (testResponse.status !== 200) {
+    console.log("[BOT] ❌ Token invalide → génération d'un nouveau token...");
+    // TODO: Ajoutez ici la logique pour générer un nouveau token (ex. : appeler l'API Météo.nc)
+    // Exemple :
+    // const newToken = await generateNewToken();
+    // await updateTokenInSupabase(newToken);
+    console.log("[BOT] ⚠️ Génération d'un nouveau token non implémentée.");
     return;
   }
 
-  // 3. OK → update timestamp
+  // 3. Si le token est valide, mettre à jour le timestamp
   await fetch(
-    `${SUPABASE_URL}/rest/v1/shared_tokens?id=eq.meteo-nc`,
+    `${SUPABASE_URL}/rest/v1/shared_token?app_name=eq.meteo-nc`,
     {
       method: "PATCH",
       headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json",
+        ...headers,
+        Prefer: "return=minimal", // Évite de retourner le résultat
       },
       body: JSON.stringify({
         updated_at: new Date().toISOString(),
@@ -53,7 +61,36 @@ async function run() {
     }
   );
 
-  console.log("[BOT] ✅ token validé");
+  console.log("[BOT] ✅ Token validé et timestamp mis à jour !");
 }
 
-run().catch(console.error);
+// Exemple de fonction pour générer un nouveau token (à adapter selon Météo.nc)
+async function generateNewToken() {
+  // Exemple : Appeler l'API Météo.nc pour obtenir un nouveau token
+  // const response = await fetch("https://api.meteo.nc/token", { ... });
+  // return response.json().token;
+  return "NOUVEAU_TOKEN"; // Remplacez par l'appel réel
+}
+
+// Exemple de fonction pour mettre à jour le token dans Supabase
+async function updateTokenInSupabase(newToken) {
+  await fetch(
+    `${SUPABASE_URL}/rest/v1/shared_token?app_name=eq.meteo-nc`,
+    {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        token: newToken,
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+}
+
+run().catch((err) => {
+  console.error("[BOT] ❌ Erreur:", err.message);
+  process.exit(1);
+});
