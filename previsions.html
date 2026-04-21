@@ -80,6 +80,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 @keyframes sp{to{transform:rotate(360deg);}}
 .loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:2.5rem;color:var(--muted);font-size:12px;}
 
+const API = "https://d1-template.thibault-dlh.workers.dev";  
+
+  
 /* MAP */
 #spot-map{height:440px;border-radius:var(--r);border:1px solid var(--border);}
 .leaflet-popup-content-wrapper{background:var(--deep)!important;border:1px solid var(--border)!important;
@@ -1114,6 +1117,33 @@ function updateHsToggleUI() {
 // ═══════════════════════════════════════════════════════════════
 // FONCTION UNIFIÉE - CONSERVE L'ANCIENNE LOGIQUE MAIS ASYNC
 // ═══════════════════════════════════════════════════════════════
+
+const nc = {
+  marine(lat, lon) {
+    return ncFetch(`/internet2018client/2.0/forecast/marine?lat=${lat}&lon=${lon}`);
+  },
+
+  tide(id, date) {
+    return ncFetch(`/internet2018client/2.0/tide?id=${id}&date=${date}`);
+  },
+
+  forecast(lat, lon) {
+    return ncFetch(`/internet2018client/2.0/forecast?lat=${lat}&lon=${lon}&instants=morning,afternoon,evening,night`);
+  },
+
+  obs(lat, lon, id) {
+    return ncFetch(`/internet2018client/2.0/observation/history?lat=${lat}&lon=${lon}&id=${id}`);
+  }
+};
+
+async function loadForecast(i) {
+  loadScoreParams();
+  
+  const s = SPOTS[i];
+  if (!s) {
+    console.warn("Spot inconnu:", i);
+    return;
+  }
 
 async function loadForecast(i) {
   loadScoreParams();
