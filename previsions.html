@@ -80,9 +80,6 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 @keyframes sp{to{transform:rotate(360deg);}}
 .loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:2.5rem;color:var(--muted);font-size:12px;}
 
-const API = "https://d1-template.thibault-dlh.workers.dev";  
-
-  
 /* MAP */
 #spot-map{height:440px;border-radius:var(--r);border:1px solid var(--border);}
 .leaflet-popup-content-wrapper{background:var(--deep)!important;border:1px solid var(--border)!important;
@@ -610,7 +607,7 @@ const API = "https://d1-template.thibault-dlh.workers.dev";
     </div>
     <div class="card" style="padding:14px;">
       <div class="section-label" style="margin-bottom:8px;">Températures · Open-Meteo</div>
-      <div style="display:flex;gap:14px;align-items:flex-end;">
+      <div style="display:flex;gap:14px;align-items:flex-start;">
         <!-- Thermomètre eau -->
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
           <div style="font-size:8px;color:var(--muted);">🌊 Eau</div>
@@ -643,11 +640,30 @@ const API = "https://d1-template.thibault-dlh.workers.dev";
           </div>
           <div id="t-air-feel" style="font-size:9px;color:var(--faint);text-align:center;"></div>
         </div>
-        <!-- Infos complémentaires -->
-        <div style="flex:1;min-width:0;">
-          <div id="t-air-range" style="font-size:10px;color:var(--faint);margin-bottom:6px;"></div>
-          <div id="t-humidity" style="font-size:10px;color:var(--faint);margin-bottom:4px;"></div>
-          <div id="t-wind-chill" style="font-size:10px;color:var(--faint);"></div>
+        <!-- Infos complémentaires enrichies -->
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;padding-top:2px;">
+          <div id="t-air-range" style="font-size:10px;color:var(--faint);"></div>
+          <div id="t-humidity" style="font-size:10px;color:var(--faint);"></div>
+          <div id="t-dewpoint" style="font-size:10px;color:var(--faint);"></div>
+          <!-- Confort plongée SVG animé -->
+          <div id="t-dive-comfort" style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--faint);">
+            <svg id="dive-suit-svg" viewBox="0 0 20 20" style="width:14px;height:14px;flex-shrink:0;" fill="currentColor">
+              <circle cx="10" cy="4" r="3" fill="rgba(79,163,199,0.8)"/>
+              <rect x="6" y="7" width="8" height="7" rx="2" fill="rgba(79,163,199,0.7)"/>
+              <rect x="3" y="8" width="4" height="5" rx="1.5" fill="rgba(79,163,199,0.6)"/>
+              <rect x="13" y="8" width="4" height="5" rx="1.5" fill="rgba(79,163,199,0.6)"/>
+              <rect x="7" y="14" width="3" height="5" rx="1.5" fill="rgba(79,163,199,0.6)"/>
+              <rect x="10" y="14" width="3" height="5" rx="1.5" fill="rgba(79,163,199,0.6)"/>
+            </svg>
+            <span id="t-dive-lbl">—</span>
+          </div>
+          <!-- Indice chaleur / inconfort -->
+          <div id="t-heatidx" style="font-size:10px;color:var(--faint);display:flex;align-items:center;gap:4px;">
+            <span id="t-heatidx-icon" style="font-size:13px;line-height:1;"></span>
+            <span id="t-heatidx-lbl"></span>
+          </div>
+          <!-- Delta eau/air -->
+          <div id="t-delta" style="font-size:10px;color:var(--faint);"></div>
         </div>
       </div>
     </div>
@@ -664,6 +680,24 @@ const API = "https://d1-template.thibault-dlh.workers.dev";
         <div id="moon-info" style="font-size:11px;line-height:1.9;text-align:center;"></div>
         <div id="moon-date-lbl" style="font-size:10px;color:var(--faint);text-align:center;"></div>
       </div>
+      <!-- Infos marée dynamiques liées à la date -->
+      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
+        <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">🌊 Marnage du jour</div>
+        <div id="tide-marnage-wrap" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <!-- Jauge marnage SVG animée -->
+          <svg id="marnage-svg" viewBox="0 0 48 48" style="width:44px;height:44px;flex-shrink:0;">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle id="marnage-arc" cx="24" cy="24" r="20" fill="none" stroke="#4fa3c7" stroke-width="4"
+              stroke-dasharray="0 126" stroke-linecap="round" stroke-dashoffset="31.5"
+              style="transition:stroke-dasharray 1s ease,stroke .5s;"/>
+            <text id="marnage-coef" x="24" y="28" text-anchor="middle" font-size="10" font-weight="700" fill="#e8eef4" font-family="DM Sans">—</text>
+          </svg>
+          <div style="flex:1;min-width:0;">
+            <div id="marnage-info" style="font-size:10px;color:var(--faint);line-height:1.6;"></div>
+            <div id="next-tide-info" style="font-size:10px;color:var(--accent);font-weight:500;margin-top:2px;"></div>
+          </div>
+        </div>
+      </div>
       <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
         <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">🎣 Activité de pêche</div>
         <div id="fishing-score"></div>
@@ -674,7 +708,31 @@ const API = "https://d1-template.thibault-dlh.workers.dev";
     <!-- CRÉPUSCULES -->
     <div class="card" style="padding:16px;">
       <div class="section-label" style="margin-bottom:10px;">☀ Soleil &amp; Crépuscules</div>
-      <div id="twilight-list" style="font-size:12px;"></div>
+      <!-- Arc solaire du jour animé -->
+      <div style="position:relative;margin-bottom:10px;">
+        <canvas id="sun-arc-canvas" width="280" height="90" style="width:100%;max-width:280px;display:block;margin:0 auto;"></canvas>
+        <div id="sun-now-time" style="text-align:center;font-size:10px;color:var(--muted);margin-top:2px;"></div>
+      </div>
+      <!-- Heures dorée / bleue -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+        <div style="background:rgba(232,160,87,.08);border:1px solid rgba(232,160,87,.2);border-radius:8px;padding:7px 8px;">
+          <div style="font-size:9px;color:var(--warm);font-weight:600;margin-bottom:3px;">🌅 Heure dorée matin</div>
+          <div id="golden-morning" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
+        </div>
+        <div style="background:rgba(123,108,246,.08);border:1px solid rgba(123,108,246,.2);border-radius:8px;padding:7px 8px;">
+          <div style="font-size:9px;color:#a78bfa;font-weight:600;margin-bottom:3px;">🌆 Heure dorée soir</div>
+          <div id="golden-evening" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
+        </div>
+        <div style="background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.2);border-radius:8px;padding:7px 8px;">
+          <div style="font-size:9px;color:var(--accent);font-weight:600;margin-bottom:3px;">🌃 Heure bleue matin</div>
+          <div id="blue-morning" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
+        </div>
+        <div style="background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.2);border-radius:8px;padding:7px 8px;">
+          <div style="font-size:9px;color:var(--accent);font-weight:600;margin-bottom:3px;">🌉 Heure bleue soir</div>
+          <div id="blue-evening" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
+        </div>
+      </div>
+      <div id="twilight-list" style="font-size:11px;"></div>
     </div>
   </div><!-- fin grid 2 col -->
 
@@ -725,11 +783,6 @@ const API = "https://d1-template.thibault-dlh.workers.dev";
 </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!-- 3. DONNÉES -->
-<script src="./assets/spots.js"></script>
-
-<!-- 4. LOGIQUE MÉTÉO -->
-<script src="./assets/forecast.js"></script>
 <script>
 
 // SPOTS
@@ -953,97 +1006,103 @@ function setNcToken(t) {
   loadForecast(currentSpot);
 }
 
+// ─── PROMPT TOKEN METEO.NC ──────────────────────────────────────────────────
+function showNcTokenPrompt() {
+  // Toggle: si le banner existe déjà, on le supprime
+  var existing = document.getElementById('nc-token-banner');
+  if (existing) { existing.remove(); return; }
+
+  var div = document.createElement('div');
+  div.id = 'nc-token-banner';
+  div.style.cssText = 'position:fixed;top:58px;right:12px;z-index:9998;'
+    + 'background:var(--deep);border:1px solid var(--accent);border-radius:12px;padding:16px;'
+    + 'width:320px;box-shadow:0 8px 32px rgba(0,0,0,.6);font-size:12px;color:var(--text);';
+
+  var statusHtml = _ncToken
+    ? '<div style="margin-bottom:8px;font-size:11px;color:var(--ok);">🔑 Token actif ('
+      + _ncToken.length + ' car.) · '
+      + (_ncToken.substring(0, 12) + '...')
+      + '</div>'
+    : '<div style="margin-bottom:8px;font-size:11px;color:var(--warm);">⚠ Aucun token — données meteo.nc indisponibles</div>';
+
+  div.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    + '<div style="font-weight:700;color:var(--accent);font-size:13px;">🔑 Token meteo.nc</div>'
+    + '<button id="nc-tok-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;">×</button>'
+    + '</div>'
+    + statusHtml
+    + '<div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5;">'
+    + 'Récupère le token dans DevTools → Network → une requête rpcache.meteo.nc → Request Headers → Authorization (enlève "Bearer ")'
+    + '</div>'
+    + '<textarea id="nc-tok-input" rows="3" placeholder="eyJ0eX..." '
+    + 'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
+    + 'padding:6px;color:var(--text);font-size:10px;resize:vertical;box-sizing:border-box;font-family:monospace;"></textarea>'
+    + '<div style="display:flex;gap:6px;margin-top:8px;">'
+    + '<button id="nc-tok-save" style="flex:1;background:var(--accent);color:#fff;border:none;'
+    + 'border-radius:6px;padding:7px;cursor:pointer;font-weight:600;font-size:11px;">✓ Sauvegarder</button>'
+    + '<button id="nc-tok-clear" style="background:var(--glass);border:1px solid var(--border);'
+    + 'color:var(--muted);border-radius:6px;padding:7px 10px;cursor:pointer;font-size:11px;">Effacer</button>'
+    + '</div>';
+
+  document.body.appendChild(div);
+
+  document.getElementById('nc-tok-close').onclick = function() { div.remove(); };
+
+  document.getElementById('nc-tok-save').onclick = function() {
+    var val = (document.getElementById('nc-tok-input').value || '').trim();
+    // Enlever "Bearer " si l'utilisateur l'a collé
+    val = val.replace(/^Bearer\s+/i, '');
+    if (!val || val.length < 20) {
+      document.getElementById('nc-tok-input').style.borderColor = 'var(--bad)';
+      return;
+    }
+    setNcToken(val);
+    div.remove();
+  };
+
+  document.getElementById('nc-tok-clear').onclick = function() {
+    try { localStorage.removeItem('nc-token'); } catch(e) {}
+    _ncToken = null;
+    showToast('Token effacé');
+    var btn = document.getElementById('token-btn');
+    if (btn) { btn.style.color = 'var(--warm)'; btn.style.borderColor = 'var(--warm)'; btn.textContent = 'Token'; }
+    div.remove();
+  };
+}
+
 function ncFetch(url) {
+  // Confirmé: token Bearer seul suffit (HTTP 200 vérifié via test_api.html)
+  // credentials:'omit' obligatoire sinon CORS bloqué (pas d'Allow-Credentials côté serveur)
   return fetch(url, {
-    method: "GET",
-    credentials: "include" // 🔥 OBLIGATOIRE (session meteo.nc)
-  })
-  .then(r => {
-
-    if (r.status === 401 || r.status === 403) {
-      console.warn('[NC] Session expirée (' + r.status + ')');
-
-      if (!document.getElementById('nc-token-banner')) {
-        showNcTokenPrompt();
-      }
-
-      const tb = document.getElementById('token-btn');
-      if (tb) {
-        tb.style.color = 'var(--bad)';
-        tb.style.borderColor = 'var(--bad)';
-        tb.textContent = '🔑 Session expirée!';
-      }
-
-      throw new Error('NC_SESSION_EXPIRED');
+    headers: { 'Authorization': 'Bearer ' + _ncToken },
+    credentials: 'omit'
+  }).then(function(r){
+    if(r.status === 401 || r.status === 403) {
+      console.warn('[NC] Token expiré (' + r.status + ') — ouverture panneau renouvellement');
+      if(!document.getElementById('nc-token-banner')) showNcTokenPrompt();
+        // Mettre à jour le bouton token
+        var tb=document.getElementById('token-btn');
+        if(tb){tb.style.color='var(--bad)';tb.style.borderColor='var(--bad)';
+          tb.textContent='🔑 Token expiré!';}
+      throw new Error('NC_TOKEN_EXPIRED');
     }
-
-    if (!r.ok) {
-      throw new Error('HTTP ' + r.status + ' sur ' + url);
-    }
-
+    if(!r.ok) throw new Error('HTTP ' + r.status + ' sur ' + url);
     return r.json();
   });
 }
 
 
 // ─────────────────────────────────────────────
-// 🧠 TOKEN STATE GLOBAL
+// 🔁 Sync localStorage → _ncToken toutes les 5s (extension Chrome → app)
 // ─────────────────────────────────────────────
-window._ncToken = window._ncToken || localStorage.getItem('nc-token') || null;
-
-// applique un token proprement
-function setNcToken(t) {
-  if (!t || t.length < 20) return;
-
-  // anti spam
-  if (_ncToken === t) return;
-
-  _ncToken = t;
-
-  localStorage.setItem('nc-token', t);
-
-  console.log('[NC TOKEN] updated');
-
-  // déclenche UI / app
-  window.dispatchEvent(
-    new CustomEvent('nc-token-updated', { detail: t })
-  );
-}
-
-// ─────────────────────────────────────────────
-// 🔁 EVENT (extension → app)
-// ─────────────────────────────────────────────
-window.addEventListener('nc-token-updated', (e) => {
-  if (e.detail) setNcToken(e.detail);
-});
-
-// ─────────────────────────────────────────────
-// 💾 FALLBACK 1 (localStorage direct)
-// ─────────────────────────────────────────────
-const extToken = localStorage.getItem('nc-token');
-if (extToken) setNcToken(extToken);
-
-// ─────────────────────────────────────────────
-// 🔁 FALLBACK 2 (ANTI MISS EVENT)
-// ─────────────────────────────────────────────
-// vérifie toutes les 5s si extension a écrit un nouveau token
-setInterval(() => {
-  const t = localStorage.getItem('nc-token');
-  if (t && t !== _ncToken) {
-    console.log('[NC TOKEN] sync fallback detected');
-    setNcToken(t);
-  }
+setInterval(function() {
+  try {
+    var t = localStorage.getItem('nc-token');
+    if (t && t !== _ncToken) {
+      console.log('[NC TOKEN] sync localStorage détecté');
+      setNcToken(t);
+    }
+  } catch(e) {}
 }, 5000);
-
-// ─────────────────────────────────────────────
-// 🧠 FALLBACK 3 (anti page load timing issue)
-// ─────────────────────────────────────────────
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    const t = localStorage.getItem('nc-token');
-    if (t && t !== _ncToken) setNcToken(t);
-  }, 1000);
-});
   
 // Stockage global des données courantes pour le hover
 var _fcastData = {};
@@ -1060,33 +1119,7 @@ function setHsSrc(src, skipRedraw) {
 
   // Mettre à jour TOUS les graphiques
   mkStackedHs('c-hs', d.lbl, d.sw1h, d.sw2h, d.wndH, d.totH);
-
-  if(charts['c-period']){try{charts['c-period'].destroy();}catch(e){}}
-  var cvP=document.getElementById('c-period');
-  if(cvP) charts['c-period']=new Chart(cvP,{type:'line',data:{labels:d.lbl,datasets:[
-    {label:'Période H1 (s)',data:d.sw1t||[],borderColor:'#3dba8a',backgroundColor:'rgba(61,186,138,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'yT'},
-    {label:'Direction H1 (°)',data:d.sw1d||[],borderColor:'rgba(123,108,246,.8)',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:0.1,yAxisID:'yD',borderDash:[3,2]},
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top',labels:{color:'#7a94aa',font:{size:9},boxWidth:10,padding:6}}},
-    scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},
-      yT:{position:'left',min:0,max:20,ticks:{color:'#3dba8a',callback:function(v){return v+'s';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},
-      yD:{position:'right',min:0,max:360,ticks:{color:'rgba(123,108,246,.7)',callback:function(v){return v+'°';},font:{size:8},maxTicksLimit:5},grid:{drawOnChartArea:false}}}}});
-
-  if(charts['c-wind']){try{charts['c-wind'].destroy();}catch(e){}}
-  var cvW=document.getElementById('c-wind');
-  if(cvW) charts['c-wind']=new Chart(cvW,{type:'line',data:{labels:d.lbl,datasets:[
-    {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},
-    {label:'Rafales (kt)',data:d.wGst||[],borderColor:'rgba(224,92,92,.8)',backgroundColor:'transparent',borderWidth:1,pointRadius:0,tension:0.3,borderDash:[4,3]},
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#7a94aa',font:{size:9},boxWidth:10}}},
-    scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},
-      y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+'kt';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}}); 
-
-  if(charts['c-power']){try{charts['c-power'].destroy();}catch(e){}}
-  var cvPow=document.getElementById('c-power');
-  if(cvPow) charts['c-power']=new Chart(cvPow,{type:'bar',data:{labels:d.lbl,datasets:[{label:'kW/m',data:d.pwr||[],
-    backgroundColor:(d.pwr||[]).map(function(v){return !v?'rgba(60,80,100,.3)':v<1?'rgba(79,163,199,.5)':v<5?'rgba(61,186,138,.6)':v<15?'rgba(232,160,87,.7)':'rgba(123,108,246,.8)';}),
-    borderColor:'transparent',borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{color:'rgba(255,255,255,.03)'}},
-      y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+' kW/m';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}}); 
+  _buildSecondaryCharts(d);
 
   // Tableau + conditions actuelles
   renderTable(d.dates||[],d.sw1h||[],d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
@@ -1099,6 +1132,98 @@ function setHsSrc(src, skipRedraw) {
   if(badgeEl) badgeEl.innerHTML=src==='nc'&&_ncFcastData
     ?'<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 6px;border-radius:8px;">meteo.nc</span>'+(lastStr?' <span style="font-size:9px;color:var(--faint);">au '+lastStr+'</span>':'')
     :'<span style="background:rgba(79,163,199,.1);color:var(--muted);border:1px solid var(--border);padding:1px 6px;border-radius:8px;">GFS · Open-Meteo</span>'+(lastStr?' <span style="font-size:9px;color:var(--faint);">au '+lastStr+'</span>':'');
+}
+
+// ─── Construction graphiques secondaires (période, vent, puissance) ──────────
+// Centralisé ici pour que le crosshair soit toujours actif
+function _addChartHover(cv, id, n) {
+  // évite de doubler les listeners
+  if(cv._hoverBound) return;
+  cv._hoverBound = true;
+  cv.addEventListener('mousemove', function(e) {
+    var chart = charts[id]; if(!chart||!chart.chartArea) return;
+    var ca = chart.chartArea;
+    var idx = Math.round((e.offsetX - ca.left) / (ca.right - ca.left) * (n-1));
+    idx = Math.max(0, Math.min(n-1, idx));
+    _chartHoverIdx = idx;
+    updateHsHover(idx);
+    _chartHoverTooltip(id, idx);
+    ['c-period','c-wind','c-power','c-hs'].forEach(function(cid) {
+      if(charts[cid]) charts[cid].draw();
+    });
+  });
+  cv.addEventListener('mouseleave', function() {
+    _chartHoverIdx = -1;
+    var tipEl = document.getElementById(id+'-tooltip');
+    if(tipEl) tipEl.style.opacity = '0';
+    var hsEl = document.getElementById('hs-hover-table');
+    if(hsEl) hsEl.innerHTML='<span style="color:var(--faint);font-size:10px;">← Survolez pour voir les détails</span>';
+    ['c-period','c-wind','c-power','c-hs'].forEach(function(cid) {
+      if(charts[cid]) charts[cid].draw();
+    });
+  });
+}
+
+function _ensureTooltipEl(id, parentEl) {
+  if(!document.getElementById(id+'-tooltip') && parentEl) {
+    var tipEl = document.createElement('div');
+    tipEl.id = id+'-tooltip';
+    tipEl.style.cssText = 'min-height:16px;margin-top:4px;font-size:10px;color:var(--muted);transition:opacity .1s;padding:0 2px;';
+    parentEl.appendChild(tipEl);
+  }
+}
+
+function _buildSecondaryCharts(d) {
+  // ── Période + Direction H1 ──
+  if(charts['c-period']){try{charts['c-period'].destroy();}catch(e){}}
+  var cvP=document.getElementById('c-period');
+  if(cvP){
+    var crossP = makeCrosshairPlugin('c-period');
+    charts['c-period']=new Chart(cvP,{type:'line',plugins:[crossP],data:{labels:d.lbl,datasets:[
+      {label:'Période H1 (s)',data:d.sw1t||[],borderColor:'#3dba8a',backgroundColor:'rgba(61,186,138,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'yT'},
+      {label:'Direction H1 (°)',data:d.sw1d||[],borderColor:'rgba(123,108,246,.8)',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:0.1,yAxisID:'yD',borderDash:[3,2]},
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,position:'top',labels:{color:'#7a94aa',font:{size:9},boxWidth:10,padding:6}},tooltip:{enabled:false}},
+      scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},
+        yT:{position:'left',min:0,max:20,ticks:{color:'#3dba8a',callback:function(v){return v+'s';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},
+        yD:{position:'right',min:0,max:360,ticks:{color:'rgba(123,108,246,.7)',callback:function(v){return v+'°';},font:{size:8},maxTicksLimit:5},grid:{drawOnChartArea:false}}}}});
+    cvP._hoverBound = false;
+    _ensureTooltipEl('c-period', cvP.closest('.card'));
+    _addChartHover(cvP, 'c-period', d.lbl.length);
+  }
+
+  // ── Vent + Rafales ──
+  if(charts['c-wind']){try{charts['c-wind'].destroy();}catch(e){}}
+  var cvW=document.getElementById('c-wind');
+  if(cvW){
+    var crossW = makeCrosshairPlugin('c-wind');
+    charts['c-wind']=new Chart(cvW,{type:'line',plugins:[crossW],data:{labels:d.lbl,datasets:[
+      {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},
+      {label:'Rafales (kt)',data:d.wGst||[],borderColor:'rgba(224,92,92,.8)',backgroundColor:'transparent',borderWidth:1,pointRadius:0,tension:0.3,borderDash:[4,3]},
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{color:'#7a94aa',font:{size:9},boxWidth:10}},tooltip:{enabled:false}},
+      scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},
+        y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+'kt';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}}); 
+    cvW._hoverBound = false;
+    _ensureTooltipEl('c-wind', cvW.closest('.card'));
+    _addChartHover(cvW, 'c-wind', d.lbl.length);
+  }
+
+  // ── Puissance ──
+  if(charts['c-power']){try{charts['c-power'].destroy();}catch(e){}}
+  var cvPow=document.getElementById('c-power');
+  if(cvPow){
+    var crossPow = makeCrosshairPlugin('c-power');
+    charts['c-power']=new Chart(cvPow,{type:'bar',plugins:[crossPow],data:{labels:d.lbl,datasets:[{label:'kW/m',data:d.pwr||[],
+      backgroundColor:(d.pwr||[]).map(function(v){return !v?'rgba(60,80,100,.3)':v<1?'rgba(79,163,199,.5)':v<5?'rgba(61,186,138,.6)':v<15?'rgba(232,160,87,.7)':'rgba(123,108,246,.8)';}),
+      borderColor:'transparent',borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{color:'rgba(255,255,255,.03)'}},
+        y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+' kW/m';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}}); 
+    cvPow._hoverBound = false;
+    _ensureTooltipEl('c-power', cvPow.closest('.card'));
+    _addChartHover(cvPow, 'c-power', d.lbl.length);
+  }
 }
 
 
@@ -1117,33 +1242,6 @@ function updateHsToggleUI() {
 // ═══════════════════════════════════════════════════════════════
 // FONCTION UNIFIÉE - CONSERVE L'ANCIENNE LOGIQUE MAIS ASYNC
 // ═══════════════════════════════════════════════════════════════
-
-const nc = {
-  marine(lat, lon) {
-    return ncFetch(`/internet2018client/2.0/forecast/marine?lat=${lat}&lon=${lon}`);
-  },
-
-  tide(id, date) {
-    return ncFetch(`/internet2018client/2.0/tide?id=${id}&date=${date}`);
-  },
-
-  forecast(lat, lon) {
-    return ncFetch(`/internet2018client/2.0/forecast?lat=${lat}&lon=${lon}&instants=morning,afternoon,evening,night`);
-  },
-
-  obs(lat, lon, id) {
-    return ncFetch(`/internet2018client/2.0/observation/history?lat=${lat}&lon=${lon}&id=${id}`);
-  }
-};
-
-async function loadForecast(i) {
-  loadScoreParams();
-  
-  const s = SPOTS[i];
-  if (!s) {
-    console.warn("Spot inconnu:", i);
-    return;
-  }
 
 async function loadForecast(i) {
   loadScoreParams();
@@ -1224,7 +1322,7 @@ async function loadForecast(i) {
     // ─── FETCH DONNÉES ───
     var ncMarine = null, ncTide = null, ncForecast = null, omMarine = null, omWind = null, obsData = null;
     
-    console.log('[NC] Token présent:', !!_ncToken, '| longueur:', _ncToken.length);
+    console.log('[NC] Token présent:', !!_ncToken, '| longueur:', _ncToken ? _ncToken.length : 0);
     
     try {
       ncMarine = await ncFetch(marineUrl);
@@ -1546,54 +1644,9 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   var _hsD = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
   mkStackedHs('c-hs', _hsD.lbl, _hsD.sw1h, _hsD.sw2h, _hsD.wndH, _hsD.totH);
 
-  // Autres graphiques
-  // Graphe Direction + Période houle primaire (utile pour le surf)
-  // Direction en degrés (axe gauche), Période en secondes (axe droit)
-  if(charts['c-period']){try{charts['c-period'].destroy();}catch(e){}}
-  var cvP=document.getElementById('c-period');
-  if(cvP) {
-    charts['c-period']=new Chart(cvP,{type:'line',
-      data:{labels:lbl,datasets:[
-        {label:'Période H1 (s)',data:sw1t,borderColor:'#3dba8a',backgroundColor:'rgba(61,186,138,.08)',
-         fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'yT'},
-        {label:'Direction H1 (°)',data:sw1d,borderColor:'rgba(123,108,246,.8)',backgroundColor:'transparent',
-         borderWidth:1.5,pointRadius:0,tension:0.1,yAxisID:'yD',borderDash:[3,2]},
-      ]},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:true,position:'top',labels:{color:'#7a94aa',font:{size:9},boxWidth:10,padding:6}}},
-        scales:{
-          x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},
-          yT:{position:'left',min:0,max:20,ticks:{color:'#3dba8a',callback:function(v){return v+'s';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},
-          yD:{position:'right',min:0,max:360,ticks:{color:'rgba(123,108,246,.7)',callback:function(v){return v+'°';},font:{size:8},maxTicksLimit:5},grid:{drawOnChartArea:false}},
-        }
-      }
-    });
-  }
-  var windSrc = useNC ? 'meteo.nc' : 'GFS · Open-Meteo';
-  mkChart('c-wind',lbl,[
-    {label:'Vent moy ('+windSrc+')',data:wSpd,borderColor:'#e8a057',fill:true,bg:'rgba(232,160,87,.1)'},
-    {label:'Rafales (Open-Meteo)',data:wGst,borderColor:'rgba(224,92,92,.8)',bd:[5,3]},
-  ],' kt');
-  // Puissance: graphe bar dédié avec hauteur forcée
-  if(charts['c-power']){try{charts['c-power'].destroy();}catch(e){}}
-  var cvPow=document.getElementById('c-power');
-  if(cvPow){
-    charts['c-power']=new Chart(cvPow,{type:'bar',
-      data:{labels:lbl,datasets:[{
-        label:'Puissance (kW/m)',
-        data:pwr,
-        backgroundColor:pwr.map(function(v){return !v?'rgba(60,80,100,.3)':v<1?'rgba(79,163,199,.5)':v<5?'rgba(61,186,138,.6)':v<15?'rgba(232,160,87,.7)':'rgba(123,108,246,.8)';}),
-        borderColor:'transparent',borderWidth:0
-      }]},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return (ctx.raw||0).toFixed(1)+' kW/m';}}}},
-        scales:{
-          x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{color:'rgba(255,255,255,.03)'}},
-          y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+' kW/m';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}
-        }
-      }
-    });
-  }
+  // Graphiques secondaires (période, vent, puissance) avec crosshair
+  _buildSecondaryCharts(_fcastData);
+
   // Rose des houles + vent
   renderRose();
   // Météo meteo.nc
@@ -1665,8 +1718,9 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
     }
   };
 
+  var crossHs = makeCrosshairPlugin(id);
   charts[id]=new Chart(cv,{type:'bar',
-    plugins:[dayPlugin],
+    plugins:[dayPlugin, crossHs],
     data:{labels:lbl,datasets:[
       {label:'Houle 1', data:sw1h,backgroundColor:'#1a5f8a',stack:'hs',order:4,yAxisID:'y'},
       {label:'Houle 2'+(_currentHsSrc==='nc'&&_ncFcastData?' (résid.)':''), data:sw2h,backgroundColor:'rgba(106,180,212,0.7)',stack:'hs',order:3,yAxisID:'y'},
@@ -1706,11 +1760,15 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
     var ca=chart.chartArea, n=lbl.length;
     var idx=Math.round((e.offsetX-ca.left)/(ca.right-ca.left)*(n-1));
     idx=Math.max(0,Math.min(n-1,idx));
+    _chartHoverIdx = idx;
     updateHsHover(idx);
+    ['c-period','c-wind','c-power'].forEach(function(cid){if(charts[cid])charts[cid].draw();});
   });
   cv.addEventListener('mouseleave',function(){
+    _chartHoverIdx = -1;
     var el=document.getElementById('hs-hover-table');
     if(el) el.innerHTML='<span style="color:var(--faint);font-size:10px;">← Survolez le graphique pour voir les détails</span>';
+    ['c-period','c-wind','c-power'].forEach(function(cid){if(charts[cid])charts[cid].draw();});
   });
 }
 
@@ -2113,12 +2171,12 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
       +'<td style="font-weight:500;color:'+hsCol(_fcastData.totH&&_fcastData.totH[i])+'">'+fmt(_fcastData.totH&&_fcastData.totH[i],'m')+'</td>'
       +'<td style="color:'+hsCol(sw1h[i])+'">'+fmt(sw1h[i],'m')+'</td>'
       +'<td>'+fmt(sw1t[i],'s')+'</td>'
-      +'<td>'+svgArrow(sw1d[i],'#4fa3c7')+' '+compass(sw1d[i])+'</td>'
+      +'<td>'+svgArrow(sw1d[i],'#4fa3c7')+' <span style="white-space:nowrap;">'+compass(sw1d[i])+'<span style="color:var(--faint);font-size:9px;margin-left:2px;">'+(sw1d[i]!==null&&sw1d[i]!==undefined?Math.round(sw1d[i])+'°':'')+'</span></span></td>'
       +'<td style="color:'+hsCol(sw2h[i])+'">'+fmt(sw2h[i],'m')+'</td>'
       +'<td style="color:rgba(232,160,87,.8)">'+fmt(wnd,'m')+'</td>'
       +'<td style="color:'+windCol(wSpd[i])+'">'+fmt(wSpd[i]?Math.round(wSpd[i]):null,' kt')+'</td>'
       +'<td style="color:'+windCol(wGst[i])+'">'+fmt(wGst[i]?Math.round(wGst[i]):null,' kt')+'</td>'
-      +'<td>'+svgArrow(wDir[i],'#e8a057')+' '+compass(wDir[i])+'</td>'
+      +'<td>'+svgArrow(wDir[i],'#e8a057')+' <span style="white-space:nowrap;">'+compass(wDir[i])+'<span style="color:var(--faint);font-size:9px;margin-left:2px;">'+(wDir[i]!==null&&wDir[i]!==undefined?Math.round(wDir[i])+'°':'')+'</span></span></td>'
       +'<td style="color:'+pwrCol(p)+'">'+( p?p:'—')+'</td>'
       +'<td class="s'+sc2+'" style="letter-spacing:1px;">'+sdots+'</td>'
       +'</tr>';
@@ -2129,8 +2187,61 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
 
 
 // ---
-// CHARTS
+// CHARTS — avec crosshair synchronisé
 // ---
+
+// Crosshair partagé entre tous les graphiques
+var _chartHoverIdx = -1;
+
+// Plugin crosshair inline (réutilisé par tous les graphiques)
+function makeCrosshairPlugin(id) {
+  return {
+    id: 'crosshair_'+id,
+    afterDraw: function(chart) {
+      if(_chartHoverIdx < 0) return;
+      var ca = chart.chartArea; if(!ca) return;
+      var xAxis = chart.scales.x;
+      var n = chart.data.labels ? chart.data.labels.length : 0;
+      if(!n) return;
+      var x = xAxis.getPixelForTick
+        ? xAxis.getPixelForTick(_chartHoverIdx)
+        : ca.left + (_chartHoverIdx / (n-1)) * (ca.right - ca.left);
+      if(x < ca.left || x > ca.right) return;
+      var ctx2 = chart.ctx;
+      ctx2.save();
+      ctx2.beginPath();
+      ctx2.moveTo(x, ca.top);
+      ctx2.lineTo(x, ca.bottom);
+      ctx2.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx2.lineWidth = 1;
+      ctx2.setLineDash([4,3]);
+      ctx2.stroke();
+      ctx2.setLineDash([]);
+      ctx2.restore();
+    }
+  };
+}
+
+// Tooltip crosshair générique pour les graphiques secondaires
+function _chartHoverTooltip(chartId, idx) {
+  var d = _fcastData; if(!d||!d.lbl||!d.lbl[idx]) return;
+  var lbl = d.lbl[idx];
+  var tooltipId = chartId + '-tooltip';
+  var el = document.getElementById(tooltipId); if(!el) return;
+  var chart = charts[chartId]; if(!chart) return;
+  var ca = chart.chartArea; if(!ca) return;
+  var datasets = chart.data.datasets;
+  var html = '<span style="color:var(--accent);font-weight:600;margin-right:6px;">'+lbl+'</span>';
+  datasets.forEach(function(ds) {
+    var val = ds.data[idx];
+    if(val===null||val===undefined) return;
+    html += '<span style="color:'+ds.borderColor+';margin-right:8px;">'+ds.label+' <b>'+
+      (Number.isInteger(val)?val:val.toFixed(1))+'</b></span>';
+  });
+  el.innerHTML = html;
+  el.style.opacity = '1';
+}
+
 function mkChart(id,labels,datasets,unit,isBar){
   if(charts[id]){try{charts[id].destroy();}catch(e){}}
   var cv=document.getElementById(id); if(!cv)return;
@@ -2140,13 +2251,50 @@ function mkChart(id,labels,datasets,unit,isBar){
       tension:0.3,fill:d.fill||false,type:d.type||'line'};
     if(d.bd)o.borderDash=d.bd; return o;
   });
-  charts[id]=new Chart(cv,{type:isBar?'bar':'line',data:{labels:labels,datasets:ds},
+  var crossPlugin = makeCrosshairPlugin(id);
+  charts[id]=new Chart(cv,{type:isBar?'bar':'line',plugins:[crossPlugin],data:{labels:labels,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:ds.length>1,labels:{color:'#7a94aa',boxWidth:10,font:{size:9}}}},
+      plugins:{
+        legend:{display:ds.length>1,labels:{color:'#7a94aa',boxWidth:10,font:{size:9}}},
+        tooltip:{enabled:false}
+      },
       scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},
         grid:{color:'rgba(255,255,255,.03)'}},
         y:{ticks:{color:'#7a94aa',callback:function(v){return v+unit;}},
         grid:{color:'rgba(255,255,255,.04)'}}}}});
+  // Ajouter le tooltip div si inexistant
+  var wrap = cv.parentElement;
+  if(wrap && !document.getElementById(id+'-tooltip')) {
+    var tipEl = document.createElement('div');
+    tipEl.id = id+'-tooltip';
+    tipEl.style.cssText = 'min-height:18px;margin-top:4px;font-size:10px;color:var(--muted);transition:opacity .1s;';
+    wrap.parentElement && wrap.parentElement.appendChild(tipEl);
+  }
+  // Mousemove synchronisé avec tous les autres graphes
+  cv.addEventListener('mousemove', function(e) {
+    var chart = charts[id]; if(!chart||!chart.chartArea) return;
+    var ca = chart.chartArea;
+    var n = labels.length;
+    var idx = Math.round((e.offsetX - ca.left) / (ca.right - ca.left) * (n-1));
+    idx = Math.max(0, Math.min(n-1, idx));
+    _chartHoverIdx = idx;
+    // Mettre à jour le hover Hs aussi
+    updateHsHover(idx);
+    // Tooltip local
+    _chartHoverTooltip(id, idx);
+    // Redessiner tous les graphiques pour le crosshair
+    ['c-period','c-wind','c-power'].forEach(function(cid) {
+      if(charts[cid]) charts[cid].draw();
+    });
+  });
+  cv.addEventListener('mouseleave', function() {
+    _chartHoverIdx = -1;
+    var tipEl = document.getElementById(id+'-tooltip');
+    if(tipEl) tipEl.style.opacity = '0';
+    ['c-period','c-wind','c-power'].forEach(function(cid) {
+      if(charts[cid]) charts[cid].draw();
+    });
+  });
 }
 
 // ---
@@ -2399,78 +2547,13 @@ function monthlyRange(year, month) {
 
 // ---- SUN / TWILIGHT ----
 var LAT=-22.27, LON=166.43;
-function calcSunTimes(year, month, day) {
-  var d = new Date(Date.UTC(year, month-1, day, 12, 0, 0));
-  var J = (d - new Date('2000-01-01T12:00:00Z'))/864e5;
-  var Ls = (280.46 + 0.9856474*J) % 360;
-  var g = (357.528 + 0.9856003*J)*Math.PI/180;
-  var el = (Ls + 1.915*Math.sin(g) + 0.02*Math.sin(2*g))*Math.PI/180;
-  var ra = Math.atan2(Math.cos(23.44*Math.PI/180)*Math.sin(el), Math.cos(el));
-  var dec = Math.asin(Math.sin(23.44*Math.PI/180)*Math.sin(el));
-  var eot = (Ls*Math.PI/180 - ra)/15*180/Math.PI; // hours
-  var noon = 12 - LON/15 + eot + 11; // UTC+11
-  function HA(angle) {
-    var cosH = (Math.sin(angle*Math.PI/180) - Math.sin(LAT*Math.PI/180)*Math.sin(dec))
-               / (Math.cos(LAT*Math.PI/180)*Math.cos(dec));
-    return (cosH>1||cosH<-1) ? null : Math.acos(cosH)*180/Math.PI/15;
-  }
-  function hm(h) {
-    if(h===null) return null;
-    var norm = ((h%24)+24)%24;
-    var hh=Math.floor(norm), mm=Math.round((norm%1)*60);
-    if(mm===60){hh++;mm=0;}
-    return ('0'+hh).slice(-2)+'h'+('0'+mm).slice(-2);
-  }
-  function toMin(h) {
-    if(h===null) return null;
-    return Math.round(((h%24)+24)%24*60);
-  }
-  var haSun=HA(-0.833), haNaut=HA(-12), haCivil=HA(-6);
-  return {
-    nautDawn: hm(noon-haNaut), nautDawnMin: toMin(noon-haNaut),
-    sunrise:  hm(noon-haSun),  sunriseMin:  toMin(noon-haSun),
-    sunset:   hm(noon+haSun),  sunsetMin:   toMin(noon+haSun),
-    nautDusk: hm(noon+haNaut), nautDuskMin: toMin(noon+haNaut),
-    noon:     hm(noon), noonH: noon,
-    sunriseH: noon - (haSun||0),
-    sunsetH:  noon + (haSun||0),
-    dayLenMin: haSun!==null ? Math.round(2*haSun*60) : null,
-    decl: dec, // sun declination for orbit drawing
-  };
-}
-
 // ---- MAIN INIT ----
-var tideDayOffset=0, tideTableYear=new Date().getFullYear(), tideTableMonth=new Date().getMonth()+1;
+var tideTableYear=new Date().getFullYear(), tideTableMonth=new Date().getMonth()+1;
 var MONTH_FR=['','Janvier','Fevrier','Mars','Avril','Mai','Juin','Juillet','Aout','Septembre','Octobre','Novembre','Decembre'];
-var DAY_FR=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 var _rangeCache={};
 
 // Stockage marées meteo.nc pour la courbe
 var _ncTideCache = null;
-
-
-
-// ---- TWILIGHT + ORBIT ----
-function renderTwilightAndOrbit(year, month, day) {
-  var s = calcSunTimes(year, month, day);
-  var el = document.getElementById('twilight-list'); if(!el) return;
-  function row(icon, label, time, col) {
-    if(!time) return '';
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
-      +'<span style="width:16px;text-align:center;font-size:13px;">'+icon+'</span>'
-      +'<span style="color:var(--faint);font-size:11px;flex:1;">'+label+'</span>'
-      +'<strong style="color:'+(col||'var(--text)')+';font-size:13px;font-variant-numeric:tabular-nums;">'+time+'</strong></div>';
-  }
-  el.innerHTML = row('&#9790;','Aube nautique', s.nautDawn,'#7b6cf6')
-    + row('&#9728;','Lever soleil', s.sunrise,'#e8a057')
-    + row('&#9660;','Coucher soleil', s.sunset,'#e8a057')
-    + row('&#9791;','Crepuscule nautique', s.nautDusk,'#7b6cf6')
-    + (s.dayLenMin?'<div style="margin-top:4px;font-size:10px;color:var(--faint);">Jour: '
-       +Math.floor(s.dayLenMin/60)+'h'+String(s.dayLenMin%60).padStart(2,'0')+'min &#183; Midi: '+s.noon+'</div>':'');
-
-  // Orbit canvas: simple schematic of earth around sun, current position
-  drawOrbit(s, year, month, day);
-}
 
 function drawOrbit(sun, year, month, day) {
   var cv = document.getElementById('orbit-canvas'); if(!cv) return;
@@ -2685,6 +2768,174 @@ function renderTwilightAndOrbit(year, month, day) {
     row('🌃','Crépuscule nautique',s.nautDusk,'rgba(79,163,199,0.8)')+
     row('🌌','Crépuscule astro.',s.astroTwilightDusk,'rgba(123,108,246,0.7)');
   drawOrbit(s, year, month, day);
+  // Arc solaire du jour + heures dorées/bleues
+  drawSunArc(s, year, month, day);
+  updateGoldenBlueHours(s);
+}
+
+// ─── ARC SOLAIRE DU JOUR ─────────────────────────────────────────────────────
+function drawSunArc(s, year, month, day) {
+  var cv = document.getElementById('sun-arc-canvas'); if(!cv) return;
+  var W = cv.offsetWidth || 280, H = 90;
+  var dpr = window.devicePixelRatio || 1;
+  cv.width = W*dpr; cv.height = H*dpr;
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,W,H);
+
+  // Convertir hh:mm string → fraction du jour (0-1)
+  function tFrac(str) {
+    if(!str) return null;
+    var p = str.split('h'); if(p.length<2) return null;
+    return (+p[0]*60 + +p[1]) / 1440;
+  }
+
+  var riseF = tFrac(s.sunrise), setF = tFrac(s.sunset);
+  var astroD = tFrac(s.astroTwilightDawn), astroK = tFrac(s.astroTwilightDusk);
+  var nautD = tFrac(s.nautDawn), nautK = tFrac(s.nautDusk);
+  var civilD = tFrac(s.civilDawn), civilK = tFrac(s.civilDusk);
+  if(!riseF || !setF) return;
+
+  var now = new Date();
+  var nowIsToday = (now.getFullYear()===year && now.getMonth()+1===month && now.getDate()===day);
+  var nowF = nowIsToday ? (now.getHours()*60+now.getMinutes())/1440 : -1;
+
+  var pad = {l:14, r:14, t:8, b:22};
+  var cw = W - pad.l - pad.r;
+
+  function xOf(f) { return pad.l + f * cw; }
+
+  // Bande de fond : nuit / crépuscules / jour
+  function fillBand(f0, f1, col) {
+    if(f0===null||f1===null||f0>=f1) return;
+    ctx.fillStyle = col;
+    ctx.fillRect(xOf(f0), pad.t, xOf(f1)-xOf(f0), H-pad.t-pad.b);
+  }
+
+  // Nuit profonde
+  fillBand(0, astroD||nautD||civilD||riseF, 'rgba(5,10,30,0.9)');
+  fillBand(astroK||nautK||civilK||setF, 1, 'rgba(5,10,30,0.9)');
+  // Crépuscule astro
+  fillBand(astroD, nautD||civilD||riseF, 'rgba(30,20,60,0.7)');
+  fillBand(nautK||civilK||setF, astroK, 'rgba(30,20,60,0.7)');
+  // Crépuscule nautique
+  fillBand(nautD, civilD||riseF, 'rgba(60,40,100,0.7)');
+  fillBand(civilK||setF, nautK, 'rgba(60,40,100,0.7)');
+  // Crépuscule civil (heure bleue)
+  fillBand(civilD, riseF, 'rgba(50,80,160,0.65)');
+  fillBand(setF, civilK, 'rgba(50,80,160,0.65)');
+  // Heure dorée matin/soir
+  var goldenDurF = 45/1440; // ~45min
+  fillBand(riseF, riseF+goldenDurF, 'rgba(232,160,87,0.25)');
+  fillBand(setF-goldenDurF, setF, 'rgba(232,160,87,0.25)');
+  // Jour
+  fillBand(riseF+goldenDurF, setF-goldenDurF, 'rgba(255,235,80,0.07)');
+
+  // Arc du soleil : demi-ellipse
+  var arcH = H - pad.t - pad.b - 4;
+  var arcMidX = xOf((riseF+setF)/2);
+  var arcW = (xOf(setF)-xOf(riseF))/2;
+  ctx.beginPath();
+  ctx.ellipse(arcMidX, H-pad.b, arcW, arcH, 0, Math.PI, 0);
+  ctx.strokeStyle = 'rgba(253,224,104,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3,3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Ligne d'horizon
+  ctx.beginPath();
+  ctx.moveTo(pad.l, H-pad.b);
+  ctx.lineTo(W-pad.r, H-pad.b);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Labels horizon
+  ctx.font = '8px DM Sans,sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.textAlign = 'left'; ctx.fillText('00h', pad.l, H-4);
+  ctx.textAlign = 'center'; ctx.fillText('12h', W/2, H-4);
+  ctx.textAlign = 'right'; ctx.fillText('24h', W-pad.r, H-4);
+
+  // Lever/coucher labels
+  if(s.sunrise){
+    ctx.fillStyle='#fde068'; ctx.textAlign='center';
+    ctx.fillText(s.sunrise, xOf(riseF), H-pad.b+12);
+  }
+  if(s.sunset){
+    ctx.fillStyle='#fde068'; ctx.textAlign='center';
+    ctx.fillText(s.sunset, xOf(setF), H-pad.b+12);
+  }
+
+  // Position soleil actuel
+  if(nowF >= 0) {
+    var angle = Math.PI*(1-(nowF-riseF)/(setF-riseF));
+    var sunX = arcMidX + arcW*Math.cos(angle);
+    var sunY = (H-pad.b) - arcH*Math.sin(Math.max(0,angle));
+    if(nowF >= riseF && nowF <= setF) {
+      // Soleil au-dessus de l'horizon
+      var sg = ctx.createRadialGradient(sunX,sunY,0,sunX,sunY,9);
+      sg.addColorStop(0,'rgba(255,235,80,1)');
+      sg.addColorStop(0.4,'rgba(255,160,20,0.7)');
+      sg.addColorStop(1,'rgba(255,100,0,0)');
+      ctx.fillStyle=sg;
+      ctx.beginPath(); ctx.arc(sunX,sunY,9,0,2*Math.PI); ctx.fill();
+      ctx.fillStyle='#fde068';
+      ctx.beginPath(); ctx.arc(sunX,sunY,4,0,2*Math.PI); ctx.fill();
+    } else {
+      // Soleil sous l'horizon → lune
+      ctx.fillStyle='rgba(200,220,240,0.5)';
+      ctx.beginPath(); ctx.arc(xOf(nowF), H-pad.b-3, 3, 0, 2*Math.PI); ctx.fill();
+    }
+    // Ligne "maintenant"
+    ctx.beginPath();
+    ctx.moveTo(xOf(nowF), pad.t);
+    ctx.lineTo(xOf(nowF), H-pad.b);
+    ctx.strokeStyle='rgba(255,255,255,0.25)';
+    ctx.lineWidth=1; ctx.setLineDash([2,3]); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Sous l'arc : heure actuelle
+  var nowEl = document.getElementById('sun-now-time');
+  if(nowEl && nowIsToday) {
+    var nowH = String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
+    var phase = '';
+    if(nowF < (astroD||nautD||riseF)) phase='🌑 Nuit';
+    else if(nowF < (nautD||civilD||riseF)) phase='🌌 Aube astro.';
+    else if(nowF < (civilD||riseF)) phase='🌒 Aube nautique';
+    else if(nowF < riseF) phase='🌅 Aube civile';
+    else if(nowF < riseF+goldenDurF) phase='🌅 Heure dorée';
+    else if(nowF < setF-goldenDurF) phase='☀ Jour';
+    else if(nowF < setF) phase='🌇 Heure dorée';
+    else if(nowF < (civilK||nautK||astroK)) phase='🌆 Crépuscule civil';
+    else if(nowF < (nautK||astroK)) phase='🌃 Crép. nautique';
+    else if(nowF < (astroK||1)) phase='🌌 Crép. astro.';
+    else phase='🌑 Nuit';
+    nowEl.textContent = nowH+' · '+phase;
+  }
+}
+
+// ─── HEURES DORÉES ET BLEUES ─────────────────────────────────────────────────
+function updateGoldenBlueHours(s) {
+  function addMin(hhmm, min) {
+    if(!hhmm) return null;
+    var p=hhmm.split('h'); var tot=+p[0]*60+ +p[1]+min;
+    tot=((tot%1440)+1440)%1440;
+    return String(Math.floor(tot/60)).padStart(2,'0')+'h'+String(tot%60).padStart(2,'0');
+  }
+  var goldenDur = 45, blueDur = 20;
+  // Matin : lever → lever+45min (doré), aube civile → lever (bleu)
+  var gmStart = s.sunrise, gmEnd = addMin(s.sunrise, goldenDur);
+  var bmStart = s.civilDawn, bmEnd = s.sunrise;
+  // Soir : coucher-45min → coucher (doré), coucher → crépuscule civil (bleu)
+  var geStart = addMin(s.sunset, -goldenDur), geEnd = s.sunset;
+  var beStart = s.sunset, beEnd = s.civilDusk;
+
+  var gm=document.getElementById('golden-morning'); if(gm&&gmStart) gm.textContent=(gmStart||'—')+' – '+(gmEnd||'—');
+  var ge=document.getElementById('golden-evening'); if(ge&&geStart) ge.textContent=(geStart||'—')+' – '+(geEnd||'—');
+  var bm=document.getElementById('blue-morning'); if(bm&&bmStart) bm.textContent=(bmStart||'—')+' – '+(bmEnd||'—');
+  var be=document.getElementById('blue-evening'); if(be&&beStart) be.textContent=(beStart||'—')+' – '+(beEnd||'—');
 }
 
 function calcSunTimes(year, month, day) {
@@ -2712,7 +2963,8 @@ function calcSunTimes(year, month, day) {
     civilDawn:fmt(noon-ha6),civilDusk:fmt(noon+ha6),
     nautDawn:fmt(noon-ha12),nautDusk:fmt(noon+ha12),
     astroTwilightDawn:fmt(noon-ha18),astroTwilightDusk:fmt(noon+ha18),
-    decl:decl,noon:noon,ha0:ha0
+    decl:decl,noon:fmt(noon),noonH:noon,ha0:ha0,
+    dayLenMin: isNaN(ha0) ? null : Math.round(2*ha0*60)
   };
 }
 
@@ -3186,38 +3438,6 @@ function renderTideCurve(offset) {
   }
 }
 
-// ─── HARMONIQUES SHOM (fallback) ──────────────────────────────────────────
-var NOUMEA_H = [
-  {name:'M2',amp:0.55,speed:28.9841,phase:256},
-  {name:'S2',amp:0.12,speed:30.0000,phase:285},
-  {name:'K1',amp:0.16,speed:15.0411,phase:210},
-  {name:'O1',amp:0.11,speed:13.9430,phase:195},
-  {name:'N2',amp:0.11,speed:28.4397,phase:248},
-  {name:'P1',amp:0.05,speed:14.9589,phase:208},
-  {name:'K2',amp:0.03,speed:30.0821,phase:282},
-  {name:'Q1',amp:0.02,speed:13.3987,phase:188},
-];
-var MEAN_LEVEL = 0.74;
-function tidePointsForDate(year,month,day){
-  var t0=new Date(Date.UTC(year,month-1,day,0,0,0)).getTime()/3600000;
-  var pts=[];
-  for(var m=0;m<=1440;m+=3){
-    var t=t0+m/60;
-    var h=MEAN_LEVEL;
-    NOUMEA_H.forEach(function(c){h+=c.amp*Math.cos((c.speed*t+c.phase)*Math.PI/180);});
-    pts.push({min:m,h:Math.max(0,+h.toFixed(3))});
-  }
-  return pts;
-}
-function findTideExtrema(pts){
-  var ex=[];
-  for(var i=1;i<pts.length-1;i++){
-    if(pts[i].h>pts[i-1].h&&pts[i].h>pts[i+1].h) ex.push({min:pts[i].min,h:pts[i].h,type:'pm'});
-    else if(pts[i].h<pts[i-1].h&&pts[i].h<pts[i+1].h) ex.push({min:pts[i].min,h:pts[i].h,type:'bm'});
-  }
-  return ex;
-}
-
 // ─── SCORE PECHE ─────────────────────────────────────────────────────────
 function drawFishingScore(){
   var el=document.getElementById('fishing-score'); if(!el) return;
@@ -3256,6 +3476,90 @@ function drawFishingScore(){
   el.innerHTML='<div style="display:flex;gap:2px;align-items:center;margin-bottom:3px;">'+fishHTML+'</div>'
     +'<div style="font-size:10px;color:'+col+';font-weight:600;">'+labels[total]+'</div>'
     +'<div style="font-size:9px;color:var(--faint);margin-top:1px;">Marée: '+(tideScore*100|0)+'% · Lune: '+(moonScore*100|0)+'%</div>';
+
+  // Mettre à jour le marnage dynamique
+  drawTideMarnage();
+}
+
+// ─── MARNAGE DYNAMIQUE ────────────────────────────────────────────────────────
+function drawTideMarnage() {
+  var arcEl = document.getElementById('marnage-arc');
+  var coefEl = document.getElementById('marnage-coef');
+  var infoEl = document.getElementById('marnage-info');
+  var nextEl = document.getElementById('next-tide-info');
+  if(!arcEl || !infoEl) return;
+
+  var now = new Date();
+  var nowMs = now.getTime();
+
+  // Calculer marnage depuis les données NC (PM - BM du jour)
+  var pmH = null, bmH = null, allEvts = [];
+  if(_ncTideCache && _ncTideCache.properties && _ncTideCache.properties.tide){
+    var tideData = _ncTideCache.properties.tide;
+    var todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+    (tideData.high_tide||[]).forEach(function(e){
+      var ms = new Date(e.time).getTime();
+      allEvts.push({ms:ms, h:e.h||e.tidal_height, type:'PM', coef:e.tidal_coefficient||null});
+      if(ms>=todayStart&&ms<=todayEnd) pmH = Math.max(pmH||0, e.h||e.tidal_height||0);
+    });
+    (tideData.low_tide||[]).forEach(function(e){
+      var ms = new Date(e.time).getTime();
+      allEvts.push({ms:ms, h:e.h||e.tidal_height, type:'BM', coef:e.tidal_coefficient||null});
+      if(ms>=todayStart&&ms<=todayEnd) bmH = Math.min(bmH!==null?bmH:99, e.h||e.tidal_height||0);
+    });
+    allEvts.sort(function(a,b){return a.ms-b.ms;});
+  }
+
+  // Fallback harmoniques si pas de données NC
+  var usingFallback = (pmH === null);
+  if(usingFallback) {
+    var now2 = new Date();
+    var pts = tidePointsForDate(now2.getFullYear(), now2.getMonth()+1, now2.getDate());
+    var extr = findTideExtrema(pts);
+    extr.forEach(function(e){ if(e.type==='pm') pmH=Math.max(pmH||0,e.h); else bmH=Math.min(bmH!==null?bmH:99,e.h); });
+  }
+
+  var marnage = (pmH!==null && bmH!==null) ? +(pmH-bmH).toFixed(2) : null;
+
+  // Coefficient estimé depuis le marnage (Nouméa: marnage max ~1.6m = coef 120, min ~0.3m = coef 20)
+  var coef = marnage ? Math.round(20 + (marnage/1.6)*100) : null;
+  if(coef) coef = Math.max(20, Math.min(120, coef));
+
+  // Jauge circulaire arc (0-120)
+  var circumf = 2*Math.PI*20; // r=20 → ~125.7
+  var frac = coef ? coef/120 : 0;
+  var dashArr = (frac*circumf).toFixed(1)+' '+(circumf*(1-frac)).toFixed(1);
+  arcEl.setAttribute('stroke-dasharray', dashArr);
+  var arcCol = !coef?'#3d5468':coef<45?'#4fa3c7':coef<70?'#3dba8a':coef<95?'#e8a057':'#e05c5c';
+  arcEl.setAttribute('stroke', arcCol);
+  if(coefEl) coefEl.textContent = coef ? coef : '—';
+
+  // Info marnage
+  var marnLbl = !marnage?'—':marnage<0.5?'Morte-eau':marnage<0.8?'Faibles':marnage<1.1?'Moyennes':'Vives-eaux';
+  if(infoEl) infoEl.innerHTML =
+    (marnage?'Marnage <b style="color:'+arcCol+';">'+(marnage.toFixed(2))+'m</b>  ':'')
+    +'<span style="color:'+arcCol+';">'+marnLbl+'</span>'
+    +(coef?'<br><span style="color:var(--faint);font-size:9px;">Coeff. estimé ~'+coef+'</span>':'')
+    +(usingFallback?'<br><span style="color:var(--faint);font-size:9px;">harmoniques (fallback)</span>':'');
+
+  // Prochaine marée (PM/BM suivante)
+  if(nextEl && allEvts.length) {
+    var next = allEvts.find(function(e){ return e.ms > nowMs; });
+    if(next) {
+      var dt = new Date(next.ms + 11*3600000); // UTC+11
+      var hStr = String(dt.getUTCHours()).padStart(2,'0')+'h'+String(dt.getUTCMinutes()).padStart(2,'0');
+      var diffMin = Math.round((next.ms - nowMs)/60000);
+      var diffStr = diffMin<60 ? 'dans '+diffMin+' min' : 'dans '+(diffMin/60|0)+'h'+(diffMin%60>0?String(diffMin%60).padStart(2,'0'):'');
+      var ic = next.type==='PM'?'▲':'▼';
+      var nc = next.type==='PM'?'#4fa3c7':'#e05c5c';
+      nextEl.innerHTML='<span style="color:'+nc+';">'+ic+' '+next.type+'</span> à <b>'+hStr+'</b>'
+        +' <span style="color:var(--faint);font-size:9px;">('+diffStr+')</span>'
+        +(next.h?' <span style="color:var(--faint);font-size:9px;">'+Number(next.h).toFixed(2)+'m</span>':'');
+    } else {
+      nextEl.textContent = '';
+    }
+  }
 }
 
 // ─── OPEN METEO MÉTÉO ─────────────────────────────────────────────────────
@@ -3265,36 +3569,31 @@ async function loadOpenMeteoMeteo(){
       fetch('https://api.open-meteo.com/v1/forecast?latitude=-22.27&longitude=166.43&current=temperature_2m,apparent_temperature,relative_humidity_2m,uv_index&daily=uv_index_max,temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=Pacific%2FNoumea').then(r=>r.json()),
       fetch('https://marine-api.open-meteo.com/v1/marine?latitude=-22.27&longitude=166.43&current=sea_surface_temperature&forecast_days=1&timezone=Pacific%2FNoumea').then(r=>r.json())
     ]);
-    // Lire depuis current (si dispo) ou daily comme fallback
     var cur = w.current || {};
     var daily = w.daily || {};
-    var uv = cur.uv_index !== undefined ? cur.uv_index
-             : (daily.uv_index_max ? daily.uv_index_max[0] : null);
+    var uv = cur.uv_index !== undefined ? cur.uv_index : (daily.uv_index_max ? daily.uv_index_max[0] : null);
     var tair = cur.temperature_2m !== undefined ? cur.temperature_2m : null;
     var tappar = cur.apparent_temperature !== undefined ? cur.apparent_temperature : null;
     var rhum = cur.relative_humidity_2m !== undefined ? cur.relative_humidity_2m : null;
     var tmax = daily.temperature_2m_max ? daily.temperature_2m_max[0] : null;
     var tmin = daily.temperature_2m_min ? daily.temperature_2m_min[0] : null;
-    var twater = (m.current && m.current.sea_surface_temperature !== undefined)
-                 ? m.current.sea_surface_temperature : null;
-    console.log('[OM meteo] uv='+uv+' tair='+tair+' twater='+twater+' rhum='+rhum);
+    var twater = (m.current && m.current.sea_surface_temperature !== undefined) ? m.current.sea_surface_temperature : null;
+
     if(uv!==null){
       var uvCol=uv<3?'#3dba8a':uv<6?'#e8a057':uv<8?'#e05c5c':'#a855f7';
       var e=document.getElementById('uv-value'); if(e){e.textContent=uv.toFixed(0);e.style.color=uvCol;}
-      var l=document.getElementById('uv-label'); if(l){l.textContent=uv<3?'Faible':uv<6?'Modere':uv<8?'Eleve':uv<11?'Tres eleve':'Extreme';l.style.color=uvCol;}
+      var l=document.getElementById('uv-label'); if(l){l.textContent=uv<3?'Faible':uv<6?'Modéré':uv<8?'Élevé':uv<11?'Très élevé':'Extrême';l.style.color=uvCol;}
       var cu=document.getElementById('uv-cursor'); if(cu) cu.style.left=Math.min(97,Math.max(1,uv/12*100))+'%';
     }
     if(tair!==null){
-      // airCol: éviter 'var(--text)' qui crash element.style.color en JS
       var airCol=tair<22?'#4fa3c7':tair<28?'#e8eef4':tair<32?'#e8a057':'#e05c5c';
-      var te=document.getElementById('t-air-val');
-      if(te){te.textContent=tair.toFixed(1);te.style.color=airCol;}
+      var te=document.getElementById('t-air-val'); if(te){te.textContent=tair.toFixed(1);te.style.color=airCol;}
       var re2=document.getElementById('t-air-range');
-      if(re2&&tmin!==null)re2.innerHTML='&#8595;'+tmin.toFixed(0)+'&#176; / &#8593;'+tmax.toFixed(0)+'&#176;C';
+      if(re2&&tmin!==null) re2.innerHTML='↓'+tmin.toFixed(0)+'° / ↑'+tmax.toFixed(0)+'°C';
       var feelEl=document.getElementById('t-air-feel');
       if(feelEl&&tappar!==null) feelEl.textContent='Ressenti '+tappar.toFixed(0)+'°';
       var humEl=document.getElementById('t-humidity');
-      if(humEl&&rhum!==null) humEl.textContent='Humidite '+Math.round(rhum)+'%';
+      if(humEl&&rhum!==null) humEl.textContent='💧 Humidité '+Math.round(rhum)+'%';
       var airMerc=document.getElementById('air-mercury');
       if(airMerc){
         var pctA=Math.max(0,Math.min(1,(tair-18)/(38-18)));
@@ -3302,9 +3601,35 @@ async function loadOpenMeteoMeteo(){
         airMerc.setAttribute('y',String(50-mercHA));
         airMerc.setAttribute('height',String(mercHA));
         airMerc.setAttribute('fill',airCol);
-        // Aussi mettre à jour le bulbe
         var bulbes=airMerc.closest('svg');
         if(bulbes){var circ=bulbes.querySelectorAll('circle');if(circ[0])circ[0].setAttribute('fill',airCol);}
+      }
+      // Point de rosée (formule Magnus)
+      if(rhum!==null){
+        var a=17.27, b=237.7;
+        var alpha=(a*tair/(b+tair))+Math.log(rhum/100);
+        var td=+(b*alpha/(a-alpha)).toFixed(1);
+        var dpEl=document.getElementById('t-dewpoint');
+        var dpCol=td>tair-3?'#e05c5c':td>tair-8?'#e8a057':'#3dba8a';
+        if(dpEl) dpEl.innerHTML='🌫 Rosée <b style="color:'+dpCol+';">'+td+'°</b> <span style="color:var(--faint);">(écart '+(tair-td).toFixed(1)+'°)</span>';
+      }
+      // Indice de chaleur (Heat Index, valide si T>27°C et HR>40%)
+      var hiEl=document.getElementById('t-heatidx-lbl'), hiIcon=document.getElementById('t-heatidx-icon');
+      if(hiEl && hiIcon && tair!==null && rhum!==null){
+        if(tair>=27 && rhum>=40){
+          // Formule Steadman simplifiée
+          var hi=-8.78469475556+1.61139411*tair+2.33854883889*rhum
+            -0.14611605*tair*rhum-0.012308094*tair*tair
+            -0.0164248277778*rhum*rhum+0.002211732*tair*tair*rhum
+            +0.00072546*tair*rhum*rhum-0.000003582*tair*tair*rhum*rhum;
+          hi=+hi.toFixed(0);
+          var hic=hi<27?'#3dba8a':hi<32?'#e8a057':hi<41?'#e05c5c':'#a855f7';
+          var hin=hi<27?'Confortable':hi<32?'Prudence':hi<41?'Danger':'Extrême';
+          hiIcon.textContent=hi<27?'😊':hi<32?'🥵':hi<41?'🌡️':'🔥';
+          hiEl.innerHTML='Ressenti thermique <b style="color:'+hic+';">'+hi+'° ('+hin+')</b>';
+        } else {
+          hiIcon.textContent=''; hiEl.textContent='';
+        }
       }
     }
     if(twater!==null){
@@ -3315,10 +3640,33 @@ async function loadOpenMeteoMeteo(){
         var mercH=Math.round(pct*44);
         mercury.setAttribute('y',String(50-mercH));
         mercury.setAttribute('height',String(mercH));
-        var col=twater<24?'#4fa3c7':twater<27?'#3dba8a':twater<29?'#e8a057':'#e05c5c';
-        mercury.setAttribute('fill',col);
+        var wCol=twater<24?'#4fa3c7':twater<27?'#3dba8a':twater<29?'#e8a057':'#e05c5c';
+        mercury.setAttribute('fill',wCol);
+        var bulbW=mercury.closest('svg');
+        if(bulbW){var cw=bulbW.querySelectorAll('circle');if(cw[0])cw[0].setAttribute('fill',wCol);}
       }
-      var wa=document.getElementById('water-advice'); if(wa) wa.textContent=twater<22?'Fraiche':twater<26?'Agreable':'Chaude';
+      var wa=document.getElementById('water-advice'); if(wa) wa.textContent=twater<22?'Fraîche':twater<26?'Agréable':twater<29?'Chaude':'Très chaude';
+      // Confort plongée
+      var diveEl=document.getElementById('t-dive-lbl'), diveSvg=document.getElementById('dive-suit-svg');
+      if(diveEl){
+        var dc, dcc;
+        if(twater<22){dc='Combinaison 5mm';dcc='#4fa3c7';}
+        else if(twater<25){dc='Shorty 3mm';dcc='#3dba8a';}
+        else if(twater<28){dc='Skin / lycra';dcc='#e8a057';}
+        else{dc='Bain nu ✓';dcc='#e05c5c';}
+        diveEl.innerHTML='<span style="color:'+dcc+';">'+dc+'</span>';
+        if(diveSvg) diveSvg.style.color=dcc;
+      }
+      // Delta eau/air
+      if(tair!==null){
+        var delta=+(twater-tair).toFixed(1);
+        var dEl=document.getElementById('t-delta');
+        if(dEl){
+          var ds=delta>0?'eau plus chaude +'+delta+'°':delta<0?'eau plus froide '+delta+'°':'eau = air';
+          var dc2=Math.abs(delta)>3?'#e8a057':'var(--faint)';
+          dEl.innerHTML='↕ Δ <span style="color:'+dc2+';">'+ds+'</span>';
+        }
+      }
     }
   }catch(e){console.warn('Meteo:',e.message);}
 }
@@ -3381,8 +3729,6 @@ function drawMoon(year, month, day) {
 }
 
 // ─── INIT MARÉE ───────────────────────────────────────────────────────────
-var _ncTideCache = null;
-var mareeInited = false;
 
 async function initMaree() {
   drawMoon();
@@ -3955,35 +4301,23 @@ window.addEventListener('message', function(e) {
   if (!e.data || e.data.type !== '__nc_set_token__') return;
   var tok = e.data.token;
   if (!tok || tok.length < 30) return;
-  try { localStorage.setItem('nc-token', tok); } catch(err) {}
-  // Partager le token vers Supabase pour le mobile
-  _pushTokenToSupabase(tok);
+  console.log('[Surf NC] Token reçu depuis extension Chrome');
   if (tok !== _ncToken) {
-    _ncToken = tok;
-    var btn = document.getElementById('token-btn');
-    if (btn) { btn.style.color='var(--ok)'; btn.textContent='🔑'; }
-    console.log('[Surf NC] Token reçu depuis extension, rechargement...');
-    loadForecast(currentSpot);
+    setNcToken(tok); // setNcToken gère: localStorage + Supabase + UI + loadForecast
   }
 });
-
-// ─── Sync initial token Supabase (critique pour mobile) ──
-// Execute synchrone AVANT le chargement forecast pour avoir le bon token
-(async () => {
-  var token = await _loadTokenFromSupabase();
-  if (token) { _ncToken = token; }
-})();
 
 async function _syncTokenFromSupabase() {
   try {
     var remoteTok = await _loadTokenFromSupabase();
     if (remoteTok && remoteTok !== _ncToken) {
-      console.log('[NC Token Sync] Token Supabase utilise (plus recent que local)');
+      console.log('[NC Token Sync] Token Supabase utilisé (plus récent que local)');
+      // Mettre à jour sans déclencher loadForecast (sera appelé dans l'IIFE finale)
       _ncToken = remoteTok;
       try { localStorage.setItem('nc-token', remoteTok); } catch(e) {}
       return true;
     }
-  } catch(e) { console.warn('[NC Token Sync] echec:', e && e.message); }
+  } catch(e) { console.warn('[NC Token Sync] échec:', e && e.message); }
   return false;
 }
 
@@ -4059,17 +4393,6 @@ function _hideTokenSyncStatus(delay) {
   // Charger météo/UV dès le début (pas besoin d'ouvrir l'onglet marée)
   loadOpenMeteoMeteo();
 })();
-
-window.showNcTokenPrompt = function () {
-  console.warn("[NC] Token expiré");
-
-  if (typeof showToast === "function") {
-    showToast("Token expiré - veuillez vous reconnecter");
-  } else {
-    alert("Token expiré - veuillez vous reconnecter");
-  }
-};
-  
 </script>
 </body>
 </html>
