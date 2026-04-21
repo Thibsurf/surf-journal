@@ -1133,8 +1133,8 @@ async function loadForecast(i) {
   const ow = document.getElementById('obs-wrap');
   if (ow) ow.innerHTML = '<div class="loading"><div class="spin"></div></div>';
   
-  const tw = document.getElementById('tide-enc-wrap');
-  if (tw) tw.innerHTML = '<div class="loading"><div class="spin"></div></div>';
+  const tideEncWrap = document.getElementById('tide-enc-wrap');
+  if (tideEncWrap) tideEncWrap.innerHTML = '<div class="loading"><div class="spin"></div></div>';
 
   try {
     // ─── LABELS & LIENS ───
@@ -1304,9 +1304,9 @@ async function loadForecast(i) {
       console.warn('[loadForecast] Token NC expiré, données Open-Meteo uniquement');
     } else {
       console.error('[loadForecast] Erreur:', e.message);
-      var tw = document.getElementById('table-wrap');
-      if (tw && tw.innerHTML.includes('spin')) {
-        tw.innerHTML = '<div style="padding:1rem;color:var(--warm);font-size:12px;">⚠ ' + e.message + '</div>';
+      var tableWrap = document.getElementById('table-wrap');
+      if (tableWrap && tableWrap.innerHTML.includes('spin'))
+        tableWrap.innerHTML = '<div style="padding:1rem;color:var(--warm);font-size:12px;">⚠ '+e.message+'</div>';
       }
     }
   }
