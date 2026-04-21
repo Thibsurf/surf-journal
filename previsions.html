@@ -1112,22 +1112,36 @@ function updateHsToggleUI() {
 }
 
 async function loadForecast(i) {
+
   loadScoreParams();
-  var s = SPOTS[i];
-  document.getElementById('current-cond').innerHTML = '<div class="loading"><div class="spin"></div> '+s.name+'…</div>';
-  document.getElementById('table-wrap').innerHTML = '<div class="loading"><div class="spin"></div></div>';
-  var ow=document.getElementById('obs-wrap'); if(ow) ow.innerHTML='<div class="loading" style="padding:.5rem;"><div class="spin"></div></div>';
-  var tw=document.getElementById('tide-enc-wrap'); if(tw) tw.innerHTML='<div class="loading" style="padding:.5rem;"><div class="spin"></div></div>';
-  var _loadTimeout = setTimeout(function(){
-    var el=document.getElementById('table-wrap');
-    if(el && el.innerHTML.includes('spin')){
-      el.innerHTML='<div style="padding:1rem;color:var(--warm);font-size:12px;">'
-        +'⚠ Chargement long — vérifier la connexion ou le token 🔑'
-        +'<br><button onclick="loadForecast(currentSpot)" style="margin-top:8px;background:var(--glass);'
-        +'border:1px solid var(--border);color:var(--text);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;">↺ Réessayer</button>'
-        +'</div>';
-    }
-  }, 10000);
+
+  const spot = SPOTS[i];
+  const spotName = spot.name;
+
+  // UI loading (tu gardes)
+  document.getElementById('current-cond').innerHTML =
+    '<div class="loading"><div class="spin"></div> ' + spotName + '…</div>';
+
+  document.getElementById('table-wrap').innerHTML =
+    '<div class="loading"><div class="spin"></div></div>';
+
+  const ow = document.getElementById('obs-wrap');
+  if (ow) ow.innerHTML = '<div class="loading"><div class="spin"></div></div>';
+
+  const tw = document.getElementById('tide-enc-wrap');
+  if (tw) tw.innerHTML = '<div class="loading"><div class="spin"></div></div>';
+
+  // 🔥 NOUVEAU : on passe par Supabase
+  const data = await loadSpotForecast(spotName);
+
+  if (!data) {
+    document.getElementById('table-wrap').innerHTML =
+      '<div style="padding:1rem;color:red;">Erreur chargement météo</div>';
+    return;
+  }
+
+  renderForecast(data);
+}
 
   var onEl=document.getElementById('obs-name'); if(onEl) onEl.textContent=s.obsName||s.name;
   var olEl=document.getElementById('obs-link');
