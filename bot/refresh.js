@@ -1,22 +1,49 @@
 import fetch from "node-fetch";
+import { chromium } from "playwright";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
-// Endpoint Météo.nc (optionnel pour tester le token)
-const METEO_TEST_URL =
-  "https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine?lat=-22.38056&lon=166.22314";
+async function getTokenFromMeteo() {
+  console.log("[BOT] 🌐 Lancement navigateur...");
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+
+  let token = null;
+
+  // 👇 On écoute TOUTES les requêtes réseau
+  page.on("request", (request) => {
+    const headers = request.headers();
+
+    if (headers.authorization && headers.authorization.startsWith("Bearer")) {
+      console.log("[BOT] 🎯 Token détecté !");
+      token = headers.authorization.replace("Bearer ", "");
+    }
+  });
+
+  await page.goto("https://meteo.nc");
+
+  // On laisse le temps aux requêtes de partir
+  await page.waitForTimeout(8000);
+
+  await browser.close();
+
+  if (!token) {
+    throw new Error("❌ Token non trouvé via Playwright");
+  }
+
+  console.log("[BOT] ✅ Token récupéré !");
+  return token;
+}
 
 async function run() {
-  console.log("[BOT] 🚀 Démarrage du rafraîchissement du token...");
+  console.log("[BOT] 🚀 Start");
 
   try {
-    // 1. Vérification des variables d'environnement
     if (!SUPABASE_URL || !SUPABASE_KEY) {
-      throw new Error("❌ Variables SUPABASE_URL ou SUPABASE_KEY manquantes.");
+      throw new Error("Variables d'environnement manquantes");
     }
-
-    console.log("[BOT] 🔐 Connexion à Supabase OK");
 
     const headers = {
       apikey: SUPABASE_KEY,
@@ -24,40 +51,12 @@ async function run() {
       "Content-Type": "application/json",
     };
 
-    // 2. Récupérer le token actuel
-    console.log("[BOT] 🔍 Récupération du token...");
-    const response = await fetch(
-      `${SUPABASE_URL}/rest/v1/shared_tokens?id=eq.meteo-nc&select=token`,
-      { headers }
-    );
+    // 🔥 1. récupérer le NOUVEAU token
+    const newToken = await getTokenFromMeteo();
 
-    if (!response.ok) {
-      throw new Error(`❌ GET failed: ${response.status} ${response.statusText}`);
-    }
+    console.log("[BOT] 🔐 Nouveau token:", newToken.substring(0, 20) + "...");
 
-    const data = await response.json();
-
-    if (!data || data.length === 0 || !data[0]?.token) {
-      throw new Error("❌ Aucun token trouvé en base.");
-    }
-
-    const currentToken = data[0].token;
-    console.log("[BOT] ✅ Token actuel récupéré");
-
-    // ⚠️ TODO: ici tu dois remplacer par ton vrai refresh
-    const newToken = currentToken;
-
-    // 3. (optionnel) tester le token
-    /*
-    const testResponse = await fetch(METEO_TEST_URL, {
-      headers: { Authorization: `Bearer ${newToken}` },
-    });
-    console.log("[BOT] 🌦️ Test API météo status:", testResponse.status);
-    */
-
-    // 4. Mise à jour dans Supabase
-    console.log("[BOT] 🔄 Mise à jour du token...");
-
+    // 🔄 2. update Supabase
     const updateResponse = await fetch(
       `${SUPABASE_URL}/rest/v1/shared_tokens?id=eq.meteo-nc`,
       {
@@ -73,17 +72,17 @@ async function run() {
       }
     );
 
-    const updateData = await updateResponse.json();
+    const data = await updateResponse.json();
 
-    console.log("[BOT] 📋 Réponse update:", updateData);
+    console.log("[BOT] 📋 Update:", data);
 
     if (!updateResponse.ok) {
-      throw new Error(`❌ Update failed: ${updateResponse.status}`);
+      throw new Error("Update Supabase failed");
     }
 
-    console.log("[BOT] ✅ Token mis à jour avec succès !");
+    console.log("[BOT] ✅ Token mis à jour !");
   } catch (err) {
-    console.error("[BOT] ❌ Erreur:", err.message);
+    console.error("[BOT] ❌", err.message);
     process.exit(1);
   }
 }
