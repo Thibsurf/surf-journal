@@ -951,22 +951,30 @@ function setNcToken(t) {
 }
 
 function ncFetch(url) {
-  // Confirmé: token Bearer seul suffit (HTTP 200 vérifié via test_api.html)
-  // credentials:'omit' obligatoire sinon CORS bloqué (pas d'Allow-Credentials côté serveur)
   return fetch(url, {
-    headers: { 'Authorization': 'Bearer ' + _ncToken },
-    credentials: 'omit'
-  }).then(function(r){
-    if(r.status === 401 || r.status === 403) {
-      console.warn('[NC] Token expiré (' + r.status + ') — ouverture panneau renouvellement');
-      if(!document.getElementById('nc-token-banner')) showNcTokenPrompt();
-        // Mettre à jour le bouton token
-        var tb=document.getElementById('token-btn');
-        if(tb){tb.style.color='var(--bad)';tb.style.borderColor='var(--bad)';
-          tb.textContent='🔑 Token expiré!';}
+    method: "GET",
+    credentials: "include" // 🔥 IMPORTANT
+  }).then(function (r) {
+
+    if (r.status === 401 || r.status === 403) {
+      console.warn('[NC] Token/session expiré (' + r.status + ')');
+
+      if (!document.getElementById('nc-token-banner')) {
+        showNcTokenPrompt();
+      }
+
+      var tb = document.getElementById('token-btn');
+      if (tb) {
+        tb.style.color = 'var(--bad)';
+        tb.style.borderColor = 'var(--bad)';
+        tb.textContent = '🔑 Session expirée!';
+      }
+
       throw new Error('NC_TOKEN_EXPIRED');
     }
-    if(!r.ok) throw new Error('HTTP ' + r.status + ' sur ' + url);
+
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' sur ' + url);
+
     return r.json();
   });
 }
