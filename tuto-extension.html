@@ -1,144 +1,197 @@
 <!DOCTYPE html>
-<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Extension meteo.nc Token — Guide</title>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<title>Extension meteo.nc Token — Guide v3</title>
+
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:#0a1628;color:#e8eef4;font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.6;}
-nav{background:rgba(10,22,40,.9);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.08);
-  padding:0 1.5rem;display:flex;align-items:center;height:52px;gap:12px;}
-.back{color:#7a94aa;font-size:12px;text-decoration:none;}
+body{
+  background:#0a1628;
+  color:#e8eef4;
+  font-family:'DM Sans',system-ui,sans-serif;
+  font-size:14px;
+  line-height:1.6;
+}
+
+nav{
+  background:rgba(10,22,40,.9);
+  backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(255,255,255,.08);
+  padding:0 1.5rem;
+  display:flex;
+  align-items:center;
+  height:52px;
+  gap:12px;
+}
+
+.back{
+  color:#7a94aa;
+  font-size:12px;
+  text-decoration:none;
+}
 .back:hover{color:#e8eef4;}
-main{max-width:620px;margin:0 auto;padding:2rem 1.5rem;}
-h1{font-family:'Playfair Display',serif;font-size:1.5rem;color:#4fa3c7;margin-bottom:4px;}
-.sub{color:rgba(255,255,255,.4);font-size:12px;margin-bottom:24px;}
-.badge-new{display:inline-block;background:#3dba8a;color:#0a1628;font-size:10px;font-weight:700;
-  padding:2px 8px;border-radius:10px;vertical-align:middle;margin-left:6px;}
-.tip{background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.2);border-radius:10px;
-  padding:14px 16px;margin-bottom:20px;font-size:13px;color:rgba(255,255,255,.7);line-height:1.7;}
+
+main{
+  max-width:640px;
+  margin:0 auto;
+  padding:2rem 1.5rem;
+}
+
+h1{
+  font-family:'Playfair Display',serif;
+  font-size:1.6rem;
+  color:#4fa3c7;
+  margin-bottom:4px;
+}
+
+.sub{
+  color:rgba(255,255,255,.4);
+  font-size:12px;
+  margin-bottom:24px;
+}
+
+.badge{
+  display:inline-block;
+  background:#3dba8a;
+  color:#0a1628;
+  font-size:10px;
+  font-weight:700;
+  padding:2px 8px;
+  border-radius:10px;
+  margin-left:6px;
+}
+
+h2{
+  font-size:13px;
+  font-weight:700;
+  color:#e8eef4;
+  margin:22px 0 12px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  padding-bottom:6px;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+
+.card{
+  background:#0d1f3c;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  padding:14px;
+  margin-bottom:14px;
+}
+
+.tip{
+  background:rgba(61,186,138,.08);
+  border:1px solid rgba(61,186,138,.25);
+  border-radius:10px;
+  padding:14px;
+  margin-bottom:18px;
+  color:rgba(255,255,255,.75);
+}
+
 .tip b{color:#3dba8a;}
-.download{display:flex;align-items:center;gap:12px;background:#0d1f3c;border:2px solid rgba(61,186,138,.4);
-  border-radius:10px;padding:14px 18px;margin-bottom:24px;text-decoration:none;}
-.download:hover{border-color:rgba(61,186,138,.7);}
-.dl-icon{font-size:28px;flex-shrink:0;}
-.dl-text h3{font-size:13px;font-weight:600;color:#e8eef4;margin-bottom:2px;}
-.dl-text p{font-size:11px;color:#7a94aa;}
-.dl-badge{margin-left:auto;background:#3dba8a;color:#0a1628;border-radius:8px;
-  padding:5px 14px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;}
-h2{font-size:13px;font-weight:700;color:#e8eef4;margin-bottom:14px;padding-bottom:8px;
-  border-bottom:1px solid rgba(255,255,255,.08);text-transform:uppercase;letter-spacing:.05em;}
-.step{display:flex;gap:14px;margin-bottom:18px;align-items:flex-start;}
-.num{width:28px;height:28px;border-radius:50%;background:#3dba8a;color:#fff;font-weight:700;
-  font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
-.step h3{font-size:13px;font-weight:600;color:#e8eef4;margin-bottom:3px;}
-.step p{font-size:12px;color:#7a94aa;line-height:1.7;}
-code{background:#0d1f3c;border:1px solid rgba(255,255,255,.1);border-radius:4px;
-  padding:1px 7px;font-family:monospace;font-size:11px;color:#4fa3c7;}
-a{color:#4fa3c7;}
-.hero{background:linear-gradient(135deg, rgba(61,186,138,.12), rgba(79,163,199,.06));
-  border:1px solid rgba(61,186,138,.25);border-radius:12px;padding:18px;margin-bottom:24px;}
-.hero .title{font-size:14px;font-weight:700;color:#3dba8a;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
-.hero-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;font-size:12px;color:#a8b8c8;line-height:1.5;}
-.hero-row:last-child{margin-bottom:0;}
-.hero-icon{font-size:18px;flex-shrink:0;margin-top:-1px;}
-.hero-row b{color:#e8eef4;}
-.compat{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
-.compat-item{background:#0d1f3c;border:1px solid rgba(255,255,255,.08);border-radius:8px;
-  padding:10px;text-align:center;font-size:11px;}
-.compat-item .browser{font-size:20px;margin-bottom:4px;}
-.ok-s{color:#3dba8a;font-weight:600;font-size:10px;}
-</style></head><body>
+
+code{
+  background:#0a1628;
+  border:1px solid rgba(255,255,255,.1);
+  padding:2px 6px;
+  border-radius:4px;
+  font-family:monospace;
+  font-size:11px;
+  color:#4fa3c7;
+}
+</style>
+
+</head>
+
+<body>
 
 <nav>
-  <a href="https://thibsurf.github.io/surf-journal/" class="back">← Journal</a>
-  <span style="color:rgba(255,255,255,.15);">|</span>
-  <a href="https://thibsurf.github.io/surf-journal/previsions.html" class="back">🌊 Prévisions</a>
+  <a class="back" href="https://thibsurf.github.io/surf-journal/">← Journal</a>
+  <span style="color:rgba(255,255,255,.15)">|</span>
+  <a class="back" href="https://thibsurf.github.io/surf-journal/previsions.html">🌊 Prévisions</a>
 </nav>
 
 <main>
-<h1>🔑 Extension meteo.nc Token <span class="badge-new">v3.0</span></h1>
-<div class="sub">Installation en 3 minutes · Zéro action après · Synchronisation totale</div>
 
-<div class="hero">
-  <div class="title">⚡ v3.0 — Totalement invisible</div>
-  <div class="hero-row">
-    <div class="hero-icon">🤖</div>
-    <div>Capture automatique à chaque visite de <b>meteo.nc</b>, et <b>renouvellement toutes les 6h</b> en arrière-plan. Tu ne vois jamais l'onglet.</div>
-  </div>
-  <div class="hero-row">
-    <div class="hero-icon">🔗</div>
-    <div>Le token est <b>synchronisé automatiquement avec Surf NC</b>. <b>Aucun copier-coller nécessaire</b> — l'app voit le token directement.</div>
-  </div>
-  <div class="hero-row">
-    <div class="hero-icon">💤</div>
-    <div>Tu installes une fois. Ensuite tu oublies. Le token est toujours à jour.</div>
-  </div>
+<h1>
+🔑 Extension meteo.nc Token
+<span class="badge">v3.0</span>
+</h1>
+
+<div class="sub">
+Installation rapide · Refresh automatique · Synchronisation Surf NC
 </div>
 
-<a class="download" href="https://github.com/Thibsurf/surf-journal/raw/main/nc-token-extension.zip" download>
-  <div class="dl-icon">📦</div>
-  <div class="dl-text">
-    <h3>nc-token-extension.zip</h3>
-    <p>v3.0 · Chrome / Edge / Brave · github.com/Thibsurf/surf-journal</p>
-  </div>
-  <div class="dl-badge">⬇ Télécharger</div>
-</a>
-
-<h2>Installation</h2>
-
-<div class="step">
-  <div class="num">1</div>
-  <div>
-    <h3>Dézipper dans un dossier fixe</h3>
-    <p>Dézippe <code>nc-token-extension.zip</code> dans un endroit permanent, par exemple <code>Documents/nc-token/</code>. Ne supprime pas ce dossier après installation.</p>
-  </div>
+<div class="tip">
+<b>⚡ Important :</b> l’extension capture automatiquement le token sur meteo.nc et le maintient à jour via refresh en arrière-plan.
 </div>
 
-<div class="step">
-  <div class="num">2</div>
-  <div>
-    <h3>Ouvrir les extensions Chrome</h3>
-    <p>Dans Chrome, Edge ou Brave, tape : <code>chrome://extensions</code></p>
-  </div>
+<h2>⚙️ Fonctionnement</h2>
+
+<div class="card">
+✔ Capture automatique du token sur <b>meteo.nc</b><br>
+✔ Refresh en arrière-plan (toutes les X heures)<br>
+✔ Stockage local dans le navigateur<br>
+✔ Synchronisation vers Surf NC<br>
+✔ Backup sur Supabase
 </div>
 
-<div class="step">
-  <div class="num">3</div>
-  <div>
-    <h3>Activer le mode développeur</h3>
-    <p>Interrupteur <b style="color:#e8eef4;">Mode développeur</b> en haut à droite.</p>
-  </div>
+<h2>🔄 Mise à jour du token</h2>
+
+<div class="card">
+- ✔ Nouveau token détecté → mise à jour automatique<br>
+- ♻ Token identique → seule la date est mise à jour<br>
+- 🔄 Refresh périodique pour forcer renouvellement si nécessaire<br>
+- ❌ Si capture échoue → dernier token conservé
 </div>
 
-<div class="step">
-  <div class="num">4</div>
-  <div>
-    <h3>Charger l'extension</h3>
-    <p>Bouton <b style="color:#e8eef4;">Charger l'extension non empaquetée</b> → sélectionne le dossier dézippé.</p>
-  </div>
+<h2>🧠 Logique intelligente</h2>
+
+<div class="card">
+✔ Refresh automatique en arrière-plan<br>
+✔ Ouverture invisible de meteo.nc si nécessaire<br>
+✔ Détection du token dès qu’il est disponible<br>
+✔ Évite les doublons et mises à jour inutiles
 </div>
 
-<div class="step">
-  <div class="num">5</div>
-  <div>
-    <h3>Épingler dans la barre (optionnel)</h3>
-    <p>Clique 🧩 → trouve <b style="color:#e8eef4;">meteo.nc Token</b> → 📌 pour épingler. Utile pour voir l'état mais pas nécessaire au fonctionnement.</p>
-  </div>
+<h2>☁️ Synchronisation Surf NC</h2>
+
+<div class="card">
+- Token stocké localement (source principale)<br>
+- Surf NC lit directement ce token<br>
+- Supabase sert de sauvegarde distante<br>
+- Synchronisation automatique multi-appareils
 </div>
 
-<div class="tip" style="margin-top:24px;">
-  <b>Après installation</b> — dans les 2 secondes l'extension ouvre meteo.nc en arrière-plan, capture le token, et le pousse dans l'app Surf NC. Tu n'as plus rien à faire. <b>Ouvre simplement les Prévisions NC</b> — le token sera déjà là.
+<h2>⚠️ Important</h2>
+
+<div class="card">
+Le token dépend de <b>meteo.nc</b>.<br><br>
+
+Si le site ne régénère pas de session :
+→ le token peut rester identique même après refresh<br><br>
+
+Le bouton “actualiser” force une tentative de renouvellement.
 </div>
 
-<h2>Compatibilité</h2>
-<div class="compat">
-  <div class="compat-item"><div class="browser">🌐</div><b>Chrome</b><br><span class="ok-s">✅ Recommandé</span></div>
-  <div class="compat-item"><div class="browser">🔷</div><b>Edge</b><br><span class="ok-s">✅ Compatible</span></div>
-  <div class="compat-item"><div class="browser">🦁</div><b>Brave</b><br><span class="ok-s">✅ Compatible</span></div>
-</div>
-<div class="tip" style="margin-top:12px;font-size:12px;">
-  Firefox et Safari ne sont pas compatibles. Sur mobile, les extensions Chrome ne fonctionnent pas non plus — l'extension est donc conçue pour un usage sur ordinateur.
+<h2>💻 Compatibilité</h2>
+
+<div class="card">
+✔ Chrome<br>
+✔ Edge<br>
+✔ Brave<br><br>
+
+❌ Firefox<br>
+❌ Safari<br>
+❌ Mobile
 </div>
 
 </main>
-</body></html>
+</body>
+</html>
