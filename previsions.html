@@ -975,7 +975,7 @@ function ncFetch(url) {
 // ─────────────────────────────────────────────
 // 🧠 TOKEN STATE GLOBAL
 // ─────────────────────────────────────────────
-let _ncToken = localStorage.getItem('nc-token') || null;
+window._ncToken = window._ncToken || localStorage.getItem('nc-token') || null;
 
 // applique un token proprement
 function setNcToken(t) {
