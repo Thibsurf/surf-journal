@@ -1111,176 +1111,203 @@ function updateHsToggleUI() {
   }
 }
 
-async function loadSpotForecast(selectedSpot) {
-
-  const locationId = SPOT_STATIONS[selectedSpot];
-
-  if (!locationId) {
-    console.warn("Spot inconnu:", selectedSpot);
-    return;
-  }
-
-  const { data, error } = await supabase
-    .from("meteo_data")
-    .select("*")
-    .eq("location_id", locationId)
-    .single();
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  return data;
-}
+// ═══════════════════════════════════════════════════════════════
+// FONCTION UNIFIÉE - CONSERVE L'ANCIENNE LOGIQUE MAIS ASYNC
+// ═══════════════════════════════════════════════════════════════
 
 async function loadForecast(i) {
-
   loadScoreParams();
+  
+  const s = SPOTS[i];
+  if (!s) {
+    console.warn("Spot inconnu:", i);
+    return;
+  }
 
-  const spot = SPOTS[i];
-  const spotName = spot.name;
-
-  // UI loading (tu gardes)
+  // UI loading
   document.getElementById('current-cond').innerHTML =
-    '<div class="loading"><div class="spin"></div> ' + spotName + '…</div>';
-
+    '<div class="loading"><div class="spin"></div> ' + s.name + '…</div>';
   document.getElementById('table-wrap').innerHTML =
     '<div class="loading"><div class="spin"></div></div>';
-
+  
   const ow = document.getElementById('obs-wrap');
   if (ow) ow.innerHTML = '<div class="loading"><div class="spin"></div></div>';
-
+  
   const tw = document.getElementById('tide-enc-wrap');
   if (tw) tw.innerHTML = '<div class="loading"><div class="spin"></div></div>';
 
-  // 🔥 NOUVEAU : on passe par Supabase
-  const data = await loadSpotForecast(spotName);
-
-  if (!data) {
-    document.getElementById('table-wrap').innerHTML =
-      '<div style="padding:1rem;color:red;">Erreur chargement météo</div>';
-    return;
-  }
-
-  renderForecast(data);
-}
-
-  var onEl=document.getElementById('obs-name'); if(onEl) onEl.textContent=s.obsName||s.name;
-  var olEl=document.getElementById('obs-link');
-  if(olEl) {
-    var obsSt2 = OBS_STATIONS.find(function(st){return st.spotId===s.obsId||st.id===s.obsId;});
-    olEl.href = obsSt2&&obsSt2.meteoUrl ? obsSt2.meteoUrl : 'https://meteo.nc/fr/observations';
-  }
-  // Lien météo prévisions
-  var mlEl=document.getElementById('meteo-nc-link');
-  if(mlEl){
-    var ms=METEO_STATIONS.reduce(function(best,m){
-      var d=Math.sqrt(Math.pow(m.lat-s.lat,2)+Math.pow(m.lon-s.lon,2));
-      return d<best.d?{d:d,m:m}:best;
-    },{d:Infinity,m:METEO_STATIONS[0]});
-    mlEl.href = ms.m.meteoUrl;
-    mlEl.textContent = '↗ meteo.nc ('+ms.m.name+')';
-  }
-  var tlEl=document.getElementById('tide-spot-lbl'); if(tlEl) tlEl.textContent=s.tideName||'Nouméa';
-  var hlEl=document.getElementById('hs-spot-lbl'); if(hlEl) hlEl.textContent=s.name;
-
-  var BASE='https://rpcache.meteo.nc/internet2018client/2.0/';
-  var marineUrl  = BASE+'forecast/marine?lat='+s.lat+'&lon='+s.lon+'&id=';
-  // Marées: inclure la date du jour pour récupérer les données actuelles
-  var todayStr = new Date().toISOString().split('T')[0];
-  var tideUrl  = BASE+'tide?id='+(s.tideId||'9881852')+'&date='+todayStr;
-  // Obs: URL confirmée via DevTools: /observation/history?lat=LAT&lon=LON&id=ID
-  var obsUrl = null;
-  if(s.obsId) {
-    // Chercher la station par spotId (ID dans DEFAULT_SPOTS) ou id direct
-    var obsSt = OBS_STATIONS.find(function(st){return st.spotId===s.obsId || st.id===s.obsId;});
-    if(obsSt) {
-      obsUrl = BASE+'observation/history?lat='+obsSt.lat+'&lon='+obsSt.lon+'&id='+obsSt.id;
-    }
-  }
-  // URL forecast météo (vent, pluie, icônes) — confirmée DevTools
-  var today = new Date();
-  var forecastUrl = BASE+'forecast?lat='+s.lat+'&lon='+s.lon+'&id=&instants=morning%2Cafternoon%2Cevening%2Cnight';
-  var omMarineUrl='https://marine-api.open-meteo.com/v1/marine?latitude='+s.lat+'&longitude='+s.lon
-    +'&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period'
-    +',wind_wave_height,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period'
-    +'&forecast_days=7&timezone=Pacific%2FNoumea';
-  var omWindUrl  ='https://api.open-meteo.com/v1/forecast?latitude='+s.lat+'&longitude='+s.lon
-    +'&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&forecast_days=7&timezone=Pacific%2FNoumea';
-
-  var _loadTimeout = null; // déclaré ici pour être accessible dans catch
   try {
-    // Log pour debug
+    // ─── LABELS & LIENS ───
+    var onEl = document.getElementById('obs-name');
+    if (onEl) onEl.textContent = s.obsName || s.name;
+    
+    var olEl = document.getElementById('obs-link');
+    if (olEl) {
+      var obsSt2 = OBS_STATIONS.find(function(st) {
+        return st.spotId === s.obsId || st.id === s.obsId;
+      });
+      olEl.href = obsSt2 && obsSt2.meteoUrl ? obsSt2.meteoUrl : 'https://meteo.nc/fr/observations';
+    }
+    
+    var mlEl = document.getElementById('meteo-nc-link');
+    if (mlEl) {
+      var ms = METEO_STATIONS.reduce(function(best, m) {
+        var d = Math.sqrt(Math.pow(m.lat - s.lat, 2) + Math.pow(m.lon - s.lon, 2));
+        return d < best.d ? { d: d, m: m } : best;
+      }, { d: Infinity, m: METEO_STATIONS[0] });
+      mlEl.href = ms.m.meteoUrl;
+      mlEl.textContent = '↗ meteo.nc (' + ms.m.name + ')';
+    }
+    
+    var tlEl = document.getElementById('tide-spot-lbl');
+    if (tlEl) tlEl.textContent = s.tideName || 'Nouméa';
+    
+    var hlEl = document.getElementById('hs-spot-lbl');
+    if (hlEl) hlEl.textContent = s.name;
+
+    // ─── URLS ───
+    var BASE = 'https://rpcache.meteo.nc/internet2018client/2.0/';
+    var marineUrl = BASE + 'forecast/marine?lat=' + s.lat + '&lon=' + s.lon + '&id=';
+    var todayStr = new Date().toISOString().split('T')[0];
+    var tideUrl = BASE + 'tide?id=' + (s.tideId || '9881852') + '&date=' + todayStr;
+    
+    var obsUrl = null;
+    if (s.obsId) {
+      var obsSt = OBS_STATIONS.find(function(st) {
+        return st.spotId === s.obsId || st.id === s.obsId;
+      });
+      if (obsSt) {
+        obsUrl = BASE + 'observation/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id;
+      }
+    }
+    
+    var forecastUrl = BASE + 'forecast?lat=' + s.lat + '&lon=' + s.lon + '&id=&instants=morning%2Cafternoon%2Cevening%2Cnight';
+    var omMarineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + s.lat + '&longitude=' + s.lon
+      + '&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period'
+      + ',wind_wave_height,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period'
+      + '&forecast_days=7&timezone=Pacific%2FNoumea';
+    var omWindUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + s.lat + '&longitude=' + s.lon
+      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&forecast_days=7&timezone=Pacific%2FNoumea';
+
     console.log('[loadForecast] Spot:', s.name, '| marine:', marineUrl, '| tide:', tideUrl, '| obs:', obsUrl);
 
-    var ncMarine=null, ncTide=null, ncForecast=null, omMarine=null, omWind=null, obsData=null;
-    // Token meteo.nc chargé (hardcodé + localStorage)
+    // ─── FETCH DONNÉES ───
+    var ncMarine = null, ncTide = null, ncForecast = null, omMarine = null, omWind = null, obsData = null;
+    
     console.log('[NC] Token présent:', !!_ncToken, '| longueur:', _ncToken.length);
-    console.log('[loadForecast] URLs:', {marine:marineUrl, tide:tideUrl, obs:obsUrl, forecast:forecastUrl});
-    try { ncMarine   = await ncFetch(marineUrl);   console.log('[NC marine] OK, rows:', ncMarine&&ncMarine.properties&&ncMarine.properties.marine&&ncMarine.properties.marine.length); } catch(e){ console.warn('[NC marine] FAIL:', e.message); }
-    try { ncTide     = await ncFetch(tideUrl);     console.log('[NC tide] OK'); } catch(e){ console.warn('[NC tide] FAIL:', e.message); }
-    try { ncForecast = await ncFetch(forecastUrl); console.log('[NC forecast] OK'); } catch(e){ console.warn('[NC forecast] FAIL:', e.message); }
-    try { omMarine   = await fetch(omMarineUrl).then(r=>r.json()); } catch(e){ console.warn('[OM marine] FAIL:', e.message); }
-    try { omWind     = await fetch(omWindUrl).then(r=>r.json());   } catch(e){ console.warn('[OM wind] FAIL:', e.message); }
-    if(obsUrl) { 
+    
+    try {
+      ncMarine = await ncFetch(marineUrl);
+      console.log('[NC marine] OK, rows:', ncMarine && ncMarine.properties && ncMarine.properties.marine && ncMarine.properties.marine.length);
+    } catch (e) {
+      console.warn('[NC marine] FAIL:', e.message);
+    }
+    
+    try {
+      ncTide = await ncFetch(tideUrl);
+      console.log('[NC tide] OK');
+    } catch (e) {
+      console.warn('[NC tide] FAIL:', e.message);
+    }
+    
+    try {
+      ncForecast = await ncFetch(forecastUrl);
+      console.log('[NC forecast] OK');
+    } catch (e) {
+      console.warn('[NC forecast] FAIL:', e.message);
+    }
+    
+    try {
+      omMarine = await fetch(omMarineUrl).then(r => r.json());
+    } catch (e) {
+      console.warn('[OM marine] FAIL:', e.message);
+    }
+    
+    try {
+      omWind = await fetch(omWindUrl).then(r => r.json());
+    } catch (e) {
+      console.warn('[OM wind] FAIL:', e.message);
+    }
+    
+    if (obsUrl) {
       console.log('[NC obs] URL:', obsUrl);
-      try { obsData = await ncFetch(obsUrl); console.log('[NC obs] OK | keys:', obsData?Object.keys(obsData):'null'); } 
-      catch(e){ console.warn('[NC obs] FAIL:', e.message); } 
+      try {
+        obsData = await ncFetch(obsUrl);
+        console.log('[NC obs] OK | keys:', obsData ? Object.keys(obsData) : 'null');
+      } catch (e) {
+        console.warn('[NC obs] FAIL:', e.message);
+      }
     } else {
-      console.warn('[NC obs] URL NULL — spot.obsId:', s.obsId, '| OBS_STATIONS:', OBS_STATIONS.map(function(x){return x.spotId+'→'+x.id;}));
+      console.warn('[NC obs] URL NULL — spot.obsId:', s.obsId, '| OBS_STATIONS:', OBS_STATIONS.map(function(x) {
+        return x.spotId + '→' + x.id;
+      }));
     }
 
+    // ─── RENDER ───
     renderObs(obsData, s);
-    // Charger veille+lendemain pour l'encart et la courbe
-    if(ncTide && ncTide.properties && ncTide.properties.tide) {
-      var tideBase = BASE+'tide?id='+(s.tideId||'9881852');
-      var todayNC = new Date(); // heure locale NC approximée
+    
+    if (ncTide && ncTide.properties && ncTide.properties.tide) {
+      var tideBase = BASE + 'tide?id=' + (s.tideId || '9881852');
+      var todayNC = new Date();
       var extraDays = [];
-      for(var xd=-2; xd<=1; xd++) {
-        if(xd===0) continue; // déjà chargé
-        var xDate = new Date(todayNC.getTime()+xd*864e5);
+      
+      for (var xd = -2; xd <= 1; xd++) {
+        if (xd === 0) continue;
+        var xDate = new Date(todayNC.getTime() + xd * 864e5);
         extraDays.push(xDate.toISOString().split('T')[0]);
       }
-      Promise.all(extraDays.map(function(ds){
-        return ncFetch(tideBase+'&date='+ds).catch(function(){return null;});
-      })).then(function(extras){
+      
+      Promise.all(extraDays.map(function(ds) {
+        return ncFetch(tideBase + '&date=' + ds).catch(function() {
+          return null;
+        });
+      })).then(function(extras) {
         var allHT = ncTide.properties.tide.high_tide.slice();
         var allLT = ncTide.properties.tide.low_tide.slice();
-        extras.forEach(function(r){
-          if(r&&r.properties&&r.properties.tide){
-            allHT=allHT.concat(r.properties.tide.high_tide||[]);
-            allLT=allLT.concat(r.properties.tide.low_tide||[]);
+        
+        extras.forEach(function(r) {
+          if (r && r.properties && r.properties.tide) {
+            allHT = allHT.concat(r.properties.tide.high_tide || []);
+            allLT = allLT.concat(r.properties.tide.low_tide || []);
           }
         });
-        var merged = {properties:{tide:{high_tide:allHT, low_tide:allLT}}};
+        
+        var merged = { properties: { tide: { high_tide: allHT, low_tide: allLT } } };
         renderTideEncart(merged, s);
         _ncTideCache = merged;
-        if(mareeInited) renderTideCurve(tideDayOffset||0);
+        if (mareeInited) renderTideCurve(tideDayOffset || 0);
       });
     } else {
       renderTideEncart(ncTide, s);
-      if(ncTide) { _ncTideCache = ncTide; if(mareeInited) renderTideCurve(tideDayOffset||0); }
+      if (ncTide) {
+        _ncTideCache = ncTide;
+        if (mareeInited) renderTideCurve(tideDayOffset || 0);
+      }
     }
+    
     renderForecast(ncMarine, ncForecast, omMarine, omWind, s);
-    var srcEl=document.getElementById('tbl-source');
-    var hasNC = ncMarine&&ncMarine.properties&&ncMarine.properties.marine;
-    if(srcEl) {
+    
+    var srcEl = document.getElementById('tbl-source');
+    var hasNC = ncMarine && ncMarine.properties && ncMarine.properties.marine;
+    if (srcEl) {
       srcEl.textContent = hasNC ? 'meteo.nc' : 'GFS Open-Meteo (token NC expiré !)';
       srcEl.style.color = hasNC ? 'var(--faint)' : 'var(--warm)';
     }
-    clearTimeout(_loadTimeout);
-    document.getElementById('last-update').textContent='Màj '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+' · '+s.name+(ncMarine&&ncMarine.properties?' · meteo.nc':'');
-  } catch(e) {
-    clearTimeout(_loadTimeout);
-    if(e.message === 'NC_TOKEN_EXPIRED') {
-      // Token expiré: le panneau est déjà affiché, Open-Meteo continue
+    
+    document.getElementById('last-update').textContent = 'Màj ' + new Date().toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    }) + ' · ' + s.name + (ncMarine && ncMarine.properties ? ' · meteo.nc' : '');
+
+  } catch (e) {
+    if (e.message === 'NC_TOKEN_EXPIRED') {
       console.warn('[loadForecast] Token NC expiré, données Open-Meteo uniquement');
     } else {
       console.error('[loadForecast] Erreur:', e.message);
       var tw = document.getElementById('table-wrap');
-      if(tw && tw.innerHTML.includes('spin'))
-        tw.innerHTML='<div style="padding:1rem;color:var(--warm);font-size:12px;">⚠ '+e.message+'</div>';
+      if (tw && tw.innerHTML.includes('spin')) {
+        tw.innerHTML = '<div style="padding:1rem;color:var(--warm);font-size:12px;">⚠ ' + e.message + '</div>';
+      }
     }
   }
 }
