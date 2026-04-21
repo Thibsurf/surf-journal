@@ -971,76 +971,65 @@ function ncFetch(url) {
   });
 }
 
-// ─── Token meteo.nc ────────────────────────────────────────────────────────
-// Token géré automatiquement par l’extension Chrome meteo.nc Token v3.2.
-// Il ne peut pas être récupéré via proxy CORS car le HTML statique ne le contient pas.
-// Fallback manuel uniquement si l’extension est désactivée.
 
-function showNcTokenPrompt() {
-  var existing = document.getElementById('nc-token-banner');
-  if(existing) { existing.remove(); return; }
-  var div = document.createElement('div');
-  div.id = 'nc-token-banner';
-  div.style.cssText = 'position:fixed;bottom:60px;right:16px;z-index:9998;background:var(--deep);'
-    +'border:1px solid var(--accent);border-radius:14px;padding:16px 18px;max-width:340px;width:90%;'
-    +'font-size:12px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.6);';
+// ─────────────────────────────────────────────
+// 🧠 TOKEN STATE GLOBAL
+// ─────────────────────────────────────────────
+let _ncToken = localStorage.getItem('nc-token') || null;
 
-  div.innerHTML =
-    // ── Titre ──
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-    +'<span style="font-weight:700;color:var(--accent);font-size:13px;">🔑 Token meteo.nc</span>'
-    +'<button id="tkn-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px;">&#215;</button>'
-    +'</div>'
+// applique un token proprement
+function setNcToken(t) {
+  if (!t || t.length < 20) return;
 
-        // ── Extension v3.0 — 100% auto ──
-    +'<div style="background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.3);border-radius:10px;padding:12px;margin-bottom:10px;">'
-    +'<div style="font-size:11px;font-weight:700;color:#3dba8a;margin-bottom:8px;">⚡ Extension Chrome — zéro action</div>'
-    +'<div style="font-size:10px;color:var(--muted);line-height:1.8;">'
-    +'L’extension <b style="color:var(--text);">meteo.nc Token v3.2</b> synchronise automatiquement le token avec cette app. '
-    +'Aucune action nécessaire. Le token est mis à jour en arrière-plan.'
-    +'</div>'
-    +'<div style="display:flex;gap:6px;margin-top:10px;">'
-    +'<a href="https://github.com/Thibsurf/surf-journal/raw/main/nc-token-extension.zip" download '
-    +'style="flex:1;text-align:center;background:#3dba8a;color:#0a1628;padding:6px 8px;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;">↓ Télécharger</a>'
-    +'<a href="https://thibsurf.github.io/surf-journal/tuto-extension.html" target="_blank" '
-    +'style="flex:1;text-align:center;background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.3);'
-    +'color:#4fa3c7;padding:6px 8px;border-radius:7px;font-size:11px;font-weight:600;text-decoration:none;">📖 Guide</a>'
-    +'</div>'
-    +'</div>'
+  // anti spam
+  if (_ncToken === t) return;
 
-    // ── Saisie manuelle ──
-    // ── Saisie manuelle ──
-    +'<div style="font-size:10px;color:var(--muted);margin-bottom:5px;">✏ Mode manuel (fallback si l’extension est désactivée) :</div>'
-    +'<input id="tkn-manual" type="text" placeholder="eyJ0eXAiOiJKV1Qi…" value="'
-    + (_ncToken ? _ncToken.substring(0,30)+'…' : '') + '" '
-    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;padding:7px 8px;'
-    +'color:var(--text);font-size:10px;margin-bottom:8px;box-sizing:border-box;font-family:monospace;"/>'
-    +'<button id="tkn-save" style="width:100%;background:var(--accent);color:#fff;border:none;'
-    +'border-radius:6px;padding:8px;cursor:pointer;font-size:11px;font-weight:600;">💾 Enregistrer</button>';
+  _ncToken = t;
 
-  document.body.appendChild(div);
+  localStorage.setItem('nc-token', t);
 
-  document.getElementById('tkn-close').onclick = function(){ div.remove(); };
+  console.log('[NC TOKEN] updated');
 
-  document.getElementById('tkn-save').onclick = function() {
-    var t = document.getElementById('tkn-manual').value.trim().replace(/^Bearer\s+/i,'');
-    if(!t || t.length < 20) { showToast('Token invalide'); return; }
-    setNcToken(t);
-    div.remove();
-  };
+  // déclenche UI / app
+  window.dispatchEvent(
+    new CustomEvent('nc-token-updated', { detail: t })
+  );
 }
-// ────────────────────────────────────────────────────────────────────────────
-// 🔁 Sync automatique depuis extension
+
+// ─────────────────────────────────────────────
+// 🔁 EVENT (extension → app)
+// ─────────────────────────────────────────────
 window.addEventListener('nc-token-updated', (e) => {
-  setNcToken(e.detail);
-  showToast('Token synchronisé automatiquement');
+  if (e.detail) setNcToken(e.detail);
 });
 
-// 💾 fallback si extension déjà injectée
+// ─────────────────────────────────────────────
+// 💾 FALLBACK 1 (localStorage direct)
+// ─────────────────────────────────────────────
 const extToken = localStorage.getItem('nc-token');
-if (extToken) {
-  setNcToken(extToken);
-}
+if (extToken) setNcToken(extToken);
+
+// ─────────────────────────────────────────────
+// 🔁 FALLBACK 2 (ANTI MISS EVENT)
+// ─────────────────────────────────────────────
+// vérifie toutes les 5s si extension a écrit un nouveau token
+setInterval(() => {
+  const t = localStorage.getItem('nc-token');
+  if (t && t !== _ncToken) {
+    console.log('[NC TOKEN] sync fallback detected');
+    setNcToken(t);
+  }
+}, 5000);
+
+// ─────────────────────────────────────────────
+// 🧠 FALLBACK 3 (anti page load timing issue)
+// ─────────────────────────────────────────────
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const t = localStorage.getItem('nc-token');
+    if (t && t !== _ncToken) setNcToken(t);
+  }, 1000);
+});
   
 // Stockage global des données courantes pour le hover
 var _fcastData = {};
