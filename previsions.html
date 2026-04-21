@@ -4018,6 +4018,17 @@ function _hideTokenSyncStatus(delay) {
   // Charger météo/UV dès le début (pas besoin d'ouvrir l'onglet marée)
   loadOpenMeteoMeteo();
 })();
+
+window.showNcTokenPrompt = function () {
+  console.warn("[NC] Token expiré");
+
+  if (typeof showToast === "function") {
+    showToast("Token expiré - veuillez vous reconnecter");
+  } else {
+    alert("Token expiré - veuillez vous reconnecter");
+  }
+};
+  
 </script>
 </body>
 </html>
