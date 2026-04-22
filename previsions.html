@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Prévisions Surf NC</title>
-<link rel="icon" type="image/png" href="favicon.png">
-<link rel="apple-touch-icon" href="favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -33,6 +31,25 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
 .nav-tab:hover{color:var(--text);background:var(--glass);}
 .nav-tab.active{color:var(--accent);}
 #last-update{font-size:11px;color:var(--faint);}
+
+/* HAMBURGER MOBILE */
+.nav-hamburger{display:none;background:none;border:1px solid var(--border);color:var(--muted);
+  padding:5px 8px;border-radius:var(--rs);cursor:pointer;font-size:16px;line-height:1;margin-left:auto;}
+.nav-tabs-group{display:flex;align-items:center;gap:4px;}
+@media(max-width:680px){
+  .nav-hamburger{display:flex;}
+  .nav-tabs-group{
+    display:none;flex-direction:column;position:fixed;top:52px;left:0;right:0;
+    background:rgba(10,22,40,.98);border-bottom:1px solid var(--border);
+    padding:8px 1rem;gap:4px;z-index:999;
+  }
+  .nav-tabs-group.open{display:flex;}
+  .nav-tabs-group .nav-tab{text-align:left;padding:10px 12px;border-radius:var(--rs);
+    border-bottom:1px solid rgba(255,255,255,.04);font-size:13px;}
+  .nav-tabs-group a{padding:10px 12px;font-size:13px;}
+  #last-update{display:none;}
+  .logo{font-size:.95rem;}
+}
 
 /* LAYOUT */
 .page{display:none;}.page.active{display:block;}
@@ -167,17 +184,20 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <a href="https://thibsurf.github.io/surf-journal/" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Retour au journal">← Journal</a>
   <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Sorties">🏄 Sorties</a>
   <div class="logo">Surf <span>NC</span> — Prévisions</div>
-  <button class="nav-tab active" onclick="showTab('forecast',this)">📊 Prévisions</button>
-  <button class="nav-tab" onclick="showTab('map',this)">🗺️ Carte spots</button>
-  <button class="nav-tab" onclick="showTab('windy',this)">🌊 Windy</button>
-  <button class="nav-tab" onclick="showTab('synop',this)">🗺 Analyse</button>
-  <button class="nav-tab" onclick="showTab('maree',this)">🌊 Marée & Pêche</button>
-  <span id="last-update" style="margin-left:auto;font-size:11px;color:var(--faint);"></span>
+  <div class="nav-tabs-group" id="nav-tabs-group">
+    <button class="nav-tab active" onclick="showTab('forecast',this);closeNavMenu()">📊 Prévisions</button>
+    <button class="nav-tab" onclick="showTab('map',this);closeNavMenu()">🗺️ Carte spots</button>
+    <button class="nav-tab" onclick="showTab('windy',this);closeNavMenu()">🌊 Windy</button>
+    <button class="nav-tab" onclick="showTab('synop',this);closeNavMenu()">🗺 Analyse</button>
+    <button class="nav-tab" onclick="showTab('maree',this);closeNavMenu()">🌊 Marée &amp; Pêche</button>
+  </div>
+  <span id="last-update" style="font-size:11px;color:var(--faint);"></span>
   <button onclick="showNcTokenPrompt()" id="token-btn"
     title="Token meteo.nc"
     style="background:none;border:1px solid var(--border);color:var(--faint);
     padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:10px;
     white-space:nowrap;font-family:var(--font-b);">🔑</button>
+  <button class="nav-hamburger" id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
 </nav>
 
 <!--  PAGE FORECAST  -->
@@ -900,6 +920,28 @@ function rebuildAll() {
 // TABS NAV
 // ---
 var mapInited=false, mareeInited=false;
+// ─── HAMBURGER MOBILE ───────────────────────────────────────────────────────
+function toggleNavMenu() {
+  var g = document.getElementById('nav-tabs-group');
+  var btn = document.getElementById('nav-hamburger');
+  if (!g) return;
+  var open = g.classList.toggle('open');
+  if (btn) btn.textContent = open ? '✕' : '☰';
+}
+function closeNavMenu() {
+  var g = document.getElementById('nav-tabs-group');
+  var btn = document.getElementById('nav-hamburger');
+  if (g) g.classList.remove('open');
+  if (btn) btn.textContent = '☰';
+}
+// Fermer le menu en cliquant en dehors
+document.addEventListener('click', function(e) {
+  var g = document.getElementById('nav-tabs-group');
+  var btn = document.getElementById('nav-hamburger');
+  if (!g || !g.classList.contains('open')) return;
+  if (!g.contains(e.target) && e.target !== btn) closeNavMenu();
+});
+
 function showTab(name, btn) {
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.getElementById('tab-'+name).classList.add('active');
@@ -1032,10 +1074,15 @@ function showNcTokenPrompt() {
     + '<button id="nc-tok-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;">×</button>'
     + '</div>'
     + statusHtml
-    + '<div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5;">'
-    + 'Récupère le token dans DevTools → Network → une requête rpcache.meteo.nc → Request Headers → Authorization (enlève "Bearer ")'
+    + '<div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.7;">'
+    + '<b style="color:var(--text);">🧩 Extension Chrome</b> (recommandé) :<br>'
+    + 'Installe l\'extension depuis <a href="https://github.com/Thibsurf/surf-journal" target="_blank" style="color:var(--accent);">github.com/Thibsurf/surf-journal</a>. '
+    + 'Elle capte le token automatiquement quand tu visites meteo.nc et le synchronise via Supabase — cette app le reçoit sans intervention.'
     + '</div>'
-    + '<textarea id="nc-tok-input" rows="3" placeholder="eyJ0eX..." '
+    + '<div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5;">'
+    + '<b style="color:var(--text);">Sans extension</b> : DevTools → Network → requête rpcache.meteo.nc → Headers → <span style="font-family:monospace;color:var(--faint);">Authorization: Bearer eyJ…</span> → copier après "Bearer "'
+    + '</div>'
+    + '<textarea id="nc-tok-input" rows="2" placeholder="eyJ0eX..." '
     + 'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
     + 'padding:6px;color:var(--text);font-size:10px;resize:vertical;box-sizing:border-box;font-family:monospace;"></textarea>'
     + '<div style="display:flex;gap:6px;margin-top:8px;">'
@@ -1139,15 +1186,26 @@ function setHsSrc(src, skipRedraw) {
 // ─── Construction graphiques secondaires (période, vent, puissance) ──────────
 // Centralisé ici pour que le crosshair soit toujours actif
 function _addChartHover(cv, id, n) {
-  // évite de doubler les listeners
   if(cv._hoverBound) return;
   cv._hoverBound = true;
   cv.addEventListener('mousemove', function(e) {
     var chart = charts[id]; if(!chart||!chart.chartArea) return;
     var ca = chart.chartArea;
-    var idx = Math.round((e.offsetX - ca.left) / (ca.right - ca.left) * (n-1));
+    if(e.offsetX < ca.left || e.offsetX > ca.right) return;
+    // Utiliser getValueForPixel (Chart.js v4) pour un mapping exact
+    var idx;
+    if(chart.scales.x && chart.scales.x.getValueForPixel) {
+      idx = Math.round(chart.scales.x.getValueForPixel(e.offsetX));
+    } else {
+      idx = Math.round((e.offsetX - ca.left) / (ca.right - ca.left) * (n-1));
+    }
     idx = Math.max(0, Math.min(n-1, idx));
     _chartHoverIdx = idx;
+    // updateHsHover utilise _fcastData — s'assurer que l'index est dans les bornes
+    var activeD = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
+    if(activeD && activeD.lbl && activeD.lbl[idx]) {
+      _fcastData = activeD; // synchroniser la référence active
+    }
     updateHsHover(idx);
     _chartHoverTooltip(id, idx);
     ['c-period','c-wind','c-power','c-hs'].forEach(function(cid) {
@@ -1176,17 +1234,76 @@ function _ensureTooltipEl(id, parentEl) {
 }
 
 function _buildSecondaryCharts(d) {
+  // Callback ticks partagé : n'afficher que 00h/06h/12h/18h
+  function tickCb(val, idx) {
+    var label = (d.lbl && d.lbl[idx]) || '';
+    var m = label.match(/(\d{2})h$/);
+    if(!m) return null;
+    var h = parseInt(m[1]);
+    if(h===0) return '00h';
+    if(h===6) return '06h';
+    if(h===12) return '12h';
+    if(h===18) return '18h';
+    return null;
+  }
+  var xOpts = {
+    ticks:{color:'#5a7890',font:{size:8},maxRotation:0,autoSkip:false,callback:tickCb},
+    grid:{color:'rgba(255,255,255,.025)'}
+  };
+
+  // Plugin bandes jour pour les charts secondaires (même logique)
+  var dates2 = (d && d.dates) || [];
+  var DAY_FR3 = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var secBands = [];
+  var pk2=null, bs2=0;
+  dates2.forEach(function(dt,i){
+    if(!dt)return;
+    var dd=dt.getDate?dt:new Date(dt);
+    var k=dd.getDate()+'/'+dd.getMonth();
+    if(k!==pk2){
+      if(pk2!==null)secBands.push({startIdx:bs2,endIdx:i-1});
+      bs2=i;pk2=k;
+    }
+    if(i===dates2.length-1)secBands.push({startIdx:bs2,endIdx:i});
+  });
+
+  function makeSecDayPlugin(cid) {
+    return {
+      id:'secDay_'+cid,
+      beforeDatasetsDraw:function(chart){
+        var ctx2=chart.ctx,ca=chart.chartArea;
+        if(!ca)return;
+        var xs=chart.scales.x;
+        ctx2.save();
+        secBands.forEach(function(band,bi){
+          if(bi%2===1){
+            var x0=xs.getPixelForValue(band.startIdx),x1=xs.getPixelForValue(band.endIdx);
+            ctx2.fillStyle='rgba(255,255,255,0.018)';
+            ctx2.fillRect(x0,ca.top,x1-x0,ca.bottom-ca.top);
+          }
+          if(bi>0){
+            var x0b=xs.getPixelForValue(band.startIdx);
+            ctx2.beginPath();ctx2.moveTo(x0b,ca.top);ctx2.lineTo(x0b,ca.bottom);
+            ctx2.strokeStyle='rgba(255,255,255,0.1)';ctx2.lineWidth=1;
+            ctx2.setLineDash([3,3]);ctx2.stroke();ctx2.setLineDash([]);
+          }
+        });
+        ctx2.restore();
+      }
+    };
+  }
+
   // ── Période + Direction H1 ──
   if(charts['c-period']){try{charts['c-period'].destroy();}catch(e){}}
   var cvP=document.getElementById('c-period');
   if(cvP){
     var crossP = makeCrosshairPlugin('c-period');
-    charts['c-period']=new Chart(cvP,{type:'line',plugins:[crossP],data:{labels:d.lbl,datasets:[
+    charts['c-period']=new Chart(cvP,{type:'line',plugins:[crossP, makeSecDayPlugin('c-period')],data:{labels:d.lbl,datasets:[
       {label:'Période H1 (s)',data:d.sw1t||[],borderColor:'#3dba8a',backgroundColor:'rgba(61,186,138,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'yT'},
       {label:'Direction H1 (°)',data:d.sw1d||[],borderColor:'rgba(123,108,246,.8)',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:0.1,yAxisID:'yD',borderDash:[3,2]},
-    ]},options:{responsive:true,maintainAspectRatio:false,
+    ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{bottom:0}},
       plugins:{legend:{display:true,position:'top',labels:{color:'#7a94aa',font:{size:9},boxWidth:10,padding:6}},tooltip:{enabled:false}},
-      scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},
+      scales:{x:xOpts,
         yT:{position:'left',min:0,max:20,ticks:{color:'#3dba8a',callback:function(v){return v+'s';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},
         yD:{position:'right',min:0,max:360,ticks:{color:'rgba(123,108,246,.7)',callback:function(v){return v+'°';},font:{size:8},maxTicksLimit:5},grid:{drawOnChartArea:false}}}}});
     cvP._hoverBound = false;
@@ -1199,13 +1316,12 @@ function _buildSecondaryCharts(d) {
   var cvW=document.getElementById('c-wind');
   if(cvW){
     var crossW = makeCrosshairPlugin('c-wind');
-    charts['c-wind']=new Chart(cvW,{type:'line',plugins:[crossW],data:{labels:d.lbl,datasets:[
+    charts['c-wind']=new Chart(cvW,{type:'line',plugins:[crossW, makeSecDayPlugin('c-wind')],data:{labels:d.lbl,datasets:[
       {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},
       {label:'Rafales (kt)',data:d.wGst||[],borderColor:'rgba(224,92,92,.8)',backgroundColor:'transparent',borderWidth:1,pointRadius:0,tension:0.3,borderDash:[4,3]},
-    ]},options:{responsive:true,maintainAspectRatio:false,
+    ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{bottom:0}},
       plugins:{legend:{display:true,labels:{color:'#7a94aa',font:{size:9},boxWidth:10}},tooltip:{enabled:false}},
-      scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},
-        y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+'kt';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}}); 
+      scales:{x:xOpts,y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+'kt';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
     cvW._hoverBound = false;
     _ensureTooltipEl('c-wind', cvW.closest('.card'));
     _addChartHover(cvW, 'c-wind', d.lbl.length);
@@ -1216,12 +1332,11 @@ function _buildSecondaryCharts(d) {
   var cvPow=document.getElementById('c-power');
   if(cvPow){
     var crossPow = makeCrosshairPlugin('c-power');
-    charts['c-power']=new Chart(cvPow,{type:'bar',plugins:[crossPow],data:{labels:d.lbl,datasets:[{label:'kW/m',data:d.pwr||[],
+    charts['c-power']=new Chart(cvPow,{type:'bar',plugins:[crossPow, makeSecDayPlugin('c-power')],data:{labels:d.lbl,datasets:[{label:'kW/m',data:d.pwr||[],
       backgroundColor:(d.pwr||[]).map(function(v){return !v?'rgba(60,80,100,.3)':v<1?'rgba(79,163,199,.5)':v<5?'rgba(61,186,138,.6)':v<15?'rgba(232,160,87,.7)':'rgba(123,108,246,.8)';}),
-      borderColor:'transparent',borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,
+      borderColor:'transparent',borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{bottom:0}},
       plugins:{legend:{display:false},tooltip:{enabled:false}},
-      scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{color:'rgba(255,255,255,.03)'}},
-        y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+' kW/m';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}}); 
+      scales:{x:xOpts,y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+' kW/m';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
     cvPow._hoverBound = false;
     _ensureTooltipEl('c-power', cvPow.closest('.card'));
     _addChartHover(cvPow, 'c-power', d.lbl.length);
@@ -1660,61 +1775,86 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
   if(charts[id]){try{charts[id].destroy();}catch(e){}}
   var cv=document.getElementById(id); if(!cv) return;
-  // Adapter la largeur du canvas au nombre de points (min 15px/point)
-  var wrapper = cv.parentElement;
-  if(wrapper && lbl.length > 0) {
-    var minW = Math.max(600, lbl.length * 15);
-    wrapper.style.minWidth = minW + 'px';
-  }
+
   var activeD = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
   var dates = (activeD && activeD.dates) || [];
+  var n = lbl.length;
 
-  // Afficher toutes les données disponibles (pas de filtre temporel)
+  // Largeur minimale : 22px/point (NC ~3h), minimum 600
+  var wrapper = cv.parentElement;
+  if(wrapper && n > 0) {
+    var minW = Math.max(600, n * 22);
+    wrapper.style.minWidth = minW + 'px';
+  }
 
-  // Calculer les indices de changement de jour pour les séparateurs visuels
-  var dayBreaks = []; // {idx, label: "Sam 19/4"}
+  // ── Calcul des changements de jour ────────────────────────────────────
   var DAY_FR2 = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-  var prevDay = null;
+  // dayBands : {startIdx, endIdx, label}  — un band par jour
+  var dayBands = [];
+  var prevDayKey = null, bandStart = 0;
   dates.forEach(function(dt, i) {
     if(!dt) return;
-    var d = dt.getDate ? dt : new Date(dt);
-    var dayKey = d.getDate() + '/' + d.getMonth();
-    if(dayKey !== prevDay) {
-      if(i > 0) dayBreaks.push({idx: i, label: DAY_FR2[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth()+1)});
-      prevDay = dayKey;
+    var d2 = dt.getDate ? dt : new Date(dt);
+    var key = d2.getDate() + '/' + d2.getMonth();
+    if(key !== prevDayKey) {
+      if(prevDayKey !== null) dayBands.push({startIdx: bandStart, endIdx: i-1, label: DAY_FR2[(new Date(dates[bandStart])).getDay()] + ' ' + (new Date(dates[bandStart])).getDate() + '/' + ((new Date(dates[bandStart])).getMonth()+1)});
+      bandStart = i;
+      prevDayKey = key;
+    }
+    if(i === dates.length-1) {
+      dayBands.push({startIdx: bandStart, endIdx: i, label: DAY_FR2[d2.getDay()] + ' ' + d2.getDate() + '/' + (d2.getMonth()+1)});
     }
   });
 
-  // Plugin inline pour tracer les séparateurs de jours
+  // ── Plugin : bandes jour + séparateurs + labels dans padding top ──────
   var dayPlugin = {
-    id: 'dayBreaks_'+id,
-    afterDraw: function(chart) {
-      var ctx2 = chart.ctx;
-      var ca = chart.chartArea;
+    id: 'dayBands_'+id,
+    beforeDatasetsDraw: function(chart) {
+      var ctx2 = chart.ctx, ca = chart.chartArea;
       if(!ca) return;
       var xAxis = chart.scales.x;
-      var n = lbl.length;
       ctx2.save();
-      dayBreaks.forEach(function(brk) {
-        var x = xAxis.getPixelForTick ? xAxis.getPixelForTick(brk.idx) : ca.left + (brk.idx / (n-1)) * (ca.right - ca.left);
-        if(!x || x < ca.left || x > ca.right) return;
-        // Ligne verticale
-        ctx2.beginPath();
-        ctx2.moveTo(x, ca.top);
-        ctx2.lineTo(x, ca.bottom);
-        ctx2.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx2.lineWidth = 1;
-        ctx2.setLineDash([4, 3]);
-        ctx2.stroke();
-        ctx2.setLineDash([]);
-        // Fond semi-transparent derrière le label
-        ctx2.font = 'bold 9px DM Sans, sans-serif';
-        var tw = ctx2.measureText(brk.label).width;
-        ctx2.fillStyle = 'rgba(13,31,60,0.85)';
-        ctx2.fillRect(x + 3, ca.top + 2, tw + 8, 14);
-        // Texte du jour
-        ctx2.fillStyle = 'rgba(232,160,87,0.9)';
-        ctx2.fillText(brk.label, x + 7, ca.top + 13);
+      dayBands.forEach(function(band, bi) {
+        var x0 = xAxis.getPixelForValue(band.startIdx);
+        var x1 = xAxis.getPixelForValue(band.endIdx);
+        // Bande fond alternée très subtile
+        if(bi % 2 === 1) {
+          ctx2.fillStyle = 'rgba(255,255,255,0.018)';
+          ctx2.fillRect(x0, ca.top, x1-x0, ca.bottom-ca.top);
+        }
+        // Ligne de séparation au début du jour (sauf le premier)
+        if(bi > 0) {
+          ctx2.beginPath();
+          ctx2.moveTo(x0, ca.top);
+          ctx2.lineTo(x0, ca.bottom);
+          ctx2.strokeStyle = 'rgba(255,255,255,0.12)';
+          ctx2.lineWidth = 1;
+          ctx2.setLineDash([3,3]);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+        }
+      });
+      ctx2.restore();
+    },
+    afterDraw: function(chart) {
+      var ctx2 = chart.ctx, ca = chart.chartArea;
+      if(!ca) return;
+      var xAxis = chart.scales.x;
+      ctx2.save();
+      ctx2.font = 'bold 9px DM Sans,sans-serif';
+      dayBands.forEach(function(band, bi) {
+        var x0 = xAxis.getPixelForValue(band.startIdx);
+        var x1 = xAxis.getPixelForValue(band.endIdx);
+        var midX = (x0 + x1) / 2;
+        var tw = ctx2.measureText(band.label).width;
+        // Label SOUS le graphique dans la zone de padding (pas sur les données)
+        var labelY = ca.bottom + 18;
+        // Fond pour lisibilité
+        ctx2.fillStyle = 'rgba(13,31,60,0.8)';
+        ctx2.fillRect(midX - tw/2 - 3, labelY - 9, tw + 6, 12);
+        ctx2.fillStyle = bi % 2 === 0 ? 'rgba(232,160,87,0.9)' : 'rgba(79,163,199,0.8)';
+        ctx2.textAlign = 'center';
+        ctx2.fillText(band.label, midX, labelY);
       });
       ctx2.restore();
     }
@@ -1731,37 +1871,52 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
        backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:0.3,order:1,yAxisID:'y'},
     ]},
     options:{responsive:true,maintainAspectRatio:false,
+      layout:{padding:{bottom:22}}, // espace pour les labels jours
       plugins:{
         legend:{display:true,position:'top',align:'start',labels:{color:'#7a94aa',font:{size:9},boxWidth:10,padding:8}},
         tooltip:{enabled:false}
       },
       scales:{
         x:{stacked:true,
-          ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:false,
+          ticks:{color:'#5a7890',font:{size:8},maxRotation:0,autoSkip:false,
             callback:function(val,idx){
               var label = lbl[idx] || '';
-              // N'afficher que les heures rondes (0h, 6h, 12h, 18h) pour lisibilité
-              var hMatch = label.match(/^(\d{1,2})\/(\d{1,2}) (\d{2})h$|^(\d{2})h$/);
-              if (!hMatch) return label;
-              var h = parseInt(hMatch[3] || hMatch[4] || '0');
-              // Toujours afficher si contient une date (changement de jour)
-              if (label.includes('/')) return label;
-              // Sinon seulement 00h, 06h, 12h, 18h
-              return (h % 6 === 0) ? label : '';
+              // Extraire l'heure : accepte "D/M HHh" ou "HHh"
+              var m1 = label.match(/(\d{2})h$/);
+              if(!m1) return null;
+              var h = parseInt(m1[1]);
+              // Afficher 00h, 06h, 12h, 18h uniquement
+              if(h === 0) return '00h';
+              if(h === 6) return '06h';
+              if(h === 12) return '12h';
+              if(h === 18) return '18h';
+              return null; // cacher les autres
             }
           },
-          grid:{color:'rgba(255,255,255,.03)'}},
+          grid:{color:'rgba(255,255,255,.025)',
+            // Lignes verticales plus visibles aux heures clés
+            lineWidth:function(ctx3){
+              var label = lbl[ctx3.tick && ctx3.tick.value] || '';
+              return label.includes('00h') ? 1.5 : 0.5;
+            }
+          }
+        },
         y:{stacked:true,min:0,
            ticks:{color:'#7a94aa',callback:function(v){return v+'m';},font:{size:9}},
            grid:{color:'rgba(255,255,255,.04)'}},
       }
     }
   });
+
+  // ── Hover : utiliser getValueForPixel pour un mapping pixel→index exact ─
   cv.addEventListener('mousemove',function(e){
     var chart=charts[id]; if(!chart||!chart.chartArea) return;
-    var ca=chart.chartArea, n=lbl.length;
-    var idx=Math.round((e.offsetX-ca.left)/(ca.right-ca.left)*(n-1));
-    idx=Math.max(0,Math.min(n-1,idx));
+    var ca=chart.chartArea;
+    if(e.offsetX < ca.left || e.offsetX > ca.right) return;
+    // Chart.js v4 : scales.x.getValueForPixel retourne l'index réel
+    var xScale = chart.scales.x;
+    var idx = Math.round(xScale.getValueForPixel(e.offsetX));
+    idx = Math.max(0, Math.min(n-1, idx));
     _chartHoverIdx = idx;
     updateHsHover(idx);
     ['c-period','c-wind','c-power'].forEach(function(cid){if(charts[cid])charts[cid].draw();});
@@ -2202,23 +2357,40 @@ function makeCrosshairPlugin(id) {
     afterDraw: function(chart) {
       if(_chartHoverIdx < 0) return;
       var ca = chart.chartArea; if(!ca) return;
-      var xAxis = chart.scales.x;
+      var xScale = chart.scales.x; if(!xScale) return;
       var n = chart.data.labels ? chart.data.labels.length : 0;
-      if(!n) return;
-      var x = xAxis.getPixelForTick
-        ? xAxis.getPixelForTick(_chartHoverIdx)
-        : ca.left + (_chartHoverIdx / (n-1)) * (ca.right - ca.left);
-      if(x < ca.left || x > ca.right) return;
+      if(!n || _chartHoverIdx >= n) return;
+      // getPixelForValue est l'API correcte Chart.js v4
+      var x = xScale.getPixelForValue(_chartHoverIdx);
+      if(!x || x < ca.left - 1 || x > ca.right + 1) return;
       var ctx2 = chart.ctx;
       ctx2.save();
       ctx2.beginPath();
       ctx2.moveTo(x, ca.top);
       ctx2.lineTo(x, ca.bottom);
-      ctx2.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx2.lineWidth = 1;
+      ctx2.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx2.lineWidth = 1.5;
       ctx2.setLineDash([4,3]);
       ctx2.stroke();
       ctx2.setLineDash([]);
+      // Point sur la ligne (pour les line charts)
+      var datasets = chart.data.datasets;
+      datasets.forEach(function(ds, di) {
+        if(ds.type === 'line' || (chart.config.type === 'line' && !ds.type)) {
+          var val = ds.data[_chartHoverIdx];
+          if(val == null) return;
+          var yScale = chart.scales[ds.yAxisID || 'y'];
+          if(!yScale) return;
+          var y = yScale.getPixelForValue(val);
+          ctx2.beginPath();
+          ctx2.arc(x, y, 4, 0, 2*Math.PI);
+          ctx2.fillStyle = ds.borderColor || '#fff';
+          ctx2.fill();
+          ctx2.strokeStyle = 'rgba(255,255,255,0.8)';
+          ctx2.lineWidth = 1.5;
+          ctx2.stroke();
+        }
+      });
       ctx2.restore();
     }
   };

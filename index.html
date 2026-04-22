@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Coups de surf NC</title>
-<link rel="icon" type="image/png" href="favicon.png">
-<link rel="apple-touch-icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -379,6 +377,23 @@ nav {
   .stats-grid { grid-template-columns: 1fr 1fr; }
   nav { padding: 0 1rem; }
   .container, .container-wide { padding: 1.5rem 1rem; }
+  /* Hamburger mobile */
+  .nav-menu-btns {
+    display: none; flex-direction: column; position: fixed;
+    top: 56px; left: 0; right: 0; background: rgba(10,22,40,.98);
+    border-bottom: 1px solid var(--border);
+    padding: 8px; gap: 2px; z-index: 999;
+  }
+  .nav-menu-btns.open { display: flex; }
+  .nav-menu-btns .nav-btn { text-align: left; padding: 10px 12px; font-size: 13px; border-radius: var(--radius-sm); }
+  .nav-hamburger-btn { display: flex !important; }
+  #nav-new-session-btn { display: none; }
+}
+.nav-hamburger-btn {
+  display: none;
+  background: none; border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 18px; line-height: 1;
+  padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer;
 }
 
 /* ── SETUP BANNER ── */
@@ -1608,9 +1623,9 @@ function openAddSession() {
     });
   }
   document.getElementById('modal-add').classList.add('open');
-  // Auto-fill conditions si session aujourd'hui
-  var today = new Date().toISOString().split('T')[0];
-  if (document.getElementById('f-date').value === today) {
+  // Auto-fill conditions dès qu'un spot est sélectionné
+  var spotSel = document.getElementById('f-spot');
+  if (spotSel && spotSel.value && spotSel.value !== '__autre__') {
     _autoFillConditions();
   }
 }
@@ -3437,7 +3452,9 @@ function setDirFields(hiddenId, cardSelId, degInputId, val) {
 function handleSpotChange(sel) {
   const custom = document.getElementById('f-spot-custom');
   custom.style.display = sel.value === '__autre__' ? 'block' : 'none';
-  if (sel.value === '__autre__') custom.focus();
+  if (sel.value === '__autre__') { custom.focus(); return; }
+  // Déclencher l'autofill à chaque changement de spot (pas seulement si date = today)
+  if (sel.value) _autoFillConditions();
 }
 
 function getSpotValue() {
