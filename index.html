@@ -9,11 +9,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!-- 3. DONNÉES -->
-<script src="/assets/spots.js"></script>
-
-<!-- 4. LOGIQUE MÉTÉO -->
-<script src="/assets/forecast.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 :root {
@@ -408,6 +403,8 @@ nav {
 const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
 const APP_NAME = 'Coups de surf NC';
+// Worker Cloudflare — proxy meteo.nc avec cache + token auto
+const WORKER_URL = 'https://d1-template.thibault-dlh.workers.dev/internet2018client/2.0';
 
 </script>
 
@@ -497,7 +494,7 @@ const APP_NAME = 'Coups de surf NC';
     <div class="tabs">
       <button class="tab active" onclick="filterSessions('all', this)">Toutes</button>
       <button class="tab" onclick="filterSessions('tube', this)">Tubes 🤙</button>
-      <button class="tab" onclick="filterSessions('shared', this)">Partagées</button>
+      <button class="tab" onclick="filterSessions('crew', this)">👥 Crew</button>
     </div>
 
     <div id="sessions-list">
@@ -578,6 +575,92 @@ const APP_NAME = 'Coups de surf NC';
     <div style="margin-top:1.5rem;text-align:right;">
       <button class="btn btn-danger" onclick="doLogout()">Se déconnecter</button>
     </div>
+
+    <!-- ── Carte Extension & Worker ── -->
+    <div class="card" style="margin-top:1rem;border-color:rgba(79,163,199,.25);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <span style="font-size:22px;">🔑</span>
+        <div>
+          <div style="font-weight:600;font-size:14px;">Token meteo.nc &amp; Worker</div>
+          <div style="font-size:11px;color:var(--text-muted);">Données météo en temps réel dans l'app</div>
+        </div>
+        <div style="margin-left:auto;">
+          <div id="ext-token-badge" style="font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.3);color:#3dba8a;">Chargement…</div>
+        </div>
+      </div>
+
+      <!-- Barre d'état Worker -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+        <div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+          <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Worker Cloudflare</div>
+          <div id="worker-status" style="font-size:12px;font-weight:500;color:var(--text-muted);">⏳ Test en cours…</div>
+          <div id="worker-latency" style="font-size:10px;color:var(--text-faint);margin-top:2px;"></div>
+        </div>
+        <div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+          <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Token local</div>
+          <div id="local-token-status" style="font-size:12px;font-weight:500;color:var(--text-muted);">⏳</div>
+          <div id="local-token-age" style="font-size:10px;color:var(--text-faint);margin-top:2px;"></div>
+        </div>
+      </div>
+
+      <!-- Tuto extension collapsible -->
+      <details style="margin-bottom:12px;">
+        <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--accent);padding:8px 0;list-style:none;display:flex;align-items:center;gap:6px;">
+          <span>▶</span> 🧩 Extension Chrome — Installation &amp; fonctionnement
+        </summary>
+        <div style="padding:12px 0 0;font-size:12px;color:var(--text-muted);line-height:1.8;">
+
+          <div style="background:rgba(61,186,138,.06);border:1px solid rgba(61,186,138,.2);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+            <div style="font-weight:600;color:#3dba8a;margin-bottom:4px;">Pourquoi l'extension ?</div>
+            meteo.nc requiert un token JWT renouvelé chaque ~24h. L'extension le capte automatiquement quand tu navigues sur meteo.nc et le transmet à l'app via le Worker Cloudflare — sans action manuelle.
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--ocean);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+              <div><strong style="color:var(--text);">Télécharger l'extension</strong><br>
+                <a href="https://thibsurf.github.io/surf-journal/meteo_nc_token_v4.zip" download style="color:var(--accent);">⬇ meteo_nc_token_v4.zip</a> — dézipper dans un dossier.
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--ocean);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
+              <div><strong style="color:var(--text);">Charger dans Chrome</strong><br>
+                Ouvre <code style="background:var(--ocean);padding:1px 5px;border-radius:4px;">chrome://extensions</code> → activer le <em>Mode développeur</em> → <strong>Charger l'extension non empaquetée</strong> → sélectionner le dossier dézippé.
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--ocean);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
+              <div><strong style="color:var(--text);">Premier token</strong><br>
+                Visite <a href="https://meteo.nc" target="_blank" style="color:var(--accent);">meteo.nc</a> une fois. L'extension capte le token automatiquement (badge 🔑 vert dans Chrome). Le Worker le reçoit et toutes les requêtes fonctionnent.
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div style="width:22px;height:22px;border-radius:50%;background:rgba(232,160,87,.8);color:var(--ocean);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">↺</div>
+              <div><strong style="color:var(--text);">Renouvellement</strong><br>
+                Automatique toutes les ~6h si l'extension est active. Si le badge devient 🔴 : re-visite meteo.nc ou clique "Renouveler" dans le popup de l'extension.
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:10px;padding:8px 10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.15);border-radius:6px;font-size:11px;">
+            <strong style="color:var(--accent);">Sans extension</strong> — tu peux coller le token manuellement :<br>
+            DevTools (F12) → Network → une requête <code style="background:var(--ocean);padding:1px 4px;border-radius:3px;">rpcache.meteo.nc</code> → Headers → <code style="background:var(--ocean);padding:1px 4px;border-radius:3px;">Authorization: Bearer eyJ…</code> → copier la partie après "Bearer ".
+          </div>
+        </div>
+      </details>
+
+      <!-- Saisie manuelle token -->
+      <div id="manual-token-section">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+          <input type="text" id="manual-token-input" placeholder="Coller token eyJ… (si pas d'extension)" 
+            style="flex:1;background:var(--glass);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:7px 10px;font-family:monospace;outline:none;">
+          <button onclick="applyManualToken()" style="background:var(--accent);border:none;color:var(--ocean);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;">Appliquer</button>
+          <button onclick="clearManualToken()" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:7px 8px;cursor:pointer;font-size:11px;" title="Effacer le token">✕</button>
+        </div>
+        <div id="manual-token-feedback" style="font-size:10px;min-height:14px;color:var(--text-faint);padding:0 2px;"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1019,6 +1102,13 @@ create policy "Users manage own comments" on session_comments
         2. Glisse-dépose ton fichier <code>surf-journal.html</code><br>
         3. Partage l'URL avec tes potes !
       </div>
+      <div style="margin-top:1rem;padding:10px 12px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;">
+        <strong style="color:var(--accent)">Étape 4 — Extension Chrome (données meteo.nc)</strong><br>
+        Pour les prévisions meteo.nc en temps réel, installe l'extension qui capte automatiquement le token :<br>
+        <a href="https://thibsurf.github.io/surf-journal/meteo_nc_token_v4.zip" download style="color:var(--accent-warm);">⬇ Télécharger meteo_nc_token_v4.zip</a><br>
+        Puis : <code>chrome://extensions</code> → Mode développeur → Charger l'extension non empaquetée → sélectionner le dossier.<br>
+        Visite <a href="https://meteo.nc" target="_blank" style="color:var(--accent)">meteo.nc</a> une fois → le token est capté automatiquement. <em style="color:var(--text-muted);">Sans extension : voir la section Token dans Mon profil.</em>
+      </div>
     </div>
     <div style="margin-top:1.5rem;text-align:right;">
       <button class="btn btn-secondary" onclick="closeModal('modal-setup')">Fermer</button>
@@ -1236,6 +1326,7 @@ async function loadMySessions() {
 
 function filterList(sessions, filter) {
   if (filter === 'tube') return sessions.filter(s => s.moves && s.moves.includes('tube'));
+  if (filter === 'crew') return renderCrewView();
   if (filter === 'shared') return sessions.filter(s => s.is_shared);
   return sessions;
 }
@@ -1244,7 +1335,133 @@ function filterSessions(f, btn) {
   currentFilter = f;
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
+  if (f === 'crew') { renderCrewView(); return; }
   renderSessionsList(filterList(allSessions, f));
+}
+
+// ── Vue Crew : analyse des sessions partagées avec chaque surfeur ─────────
+function renderCrewView() {
+  var el = document.getElementById('sessions-list');
+  if (!el) return;
+
+  var sessions = allSessions || [];
+  // Collecter tous les potes mentionnés dans shared_with
+  var crewMap = {}; // name → { sessions: [], spots: {}, quality: [], boards: [], lastDate: null }
+  sessions.forEach(function(s) {
+    if (!s.shared_with || !s.shared_with.length) return;
+    s.shared_with.forEach(function(name) {
+      name = name.trim(); if (!name) return;
+      if (!crewMap[name]) crewMap[name] = { sessions: [], spots: {}, qualities: [], lastDate: null, tubes: 0, totalH: 0 };
+      crewMap[name].sessions.push(s);
+      crewMap[name].totalH += (s.duration_h || 0);
+      if (s.quality) crewMap[name].qualities.push(s.quality);
+      if (s.moves && s.moves.includes('tube')) crewMap[name].tubes++;
+      var sp = s.spot || '?';
+      crewMap[name].spots[sp] = (crewMap[name].spots[sp] || 0) + 1;
+      if (!crewMap[name].lastDate || s.date > crewMap[name].lastDate) crewMap[name].lastDate = s.date;
+    });
+  });
+
+  var names = Object.keys(crewMap).sort(function(a,b){ return crewMap[b].sessions.length - crewMap[a].sessions.length; });
+
+  if (!names.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">👥</div>'
+      + '<div class="empty-title">Aucune session en crew</div>'
+      + '<div class="empty-sub">Remplis le champ "Surfeurs" lors de la création d\'une session.</div></div>';
+    return;
+  }
+
+  // Trouver les sessions communes entre 2 potes (chevauchement de dates)
+  function sharedBetween(a, b) {
+    var datesA = new Set(crewMap[a].sessions.map(function(s){return s.date;}));
+    return crewMap[b].sessions.filter(function(s){ return datesA.has(s.date); });
+  }
+
+  var html = '<div style="margin-bottom:12px;font-size:11px;color:var(--text-muted);">'
+    + names.length + ' surfeur(s) en crew · ' + sessions.filter(function(s){return s.shared_with&&s.shared_with.length;}).length + ' sessions partagées'
+    + '</div>';
+
+  // Grille des potes
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:24px;">';
+  names.forEach(function(name) {
+    var c = crewMap[name];
+    var n = c.sessions.length;
+    var avgQ = c.qualities.length ? (c.qualities.reduce(function(a,x){return a+x;},0)/c.qualities.length).toFixed(1) : null;
+    var topSpot = Object.entries(c.spots).sort(function(a,b){return b[1]-a[1];})[0];
+    var totalH = c.totalH;
+    var hh = Math.floor(totalH), mm = Math.round((totalH-hh)*60);
+    var lastStr = c.lastDate ? new Date(c.lastDate).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}) : '—';
+    // Initiales pour l'avatar
+    var initials = name.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
+    // Couleur avatar déterministe
+    var hue = name.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0) % 360;
+
+    html += '<div class="card" style="cursor:pointer;transition:all .2s;" onclick="showCrewDetail(\''+name.replace(/'/g,"\\'")+'\')">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+      + '<div style="width:38px;height:38px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:hsl('+hue+',60%,70%);flex-shrink:0;">'+initials+'</div>'
+      + '<div><div style="font-weight:600;font-size:14px;">'+name+'</div>'
+      + '<div style="font-size:10px;color:var(--text-muted);">Dernière session : '+lastStr+'</div></div></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;">'
+      + '<div style="background:var(--glass);border-radius:6px;padding:6px 4px;"><div style="font-size:16px;font-weight:700;color:var(--accent);">'+n+'</div><div style="font-size:9px;color:var(--text-muted);">sessions</div></div>'
+      + '<div style="background:var(--glass);border-radius:6px;padding:6px 4px;"><div style="font-size:16px;font-weight:700;color:var(--accent-warm);">'+(avgQ?'★'+avgQ:'—')+'</div><div style="font-size:9px;color:var(--text-muted);">qualité moy.</div></div>'
+      + '<div style="background:var(--glass);border-radius:6px;padding:6px 4px;"><div style="font-size:16px;font-weight:700;color:var(--tube);">'+(c.tubes||'0')+'</div><div style="font-size:9px;color:var(--text-muted);">🤙 tubes</div></div>'
+      + '</div>'
+      + '<div style="margin-top:8px;font-size:10px;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap;">'
+      + '<span>⏱ '+hh+'h'+(mm>0?mm:'')+'</span>'
+      + (topSpot ? '<span>📍 '+topSpot[0]+'</span>' : '')
+      + '</div></div>';
+  });
+  html += '</div>';
+
+  // Tableau croisé mini (qui a surfé avec qui)
+  if (names.length >= 2) {
+    html += '<div style="margin-bottom:8px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;">Croisements</div>';
+    html += '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11px;min-width:300px;">';
+    html += '<tr><th style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);"></th>';
+    names.forEach(function(n){
+      var initials2 = n.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
+      html += '<th style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);color:var(--text-muted);">'+initials2+'</th>';
+    });
+    html += '</tr>';
+    names.forEach(function(a) {
+      var hue2 = a.split('').reduce(function(x,c){return x+c.charCodeAt(0);},0)%360;
+      html += '<tr><td style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);font-weight:600;color:hsl('+hue2+',60%,70%);white-space:nowrap;">'+a+'</td>';
+      names.forEach(function(b) {
+        if (a === b) { html += '<td style="padding:6px 8px;border:1px solid var(--border);background:rgba(255,255,255,.03);text-align:center;color:var(--text-faint);">—</td>'; return; }
+        var common = sharedBetween(a, b).length;
+        var bg = common > 0 ? 'rgba(79,163,199,'+Math.min(0.35, 0.06*common)+')' : 'transparent';
+        var col = common > 0 ? 'var(--accent)' : 'var(--text-faint)';
+        html += '<td style="padding:6px 8px;border:1px solid var(--border);text-align:center;background:'+bg+';color:'+col+';font-weight:'+( common>0?'600':'400')+';">'+(common||'·')+'</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+// Détail d'un pote : liste de ses sessions communes
+function showCrewDetail(name) {
+  var c = (allSessions||[]).filter(function(s){
+    return s.shared_with && s.shared_with.some(function(x){return x.trim()===name;});
+  });
+  if (!c.length) return;
+  // Ouvrir une mini vue filtrée : réutilise renderSessionsList
+  renderSessionsList(c);
+  // Ajouter un header temporaire
+  var el = document.getElementById('sessions-list');
+  if (el) {
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);';
+    var hue = name.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0)%360;
+    hdr.innerHTML = '<button onclick="filterSessions(\'crew\',document.querySelector(\'.tab[onclick*=crew]\'))" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;padding:0;">←</button>'
+      + '<div style="width:30px;height:30px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:hsl('+hue+',60%,70%);">'
+      + name.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase()+'</div>'
+      + '<span style="font-weight:600;">'+name+'</span>'
+      + '<span style="font-size:11px;color:var(--text-muted);">'+c.length+' session(s) en commun</span>';
+    el.insertBefore(hdr, el.firstChild);
+  }
 }
 
 function renderDashStats(sessions) {
@@ -1422,51 +1639,101 @@ function _degToCardinal(deg) {
 
 async function _autoFillConditions() {
   var hint = document.getElementById('autofill-hint');
+  var stInfoEl = document.getElementById('autofill-station-info');
   if (hint) { hint.textContent = '⏳ Récupération des conditions…'; hint.style.color = 'var(--text-muted)'; }
+  if (stInfoEl) stInfoEl.innerHTML = '';
 
   var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
-  var station = _SPOT_STATIONS[spotVal] || _DEFAULT_STATION;
+  var station = _SPOT_STATIONS[spotVal] || null;
+
+  // ── Nouveau spot : demander les coordonnées si pas dans le mapping ──
+  if (!station && spotVal && spotVal !== '__autre__') {
+    // Chercher dans les sessions précédentes si ce spot a des coords sauvegardées
+    var savedCoords = null;
+    try { savedCoords = JSON.parse(localStorage.getItem('surf-spot-coords') || '{}')[spotVal]; } catch(e) {}
+    if (savedCoords) {
+      station = { name: spotVal, lat: savedCoords.lat, lon: savedCoords.lon };
+    } else {
+      // Proposer une saisie inline de coordonnées
+      if (stInfoEl) {
+        stInfoEl.innerHTML = '<span style="color:var(--accent-warm);">📍 Nouveau spot — entrez les coords pour l\'autofill :</span>'
+          + '<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;">'
+          + '<input id="autofill-lat" type="number" step="0.001" placeholder="Lat (ex: -22.215)" style="background:var(--mid);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:4px 7px;width:130px;">'
+          + '<input id="autofill-lon" type="number" step="0.001" placeholder="Lon (ex: 166.285)" style="background:var(--mid);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:4px 7px;width:130px;">'
+          + '<button type="button" onclick="_applyCustomCoords()" style="background:var(--accent);border:none;color:var(--ocean);border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:600;">OK</button>'
+          + '</div>';
+      }
+      return;
+    }
+  } else if (!station) {
+    station = _DEFAULT_STATION;
+  }
+
   var lat = station.lat, lon = station.lon;
-
-  // Afficher la station de référence
-  var stInfoEl = document.getElementById('autofill-station-info');
-  if (stInfoEl) stInfoEl.textContent = 'Station : ' + station.name;
-
-  var _ncToken = null;
-  try { _ncToken = localStorage.getItem('nc-token'); } catch(e) {}
+  if (stInfoEl) stInfoEl.innerHTML = '<span style="color:var(--accent);">📡 ' + station.name + '</span>';
 
   var ncData = null, omData = null;
 
-  // ── Priorité 1 : Meteo.nc ─────────────────────────────────────────────
-  if (_ncToken) {
-    try {
-      var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'
-        + '?lat=' + lat + '&lon=' + lon + '&range=24&output=json';
-      var ncRes = await fetch(ncUrl, {
-        headers: { 'Authorization': 'Bearer ' + _ncToken },
-        credentials: 'omit'
-      });
-      if (ncRes.ok) {
-        var ncJson = await ncRes.json();
-        var rows = ncJson && ncJson.properties && ncJson.properties.marine;
-        if (rows && rows.length > 0) {
-          var now = Date.now();
-          var best = rows.reduce(function(b, r) {
-            return Math.abs(new Date(r.time).getTime() - now) < Math.abs(new Date(b.time).getTime() - now) ? r : b;
-          }, rows[0]);
-          ncData = {
-            hs:       best.primary_swell_height  != null ? best.primary_swell_height  : best.wave_height,
-            period:   best.primary_swell_period  != null ? best.primary_swell_period  : null,
-            swellDir: best.primary_swell_direction != null ? best.primary_swell_direction : null,
-            windKt:   best.wind_speed_kt         != null ? best.wind_speed_kt          : null,
-            windDir:  best.wind_direction        != null ? best.wind_direction         : null,
-          };
-        }
+  // ── Priorité 1 : Worker Cloudflare (token géré côté serveur) ─────────
+  try {
+    var workerUrl = WORKER_URL + '/forecast/marine?lat=' + lat + '&lon=' + lon;
+    var wRes = await fetch(workerUrl);
+    if (wRes.ok) {
+      var wJson = await wRes.json();
+      var rows = wJson && wJson.properties && wJson.properties.marine;
+      if (rows && rows.length > 0) {
+        var now = Date.now();
+        var best = rows.reduce(function(b, r) {
+          return Math.abs(new Date(r.time).getTime() - now) < Math.abs(new Date(b.time).getTime() - now) ? r : b;
+        }, rows[0]);
+        ncData = {
+          hs:       best.primary_swell_height  != null ? best.primary_swell_height  : best.wave_height,
+          period:   best.primary_swell_period  != null ? best.primary_swell_period  : null,
+          swellDir: best.primary_swell_direction != null ? best.primary_swell_direction : null,
+          windKt:   best.wind_speed_kt         != null ? best.wind_speed_kt          : null,
+          windDir:  best.wind_direction        != null ? best.wind_direction         : null,
+          source: 'worker'
+        };
+        console.log('[autofill] Worker OK ✅', ncData);
       }
-    } catch(e) { console.warn('[autofill] NC error:', e); }
+    }
+  } catch(e) { console.warn('[autofill] Worker error:', e); }
+
+  // ── Priorité 2 : Meteo.nc direct si token local dispo (et worker raté) ──
+  if (!ncData) {
+    var _ncToken = null;
+    try { _ncToken = localStorage.getItem('nc-token'); } catch(e) {}
+    if (_ncToken) {
+      try {
+        var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'
+          + '?lat=' + lat + '&lon=' + lon + '&range=24&output=json';
+        var ncRes = await fetch(ncUrl, {
+          headers: { 'Authorization': 'Bearer ' + _ncToken },
+          credentials: 'omit'
+        });
+        if (ncRes.ok) {
+          var ncJson = await ncRes.json();
+          var rows2 = ncJson && ncJson.properties && ncJson.properties.marine;
+          if (rows2 && rows2.length > 0) {
+            var now2 = Date.now();
+            var best2 = rows2.reduce(function(b, r) {
+              return Math.abs(new Date(r.time).getTime() - now2) < Math.abs(new Date(b.time).getTime() - now2) ? r : b;
+            }, rows2[0]);
+            ncData = {
+              hs:       best2.primary_swell_height  != null ? best2.primary_swell_height  : best2.wave_height,
+              period:   best2.primary_swell_period  != null ? best2.primary_swell_period  : null,
+              swellDir: best2.primary_swell_direction != null ? best2.primary_swell_direction : null,
+              windKt:   best2.wind_speed_kt         != null ? best2.wind_speed_kt          : null,
+              windDir:  best2.wind_direction        != null ? best2.wind_direction         : null,
+              source: 'direct'
+            };
+          }
+        }
+      } catch(e) { console.warn('[autofill] NC direct error:', e); }
+    }
   }
 
-  // ── Fallback : GFS Open-Meteo ────────────────────────────────────────
+  // ── Priorité 3 : GFS Open-Meteo ─────────────────────────────────────
   if (!ncData) {
     try {
       var responses = await Promise.all([
@@ -1485,21 +1752,25 @@ async function _autoFillConditions() {
           swellDir: cur.swell_wave_direction,
           windKt:   wcur.wind_speed_10m,
           windDir:  wcur.wind_direction_10m,
+          source: 'gfs'
         };
       }
     } catch(e) { console.warn('[autofill] GFS error:', e); }
   }
 
   var data = ncData || omData;
-  var isNC = !!ncData;
-  var sourceLabel = isNC ? ('✅ meteo.nc · ' + station.name) : (omData ? '⚠️ GFS fallback' : null);
+  var sourceLabel = data
+    ? (data.source === 'worker' ? '✅ Worker · ' + station.name
+      : data.source === 'direct' ? '✅ meteo.nc · ' + station.name
+      : '⚠️ GFS fallback · ' + station.name)
+    : null;
 
   if (!data) {
     if (hint) { hint.textContent = '⚠ Données indisponibles'; hint.style.color = 'var(--accent-warm)'; }
     return;
   }
 
-  // ── Remplissage des champs (ne remplace pas une valeur déjà saisie) ──
+  // ── Remplissage (ne remplace pas une valeur déjà saisie) ──────────────
   var hsEl = document.getElementById('f-hs');
   if (hsEl && !hsEl.value && data.hs != null) hsEl.value = (+data.hs).toFixed(1);
 
@@ -1509,8 +1780,6 @@ async function _autoFillConditions() {
   var wdEl = document.getElementById('f-wind');
   if (wdEl && !wdEl.value && data.windKt != null) wdEl.value = Math.round(data.windKt);
 
-  // ── Directions : injecter le cardinal textuel directement ────────────
-  // (Meteo.nc renvoie wind_direction en degrés numériques, on convertit en cardinal)
   var _cardDegMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,
     S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
   if (typeof setDirFields === 'function') {
@@ -1524,7 +1793,6 @@ async function _autoFillConditions() {
       var wdRaw = data.windDir;
       var wCard, wDeg2;
       if (typeof wdRaw === 'string' && isNaN(+wdRaw)) {
-        // Déjà un cardinal textuel
         wCard = wdRaw.trim();
         wDeg2 = _cardDegMap[wCard] !== undefined ? _cardDegMap[wCard] : null;
       } else {
@@ -1536,15 +1804,31 @@ async function _autoFillConditions() {
     }
   }
 
-  // ── Hint de confirmation ─────────────────────────────────────────────
   if (hint) {
     var parts = [];
     if (data.hs != null) parts.push('Hs ' + (+data.hs).toFixed(1) + 'm');
     if (data.period != null) parts.push(Math.round(data.period) + 's');
     if (data.windKt != null) parts.push('Vent ' + Math.round(data.windKt) + 'kt');
     hint.textContent = sourceLabel + (parts.length ? ' · ' + parts.join(' · ') : '');
-    hint.style.color = isNC ? 'var(--success)' : 'var(--accent-warm)';
+    hint.style.color = (data.source === 'gfs') ? 'var(--accent-warm)' : 'var(--success)';
   }
+}
+
+// Appelé quand l'utilisateur confirme les coordonnées manuelles d'un nouveau spot
+function _applyCustomCoords() {
+  var lat = parseFloat(document.getElementById('autofill-lat').value);
+  var lon = parseFloat(document.getElementById('autofill-lon').value);
+  if (isNaN(lat) || isNaN(lon)) return;
+  var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
+  // Sauvegarder pour les prochaines fois
+  try {
+    var coords = JSON.parse(localStorage.getItem('surf-spot-coords') || '{}');
+    coords[spotVal] = { lat: lat, lon: lon };
+    localStorage.setItem('surf-spot-coords', JSON.stringify(coords));
+    // Ajouter au mapping en mémoire
+    _SPOT_STATIONS[spotVal] = { name: spotVal, lat: lat, lon: lon };
+  } catch(e) {}
+  _autoFillConditions();
 }
 
 function editSession() {
@@ -2827,6 +3111,117 @@ async function openUserProfile(userId) {
   document.body.appendChild(modal);
 }
 
+// ══ TOKEN & WORKER STATUS ══════════════════════════════════════════════════
+
+async function checkTokenAndWorkerStatus() {
+  // — Token local —
+  var tok = null;
+  var tokDate = null;
+  try {
+    tok = localStorage.getItem('nc-token');
+    tokDate = localStorage.getItem('nc-token-date') ? parseInt(localStorage.getItem('nc-token-date')) : null;
+    // Essai aussi via extension chrome.storage si disponible
+    if (!tok && typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.get(['ncToken','ncTokenDate'], function(d) {
+        if (d && d.ncToken) {
+          tok = d.ncToken;
+          tokDate = d.ncTokenDate;
+          _updateTokenUI(tok, tokDate, 'extension');
+        }
+      });
+    }
+  } catch(e) {}
+  _updateTokenUI(tok, tokDate, 'local');
+
+  // — Worker —
+  var workerEl = document.getElementById('worker-status');
+  var latEl = document.getElementById('worker-latency');
+  if (!workerEl) return;
+  workerEl.textContent = '⏳ Test…'; workerEl.style.color = 'var(--text-muted)';
+  try {
+    var t0 = Date.now();
+    // Test léger : on appelle le worker sur Dumbéa (spot référence)
+    var res = await fetch(WORKER_URL + '/forecast/marine?lat=-22.215&lon=166.285', { signal: AbortSignal.timeout(8000) });
+    var ms = Date.now() - t0;
+    if (res.ok) {
+      var json = await res.json();
+      var rows = json && json.properties && json.properties.marine;
+      workerEl.textContent = '✅ Opérationnel';
+      workerEl.style.color = '#3dba8a';
+      if (latEl) latEl.textContent = ms + 'ms · ' + (rows ? rows.length + ' échéances' : '');
+      // Token badge → green car worker répond
+      var badge = document.getElementById('ext-token-badge');
+      if (badge) { badge.textContent = '✅ Données dispo'; badge.style.background='rgba(61,186,138,.12)'; badge.style.borderColor='rgba(61,186,138,.3)'; badge.style.color='#3dba8a'; }
+    } else if (res.status === 401 || res.status === 403) {
+      workerEl.textContent = '⚠️ Token expiré (' + res.status + ')';
+      workerEl.style.color = '#e05c5c';
+      if (latEl) latEl.textContent = 'Visite meteo.nc ou renouvelle le token';
+      var badge2 = document.getElementById('ext-token-badge');
+      if (badge2) { badge2.textContent = '🔴 Token expiré'; badge2.style.background='rgba(224,92,92,.1)'; badge2.style.borderColor='rgba(224,92,92,.3)'; badge2.style.color='#e05c5c'; }
+    } else {
+      workerEl.textContent = '⚠️ Erreur ' + res.status;
+      workerEl.style.color = '#e8a057';
+      if (latEl) latEl.textContent = 'Worker actif mais réponse inattendue';
+    }
+  } catch(e) {
+    workerEl.textContent = '❌ Inaccessible';
+    workerEl.style.color = '#e05c5c';
+    if (latEl) latEl.textContent = e.name === 'TimeoutError' ? 'Timeout (>8s)' : e.message;
+    var badge3 = document.getElementById('ext-token-badge');
+    if (badge3) { badge3.textContent = '❌ Worker HS'; badge3.style.background='rgba(224,92,92,.1)'; badge3.style.borderColor='rgba(224,92,92,.3)'; badge3.style.color='#e05c5c'; }
+  }
+}
+
+function _updateTokenUI(tok, tokDate, source) {
+  var statusEl = document.getElementById('local-token-status');
+  var ageEl = document.getElementById('local-token-age');
+  if (!statusEl) return;
+  if (!tok) {
+    statusEl.textContent = '❌ Aucun token'; statusEl.style.color = '#e05c5c';
+    if (ageEl) ageEl.textContent = 'Installe l\'extension ou colle-le manuellement';
+    return;
+  }
+  var age = tokDate ? Date.now() - tokDate : null;
+  var ageStr = '';
+  if (age !== null) {
+    var h = Math.floor(age/3600000), m = Math.floor((age%3600000)/60000);
+    ageStr = 'il y a ' + (h > 0 ? h + 'h' : '') + m + 'min';
+  }
+  var fresh = age !== null && age < 20*3600000;
+  statusEl.textContent = (fresh ? '✅ ' : '⚠️ ') + tok.substring(0,14) + '…';
+  statusEl.style.color = fresh ? '#3dba8a' : '#e8a057';
+  if (ageEl) ageEl.textContent = (ageStr || '') + (source ? ' · ' + source : '') + (!fresh ? ' — peut être expiré' : '');
+}
+
+function applyManualToken() {
+  var inp = document.getElementById('manual-token-input');
+  var fb = document.getElementById('manual-token-feedback');
+  if (!inp) return;
+  var val = inp.value.replace(/^Bearer\s+/i, '').trim();
+  var JWT_RE = /^[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}$/;
+  if (!JWT_RE.test(val)) {
+    if (fb) { fb.textContent = '⚠ Format invalide — doit commencer par eyJ…'; fb.style.color = '#e05c5c'; }
+    return;
+  }
+  try {
+    localStorage.setItem('nc-token', val);
+    localStorage.setItem('nc-token-date', String(Date.now()));
+  } catch(e) {}
+  // Notifier l'app (previsions.html si ouverte)
+  window.postMessage({ type: '__nc_set_token__', token: val }, '*');
+  inp.value = '';
+  if (fb) { fb.textContent = '✅ Token appliqué — rechargement données…'; fb.style.color = '#3dba8a'; }
+  setTimeout(function() { if (fb) fb.textContent = ''; checkTokenAndWorkerStatus(); }, 2500);
+  showToast('Token appliqué ✓', 'success');
+}
+
+function clearManualToken() {
+  try { localStorage.removeItem('nc-token'); localStorage.removeItem('nc-token-date'); } catch(e) {}
+  var fb = document.getElementById('manual-token-feedback');
+  if (fb) { fb.textContent = 'Token effacé.'; fb.style.color = 'var(--text-faint)'; }
+  setTimeout(checkTokenAndWorkerStatus, 300);
+}
+
 function loadProfilePage() {
   if (!currentProfile) return;
   const initials = (currentProfile.username || '?')[0].toUpperCase();
@@ -2935,7 +3330,7 @@ function showPage(name) {
   if (name === 'dashboard') { loadMySessions(); }
   if (name === 'group') { loadGroupSessions(); }
   if (name === 'stats') { loadStats('me'); }
-  if (name === 'profile') { loadProfilePage(); }
+  if (name === 'profile') { loadProfilePage(); checkTokenAndWorkerStatus(); }
   if (name === 'spots') { loadSpotsPage(); }
   if (name === 'ranking') { loadRanking(); }
   if (name === 'boats') { loadBoatsPage(); }
