@@ -215,6 +215,17 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .symbol-box{flex-shrink:0;width:76px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(0,0,0,.3);}
 .sym-warm svg line,.sym-warm .semicircle{stroke:#ef4444;stroke-width:2.5;fill:#ef4444;}
 .sym-cold .triangle{fill:#3b82f6;}
+/* Légende enrichie */
+.leg-sep{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  padding:3px 8px 3px 10px;border-left:3px solid;border-radius:3px;margin:9px 0 6px;}
+.leg-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;}
+.leg-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03);}
+.leg-row:last-child{border-bottom:none;}
+.leg-sym{flex-shrink:0;width:70px;height:20px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);border-radius:4px;}
+.leg-txt b{font-size:11px;font-weight:600;display:block;line-height:1.3;}
+.leg-txt i{font-size:9px;color:var(--muted);font-style:italic;}
+@keyframes cycloneSpin{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
+.sym-spin{animation:cycloneSpin 4s linear infinite;display:inline-block;transform-origin:center;}
 </style>
 
 <link rel="preconnect" href="https://rpcache.meteo.nc">
@@ -653,78 +664,269 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         style="padding:5px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--font-b);">Animations</button>
     </div>
     <div id="front-legende">
-  <div style="display:flex;flex-direction:column;gap:8px;">
 
-    <div class="front-card">
-      <div class="symbol-box">
-        <svg class="sym-warm" width="72" height="20" viewBox="0 0 72 20">
-          <line x1="2" y1="10" x2="70" y2="10" stroke="#ef4444" stroke-width="2.5"/>
-          <circle class="semicircle" cx="18" cy="10" r="6"/>
-          <circle class="semicircle" cx="36" cy="10" r="6"/>
-          <circle class="semicircle" cx="54" cy="10" r="6"/>
-        </svg>
-      </div>
-      <div><div style="font-size:12px;font-weight:600;color:#f87171;margin-bottom:3px;">Front chaud 🔴</div>
-      <div style="font-size:10px;color:var(--muted);line-height:1.5;">Air chaud qui monte sur l'air froid. Pluies continues, vent N. Températures en hausse après passage.</div></div>
+  <!-- ═══ PRESSION MER ═══ -->
+  <div class="leg-sep" style="color:#4fa3c7;border-color:#4fa3c7;background:rgba(79,163,199,.08);">⊕ Pression mer</div>
+  <div class="leg-grid" style="margin-bottom:4px;">
+    <div class="leg-row">
+      <div class="leg-sym"><span class="sym-anti" style="font-size:24px;font-weight:900;color:#22c55e;font-family:monospace;line-height:1;">A</span></div>
+      <div class="leg-txt"><b style="color:#4ade80;">Anticyclone</b><i>High — vent horaire (HS)</i></div>
     </div>
-
-    <div class="front-card">
-      <div class="symbol-box">
-        <svg class="sym-cold" width="72" height="20" viewBox="0 0 72 20">
-          <line x1="2" y1="10" x2="70" y2="10" stroke="#3b82f6" stroke-width="2.5"/>
-          <polygon class="triangle" points="14,10 22,4 22,16"/>
-          <polygon class="triangle" points="34,10 42,4 42,16"/>
-          <polygon class="triangle" points="54,10 62,4 62,16"/>
-        </svg>
-      </div>
-      <div><div style="font-size:12px;font-weight:600;color:#60a5fa;margin-bottom:3px;">Front froid 🔵</div>
-      <div style="font-size:10px;color:var(--muted);line-height:1.5;">Air froid dense pénètre sous l'air chaud. Orages, averses, vent SE en NC. Amélioration rapide.</div></div>
-    </div>
-
-    <div class="front-card">
-      <div class="symbol-box">
-        <svg class="sym-occlus" width="72" height="20" viewBox="0 0 72 20">
-          <line x1="2" y1="10" x2="70" y2="10" stroke="#a855f7" stroke-width="2.5"/>
-          <circle cx="18" cy="10" r="5" fill="#a855f7"/>
-          <polygon points="34,10 42,4 42,16" fill="#a855f7"/>
-          <circle cx="54" cy="10" r="5" fill="#a855f7"/>
-        </svg>
-      </div>
-      <div><div style="font-size:12px;font-weight:600;color:#c084fc;margin-bottom:3px;">Front occlus 🟣</div>
-      <div style="font-size:10px;color:var(--muted);line-height:1.5;">Stade final d'une dépression. Pluies persistantes, vent variable.</div></div>
-    </div>
-
-    <div class="front-card">
-      <div class="symbol-box">
-        <svg class="sym-station" width="72" height="20" viewBox="0 0 72 20">
-          <line x1="2" y1="10" x2="70" y2="10" stroke="#ef4444" stroke-width="2"/>
-          <circle cx="14" cy="4" r="4" fill="#ef4444"/>
-          <polygon points="30,10 38,4 38,16" fill="#3b82f6"/>
-          <circle cx="50" cy="4" r="4" fill="#ef4444"/>
-          <polygon points="60,10 68,4 68,16" fill="#3b82f6"/>
-        </svg>
-      </div>
-      <div><div style="font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:3px;">Front stationnaire</div>
-      <div style="font-size:10px;color:var(--muted);line-height:1.5;">Ne se déplace pas. Pluies durables sur une même région.</div></div>
-    </div>
-
-    <div style="display:flex;gap:8px;">
-      <div class="front-card" style="flex:1;flex-direction:column;align-items:center;text-align:center;">
-        <div class="sym-anti" style="font-size:26px;font-weight:900;color:#22c55e;font-family:monospace;">A</div>
-        <div style="font-size:10px;font-weight:600;color:#4ade80;margin-top:3px;">Anticyclone</div>
-        <div style="font-size:9px;color:var(--muted);">Hautes press. ☀️<br>Vent horaire (HS)</div>
-      </div>
-      <div class="front-card" style="flex:1;flex-direction:column;align-items:center;text-align:center;">
-        <div class="sym-cyclo" style="font-size:26px;font-weight:900;color:#f43f5e;font-family:monospace;">D</div>
-        <div style="font-size:10px;font-weight:600;color:#fb7185;margin-top:3px;">Dépression</div>
-        <div style="font-size:9px;color:var(--muted);">Basses press. 🌧<br>Vent antihoraire (HS)</div>
-      </div>
-    </div>
-
-    <div style="font-size:9px;color:var(--faint);border-top:1px solid var(--border);padding-top:6px;">
-      ⚠ NC (hémisphère Sud) : front froid → vents SE/S/SW · dépressions = rotation <b>antihoraire</b>
+    <div class="leg-row">
+      <div class="leg-sym"><span class="sym-cyclo" style="font-size:24px;font-weight:900;color:#fb923c;font-family:monospace;line-height:1;">D</span></div>
+      <div class="leg-txt"><b style="color:#fb923c;">Dépression</b><i>Low — vent anti-horaire (HS)</i></div>
     </div>
   </div>
+  <!-- Cyclones tropicaux -->
+  <div class="leg-row">
+    <div class="leg-sym">
+      <svg width="34" height="20" viewBox="0 0 34 20"><g class="sym-spin" style="transform-origin:17px 10px">
+        <path d="M17,10 C17,5 22,2 25,5 C28,8 25,14 20,15 C15,16 10,12 11,7 C12,2 18,1 21,4" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+      </g></svg>
+    </div>
+    <div class="leg-txt"><b style="color:#f87171;">Cyclone tropical sévère</b><i>Severe Tropical Cyclone (&gt;63kt)</i></div>
+  </div>
+  <div class="leg-row">
+    <div class="leg-sym">
+      <svg width="34" height="20" viewBox="0 0 34 20"><g style="transform-origin:17px 10px;animation:cycloneSpin 5s linear infinite;display:block">
+        <path d="M17,10 C17,6 20,4 22,6 C24,8 22,13 19,14 C16,15 12,12 13,8 C14,5 18,4 20,7" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+      </g></svg>
+    </div>
+    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale forte</b><i>Cat 1–2 (33–63kt)</i></div>
+  </div>
+  <div class="leg-row">
+    <div class="leg-sym">
+      <svg width="34" height="20" viewBox="0 0 34 20">
+        <circle cx="17" cy="10" r="6" fill="none" stroke="#ef4444" stroke-width="2"/>
+        <circle cx="17" cy="10" r="2.5" fill="#ef4444"/>
+      </svg>
+    </div>
+    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale faible</b><i>Tropical low (&lt;33kt)</i></div>
+  </div>
+
+  <!-- ═══ FRONTS ═══ -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:10px 0 5px;">
+    <div class="leg-sep" style="color:#60a5fa;border-color:#3b82f6;background:rgba(59,130,246,.1);margin:0;">● Front froid</div>
+    <div class="leg-sep" style="color:#f87171;border-color:#ef4444;background:rgba(239,68,68,.1);margin:0;">● Front chaud</div>
+  </div>
+  <div class="leg-grid">
+    <!-- Col gauche: fronts froids -->
+    <div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg class="sym-cold" width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#3b82f6" stroke-width="2"/>
+          <polygon class="triangle" points="14,9 20,4 20,14"/><polygon class="triangle" points="32,9 38,4 38,14"/><polygon class="triangle" points="50,9 56,4 56,14"/>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#60a5fa;">Front froid</b><i>Cold front</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg class="sym-occlus" width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#a855f7" stroke-width="2"/>
+          <circle cx="15" cy="9" r="4" fill="#a855f7"/><polygon points="30,9 36,4 36,14" fill="#a855f7"/><circle cx="50" cy="9" r="4" fill="#a855f7"/>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#c084fc;">Front occlus</b><i>Occluded front</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <polygon points="16,9 22,4 22,14" fill="#3b82f6"/><text x="28" y="13" font-size="8" fill="#3b82f6" font-weight="700">+</text>
+          <polygon points="44,9 50,4 50,14" fill="#3b82f6"/><text x="56" y="13" font-size="8" fill="#3b82f6" font-weight="700">+</text>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#93c5fd;">Froid frontolyse</b><i>Dissipating cold front</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <circle cx="15" cy="9" r="3.5" fill="#a855f7"/><text x="22" y="13" font-size="8" fill="#a855f7" font-weight="700">+</text>
+          <polygon points="40,9 46,4 46,14" fill="#a855f7"/><text x="52" y="13" font-size="8" fill="#a855f7" font-weight="700">+</text>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#d8b4fe;">Occlus frontolyse</b><i>Dissipating occluded front</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#3b82f6" stroke-width="2"/>
+          <polygon points="14,9 20,4 20,14" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+          <polygon points="32,9 38,4 38,14" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+          <polygon points="50,9 56,4 56,14" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#93c5fd;">Froid altitude</b><i>Cold front aloft</i></div>
+      </div>
+    </div>
+    <!-- Col droite: fronts chauds -->
+    <div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg class="sym-warm" width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#ef4444" stroke-width="2"/>
+          <circle class="semicircle" cx="15" cy="9" r="5"/><circle class="semicircle" cx="33" cy="9" r="5"/><circle class="semicircle" cx="51" cy="9" r="5"/>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#f87171;">Front chaud</b><i>Warm front</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg class="sym-station" width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#7c3aed" stroke-width="2"/>
+          <circle cx="13" cy="4" r="4" fill="#ef4444"/><polygon points="28,9 34,4 34,14" fill="#3b82f6"/>
+          <circle cx="47" cy="4" r="4" fill="#ef4444"/><polygon points="58,9 64,4 64,14" fill="#3b82f6"/>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#a78bfa;">Quasi-stationnaire</b><i>Quasi-stationary front</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <circle cx="15" cy="9" r="3.5" fill="#ef4444"/><text x="22" y="13" font-size="8" fill="#ef4444" font-weight="700">+</text>
+          <circle cx="44" cy="9" r="3.5" fill="#ef4444"/><text x="51" y="13" font-size="8" fill="#ef4444" font-weight="700">+</text>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#fca5a5;">Chaud frontolyse</b><i>Dissipating warm front</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg width="70" height="18" viewBox="0 0 70 18">
+          <line x1="2" y1="9" x2="68" y2="9" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <circle cx="13" cy="4" r="3" fill="#ef4444"/><text x="19" y="13" font-size="7" fill="#7c3aed" font-weight="700">+</text>
+          <polygon points="34,9 40,4 40,14" fill="#3b82f6"/><text x="46" y="13" font-size="7" fill="#7c3aed" font-weight="700">+</text>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#c4b5fd;">Quasi-stat. frontolyse</b><i>Quasi-stat. dissipating</i></div>
+      </div>
+      <div class="leg-row"><div class="leg-sym">
+        <svg width="70" height="18" viewBox="0 0 70 18">
+          <path d="M2,11 C8,7 14,13 20,9 C26,5 32,11 38,7 C44,3 50,9 56,6 C60,4 64,7 68,9" fill="none" stroke="#3b82f6" stroke-width="2"/>
+          <polygon points="10,9 14,5 14,13" fill="#3b82f6" opacity="0.6"/>
+          <polygon points="30,7 34,3 34,11" fill="#3b82f6" opacity="0.6"/>
+          <polygon points="50,7 54,3 54,11" fill="#3b82f6" opacity="0.6"/>
+        </svg></div>
+        <div class="leg-txt"><b style="color:#93c5fd;">Froid subsidient</b><i>Subsidient surface front</i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PSEUDO-FRONTS ═══ -->
+  <div class="leg-sep" style="color:#fbbf24;border-color:#f59e0b;background:rgba(245,158,11,.08);">◆ Pseudo-fronts</div>
+  <div class="leg-grid">
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="8,4"/>
+        <polygon points="18,9 24,4 24,14" fill="#3b82f6" opacity="0.7"/>
+        <polygon points="42,9 48,4 48,14" fill="#3b82f6" opacity="0.7"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#93c5fd;">Pseudo-front froid</b><i>Pseudo cold front</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,2"/>
+        <rect x="10" y="5" width="8" height="8" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+        <rect x="28" y="5" width="8" height="8" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+        <rect x="46" y="5" width="8" height="8" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fcd34d;">Talweg mousson</b><i>Monsoon trough</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="8,4"/>
+        <circle cx="20" cy="9" r="4" fill="#ef4444" opacity="0.7"/>
+        <circle cx="44" cy="9" r="4" fill="#ef4444" opacity="0.7"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fca5a5;">Pseudo-front chaud</b><i>Pseudo warm front</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#eab308" stroke-width="1.5" stroke-dasharray="6,3"/>
+        <line x1="10" y1="4" x2="18" y2="14" stroke="#eab308" stroke-width="1.5"/>
+        <line x1="30" y1="4" x2="38" y2="14" stroke="#eab308" stroke-width="1.5"/>
+        <line x1="50" y1="4" x2="58" y2="14" stroke="#eab308" stroke-width="1.5"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fde68a;">Éq. météo alizé</b><i>Trade wind equator</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="8,4"/>
+        <circle cx="16" cy="5" r="3" fill="#ef4444" opacity="0.7"/>
+        <polygon points="32,9 38,4 38,14" fill="#3b82f6" opacity="0.7"/>
+        <circle cx="52" cy="5" r="3" fill="#ef4444" opacity="0.7"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#c084fc;">Pseudo quasi-stat.</b><i>Pseudo quasi-stat.</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#f97316" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <path d="M10,9 l4,-5 l4,5 l4,-5 l4,5" fill="none" stroke="#f97316" stroke-width="1.5"/>
+        <path d="M38,9 l4,-5 l4,5 l4,-5 l4,5" fill="none" stroke="#f97316" stroke-width="1.5"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fdba74;">Talweg proche-éq.</b><i>Near-equatorial trough</i></div>
+    </div>
+  </div>
+
+  <!-- ═══ OBJETS TROPICAUX / AUTRES ═══ -->
+  <div class="leg-sep" style="color:#f43f5e;border-color:#e11d48;background:rgba(244,63,94,.08);">✦ Autres objets</div>
+  <div class="leg-grid">
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <rect x="8"  y="4" width="9" height="9" fill="#22c55e"/>
+        <rect x="28" y="4" width="9" height="9" fill="#22c55e"/>
+        <rect x="48" y="4" width="9" height="9" fill="#22c55e"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#4ade80;">ZCPS — confluence</b><i>SPCZ tradewind confluence</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#f97316" stroke-width="1.5"/>
+        <polygon points="10,5 20,5 20,13 10,13 15,9" fill="#f97316"/>
+        <polygon points="30,5 40,5 40,13 30,13 35,9" fill="#f97316"/>
+        <polygon points="50,5 60,5 60,13 50,13 55,9" fill="#f97316"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fdba74;">Ligne de convergence</b><i>Surface convergence line</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <line x1="2" y1="9" x2="68" y2="9" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <rect x="8"  y="4" width="9" height="9" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+        <rect x="28" y="4" width="9" height="9" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+        <rect x="48" y="4" width="9" height="9" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#86efac;">ZCPS — couloir dépression.</b><i>SPCZ lows belt</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <path d="M10,9 Q20,2 30,9 Q40,16 50,9" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fdba74;">Talweg basse couche</b><i>Low level trough</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <path d="M2,9 l5,-5 l5,5 l5,-5 l5,5 l5,-5 l5,5 l5,-5 l5,5 l5,-5 l5,5 l5,-5 l5,5" fill="none" stroke="#f97316" stroke-width="2" stroke-linejoin="round"/>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fdba74;">Ligne de grain</b><i>Squall line (warm air)</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <text x="6" y="14" font-size="13" fill="#ef4444" font-family="serif" font-style="italic">c</text>
+        <text x="22" y="15" font-size="16" fill="#ef4444" font-family="serif" font-style="italic" font-weight="700">C</text>
+        <text x="40" y="14" font-size="13" fill="#3b82f6" font-family="serif" font-style="italic">c</text>
+        <text x="56" y="15" font-size="16" fill="#22c55e" font-family="serif" font-style="italic" font-weight="700">C</text>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fca5a5;"><span style="color:#ef4444;">C</span> Circ. cyclonique · <span style="color:#4ade80;">C</span> Anticyclonique</b><i>Cyclonic / Anticyclonic circ.</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <text x="4" y="14" font-size="10" fill="#fbbf24" transform="rotate(-15,12,10)">↗</text>
+        <text x="18" y="14" font-size="10" fill="#fbbf24" transform="rotate(-10,26,10)">↗</text>
+        <text x="32" y="14" font-size="10" fill="#fbbf24" transform="rotate(-5,40,10)">↗</text>
+        <text x="46" y="14" font-size="10" fill="#fbbf24">↗</text>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fde68a;">Amas convectif</b><i>Comma cloud, line convection</i></div>
+    </div>
+    <div class="leg-row"><div class="leg-sym">
+      <svg width="70" height="18" viewBox="0 0 70 18">
+        <text x="24" y="15" font-size="18" fill="#eab308" font-family="serif" font-style="italic" font-weight="700">S</text>
+      </svg></div>
+      <div class="leg-txt"><b style="color:#fde68a;">Brume · sable · fumée</b><i>Dust, sand, smoke haze (&gt;1000m)</i></div>
+    </div>
+  </div>
+
+  <!-- Note NC -->
+  <div style="font-size:9px;color:var(--faint);border-top:1px solid rgba(255,255,255,.06);padding-top:6px;margin-top:6px;line-height:1.6;">
+    ⚠ NC (hémisphère Sud) : dépressions = rotation <b style="color:var(--text);">antihoraire</b> · front froid → vents SE/S/SW
+    · <span style="color:rgba(255,255,255,.3);">Source : Légende officielle RSMC Nouméa / Météo-France NC</span>
+  </div>
+
 </div><!-- fin front-legende -->
 
     <!-- Panneau animations -->
