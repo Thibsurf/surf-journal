@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "surf-journal",
+  "compatibility_date": "2026-04-22",
+  "assets": {
+    "directory": ".",
+    "exclude": [
+      "node_modules",
+      ".git",
+      ".github",
+      ".wrangler",
+      "package.json",
+      "package-lock.json",
+      "bun.lockb",
+      "extension",
+      "worker_cloudflare"
+    ]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

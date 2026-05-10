@@ -1,0 +1,3555 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4fa3c7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Surf NC">
+<link rel="apple-touch-icon" href="icons/icon-180x180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+<link rel="icon" href="favicon.ico">
+<link rel="stylesheet" href="pwa.css">
+<title>Marine Fuel – Pro</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#060e1a;--s1:#0c1828;--s2:#111f35;--s3:#172843;
+  --border:#1b3050;--border2:#234070;
+  --a:#0ea5e9;--a2:#38bdf8;--a3:#7dd3fc;
+  --green:#10b981;--warn:#f59e0b;--red:#f43f5e;--purple:#a78bfa;
+  --txt:#dbeeff;--muted:#4d7aa0;--muted2:#6b9fc4;
+  --font:'Syne',sans-serif;--mono:'DM Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse 70% 50% at 20% -5%,rgba(14,165,233,.10) 0%,transparent 55%),
+             radial-gradient(ellipse 50% 30% at 80% 100%,rgba(16,185,129,.06) 0%,transparent 50%);
+  pointer-events:none;z-index:0}
+
+/* AUTH */
+.auth-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;z-index:100;background:var(--bg)}
+.auth-card{background:var(--s1);border:1px solid var(--border2);border-radius:24px;padding:40px 36px;width:100%;max-width:400px;box-shadow:0 32px 80px rgba(0,0,0,.6)}
+.auth-logo{text-align:center;margin-bottom:32px}
+.auth-logo .ico{width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,#0ea5e9,#0369a1);display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 8px 32px rgba(14,165,233,.4)}
+.auth-logo h2{font-size:1.5rem;font-weight:800;letter-spacing:-.03em}
+.auth-logo p{font-size:.78rem;color:var(--muted2);margin-top:4px}
+#auth-err{font-size:.78rem;color:var(--red);text-align:center;margin-bottom:12px;min-height:18px}
+
+/* SHARED */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 20px;border:none;border-radius:11px;font-family:var(--font);font-size:.88rem;font-weight:700;cursor:pointer;transition:all .18s}
+.btn-primary{background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;box-shadow:0 4px 16px rgba(14,165,233,.35)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(14,165,233,.45)}
+.btn-full{width:100%}
+.btn-ghost{background:var(--s2);border:1px solid var(--border);color:var(--muted2)}
+.btn-ghost:hover{border-color:var(--border2);color:var(--txt)}
+.btn-danger-soft{background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.25);color:var(--red)}
+.btn-warn-soft{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:var(--warn)}
+.btn-ok-soft{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:var(--green)}
+.btn-sm{padding:6px 12px;font-size:.75rem;border-radius:8px}
+.btn-xs{padding:4px 9px;font-size:.7rem;border-radius:6px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* APP LAYOUT */
+#app{display:none;position:relative;z-index:1;min-height:100vh}
+.container{max-width:900px;margin:0 auto;padding:20px 16px 60px}
+
+.topbar{display:flex;align-items:center;gap:12px;padding:16px 0 20px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.topbar-logo{width:40px;height:40px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,#0ea5e9,#0284c7);display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 16px rgba(14,165,233,.3)}
+.topbar h1{font-size:1.2rem;font-weight:800;letter-spacing:-.02em}
+.topbar .sub{font-size:.72rem;color:var(--muted2);margin-top:1px}
+.topbar-right{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.tabs{display:flex;gap:4px;background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:5px;margin-bottom:20px}
+.tab{flex:1;padding:9px 8px;border:none;border-radius:10px;font-family:var(--font);font-size:.78rem;font-weight:700;cursor:pointer;color:var(--muted2);background:none;transition:all .2s;letter-spacing:.02em}
+.tab.active{background:var(--s3);color:var(--txt);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+.card{background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:14px}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);display:flex;align-items:center;gap:7px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+.field label{font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);display:block;margin-bottom:5px}
+input,select,textarea{width:100%;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--txt);font-family:var(--mono);font-size:.88rem;outline:none;transition:border .2s,box-shadow .2s}
+input:focus,select:focus,textarea:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(14,165,233,.12)}
+select option{background:var(--s2)}
+
+/* BOAT */
+.boat-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.boat-row select{flex:1}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.chip{display:flex;flex-direction:column;align-items:center;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:.78rem;min-width:70px;text-align:center}
+.chip .val{font-family:var(--mono);color:var(--a2);font-weight:500}
+.chip .lbl{font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+
+/* GAUGE RÉSERVOIR */
+.gauge-wrap{padding:14px;background:var(--s2);border:1px solid var(--border);border-radius:12px;margin:12px 0}
+.gauge-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.gauge-label{font-size:.7rem;color:var(--muted2);font-weight:600;text-transform:uppercase;letter-spacing:.07em}
+.gauge-val{font-family:var(--mono);font-size:.95rem;font-weight:500}
+.gauge-track{height:20px;background:var(--s3);border-radius:10px;overflow:hidden;position:relative;border:1px solid var(--border)}
+.gauge-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.16,1,.3,1),background .5s;position:relative;overflow:hidden}
+.gauge-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent);animation:shimmer 2.5s infinite}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+.gauge-unc{position:absolute;height:100%;border:1px dashed rgba(255,255,255,.25);border-radius:9px;pointer-events:none;top:0}
+.gauge-ticks{display:flex;justify-content:space-between;margin-top:5px}
+.gauge-tick{font-size:.6rem;color:var(--muted);font-family:var(--mono)}
+.gauge-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+
+/* BIDONS */
+.bidons-row{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+.bidon{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
+.bidon-svg-wrap{position:relative}
+.bidon-lbl{font-size:.68rem;font-family:var(--mono);color:var(--muted2);text-align:center}
+.bidon-val{font-family:var(--mono);font-size:.82rem;font-weight:500;color:var(--a2)}
+.bidon-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:10px;background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-top:8px}
+
+/* ESTIMATION */
+.est-box{background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;display:none}
+.est-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.est-item{text-align:center}
+.est-lbl{font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin-bottom:4px}
+.est-val{font-family:var(--mono);font-size:1rem;font-weight:500}
+.est-val.ok{color:var(--green)}.est-val.warn{color:var(--warn)}.est-val.danger{color:var(--red)}
+
+/* LOGS */
+.log-list{display:flex;flex-direction:column;gap:8px}
+.log-item{display:flex;align-items:center;gap:12px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:12px 14px;transition:border .2s}
+.log-item:hover{border-color:rgba(14,165,233,.3)}
+.log-badge{padding:3px 9px;border-radius:20px;font-size:.62rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;flex-shrink:0}
+.b-cruise{background:rgba(14,165,233,.15);color:var(--a2)}
+.b-refuel{background:rgba(16,185,129,.15);color:var(--green)}
+.b-bidon{background:rgba(167,139,250,.15);color:var(--purple)}
+.b-correct{background:rgba(245,158,11,.15);color:var(--warn)}
+.b-nav{background:rgba(167,139,250,.15);color:var(--purple)}
+.b-expense{background:rgba(245,158,11,.12);color:var(--warn)}
+.log-body{flex:1;min-width:0}
+.log-main{font-family:var(--mono);font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-sub{font-size:.7rem;color:var(--muted2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-meta{flex-shrink:0;text-align:right}
+.log-date{font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+.log-actions{display:flex;gap:4px;margin-top:4px;justify-content:flex-end}
+.empty{text-align:center;padding:36px;color:var(--muted);font-size:.83rem}
+.empty .eico{font-size:36px;display:block;margin-bottom:10px;opacity:.35}
+
+/* CHARTS — redesigned */
+.charts-stack{display:flex;flex-direction:column;gap:16px}
+
+/* KPI strip */
+.kpi-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px}
+.kpi{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:16px 14px;position:relative;overflow:hidden;transition:border .2s}
+.kpi:hover{border-color:var(--border2)}
+.kpi::before{content:'';position:absolute;inset:0;border-radius:14px;opacity:.06;pointer-events:none}
+.kpi-ico{font-size:1.1rem;margin-bottom:8px;display:block}
+.kpi-val{font-family:var(--mono);font-size:1.45rem;font-weight:500;line-height:1;margin-bottom:4px}
+.kpi-lbl{font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted2)}
+.kpi-sub{font-size:.6rem;color:var(--muted);margin-top:3px;line-height:1.4}
+.kpi-bar{height:2px;border-radius:2px;margin-top:10px;opacity:.4}
+
+/* Chart card */
+.ccard{background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:20px 20px 16px}
+.ccard-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px}
+.ccard-title{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--txt)}
+.ccard-sub{font-size:.62rem;color:var(--muted2)}
+.ccard-meta{display:flex;gap:14px;margin-bottom:14px;margin-top:2px;flex-wrap:wrap}
+.ccard-meta span{font-size:.65rem;color:var(--muted);font-family:var(--mono);display:flex;align-items:center;gap:4px}
+.chart-wrap{position:relative}
+.chart-wrap canvas{display:block}
+.chart-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+.chart-legend-item{display:flex;align-items:center;gap:5px;font-size:.62rem;color:var(--muted2);font-family:var(--mono)}
+.chart-legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* Period filter */
+.period-filter{display:flex;gap:6px;margin-bottom:16px}
+.pf-btn{padding:5px 12px;border:1px solid var(--border);background:none;border-radius:8px;font-size:.68rem;font-weight:700;font-family:var(--font);color:var(--muted2);cursor:pointer;transition:all .15s}
+.pf-btn.active{background:var(--s2);color:var(--a2);border-color:var(--border2)}
+
+/* Balance cards */
+.bal-cards{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.bal-card{background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.bal-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.bal-name{font-size:.88rem;font-weight:700}
+.bal-total{font-family:var(--mono);font-size:1.1rem;font-weight:500}
+.bal-rows{display:flex;flex-direction:column;gap:4px}
+.bal-row{display:flex;justify-content:space-between;align-items:center}
+.bal-row-lbl{font-size:.65rem;color:var(--muted2)}
+.bal-row-val{font-family:var(--mono);font-size:.72rem}
+.bal-bar-wrap{height:4px;background:var(--s3);border-radius:2px;margin:8px 0 2px;overflow:hidden}
+.bal-bar-fill{height:100%;border-radius:2px;transition:width .6s cubic-bezier(.16,1,.3,1)}
+.transfers-box{background:rgba(14,165,233,.07);border:1px solid rgba(14,165,233,.2);border-radius:12px;padding:14px;margin-top:4px}
+.transfer-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.transfer-row:last-child{border-bottom:none}
+.transfer-from{font-size:.82rem;color:var(--red)}
+.transfer-to{font-size:.82rem;color:var(--green)}
+.transfer-amt{font-family:var(--mono);font-size:.88rem;color:var(--warn);font-weight:500}
+
+.no-data{text-align:center;padding:32px 16px;color:var(--muted);font-size:.82rem;opacity:.6;line-height:1.6}
+@media(max-width:560px){
+  .kpi-strip{grid-template-columns:1fr 1fr}
+  .kpi-val{font-size:1.2rem}
+}
+
+/* MODALS */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;opacity:0;pointer-events:none;transition:opacity .25s}
+.modal-overlay.show{opacity:1;pointer-events:all}
+.modal{background:var(--s1);border:1px solid var(--border2);border-radius:20px;padding:28px;width:100%;max-width:480px;transform:translateY(20px);transition:transform .25s;max-height:90vh;overflow-y:auto}
+.modal-overlay.show .modal{transform:translateY(0)}
+.modal h3{font-size:1rem;font-weight:800;margin-bottom:18px}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+
+.toast{position:fixed;bottom:24px;right:20px;background:var(--s1);border:1px solid var(--border2);border-radius:14px;padding:12px 18px;font-size:.83rem;z-index:500;transform:translateY(60px);opacity:0;transition:all .3s cubic-bezier(.16,1,.3,1)}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{border-color:rgba(16,185,129,.4)}.toast.err{border-color:rgba(244,63,94,.4)}
+
+/* CHECKBOX full tank */
+.check-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:8px;font-size:.82rem;cursor:pointer}
+.check-row input[type=checkbox]{width:auto;accent-color:var(--green)}
+
+/* Confidence dots */
+.conf{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.68rem;font-family:var(--mono);color:var(--muted)}
+.conf-dots{display:flex;gap:3px}
+.conf-dot{width:8px;height:8px;border-radius:2px;background:var(--s3)}
+
+@media(max-width:560px){
+  .grid2,.grid3{grid-template-columns:1fr}.full{grid-column:1}
+  .charts-grid{grid-template-columns:1fr}.chart-card.full{grid-column:1}
+  .est-grid{grid-template-columns:1fr 1fr}
+  .tabs .tab{font-size:.68rem;padding:8px 3px}
+}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="ico">⛽</div>
+      <h2>Marine Fuel</h2>
+      <p>Gestion carburant embarquée</p>
+    </div>
+    <div id="auth-err"></div>
+    <div class="fld"><label>Email</label><input id="em" type="email" placeholder="vous@mail.com"></div>
+    <div class="fld"><label>Mot de passe</label><input id="pw" type="password" placeholder="••••••••"></div>
+    <button class="btn btn-primary btn-full" id="loginBtn"><span id="login-txt">Se connecter</span></button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+<div class="container">
+
+  <div class="topbar">
+    <div class="topbar-logo">⛽</div>
+    <div>
+      <h1 id="boat-name-hdr">Marine Fuel</h1>
+      <div class="sub" id="user-lbl"></div>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost btn-sm" onclick="openMembersModal()" title="Membres">👥</button>
+      <button class="btn btn-ghost btn-sm" onclick="openToolsModal()" title="Outils maintenance">🔧</button>
+      <button class="btn btn-danger-soft btn-sm" id="logoutBtn">Déco.</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="log">📋 Logs</button>
+    <button class="tab" data-tab="add">➕ Ajouter</button>
+    <button class="tab" data-tab="bidons">🛢 Bidons</button>
+    <button class="tab" data-tab="charts">📊 Graphes</button>
+  </div>
+
+  <!-- ══ TAB: LOGS ══ -->
+  <div class="tab-content active" id="tab-log">
+
+    <!-- Sélecteur bateau -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">🚤 Bateau</div>
+      </div>
+      <div class="boat-row">
+        <select id="boatSelect"></select>
+        <button class="btn btn-ghost btn-sm" id="refreshBtn">↻</button>
+        <button class="btn btn-ghost btn-sm" onclick="showManageMembers()" title="Gérer les membres du bateau">👥</button>
+      </div>
+      <div class="chips" id="boatChips"></div>
+
+      <!-- Jauge réservoir -->
+      <div class="gauge-wrap" id="gaugeWrap" style="display:none">
+        <div class="gauge-row">
+          <span class="gauge-label">⛽ Réservoir estimé</span>
+          <span id="gauge-val" class="gauge-val">—</span>
+        </div>
+        <div class="gauge-track">
+          <div id="gauge-unc" class="gauge-unc"></div>
+          <div class="gauge-fill" id="gauge-fill"></div>
+        </div>
+        <div class="gauge-ticks">
+          <span class="gauge-tick">0%</span>
+          <span class="gauge-tick">25%</span>
+          <span class="gauge-tick">50%</span>
+          <span class="gauge-tick">75%</span>
+          <span class="gauge-tick">100%</span>
+        </div>
+        <!-- Confiance -->
+        <div class="conf">
+          <div class="conf-dots" id="conf-dots">
+            <div class="conf-dot"></div><div class="conf-dot"></div>
+            <div class="conf-dot"></div><div class="conf-dot"></div><div class="conf-dot"></div>
+          </div>
+          <span id="conf-lbl">—</span>
+        </div>
+        <div class="gauge-actions">
+          <button class="btn btn-warn-soft btn-sm" onclick="openCorrect()">📏 Corriger niveau réel</button>
+        </div>
+      </div>
+
+      <!-- Autonomie -->
+      <div id="auto-box" style="display:none;margin-top:10px;padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">📐 Autonomie estimée (L/nm historique)</div>
+        <div class="grid3">
+          <div class="est-item"><div class="est-lbl">Aller</div><div class="est-val ok" id="auto-one">—</div></div>
+          <div class="est-item"><div class="est-lbl">A/R</div><div class="est-val warn" id="auto-rt">—</div></div>
+          <div class="est-item"><div class="est-lbl">Avec réserve</div><div class="est-val" id="auto-res" style="color:var(--a)">—</div></div>
+        </div>
+      </div>
+
+      <!-- ── Bidons inline (vue rapide) ── -->
+      <div id="bidons-inline" style="margin-top:10px;display:none">
+        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">🛢 Bidons en stock</div>
+        <div id="bidons-inline-row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"></div>
+        <div style="margin-top:4px;font-size:.72rem;font-family:var(--mono)">
+          Total : <span id="bidons-inline-total" style="color:var(--a2)">0 L</span>
+          <span style="color:var(--muted);margin-left:8px">— inclus dans</span>
+          <span id="fob-total-lbl" style="color:var(--green);margin-left:4px">FOB: — L</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">📋 Historique</div>
+        <button class="btn btn-ghost btn-sm" onclick="openBoatEditModal()">⚙️ Bateau</button>
+      </div>
+      <div style="margin-bottom:10px">
+        <input type="text" id="logSearch" placeholder="🔍 Rechercher dans les logs…" oninput="filterLogs()" style="width:100%;padding:9px 14px;font-size:.83rem">
+      </div>
+      <div id="logList" class="log-list">
+        <div class="empty"><span class="eico">🌊</span>Aucun log</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: AJOUTER ══ -->
+  <div class="tab-content" id="tab-add">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">➕ Nouveau log</div>
+      </div>
+      <div class="grid2">
+        <div class="field full">
+          <label>Type</label>
+          <select id="logType" onchange="onTypeChange()">
+            <option value="cruise">📐 Mesure de consommation — volume consommé + distance</option>
+            <option value="cruise_refuel">📐⛽ Sortie mesurée + plein intégré</option>
+            <option value="nav">🧭 Sortie mer — distance seulement (sans mesure conso)</option>
+            <option value="refuel">🔋 Plein essence réservoir</option>
+            <option value="bidon_fill">🛢 Plein essence bidon</option>
+            <option value="expense">💰 Dépense bateau (hors essence)</option>
+            <option value="reimburse">💸 Remboursement entre membres</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="fuelL-label">Litres</label>
+          <input id="fuelL" type="number" min="0" step="0.1" placeholder="ex: 45.5" oninput="liveEstimate();autoCalcTotal()">
+        </div>
+        <!-- Litres ajoutés : seulement pour cruise_refuel -->
+        <div class="field" id="fuelL-added-wrap" style="display:none">
+          <label>Litres ajoutés au réservoir (plein)</label>
+          <input id="fuelLAdded" type="number" min="0" step="0.1" placeholder="ex: 38" oninput="autoCalcTotal()">
+        </div>
+        <div class="field" id="dist-wrap">
+          <label>Distance (milles) ⭐</label>
+          <input id="fuelD" type="number" min="0" step="0.1" placeholder="ex: 12.5" oninput="liveEstimate()">
+        </div>
+        <div class="field" id="price-wrap">
+          <label>Prix / litre (XPF)</label>
+          <input id="fuelP" type="number" min="0" step="1" placeholder="ex: 158" oninput="liveEstimate();autoCalcTotal()">
+        </div>
+        <div class="field" id="total-wrap">
+          <label>Total payé (XPF)</label>
+          <input id="fuelTotal" type="number" min="0" step="1" placeholder="auto-calculé" oninput="renderSplitInputs()">
+        </div>
+        <!-- Date & heure (essentiel pour les graphes chronologiques) -->
+        <div class="field">
+          <label>Date</label>
+          <input type="datetime-local" id="fuelDate">
+        </div>
+        <!-- Qui a payé (pour tous les logs avec coût) -->
+        <div class="field" id="paidby-wrap" style="display:none">
+          <label>Payé par</label>
+          <select id="fuelPaidBy" onchange="renderSplitInputs()">
+            <option value="">—</option>
+          </select>
+        </div>
+        <!-- Remboursé à (pour remboursements) -->
+        <div class="field" id="reimbto-wrap" style="display:none">
+          <label>Remboursé à</label>
+          <select id="fuelReimbTo">
+            <option value="">—</option>
+          </select>
+        </div>
+        <!-- Bidon cible (pour bidon_fill) -->
+        <div class="field" id="bidon-target-wrap" style="display:none">
+          <label>Bidon à remplir</label>
+          <select id="fuelBidonTarget" onchange="onBidonTargetChange()">
+            <option value="new">+ Nouveau bidon</option>
+          </select>
+        </div>
+        <div class="field" id="bidon-newcap-wrap" style="display:none">
+          <label>Capacité du nouveau bidon (L)</label>
+          <select id="fuelBidonNewCap">
+            <option value="10">10 L</option>
+            <option value="20" selected>20 L</option>
+            <option value="25">25 L</option>
+            <option value="30">30 L</option>
+            <option value="50">50 L</option>
+          </select>
+        </div>
+        <!-- Passagers/poids (cruise et nav) -->
+        <div class="field" id="pax-wrap">
+          <label>Personnes à bord</label>
+          <input type="number" id="fuelPax" min="0" max="30" step="1" placeholder="ex: 4">
+        </div>
+        <div class="field" id="weight-wrap">
+          <label>Charge approx. (kg)</label>
+          <input type="number" id="fuelWeight" min="0" step="10" placeholder="ex: 400 (pax+équip.)">
+        </div>
+        <!-- Catégorie dépense -->
+        <div class="field full" id="expense-cat-wrap" style="display:none">
+          <label>Catégorie</label>
+          <select id="fuelCategory">
+            <option value="equipment">🔧 Équipement / consommables / outils / pièces</option>
+            <option value="maintenance">🛠 Entretien / révision / rinçage / réparation</option>
+            <option value="parking">🏠 Loyer parking / place bateau</option>
+            <option value="transport">🚗 Transport / voiture / remorque</option>
+            <option value="assurance">🛡 Assurance</option>
+            <option value="admin">📄 Administratif (immat., caution, badge…)</option>
+            <option value="food">🍔 Repas / snacks / petit-dej</option>
+            <option value="other">📦 Autre</option>
+          </select>
+        </div>
+        <!-- Scope: bateau ou personnel/divers -->
+        <div class="full" id="scope-wrap" style="display:none">
+          <label class="check-row" style="background:rgba(167,139,250,.06);border-color:rgba(167,139,250,.2)">
+            <input type="checkbox" id="fuelPersonal">
+            <span>👤 <b>Dépense personnelle / hors bateau</b> — comptée séparément dans l'équilibre (resto, achat perso, etc.)</span>
+          </label>
+        </div>
+        <!-- Répartition manuelle / égale -->
+        <div class="full" id="split-wrap" style="display:none">
+          <div style="padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2)">⚖️ Répartition</span>
+              <select id="splitMode" onchange="onSplitModeChange()" style="width:auto;padding:6px 10px;font-size:.78rem">
+                <option value="equal">Égal entre tous</option>
+                <option value="manual">Manuel (montants par membre)</option>
+                <option value="exclude_payer">Égal sans le payeur</option>
+              </select>
+            </div>
+            <div id="splitInputs" style="display:none;margin-top:8px"></div>
+            <div id="splitTotal" style="margin-top:6px;font-size:.7rem;color:var(--muted);font-family:var(--mono)"></div>
+          </div>
+        </div>
+        <div class="field full">
+          <label>Note</label>
+          <input id="fuelNote" type="text" placeholder="ex: Retour Nouméa, mer belle…">
+        </div>
+        <!-- Plein entier (visible seulement pour ravitaillement) -->
+        <div class="full" id="full-tank-wrap" style="display:none">
+          <label class="check-row">
+            <input type="checkbox" id="fullTank">
+            <span>🎯 <b>Plein entier à ras bord</b></span>
+          </label>
+        </div>
+        <!-- Option bidon simultané (visible pour refuel) -->
+        <div class="full" id="refuel-also-bidon-wrap" style="display:none">
+          <label class="check-row" style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2)">
+            <input type="checkbox" id="refuelAlsoBidon" onchange="onRefuelAlsoBidonChange()">
+            <span>🛢 <b>Remplissage bidon simultané</b> — même facture</span>
+          </label>
+        </div>
+        <!-- Champs bidon si coché (réservoir + bidon sur même facture) -->
+        <div id="refuel-bidon-details" style="display:none;padding:12px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2);border-radius:10px;margin-top:4px">
+          <div style="font-size:.7rem;color:var(--muted2);margin-bottom:8px">🛢 Bidon — saisie séparée (litres bidon + coût bidon si distinct)</div>
+          <div class="grid2" style="gap:8px">
+            <div class="field">
+              <label>Bidon à remplir</label>
+              <select id="refuelBidonTarget" onchange="onRefuelBidonTargetChange()" style="font-size:.82rem">
+                <option value="new">+ Nouveau bidon</option>
+              </select>
+            </div>
+            <div class="field" id="refuel-bidon-newcap-wrap" style="display:none">
+              <label>Capacité du nouveau bidon</label>
+              <select id="refuelBidonNewCap" style="font-size:.82rem">
+                <option value="10">10 L</option>
+                <option value="20" selected>20 L</option>
+                <option value="25">25 L</option>
+                <option value="30">30 L</option>
+                <option value="50">50 L</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Litres ajoutés au bidon</label>
+              <input type="number" id="refuelBidonL" min="0" step="0.1" placeholder="ex: 10" oninput="refuelBidonCalc()">
+            </div>
+            <div class="field">
+              <label>Coût bidon (XPF, si sur même facture)</label>
+              <input type="number" id="refuelBidonTotal" min="0" step="1" placeholder="Laisse vide = prix auto">
+            </div>
+          </div>
+          <div id="refuelBidonEst" style="font-size:.68rem;color:var(--muted);margin-top:4px;font-family:var(--mono)"></div>
+        </div>
+      </div>
+
+      <div class="est-box" id="est-box">
+        <div class="est-grid">
+          <div class="est-item"><div class="est-lbl">⭐ L/mille</div><div class="est-val" id="est-lnm">—</div></div>
+          <div class="est-item"><div class="est-lbl">Conso moy</div><div class="est-val" id="est-avg">—</div></div>
+          <div class="est-item"><div class="est-lbl">Total XPF</div><div class="est-val" id="est-xpf">—</div></div>
+        </div>
+        <div style="text-align:center;margin-top:8px;font-size:.66rem;color:var(--muted)">⭐ L/mille = meilleur indicateur (indépendant de la durée)</div>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="saveBtn" style="margin-top:14px">
+        <span id="save-txt">Enregistrer</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ TAB: BIDONS ══ -->
+  <div class="tab-content" id="tab-bidons">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">🛢 Stock bidons</div>
+        <button class="btn btn-ok-soft btn-sm" onclick="openAddBidon()">+ Bidon</button>
+      </div>
+
+      <!-- Visualisation SVG bidons -->
+      <div class="bidons-row" id="bidons-row">
+        <div class="empty" style="padding:20px"><span class="eico">🛢</span>Aucun bidon</div>
+      </div>
+
+      <!-- Total -->
+      <div style="padding:10px;background:var(--s2);border:1px solid var(--border);border-radius:10px;text-align:center;margin-top:4px">
+        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Total en bidons</div>
+        <div style="font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--a2);margin-top:2px" id="bidons-total">0 L</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:4px" id="bidons-sub"></div>
+      </div>
+
+      <!-- Log verser dans réservoir -->
+      <div style="margin-top:12px;padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--a2);margin-bottom:10px">⬇️ Verser dans le réservoir</div>
+        <div class="grid2">
+          <div class="field">
+            <label>Bidon source</label>
+            <select id="bidon-pour-src"></select>
+          </div>
+          <div class="field">
+            <label>Litres à verser</label>
+            <input type="number" id="bidon-pour-l" min="0.1" step="0.5" placeholder="ex: 20">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="pourBidon()" style="margin-top:8px">Verser dans réservoir →</button>
+      </div>
+    </div>
+
+    <!-- Historique mouvements bidons -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">📋 Mouvements bidons</div>
+      </div>
+      <div id="bidon-log-list" class="log-list">
+        <div class="empty"><span class="eico">🛢</span>Aucun mouvement</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: GRAPHES ══ -->
+  <div class="tab-content" id="tab-charts">
+    <div id="charts-container">
+      <div class="empty" style="padding:60px"><span class="eico">📊</span>Chargement…</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- MODAL: EDIT LOG -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h3>✏️ Modifier le log</h3>
+    <input type="hidden" id="edit-id">
+    <div class="grid2" style="gap:12px">
+      <div class="field full">
+        <label>Type</label>
+        <select id="edit-type">
+          <option value="cruise">📐 Mesure conso</option>
+          <option value="cruise_refuel">📐⛽ Sortie + plein intégré</option>
+          <option value="nav">🧭 Sortie navigation</option>
+          <option value="refuel">🔋 Plein essence</option>
+          <option value="bidon_fill">🛢 Plein bidon</option>
+          <option value="expense">💰 Dépense</option>
+          <option value="reimburse">💸 Remboursement</option>
+          <option value="correct">📏 Correction niveau</option>
+          <option value="pour">🛢→⛽ Verser bidon</option>
+        </select>
+      </div>
+      <div class="field full"><label>Date</label><input id="edit-date" type="datetime-local"></div>
+      <div class="field"><label>Litres</label><input id="edit-liters" type="number" step="0.1"></div>
+      <div class="field"><label>Distance (nm)</label><input id="edit-dist" type="number" step="0.1"></div>
+      <div class="field"><label>Prix/L (XPF)</label><input id="edit-price" type="number" step="1"></div>
+      <div class="field"><label>Total (XPF)</label><input id="edit-total" type="number" step="1"></div>
+      <div class="field"><label>Personnes</label><input id="edit-pax" type="number" step="1"></div>
+      <div class="field"><label>Charge (kg)</label><input id="edit-weight" type="number" step="10"></div>
+      <div class="field"><label>Payé par</label><select id="edit-paid-by"><option value="">—</option></select></div>
+      <div class="field">
+        <label>Catégorie (dépenses)</label>
+        <select id="edit-category">
+          <option value="">—</option>
+          <option value="equipment">🔧 Équipement</option>
+          <option value="maintenance">🛠 Entretien</option>
+          <option value="parking">🏠 Parking</option>
+          <option value="transport">🚗 Transport</option>
+          <option value="assurance">🛡 Assurance</option>
+          <option value="admin">📄 Admin</option>
+          <option value="food">🍔 Repas</option>
+          <option value="other">📦 Autre</option>
+          <option value="personal">👤 Personnel / hors bateau</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label>Note</label><input id="edit-note" type="text">
+      </div>
+      <div class="full">
+        <label class="check-row">
+          <input type="checkbox" id="edit-full-tank">
+          <span>🎯 Plein entier à ras bord</span>
+        </label>
+      </div>
+      <div class="full">
+        <div style="padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+          <div style="margin-bottom:8px">
+            <div style="font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);margin-bottom:6px">⚖️ Répartition de la dépense</div>
+            <select id="edit-splitMode" onchange="onEditSplitModeChange()" style="width:100%;padding:8px 10px;font-size:.82rem">
+              <option value="equal">Égal entre tous les membres</option>
+              <option value="advance">Avance 100% pour l'autre (ex: sortie solo)</option>
+              <option value="manual">Manuel — montant par membre</option>
+            </select>
+          </div>
+          <div id="edit-splitDesc" style="font-size:.68rem;color:var(--muted);line-height:1.5;margin-bottom:6px"></div>
+          <div id="edit-splitInputs" style="display:none;margin-top:8px"></div>
+          <div id="edit-splitTotal" style="margin-top:6px;font-size:.7rem;color:var(--muted);font-family:var(--mono)"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="cancelEdit" style="flex:1">Annuler</button>
+      <button class="btn btn-danger-soft" onclick="deleteFromEdit()" style="flex:1">🗑️ Supprimer</button>
+      <button class="btn btn-primary" id="confirmEdit" style="flex:2"><span id="edit-txt">Sauvegarder</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DELETE -->
+<div class="modal-overlay" id="delModal">
+  <div class="modal">
+    <h3>🗑️ Supprimer ce log ?</h3>
+    <p style="font-size:.83rem;color:var(--muted2);line-height:1.6">Le niveau estimé sera recalculé.</p>
+    <input type="hidden" id="del-id">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="cancelDel" style="flex:1">Annuler</button>
+      <button class="btn btn-danger-soft" id="confirmDel" style="flex:1"><span id="del-txt">Supprimer</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CORRIGER NIVEAU -->
+<div class="modal-overlay" id="correctModal">
+  <div class="modal">
+    <h3>📏 Corriger le niveau réel</h3>
+    <p style="font-size:.82rem;color:var(--muted2);line-height:1.6;margin-bottom:16px">
+      Si vous connaissez le niveau réel (jauge physique, mesure dipstick…), entrez-le ici. Cela créera un log de correction qui ancre les calculs futurs.
+    </p>
+    <div class="field">
+      <label>Niveau réel (L)</label>
+      <input type="number" id="correct-l" min="0" step="0.5" placeholder="ex: 80">
+    </div>
+    <div class="field" style="margin-top:10px">
+      <label>Note</label>
+      <input type="text" id="correct-note" placeholder="ex: Mesuré au dipstick">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="modal('correctModal',false)" style="flex:1">Annuler</button>
+      <button class="btn btn-primary" onclick="saveCorrection()" style="flex:2">✓ Enregistrer correction</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: AJOUTER BIDON -->
+<div class="modal-overlay" id="bidonModal">
+  <div class="modal">
+    <h3>🛢 Ajouter un bidon</h3>
+    <div class="field" style="margin-bottom:12px">
+      <label>Capacité du bidon (L)</label>
+      <select id="bidon-cap">
+        <option value="10">10 L</option>
+        <option value="20" selected>20 L</option>
+        <option value="25">25 L</option>
+        <option value="30">30 L</option>
+        <option value="50">50 L</option>
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Niveau actuel (L)</label>
+      <input type="number" id="bidon-level" step="0.5" placeholder="ex: 18 (laisser vide = plein)">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Date</label>
+      <input type="datetime-local" id="bidon-date">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Prix d'achat/L (XPF, optionnel)</label>
+      <input type="number" id="bidon-price" step="1" placeholder="ex: 158">
+    </div>
+    <div class="field">
+      <label>Note</label>
+      <input type="text" id="bidon-note" placeholder="ex: Port Moselle, 24 avr.">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="modal('bidonModal',false)" style="flex:1">Annuler</button>
+      <button class="btn btn-primary" onclick="saveBidon()" style="flex:2">✓ Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ÉDITER BATEAU -->
+<div class="modal-overlay" id="boatEditModal">
+  <div class="modal">
+    <h3>⚙️ Paramètres du bateau</h3>
+    <div class="grid2" style="gap:12px">
+      <div class="field">
+        <label>Volume réservoir (L)</label>
+        <input type="number" id="be-tank" min="10" step="5" placeholder="ex: 130">
+      </div>
+      <div class="field">
+        <label>Moteur (chevaux)</label>
+        <input type="number" id="be-hp" min="1" step="1" placeholder="ex: 115">
+      </div>
+      <div class="field">
+        <label>Type moteur</label>
+        <select id="be-engine-type">
+          <option value="">—</option>
+          <option value="4T">4 temps</option>
+          <option value="2T">2 temps</option>
+          <option value="diesel">Diesel</option>
+          <option value="electric">Électrique</option>
+        </select>
+      </div>
+    </div>
+    <div style="font-size:.7rem;color:var(--muted);margin-top:12px;line-height:1.6">
+      Le volume réservoir est sauvegardé en base. Le moteur est stocké localement sur cet appareil.
+    </div>
+    <div id="be-debug"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="modal('boatEditModal',false)" style="flex:1">Annuler</button>
+      <button class="btn btn-primary" onclick="saveBoatSettings()" style="flex:2"><span id="be-txt">Sauvegarder</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: INFO ÉQUILIBRE + SIMULATEUR -->
+<div class="modal-overlay" id="balanceInfoModal">
+  <div class="modal" style="max-width:620px">
+    <h3>📐 Comment l'équilibre est calculé</h3>
+
+    <div style="font-size:.78rem;line-height:1.7;color:var(--txt)">
+      <p><b>Pour chaque membre, on calcule un <span style="color:var(--a2)">solde net</span> :</b></p>
+      <pre style="background:var(--s2);padding:10px;border-radius:8px;font-size:.7rem;line-height:1.5;overflow-x:auto;border:1px solid var(--border);color:var(--a2)">solde = (ce qu'il a payé)
+      − (sa part dans toutes les dépenses)
+      + (remb. donnés − remb. reçus)</pre>
+
+      <p style="margin-top:10px"><b>📌 La part dépend du mode de répartition de chaque dépense :</b></p>
+      <ul style="margin-left:18px;font-size:.74rem">
+        <li><b>Égal</b> (défaut) : tous les membres partagent à parts égales <code>total / N</code></li>
+        <li><b>Avance</b> : le payeur a payé 100% pour les autres, lui ne doit rien (utile pour quand un membre paye un loyer ou achat à 100% pour l'autre)</li>
+        <li><b>Manuel</b> : tu fixes le montant que chacun doit dans ce log</li>
+      </ul>
+
+      <p style="margin-top:10px"><b>💸 Remboursements (logs <code>reimburse</code>) :</b> transferts directs entre membres qui règlent une dette. Si Lucas rembourse 5000 à Thib, le solde de Lucas augmente de 5000 (il paye sa dette) et celui de Thib diminue de 5000 (sa créance baisse).</p>
+
+      <p style="margin-top:10px;color:var(--warn)"><b>⚠️ Attention</b> : pour que le calcul soit juste, chaque dépense partageable doit avoir un <b>Payé par</b> rempli. Lance le 🔧 Diagnostic pour voir les logs problématiques.</p>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
+
+    <h3 style="font-size:.95rem">🧮 Simulateur interactif</h3>
+    <p style="font-size:.7rem;color:var(--muted2);margin-bottom:8px">Joue avec les valeurs pour comprendre comment le solde est calculé (binôme).</p>
+
+    <div class="grid2" style="gap:8px;margin-bottom:8px">
+      <div class="field">
+        <label style="color:var(--a2)">A payé (XPF)</label>
+        <input type="number" id="sim-A-paid" value="312008" oninput="updateSimulator()">
+      </div>
+      <div class="field">
+        <label style="color:var(--a2)">B payé (XPF)</label>
+        <input type="number" id="sim-B-paid" value="414576" oninput="updateSimulator()">
+      </div>
+      <div class="field">
+        <label style="color:var(--purple)">A → B (remb.)</label>
+        <input type="number" id="sim-A-remb" value="110345" oninput="updateSimulator()">
+      </div>
+      <div class="field">
+        <label style="color:var(--purple)">B → A (remb.)</label>
+        <input type="number" id="sim-B-remb" value="65010" oninput="updateSimulator()">
+      </div>
+      <div class="field full">
+        <label>Mode de partage des dépenses</label>
+        <select id="sim-mode" onchange="updateSimulator()">
+          <option value="equal" selected>Tout égal (50/50)</option>
+          <option value="advance-A">Tout avancé par A (B doit tout)</option>
+          <option value="advance-B">Tout avancé par B (A doit tout)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="sim-result" style="background:var(--s2);padding:12px;border-radius:10px;border:1px solid var(--border);font-family:var(--mono);font-size:.78rem;line-height:1.7"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-full" onclick="modal('balanceInfoModal',false)">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: OUTILS MAINTENANCE -->
+<div class="modal-overlay" id="toolsModal">
+  <div class="modal" style="max-width:600px">
+    <h3>🔧 Outils de maintenance</h3>
+
+    <div style="margin-bottom:18px;padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+      <h4 style="margin:0 0 8px;font-size:.9rem">🩺 Diagnostic comptes</h4>
+      <p style="font-size:.72rem;color:var(--muted2);line-height:1.5;margin-bottom:8px">
+        Affiche tous les logs avec leur payeur tel qu'enregistré en base. Vérifie que chaque dépense a bien un <code>paid_by</code> assigné, sinon les soldes sont faux.
+      </p>
+      <button class="btn btn-ghost btn-full" onclick="showDiagnostic()">🔍 Lancer le diagnostic</button>
+      <div id="diagOutput" style="margin-top:10px;font-size:.66rem;font-family:var(--mono);max-height:340px;overflow-y:auto;line-height:1.6"></div>
+    </div>
+
+    <div style="margin-bottom:18px;padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+      <h4 style="margin:0 0 8px;font-size:.9rem">⛽ Recalculer prix & litres essence</h4>
+      <p style="font-size:.72rem;color:var(--muted2);line-height:1.5;margin-bottom:8px">
+        Pour les logs <b>refuel</b>, <b>bidon_fill</b> et <b>cruise_refuel</b> (essence), recalcule
+        le prix au litre et les litres à partir du <b>total payé</b> et du prix moyen mensuel
+        Nouvelle-Calédonie. Aperçu d'abord, puis tu choisis ce qui s'applique.
+      </p>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <button class="btn btn-warn-soft" style="flex:1" onclick="previewFuelRecalc()">👁 Prévisualiser</button>
+        <button class="btn btn-ghost btn-xs" onclick="document.getElementById('fuelPriceCsv').click()" title="Importer CSV de prix">📥 CSV prix</button>
+        <input type="file" id="fuelPriceCsv" accept=".csv" style="display:none" onchange="importFuelPricesCSV(event)">
+      </div>
+      <div id="fuelRecalcPreview" style="margin-top:10px;font-size:.68rem;font-family:var(--mono);max-height:300px;overflow-y:auto;line-height:1.6"></div>
+    </div>
+
+    <div style="margin-bottom:18px;padding:12px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.25);border-radius:10px">
+      <h4 style="margin:0 0 8px;font-size:.9rem;color:var(--green)">📥 Importer des logs depuis CSV</h4>
+      <p style="font-size:.72rem;color:var(--muted2);line-height:1.5;margin-bottom:8px">
+        Importe un CSV au format <code>Date,Type,Description,Qui a payé,Montant Total,Part due par l'autre,Qui doit à qui,Base de calcul</code>.<br>
+        <b>Type</b> : "Dépense partagée" → log <code>expense</code> en split égal · "Remboursement" → log <code>reimburse</code> (transfert direct).<br>
+        <b>Qui a payé</b> : nom du membre (ex: "Lucas", "Thibault") — match auto avec les membres du bateau.
+      </p>
+      <div class="grid2" style="gap:8px;margin-bottom:8px">
+        <div class="field">
+          <label>Membre A (nom dans le CSV)</label>
+          <input type="text" id="importNameA" placeholder="Lucas">
+        </div>
+        <div class="field">
+          <label>Membre B (nom dans le CSV)</label>
+          <input type="text" id="importNameB" placeholder="Thibault">
+        </div>
+      </div>
+      <div class="grid2" style="gap:8px;margin-bottom:8px">
+        <div class="field">
+          <label>UUID Membre A</label>
+          <select id="importIdA"><option value="">—</option></select>
+        </div>
+        <div class="field">
+          <label>UUID Membre B</label>
+          <select id="importIdB"><option value="">—</option></select>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <button class="btn btn-ghost" style="flex:1" onclick="document.getElementById('importLogsCsvFile').click()">📄 Choisir CSV…</button>
+        <input type="file" id="importLogsCsvFile" accept=".csv" style="display:none" onchange="previewImportLogs(event)">
+      </div>
+      <div id="importLogsPreview" style="margin-top:10px;font-size:.66rem;font-family:var(--mono);max-height:240px;overflow-y:auto;line-height:1.5"></div>
+      <button class="btn btn-primary btn-full" id="importLogsBtn" style="margin-top:8px;display:none" onclick="executeImportLogs()">✅ Importer dans Supabase</button>
+    </div>
+
+    <div style="margin-bottom:18px;padding:12px;background:rgba(244,63,94,.06);border:1px solid rgba(244,63,94,.25);border-radius:10px">
+      <h4 style="margin:0 0 8px;font-size:.9rem;color:var(--red)">🗑️ Purger des logs (zone de danger)</h4>
+      <p style="font-size:.72rem;color:var(--muted2);line-height:1.5;margin-bottom:8px">
+        Supprime les logs correspondant aux filtres choisis. Utile pour repartir propre après import bâclé.
+        <b style="color:var(--red)">Action irréversible.</b>
+      </p>
+      <div class="grid2" style="gap:8px;margin-bottom:8px">
+        <div class="field"><label>Date début (YYYY-MM-DD)</label><input id="purgeFrom" type="date"></div>
+        <div class="field"><label>Date fin (YYYY-MM-DD)</label><input id="purgeTo" type="date"></div>
+      </div>
+      <div class="field" style="margin-bottom:8px"><label>Type (vide = tous)</label>
+        <select id="purgeType">
+          <option value="">— tous types —</option>
+          <option value="cruise">📐 cruise</option>
+          <option value="refuel">🔋 refuel</option>
+          <option value="bidon_fill">🛢 bidon_fill</option>
+          <option value="expense">💰 expense</option>
+          <option value="reimburse">💸 reimburse</option>
+          <option value="nav">🧭 nav</option>
+          <option value="correct">📏 correct</option>
+          <option value="pour">🛢→⛽ pour</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label class="check-row" style="background:rgba(244,63,94,.05)">
+          <input type="checkbox" id="purgeOnlyImported">
+          <span>🏷 Seulement les logs importés (note contient "import" ou créés en lot le même jour)</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost" style="flex:1" onclick="previewPurge()">👁 Prévisualiser</button>
+        <button class="btn btn-danger-soft" style="flex:1" onclick="executePurge()" disabled id="executePurgeBtn">🗑️ Supprimer</button>
+      </div>
+      <div id="purgePreview" style="margin-top:8px;font-size:.66rem;font-family:var(--mono);max-height:200px;overflow-y:auto;line-height:1.5"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-full" onclick="modal('toolsModal',false)">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: MEMBRES -->
+<div class="modal-overlay" id="membersModal">
+  <div class="modal">
+    <h3>👥 Membres du bateau</h3>
+    <p style="font-size:.74rem;color:var(--muted2);line-height:1.5;margin-bottom:14px">
+      Tous les membres liés à ce bateau dans Supabase. Si un nom n'est pas reconnu, tu peux lui donner un surnom local (juste pour l'affichage).
+    </p>
+    <div id="membersList" style="margin-bottom:14px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-full" onclick="modal('membersModal',false)">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SB_URL='https://tiiptlozingmgzcnexpu.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{
+  auth:{persistSession:true,storageKey:'surf-nc-auth',storage:window.localStorage,autoRefreshToken:true}
+});
+
+let user=null, boat=null, allLogs=[], estimatedLevel=null, chartInstances={};
+let _bidons=[]; // stockage local des bidons (localStorage)
+let _chartsDirty=false; // true si bidons/logs ont changé pendant que l'onglet graphes n'était pas visible
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function toast(msg,type='ok'){
+  const el=document.getElementById('toast');
+  el.className='toast '+type;
+  el.innerHTML=(type==='ok'?'✅':'❌')+' '+msg;
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),3200);
+}
+function modal(id,show){document.getElementById(id).classList.toggle('show',show);}
+function fmt(n){return n!=null?Number(n).toLocaleString('fr-FR'):'—';}
+function fmtDate(d){return new Date(d).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});}
+function fmtDateShort(d){return new Date(d).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const tc=document.getElementById('tab-'+t.dataset.tab);
+    if(tc)tc.classList.add('active');
+    if(t.dataset.tab==='charts'){renderCharts();_chartsDirty=false;}
+    if(t.dataset.tab==='bidons')renderBidons();
+    if(t.dataset.tab==='log')renderLogs();
+    if(t.dataset.tab==='add'){
+      // Si on vient de l'onglet bidons, rafraîchir le sélecteur bidon dans le formulaire
+      const logType=document.getElementById('logType')?.value;
+      if(logType==='bidon_fill')refreshBidonTargetSelect();
+    }
+  });
+});
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',async()=>{
+  document.getElementById('loginBtn').addEventListener('click',doLogin);
+  document.getElementById('logoutBtn').addEventListener('click',()=>{sb.auth.signOut();location.reload();});
+  document.getElementById('boatSelect').addEventListener('change',changeBoat);
+  document.getElementById('refreshBtn').addEventListener('click',()=>loadLogs());
+  document.getElementById('saveBtn').addEventListener('click',addLog);
+  document.getElementById('cancelEdit').addEventListener('click',()=>modal('editModal',false));
+  document.getElementById('confirmEdit').addEventListener('click',saveEdit);
+  document.getElementById('cancelDel').addEventListener('click',()=>modal('delModal',false));
+  document.getElementById('confirmDel').addEventListener('click',doDelete);
+
+  // Bidons depuis localStorage
+  try{_bidons=JSON.parse(localStorage.getItem('marine-bidons')||'[]');}catch(e){}
+
+  const {data}=await sb.auth.getSession();
+  if(data.session){user=data.session.user;showApp();loadBoats();}
+});
+
+async function doLogin(){
+  const em=document.getElementById('em').value.trim();
+  const pw=document.getElementById('pw').value;
+  const errEl=document.getElementById('auth-err');
+  document.getElementById('login-txt').innerHTML='<span class="spin"></span>';
+  errEl.textContent='';
+  const {error,data}=await sb.auth.signInWithPassword({email:em,password:pw});
+  document.getElementById('login-txt').textContent='Se connecter';
+  if(error){errEl.textContent=error.message;return;}
+  user=data.user;showApp();loadBoats();
+}
+
+function showApp(){
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('user-lbl').textContent=user.email;
+  // Initialiser date aujourd'hui
+  const now=new Date();now.setMinutes(now.getMinutes()-now.getTimezoneOffset());
+  document.getElementById('fuelDate').value=now.toISOString().slice(0,16);
+  document.getElementById('bidon-date').value=now.toISOString().slice(0,16);
+}
+
+// ── Bateaux (via boat_members) ────────────────────────────────────────────────
+async function loadBoats(){
+  const {data:mem}=await sb.from('boat_members').select('boat_id').eq('user_id',user.id);
+  if(!mem?.length){toast('Aucun bateau trouvé','err');return;}
+  const ids=mem.map(m=>m.boat_id);
+  const {data:boats}=await sb.from('boats').select('*').in('id',ids);
+  if(!boats?.length){toast('Erreur bateaux','err');return;}
+  const sel=document.getElementById('boatSelect');
+  sel.innerHTML='';
+  boats.forEach(b=>{
+    const o=document.createElement('option');
+    o.value=b.id;o.textContent=b.name;sel.appendChild(o);
+  });
+  boat=boats[0];sel.value=boat.id;
+  document.getElementById('boat-name-hdr').textContent=boat.name;
+  updateBoatChips();
+  await loadMembers();
+  loadLogs();
+}
+
+let _members=[]; // membres du bateau courant
+let _memberNicknames={};
+
+// Membres connus hors Supabase profiles (app privée — surnoms hardcodés en dernier recours)
+const KNOWN_MEMBERS={
+  '278fdc19-5abd-4be6-8068-05544d79703e':'Lucas',
+};
+
+function loadMemberNicknames(){
+  if(!boat){_memberNicknames={};return;}
+  try{_memberNicknames=JSON.parse(localStorage.getItem('mnicks-'+boat.id)||'{}');}
+  catch(e){_memberNicknames={};}
+}
+function saveMemberNicknames(){
+  if(!boat)return;
+  localStorage.setItem('mnicks-'+boat.id,JSON.stringify(_memberNicknames));
+}
+
+// Parse "Thib, Lucas" → ["Thib","Lucas"]
+function parseAliasString(str){
+  if(!str||typeof str!=='string')return[];
+  return str.split(/[,;\/]/).map(s=>s.trim()).filter(Boolean);
+}
+
+// Extrait {user_id: nom} depuis l'objet boat selon plusieurs formats possibles
+function extractBoatAliases(b, userIds){
+  const map={};
+  if(!b)return map;
+  const uuidRe=/^[0-9a-f-]{36}$/i;
+  const dateRe=/^\d{4}-\d{2}-\d{2}/;
+
+  // Forme 1 : JSONB {uid: nom}
+  for(const col of ['member_aliases','owner_aliases','aliases','members_names','user_aliases']){
+    if(b[col]&&typeof b[col]==='object'&&!Array.isArray(b[col])){
+      Object.entries(b[col]).forEach(([k,v])=>{if(k.length>10&&typeof v==='string')map[k]=v;});
+      if(Object.keys(map).length)return map;
+    }
+  }
+
+  // Forme 2 : string "Thib, Lucas" dans n'importe quelle colonne courte
+  // On mappe dans l'ordre de userIds
+  for(const col of Object.keys(b)){
+    const v=b[col];
+    if(typeof v!=='string'||v.length>150||uuidRe.test(v)||dateRe.test(v))continue;
+    if(!v.includes(',')&&!v.includes(';'))continue;
+    const names=parseAliasString(v);
+    if(names.length>=2){
+      userIds.forEach((uid,i)=>{if(names[i])map[uid]=names[i];});
+      console.debug('[loadMembers] alias "'+v+'" → colonne '+col, map);
+      if(Object.keys(map).length)return map;
+    }
+  }
+
+  // Forme 3 : colonnes paires owner1_id / owner1_name
+  for(let i=1;i<=4;i++){
+    const idKey=Object.keys(b).find(k=>k.match(new RegExp('owner'+i+'[_-]?id|member'+i+'[_-]?id','i')));
+    const nmKey=Object.keys(b).find(k=>k.match(new RegExp('owner'+i+'[_-]?(name|alias)|member'+i+'[_-]?(name|alias)','i')));
+    if(idKey&&nmKey&&b[idKey]&&b[nmKey])map[b[idKey]]=b[nmKey];
+  }
+  return map;
+}
+
+async function loadMembers(){
+  if(!boat)return;
+  loadMemberNicknames();
+
+  // 1. Récupérer les user_ids liés au bateau
+  const {data,error}=await sb.from('boat_members').select('user_id').eq('boat_id',boat.id);
+  let userIds=(error||!data||!data.length)?[user.id]:data.map(m=>m.user_id);
+
+  // 2. S'assurer que les membres connus (hors RLS) sont inclus
+  Object.keys(KNOWN_MEMBERS).forEach(uid=>{
+    if(!userIds.includes(uid))userIds.push(uid);
+  });
+
+  // 3. Extraire les alias depuis boat (on a déjà l'objet boat chargé)
+  const boatAliases=extractBoatAliases(boat, userIds);
+  console.debug('[loadMembers] aliases extraits:', boatAliases);
+
+  // 4. Construire _members
+  // Priorité : surnom local > alias boat > KNOWN_MEMBERS > email > UUID court
+  _members=userIds.map(uid=>{
+    const nick=_memberNicknames[uid];
+    const boatName=boatAliases[uid];
+    const known=KNOWN_MEMBERS[uid];
+    const emailName=uid===user.id?user.email.split('@')[0]:null;
+    const baseName=nick||boatName||known||emailName||('membre-'+uid.slice(0,6));
+    const label=uid===user.id?baseName+' (moi)':baseName;
+    return {id:uid,label,nick,boatName};
+  });
+
+  console.debug('[loadMembers] membres:', _members.map(m=>m.label));
+  refreshMemberSelects();
+}
+
+function refreshMemberSelects(){
+  ['fuelPaidBy','edit-paid-by','fuelReimbTo'].forEach(id=>{
+    const sel=document.getElementById(id);
+    if(sel){
+      const curVal=sel.value;
+      sel.innerHTML='<option value="">—</option>'+
+        _members.map(m=>`<option value="${m.id}">${m.label}</option>`).join('');
+      if(curVal)sel.value=curVal;
+    }
+  });
+}
+
+// ── Gestion membres du bateau ────────────────────────────────────────────────
+function showManageMembers(){
+  const existing=document.getElementById('manage-members-dialog');
+  if(existing){existing.remove();return;}
+
+  const div=document.createElement('div');
+  div.id='manage-members-dialog';
+  div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;'
+    +'background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:18px;'
+    +'width:min(400px,94vw);max-height:80vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.7);font-size:13px;';
+
+  const membersHtml=_members.map(m=>{
+    const isMe=m.id===user.id;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+      <span style="flex:1;font-size:12px;">${isMe?'⭐ ':''}<b>${m.label}</b><br><span style="font-size:9px;color:var(--muted);font-family:monospace;">${m.id.slice(0,12)}…</span></span>
+      ${!isMe?`<button onclick="renameMember('${m.id}','${m.label.replace(/'/g,"\\'")}',this)" style="background:rgba(79,163,199,.1);border:1px solid rgba(79,163,199,.3);color:var(--accent);border-radius:5px;font-size:10px;padding:3px 8px;cursor:pointer;">Renommer</button>`:''}
+    </div>`;
+  }).join('');
+
+  div.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <div style="font-weight:700;color:var(--accent);">⚙ Membres — ${boat.name}</div>
+    <button onclick="document.getElementById('manage-members-dialog').remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;">×</button>
+  </div>
+  <div style="margin-bottom:14px;">${membersHtml||'<div style="color:var(--muted);font-size:12px;">Aucun membre chargé</div>'}</div>
+  <div style="border-top:1px solid var(--border);padding-top:12px;">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">➕ Ajouter un membre</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+      <input id="mm-name" type="text" placeholder="Prénom (ex: Lucas)" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
+      <input id="mm-uuid" type="text" placeholder="UUID Supabase (optionnel)" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;font-family:monospace;">
+    </div>
+    <div style="font-size:9px;color:var(--muted);margin-bottom:8px;">L'UUID se trouve dans Supabase → Authentication → Users. Sans UUID, le membre apparaîtra mais ne pourra pas se connecter.</div>
+    <button onclick="addMemberToBoat()" style="width:100%;background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;">Ajouter au bateau</button>
+  </div>`;
+
+  document.body.appendChild(div);
+}
+
+async function addMemberToBoat(){
+  const name=document.getElementById('mm-name')?.value.trim();
+  const uuid=document.getElementById('mm-uuid')?.value.trim();
+  if(!name){toast('Saisir un prénom','err');return;}
+  if(!boat){toast('Aucun bateau sélectionné','err');return;}
+
+  // Si UUID fourni → ajouter à boat_members en Supabase
+  if(uuid && uuid.length === 36){
+    const {error}=await sb.from('boat_members').upsert({boat_id:boat.id,user_id:uuid,role:'member'},{onConflict:'boat_id,user_id'});
+    if(error&&!error.message.includes('duplicate')){toast('Erreur Supabase: '+error.message,'err');return;}
+    // Sauvegarder le surnom
+    _memberNicknames[uuid]=name;
+    localStorage.setItem('mnicks-'+boat.id,JSON.stringify(_memberNicknames));
+    toast(name+' ajouté au bateau ✓','ok');
+  } else {
+    toast('UUID requis pour ajouter un vrai membre Supabase','err');
+    return;
+  }
+
+  document.getElementById('manage-members-dialog')?.remove();
+  await loadMembers();
+  loadLogs();
+}
+
+function renameMember(uid, currentName, btn){
+  const newName=prompt('Nouveau surnom pour '+currentName+' :', currentName);
+  if(!newName||!newName.trim())return;
+  _memberNicknames[uid]=newName.trim();
+  localStorage.setItem('mnicks-'+boat.id,JSON.stringify(_memberNicknames));
+  loadMembers().then(()=>{ loadLogs(); toast('Surnom mis à jour ✓','ok'); });
+}
+
+// ── Modal info équilibre + simulateur ───────────────────────────────────────
+function openBalanceInfoModal(){
+  modal('balanceInfoModal',true);
+  updateSimulator();
+}
+function updateSimulator(){
+  const aPaid=parseFloat(document.getElementById('sim-A-paid').value)||0;
+  const bPaid=parseFloat(document.getElementById('sim-B-paid').value)||0;
+  const aRemb=parseFloat(document.getElementById('sim-A-remb').value)||0;
+  const bRemb=parseFloat(document.getElementById('sim-B-remb').value)||0;
+  const mode=document.getElementById('sim-mode').value;
+  const total=aPaid+bPaid;
+
+  let owedA, owedB;
+  if(mode==='equal'){
+    owedA=total/2; owedB=total/2;
+  }else if(mode==='advance-A'){
+    // A a tout payé pour B → A ne doit rien, B doit tout (mais "tout" = ce que A a payé)
+    // Mais ici on a aussi bPaid. Donc owedA = ce que B a payé en avance pour A, owedB = ce que A a payé en avance pour B
+    owedA=bPaid; owedB=aPaid;
+  }else if(mode==='advance-B'){
+    owedA=bPaid; owedB=aPaid;
+  }
+  const balA=(aPaid-owedA)+(aRemb-bRemb);
+  const balB=(bPaid-owedB)+(bRemb-aRemb);
+  const interp=balA>0?'B doit '+fmt(Math.round(balA))+' à A':balA<0?'A doit '+fmt(Math.round(-balA))+' à B':'Équilibré';
+
+  document.getElementById('sim-result').innerHTML=
+    '<div style="color:var(--muted);font-size:.66rem;margin-bottom:6px">Total dépenses : <b>'+fmt(total)+' XPF</b></div>'+
+    '<div>Solde A = ('+fmt(aPaid)+' − '+fmt(Math.round(owedA))+') + ('+fmt(aRemb)+' − '+fmt(bRemb)+') = <b style="color:'+(balA>0?'var(--green)':balA<0?'var(--red)':'var(--muted2)')+'">'+(balA>=0?'+':'')+fmt(Math.round(balA))+' XPF</b></div>'+
+    '<div>Solde B = ('+fmt(bPaid)+' − '+fmt(Math.round(owedB))+') + ('+fmt(bRemb)+' − '+fmt(aRemb)+') = <b style="color:'+(balB>0?'var(--green)':balB<0?'var(--red)':'var(--muted2)')+'">'+(balB>=0?'+':'')+fmt(Math.round(balB))+' XPF</b></div>'+
+    '<div style="margin-top:8px;color:var(--a2)">→ '+interp+'</div>'+
+    '<div style="margin-top:6px;font-size:.66rem;color:var(--muted)">(les soldes A et B s\'annulent toujours : '+fmt(Math.round(balA+balB))+')</div>';
+}
+
+// ── Outils maintenance ───────────────────────────────────────────────────────
+// Prix moyens essence Nouvelle-Calédonie (FCFP/L) par mois
+const FUEL_PRICES_NC = {
+  2023: [172.9, 162.1, 168.9, 169.7, 169.8, 168.3, 164.2, 164.7, 167.1, 173.1, 177.6, 171.2],
+  2024: [168.9, 162.4, 165.5, 172.0, 173.7, 177.9, 168.6, 167.0, 169.6, 165.8, 157.2, 160.0],
+  2025: [160.3, 161.6, 164.2, 167.0, 160.5, 157.1, 155.4, 157.1, 154.7, 155.6, 157.0, 155.9],
+  2026: [158.8, 152.7, 151.1, 174.8, null, null, null, null, null, null, null, null]
+};
+function getFuelPrice(dateIso){
+  const d=new Date(dateIso);
+  const y=d.getUTCFullYear(), m=d.getUTCMonth();
+  const arr=FUEL_PRICES_NC[y];
+  if(!arr)return null;
+  return arr[m]||null;
+}
+
+// Logs concernés par le recalcul : refuel, bidon_fill (cruise_refuel se décompose en refuel+cruise donc OK)
+function isFuelLog(l){
+  return l.type==='refuel'||l.type==='bidon_fill';
+}
+
+// ── Import logs depuis CSV ──────────────────────────────────────────────────
+// Détecte le type de log à créer depuis la description (au-delà de Dépense/Remboursement)
+// Retourne un objet {type, isAdvance} :
+//  - type : 'cruise'|'refuel'|'bidon_fill'|'expense'|'reimburse'
+//  - isAdvance : true si c'était à l'origine un remboursement (= split mode 'advance')
+function classifyLog(desc, csvType){
+  const d=(desc||'').toLowerCase();
+  const isRemb=csvType&&csvType.toLowerCase().includes('rembours');
+
+  // Détection essence/bidon (priorité haute)
+  // Note : "durit essence" = plomberie, pas de l'essence ; "bidon 10L" sans "essence" = achat bidon physique (équipement)
+  const isFuelDesc=/^essence\b|^essence$|essence (?:fp|consommée|consommee|sortie|gold|signal|station|moselle|port|vata|bateau|rinçage|rincage)|plein essence|plein bateau|plein station|station moselle/.test(d);
+  const isBidonRefill=/(?:plein|remplissage)\s+bidon|essence bidon|bidon (?:plein|rempli)/.test(d);
+
+  if(isFuelDesc){
+    return {type:'refuel', isAdvance:isRemb};
+  }
+  if(isBidonRefill){
+    return {type:'bidon_fill', isAdvance:isRemb};
+  }
+  // Pas de l'essence : type basé sur le CSV
+  if(isRemb)return {type:'reimburse', isAdvance:false};
+  return {type:'expense', isAdvance:false};
+}
+
+function guessCategoryFromDesc(desc){
+  if(!desc)return 'other';
+  const d=desc.toLowerCase();
+  if(/loyer|parking|nouville|sunset|caution badge|place/.test(d))return 'parking';
+  if(/assurance/.test(d))return 'assurance';
+  if(/voiture|trajet|remorque|tomo|station|pneus|roues|signal|virement/.test(d))return 'transport';
+  if(/immat|ditt|admin|caution(?! badge)/.test(d))return 'admin';
+  if(/révision|revision|entretien|réparation|reparation|rinçage|moteur vata/.test(d))return 'maintenance';
+  if(/sandwich|bagel|burger|pizza|brownie|barquette|tacos|otacos|cook|biere|bière|bières|poulet|viand|stass|boulange|croissant|fronton|raiss|nem|matt|valentine/.test(d))return 'food';
+  if(/sortie|tenia|baie|kouare|boulari|maa|tricount|ténia|goldcoast|fp/.test(d))return 'food';
+  if(/bidon|durit|tuyau|filtre|entonnoir/.test(d))return 'equipment';
+  if(/balise|plb|pompe|cale|gilet|lampe|feux|led|cordage|sangle|manille|extincteur|graisse|cosse|marteau|cache|graisseur|outil|matos|tole|housse|leash|guy cotten/.test(d))return 'equipment';
+  return 'other';
+}
+
+// Pour un log refuel/bidon_fill, calcule litres et prix depuis le total et le prix mensuel NC
+function guessLitersAndPrice(total, dateIso){
+  const refPrice=getFuelPrice(dateIso);
+  if(!refPrice||!total)return {liters:null,price:refPrice||null};
+  const liters=Math.round((total/refPrice)*100)/100;
+  return {liters,price:refPrice};
+}
+
+function parseSimpleCSV(text){
+  // Parser CSV simple avec gestion des guillemets
+  const lines=text.split(/\r?\n/);
+  const rows=[];
+  for(const line of lines){
+    if(!line.trim())continue;
+    const cells=[];
+    let cur='', q=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){q=!q;}
+      else if(c===','&&!q){cells.push(cur);cur='';}
+      else cur+=c;
+    }
+    cells.push(cur);
+    rows.push(cells.map(c=>c.replace(/^"|"$/g,'').trim()));
+  }
+  return rows;
+}
+
+function parseDateFR(s){
+  // dd/mm/yyyy → ISO
+  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if(!m)return null;
+  let y=parseInt(m[3]); if(y<100)y+=2000;
+  const d=new Date(y,parseInt(m[2])-1,parseInt(m[1]),12,0,0);
+  return d.toISOString();
+}
+
+async function previewImportLogs(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  const text=await file.text();
+  const rows=parseSimpleCSV(text);
+  if(rows.length<2){toast('CSV vide','err');return;}
+
+  const header=rows[0].map(h=>h.toLowerCase());
+  const iDate   =header.findIndex(h=>h==='date');
+  const iType   =header.findIndex(h=>h==='type');
+  const iDesc   =header.findIndex(h=>h==='description');
+  const iPayer  =header.findIndex(h=>h.includes('qui a pay'));
+  const iAmount =header.findIndex(h=>h.includes('montant'));
+
+  if(iDate<0||iType<0||iPayer<0||iAmount<0){
+    toast('Colonnes manquantes (date/type/qui a payé/montant)','err');
+    return;
+  }
+
+  // Pré-remplir les selects de membres
+  ['importIdA','importIdB'].forEach(id=>{
+    const sel=document.getElementById(id);
+    sel.innerHTML='<option value="">—</option>'+_members.map(m=>`<option value="${m.id}">${m.label} (${m.id.slice(0,8)})</option>`).join('');
+  });
+  // Pré-sélection : matcher par nom si possible
+  const nameA=document.getElementById('importNameA').value.toLowerCase();
+  const nameB=document.getElementById('importNameB').value.toLowerCase();
+  if(nameA){
+    const m=_members.find(x=>x.label.toLowerCase().includes(nameA));
+    if(m)document.getElementById('importIdA').value=m.id;
+  }
+  if(nameB){
+    const m=_members.find(x=>x.label.toLowerCase().includes(nameB));
+    if(m)document.getElementById('importIdB').value=m.id;
+  }
+
+  // Parser et préparer
+  const parsed=[];
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i];
+    if(r.length<5)continue;
+    const date=parseDateFR(r[iDate]);
+    if(!date)continue;
+    const type=r[iType];
+    const desc=iDesc>=0?r[iDesc]:'';
+    const payer=r[iPayer];
+    const amount=parseFloat(r[iAmount].replace(/\s/g,'').replace(',','.'));
+    if(!amount||isNaN(amount))continue;
+    parsed.push({date,type,desc,payer,amount,line:i+1});
+  }
+
+  window._importLogsQueue=parsed;
+
+  const out=document.getElementById('importLogsPreview');
+  if(!parsed.length){
+    out.innerHTML='<span style="color:var(--warn)">Aucune ligne valide</span>';
+    document.getElementById('importLogsBtn').style.display='none';
+    return;
+  }
+
+  // Stats par type
+  const sharedCount=parsed.filter(p=>p.type.toLowerCase().includes('partag')).length;
+  const rembCount=parsed.filter(p=>p.type.toLowerCase().includes('rembours')).length;
+  const otherCount=parsed.length-sharedCount-rembCount;
+
+  // Aperçu
+  let html=`<div style="color:var(--green);margin-bottom:6px"><b>${parsed.length}</b> lignes parsées :</div>`;
+  html+=`<div style="color:var(--muted)">→ ${sharedCount} dépenses partagées (logs <code>expense</code>, split égal)</div>`;
+  html+=`<div style="color:var(--muted)">→ ${rembCount} remboursements (logs <code>reimburse</code>, transfert direct)</div>`;
+  if(otherCount)html+=`<div style="color:var(--warn)">→ ${otherCount} type inconnu (sera créé en <code>expense</code>)</div>`;
+  html+='<div style="margin-top:6px;color:var(--muted2)">Aperçu (10 premières lignes) :</div>';
+  parsed.slice(0,10).forEach(p=>{
+    const ico=p.type.toLowerCase().includes('rembours')?'💸':'💰';
+    html+=`<div>${ico} ${p.date.slice(0,10)} · ${p.payer} · ${fmt(p.amount)}XPF · ${p.desc.slice(0,40)}</div>`;
+  });
+  if(parsed.length>10)html+=`<div style="color:var(--muted)">… et ${parsed.length-10} autres</div>`;
+
+  out.innerHTML=html;
+  document.getElementById('importLogsBtn').style.display='block';
+  event.target.value='';
+}
+
+async function executeImportLogs(){
+  const queue=window._importLogsQueue||[];
+  if(!queue.length)return toast('Rien à importer');
+  const nameA=document.getElementById('importNameA').value.trim().toLowerCase();
+  const nameB=document.getElementById('importNameB').value.trim().toLowerCase();
+  const idA=document.getElementById('importIdA').value;
+  const idB=document.getElementById('importIdB').value;
+  if(!nameA||!nameB||!idA||!idB){
+    return toast('Renseigne les noms ET les UUIDs des 2 membres','err');
+  }
+  if(idA===idB)return toast('Les 2 membres doivent être différents','err');
+  if(!boat)return toast('Pas de bateau','err');
+
+  if(!confirm(`Importer ${queue.length} log(s) dans Supabase ?\n\n⚠️ Cette action ajoute des logs (n'efface rien). Si tu veux repartir propre, fais d'abord la purge.`))return;
+
+  const out=document.getElementById('importLogsPreview');
+  out.innerHTML='<span class="spin"></span> Import en cours…';
+
+  const matchPayer=(p)=>{
+    const pl=p.toLowerCase();
+    if(pl.includes(nameA))return idA;
+    if(pl.includes(nameB))return idB;
+    return null;
+  };
+
+  let ok=0, err=0, skipped=0;
+  const errSamples=[]; // pour afficher les premières erreurs
+
+  // Détecter d'abord si la table accepte le type 'reimburse' avec un essai
+  // (sinon on stocke en 'expense' + marqueur dans la note)
+  let useReimburseType=true;
+  const firstRemb=queue.find(item=>item.type.toLowerCase().includes('rembours'));
+  if(firstRemb){
+    const testPayer=matchPayer(firstRemb.payer);
+    if(testPayer){
+      const testPayload={
+        boat_id:boat.id,user_id:user.id,
+        type:'reimburse',
+        total_price:1, // mini montant test
+        paid_by:testPayer,
+        note:'__REIMBURSE_TEST__',
+        created_at:firstRemb.date,
+        full_tank:false
+      };
+      const r=await sb.from('boat_fuel_logs').insert(testPayload).select();
+      if(r.error){
+        useReimburseType=false;
+        console.warn('[import] Type "reimburse" rejeté par la base. Fallback sur expense + marqueur note.', r.error.message);
+      }else if(r.data&&r.data[0]){
+        // Supprimer le test
+        await sb.from('boat_fuel_logs').delete().eq('id',r.data[0].id);
+      }
+    }
+  }
+
+  for(const item of queue){
+    const payerId=matchPayer(item.payer);
+    if(!payerId){skipped++;continue;}
+    const isRemb=item.type.toLowerCase().includes('rembours');
+    // Pour les "Dépense partagée", on essaye d'affiner le type (refuel / bidon_fill / expense)
+    const detectedType=isRemb?'reimburse':guessLogType(item.desc,item.type);
+    const baseDesc=item.desc||(isRemb?'Remboursement':'Dépense');
+    const note=isRemb&&!useReimburseType?'__REMB__ '+baseDesc:baseDesc;
+
+    const finalType=isRemb?(useReimburseType?'reimburse':'expense'):detectedType;
+
+    const payload={
+      boat_id:boat.id,user_id:user.id,
+      type:finalType,
+      total_price:item.amount,
+      paid_by:payerId,
+      note,
+      created_at:item.date,
+      full_tank:false
+    };
+    // Catégorie : seulement pour expense
+    if(finalType==='expense')payload.category=guessCategoryFromDesc(item.desc);
+    // Litres + prix : pour refuel et bidon_fill (calcul depuis prix mensuel NC)
+    if(finalType==='refuel'||finalType==='bidon_fill'){
+      const lp=guessLitersAndPrice(item.desc,item.amount,item.date);
+      payload.liters=lp.liters;
+      payload.price=lp.price;
+    }
+
+    try{
+      const {error}=await sb.from('boat_fuel_logs').insert(payload);
+      if(error){
+        err++;
+        if(errSamples.length<5)errSamples.push((item.desc||'?')+' : '+error.message);
+        console.error('[import]',item,error.message);
+      }else ok++;
+    }catch(e){
+      err++;
+      if(errSamples.length<5)errSamples.push((item.desc||'?')+' : '+e.message);
+      console.error(e);
+    }
+  }
+
+  let resultHTML=`<div style="color:var(--green);margin-bottom:6px"><b>✅ Import terminé</b></div>`+
+    `<div>${ok} log(s) créés${err?', <span style="color:var(--red)">'+err+' erreur(s)</span>':''}${skipped?', '+skipped+' ligne(s) ignorée(s) (payeur non reconnu)':''}</div>`;
+  if(!useReimburseType){
+    resultHTML+='<div style="color:var(--warn);margin-top:6px;font-size:.66rem">⚠️ La table n\'accepte pas le type <code>reimburse</code> — les remboursements ont été stockés en <code>expense</code> avec marqueur <code>__REMB__</code> dans la note. Le calcul d\'équilibre les reconnaît automatiquement.</div>';
+  }
+  if(errSamples.length){
+    resultHTML+='<div style="color:var(--red);margin-top:6px;font-size:.62rem"><b>Premières erreurs :</b><br>'+errSamples.join('<br>')+'</div>';
+  }
+  out.innerHTML=resultHTML;
+  document.getElementById('importLogsBtn').style.display='none';
+  window._importLogsQueue=[];
+  toast(`${ok} log(s) importés`);
+  loadLogs();
+}
+
+// ── Purge logs ───────────────────────────────────────────────────────────────
+function getPurgeMatches(){
+  if(!boat||!allLogs.length)return[];
+  const from=document.getElementById('purgeFrom').value;
+  const to=document.getElementById('purgeTo').value;
+  const type=document.getElementById('purgeType').value;
+  const onlyImported=document.getElementById('purgeOnlyImported').checked;
+
+  const fromD=from?new Date(from+'T00:00:00').getTime():null;
+  const toD=to?new Date(to+'T23:59:59').getTime():null;
+
+  return allLogs.filter(l=>{
+    if(type&&l.type!==type)return false;
+    const t=new Date(l.created_at).getTime();
+    if(fromD&&t<fromD)return false;
+    if(toD&&t>toD)return false;
+    if(onlyImported){
+      const note=(l.note||'').toLowerCase();
+      if(!note.includes('import')&&!note.includes('csv'))return false;
+    }
+    return true;
+  });
+}
+
+function previewPurge(){
+  const matches=getPurgeMatches();
+  const out=document.getElementById('purgePreview');
+  const btn=document.getElementById('executePurgeBtn');
+  if(!matches.length){
+    out.innerHTML='<span style="color:var(--muted)">Aucun log ne match ces filtres</span>';
+    btn.disabled=true;return;
+  }
+  let html=`<div style="color:var(--warn);margin-bottom:6px"><b>${matches.length}</b> log(s) seraient supprimés :</div>`;
+  matches.slice(0,30).forEach(l=>{
+    html+=`<div>${fmtDateShort(l.created_at)} · ${l.type} · ${l.total_price?fmt(l.total_price)+' XPF':l.liters?l.liters+'L':''} · ${(l.note||'').slice(0,50)}</div>`;
+  });
+  if(matches.length>30)html+=`<div style="color:var(--muted)">… et ${matches.length-30} autres</div>`;
+  out.innerHTML=html;
+  btn.disabled=false;
+  window._purgeQueue=matches;
+}
+
+async function executePurge(){
+  const queue=window._purgeQueue||[];
+  if(!queue.length)return toast('Rien à supprimer');
+  if(!confirm(`Supprimer DÉFINITIVEMENT ${queue.length} log(s) ? Cette action est irréversible.`))return;
+  // Double confirmation pour éviter les drames
+  const word=prompt('Tape "PURGER" pour confirmer la suppression :');
+  if(word!=='PURGER')return toast('Annulé');
+
+  const out=document.getElementById('purgePreview');
+  out.innerHTML='<span class="spin"></span> Suppression en cours…';
+
+  let ok=0, err=0;
+  // Batch suppression par tranches de 50
+  const ids=queue.map(l=>l.id);
+  for(let i=0;i<ids.length;i+=50){
+    const batch=ids.slice(i,i+50);
+    const {error}=await sb.from('boat_fuel_logs').delete().in('id',batch);
+    if(error){err+=batch.length;console.error(error);}
+    else ok+=batch.length;
+  }
+  out.innerHTML=`<div style="color:var(--green)">✅ ${ok} log(s) supprimé(s)${err?', '+err+' erreur(s)':''}</div>`;
+  window._purgeQueue=[];
+  document.getElementById('executePurgeBtn').disabled=true;
+  toast(`${ok} log(s) supprimé(s)`);
+  loadLogs();
+}
+
+// ── Import CSV prix essence ──────────────────────────────────────────────────
+async function importFuelPricesCSV(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  const text=await file.text();
+  // Format attendu : 1ère colonne année, 12 colonnes mois Jan...Déc, optionnellement colonne cumul
+  // Exemples acceptés :
+  //   "2025;160,3;161,6;164,2;..."
+  //   "Année,Jan,Fév,...,Déc,Cumul"
+  //   ou copie depuis Excel : "2025\\t160,3\\t161,6\\t..."
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  let updated=0, skipped=0;
+  const newPrices={};
+  lines.forEach(line=>{
+    // Détecter séparateur
+    const sep=line.includes('\t')?'\t':line.includes(';')?';':',';
+    const cells=line.split(sep).map(c=>c.trim().replace(/"/g,''));
+    if(cells.length<13)return; // année + 12 mois mini
+    const year=parseInt(cells[0]);
+    if(!year||year<2000||year>2100){skipped++;return;}
+    const monthlyPrices=[];
+    for(let i=1;i<=12;i++){
+      const v=cells[i];
+      if(!v||v.toLowerCase()==='n.d.'||v==='-'){monthlyPrices.push(null);continue;}
+      const num=parseFloat(v.replace(',','.').replace(/\s/g,''));
+      monthlyPrices.push(isNaN(num)?null:num);
+    }
+    newPrices[year]=monthlyPrices;
+    updated++;
+  });
+  if(!updated){
+    toast('Aucune ligne valide dans le CSV','err');
+    return;
+  }
+  // Merger avec FUEL_PRICES_NC
+  Object.keys(newPrices).forEach(y=>{FUEL_PRICES_NC[parseInt(y)]=newPrices[y];});
+  // Stocker en localStorage pour persister
+  try{localStorage.setItem('fuel-prices-nc',JSON.stringify(FUEL_PRICES_NC));}catch(e){}
+  toast(`✅ ${updated} année(s) de prix importées (${skipped} ignorée${skipped>1?'s':''})`);
+  // Si la prévisualisation était ouverte, rafraîchir
+  if(document.getElementById('fuelRecalcPreview').innerHTML)previewFuelRecalc();
+  event.target.value='';
+}
+
+// Charger les prix depuis localStorage si disponibles (override des prix par défaut)
+(function loadStoredFuelPrices(){
+  try{
+    const stored=localStorage.getItem('fuel-prices-nc');
+    if(stored){
+      const parsed=JSON.parse(stored);
+      Object.keys(parsed).forEach(y=>{FUEL_PRICES_NC[parseInt(y)]=parsed[y];});
+    }
+  }catch(e){}
+})();
+
+function openToolsModal(){
+  modal('toolsModal',true);
+  document.getElementById('fuelRecalcPreview').innerHTML='';
+  document.getElementById('diagOutput').innerHTML='';
+  document.getElementById('purgePreview').innerHTML='';
+  document.getElementById('executePurgeBtn').disabled=true;
+  document.getElementById('importLogsPreview').innerHTML='';
+  document.getElementById('importLogsBtn').style.display='none';
+  // Pré-remplir les selects de membres
+  ['importIdA','importIdB'].forEach(id=>{
+    const sel=document.getElementById(id);
+    if(sel)sel.innerHTML='<option value="">—</option>'+_members.map(m=>`<option value="${m.id}">${m.label} (${m.id.slice(0,8)})</option>`).join('');
+  });
+}
+
+// ── Diagnostic comptes ───────────────────────────────────────────────────────
+function showDiagnostic(){
+  const out=document.getElementById('diagOutput');
+  if(!boat){out.innerHTML='<span style="color:var(--warn)">Pas de bateau</span>';return;}
+
+  const knownIds=new Set(_members.map(m=>m.id));
+  const memberLabel=uid=>{
+    const m=_members.find(x=>x.id===uid);
+    return m?m.label:'❓ inconnu ('+uid.slice(0,8)+'…)';
+  };
+
+  // Catégoriser les logs
+  const buckets={
+    shareable_with_payer:[],   // dépense partagée avec paid_by valide
+    shareable_no_payer:[],     // dépense partagée SANS paid_by → fausse l'équilibre
+    shareable_unknown_payer:[],// paid_by inconnu (pas dans _members)
+    reimburse_with_payer:[],   // remboursement avec paid_by
+    reimburse_no_payer:[],     // remboursement sans paid_by
+    other:[]                   // nav, correct, pour, cruise sans coût
+  };
+
+  allLogs.forEach(l=>{
+    const isReimbViaMarker=l.note&&l.note.includes('__REMB__');
+    const isReimb=(l.type==='reimburse'||isReimbViaMarker)&&l.total_price>0;
+    const isShare=(l.type==='refuel'||l.type==='bidon_fill'||l.type==='cruise'||(l.type==='expense'&&!isReimbViaMarker))&&l.total_price>0;
+    if(isShare){
+      if(!l.paid_by)buckets.shareable_no_payer.push(l);
+      else if(!knownIds.has(l.paid_by))buckets.shareable_unknown_payer.push(l);
+      else buckets.shareable_with_payer.push(l);
+    }else if(isReimb){
+      if(!l.paid_by)buckets.reimburse_no_payer.push(l);
+      else buckets.reimburse_with_payer.push(l);
+    }else{
+      buckets.other.push(l);
+    }
+  });
+
+  // Sommes par membre
+  const paid={};
+  _members.forEach(m=>{paid[m.id]=0;});
+  buckets.shareable_with_payer.forEach(l=>{paid[l.paid_by]+=l.total_price;});
+  const totalShareable=buckets.shareable_with_payer.reduce((s,l)=>s+l.total_price,0)
+    +buckets.shareable_no_payer.reduce((s,l)=>s+l.total_price,0)
+    +buckets.shareable_unknown_payer.reduce((s,l)=>s+l.total_price,0);
+
+  // Remboursements
+  const rembPaid={};
+  _members.forEach(m=>{rembPaid[m.id]=0;});
+  buckets.reimburse_with_payer.forEach(l=>{
+    if(rembPaid[l.paid_by]!==undefined)rembPaid[l.paid_by]+=l.total_price;
+  });
+  const totalRembNoPayer=buckets.reimburse_no_payer.reduce((s,l)=>s+l.total_price,0);
+
+  let html='';
+  html+=`<div style="color:var(--txt);margin-bottom:8px"><b>📊 Vue d'ensemble</b></div>`;
+  html+=`<div>Total dépenses partageables : <b style="color:var(--a2)">${fmt(Math.round(totalShareable))} XPF</b></div>`;
+  html+=`<div>Membres effectifs : ${_members.length}</div>`;
+  html+=`<div>Part théorique (50/50) : <b>${fmt(Math.round(totalShareable/_members.length))} XPF</b></div>`;
+  html+='<div style="margin-top:8px"><b>💰 Payé par membre (dépenses partagées) :</b></div>';
+  _members.forEach(m=>{
+    html+=`<div style="padding-left:8px">${m.label} : <b style="color:var(--a2)">${fmt(Math.round(paid[m.id]))} XPF</b></div>`;
+  });
+  html+='<div style="margin-top:8px"><b>💸 Remboursements donnés :</b></div>';
+  _members.forEach(m=>{
+    html+=`<div style="padding-left:8px">${m.label} → autre : <b style="color:var(--purple)">${fmt(Math.round(rembPaid[m.id]))} XPF</b></div>`;
+  });
+
+  // Warnings
+  if(buckets.shareable_no_payer.length){
+    html+=`<div style="margin-top:14px;padding:8px;background:rgba(245,158,11,.1);border:1px solid var(--warn);border-radius:6px;color:var(--warn)">⚠️ <b>${buckets.shareable_no_payer.length} dépense(s) SANS payeur</b> (total: ${fmt(Math.round(buckets.shareable_no_payer.reduce((s,l)=>s+l.total_price,0)))} XPF) — comptées dans le total mais non attribuées, ce qui FAUSSE les soldes :</div>`;
+    html+='<div style="font-size:.62rem;max-height:120px;overflow-y:auto;padding-left:8px">';
+    buckets.shareable_no_payer.slice(0,15).forEach(l=>{
+      html+=`<div>${fmtDateShort(l.created_at)} · ${l.type} · ${fmt(l.total_price)} XPF · ${(l.note||'').slice(0,40)}</div>`;
+    });
+    if(buckets.shareable_no_payer.length>15)html+=`<div>… et ${buckets.shareable_no_payer.length-15} autres</div>`;
+    html+='</div>';
+  }
+  if(buckets.shareable_unknown_payer.length){
+    html+=`<div style="margin-top:8px;padding:8px;background:rgba(244,63,94,.1);border:1px solid var(--red);border-radius:6px;color:var(--red)">⚠️ <b>${buckets.shareable_unknown_payer.length} dépense(s) avec payeur INCONNU</b> (pas dans la liste des membres). UUID(s) :</div>`;
+    const uuids=new Set(buckets.shareable_unknown_payer.map(l=>l.paid_by));
+    uuids.forEach(u=>{html+=`<div style="padding-left:8px;font-size:.62rem">${u}</div>`;});
+  }
+  if(buckets.reimburse_no_payer.length){
+    html+=`<div style="margin-top:8px;padding:8px;background:rgba(245,158,11,.1);border:1px solid var(--warn);border-radius:6px;color:var(--warn)">⚠️ <b>${buckets.reimburse_no_payer.length} remboursement(s) SANS payeur</b> (total: ${fmt(Math.round(totalRembNoPayer))} XPF) :</div>`;
+    html+='<div style="font-size:.62rem;max-height:80px;overflow-y:auto;padding-left:8px">';
+    buckets.reimburse_no_payer.slice(0,10).forEach(l=>{
+      html+=`<div>${fmtDateShort(l.created_at)} · ${fmt(l.total_price)} XPF · ${(l.note||'').slice(0,40)}</div>`;
+    });
+    html+='</div>';
+  }
+
+  // Bidon stats
+  const bidonFills=allLogs.filter(l=>l.type==='bidon_fill');
+  const pours=allLogs.filter(l=>l.type==='pour');
+  html+=`<div style="margin-top:14px;color:var(--txt)"><b>🛢 Bidons (logs en base)</b></div>`;
+  html+=`<div>${bidonFills.length} log(s) bidon_fill (total ${bidonFills.reduce((s,l)=>s+(l.liters||0),0).toFixed(1)}L)</div>`;
+  html+=`<div>${pours.length} log(s) pour (versement → réservoir)</div>`;
+  html+=`<div style="font-size:.62rem;color:var(--muted)">Stock <code>_bidons</code> local : ${_bidons.length} bidon(s), ${_bidons.reduce((s,b)=>s+b.level,0).toFixed(1)}L</div>`;
+
+  out.innerHTML=html;
+}
+
+function previewFuelRecalc(){
+  const out=document.getElementById('fuelRecalcPreview');
+  if(!boat){out.innerHTML='<span style="color:var(--warn)">Pas de bateau</span>';return;}
+
+  const fuelLogs=allLogs.filter(isFuelLog);
+  if(!fuelLogs.length){out.innerHTML='<span style="color:var(--muted)">Aucun log essence</span>';return;}
+
+  const updates=[]; // {id, date, oldPrice, newPrice, oldLiters, newLiters, total, type, note}
+  fuelLogs.forEach(l=>{
+    const refPrice=getFuelPrice(l.created_at);
+    if(!refPrice)return; // pas de prix de référence pour ce mois
+    const total=l.total_price;
+    if(!total||total<=0)return;
+    const newLiters=Math.round((total/refPrice)*100)/100;
+    const oldLiters=l.liters;
+    const oldPrice=l.price;
+    // On recalcule toujours, même si déjà correct, pour homogénéiser
+    updates.push({
+      id:l.id,
+      date:fmtDateShort(l.created_at),
+      type:l.type,
+      total,
+      oldPrice, oldLiters,
+      newPrice:refPrice, newLiters,
+      note:l.note||'',
+      changed: Math.abs((oldPrice||0)-refPrice)>0.5 || Math.abs((oldLiters||0)-newLiters)>0.5
+    });
+  });
+
+  if(!updates.length){out.innerHTML='<span style="color:var(--muted)">Aucune mise à jour possible (pas de prix mensuel disponible)</span>';return;}
+
+  const changedCount=updates.filter(u=>u.changed).length;
+  // Stocker les updates pour appliquer au clic
+  window._fuelRecalcQueue=updates.filter(u=>u.changed);
+
+  const rows=updates.map(u=>{
+    const c=u.changed?'var(--warn)':'var(--muted)';
+    const arrowL=u.changed&&u.oldLiters?'→':'';
+    const arrowP=u.changed&&u.oldPrice?'→':'';
+    return `<div style="display:grid;grid-template-columns:60px 60px 1fr 1fr;gap:6px;padding:3px 0;color:${c};font-size:.66rem">
+      <span>${u.date}</span>
+      <span>${u.type==='refuel'?'⛽':'🛢'}</span>
+      <span>${fmt(u.total)}XPF · ${u.oldPrice?u.oldPrice+'/L':'?'} ${arrowP} <b style="color:var(--a2)">${u.newPrice}/L</b></span>
+      <span>${u.oldLiters?u.oldLiters.toFixed(1)+'L':'?L'} ${arrowL} <b style="color:var(--a2)">${u.newLiters.toFixed(1)}L</b></span>
+    </div>`;
+  }).join('');
+
+  out.innerHTML=
+    `<div style="margin-bottom:10px;color:var(--txt)">📊 <b>${updates.length}</b> log(s) essence trouvés · <b style="color:var(--warn)">${changedCount}</b> à modifier</div>`+
+    rows+
+    (changedCount>0?
+      `<button class="btn btn-primary btn-full" style="margin-top:12px" onclick="applyFuelRecalc()">✅ Appliquer les ${changedCount} mise(s) à jour</button>`
+      :'<div style="margin-top:10px;color:var(--green)">✅ Tout est déjà à jour</div>');
+}
+
+async function applyFuelRecalc(){
+  const queue=window._fuelRecalcQueue||[];
+  if(!queue.length){toast('Rien à appliquer');return;}
+  if(!confirm(`Appliquer ${queue.length} mise(s) à jour des prix/litres essence ?\\n\\nCette action modifie les logs existants.`))return;
+
+  const out=document.getElementById('fuelRecalcPreview');
+  out.innerHTML='<span class="spin"></span> Mise à jour en cours…';
+
+  let ok=0, err=0;
+  for(const u of queue){
+    const {error}=await sb.from('boat_fuel_logs')
+      .update({price:u.newPrice, liters:u.newLiters})
+      .eq('id',u.id);
+    if(error){err++;console.error('[fuel recalc]',u.id,error.message);}
+    else ok++;
+  }
+
+  out.innerHTML=`<div style="color:var(--green);margin-bottom:8px">✅ ${ok} mise(s) à jour appliquée(s)${err?', '+err+' erreur(s)':''}</div>`;
+  window._fuelRecalcQueue=[];
+  toast(`Prix essence recalculés (${ok} log${ok>1?'s':''})`);
+  loadLogs();
+}
+
+function openMembersModal(){
+  loadMembers().then(()=>{
+    renderMembersList();
+    modal('membersModal',true);
+  });
+}
+
+function setMemberNickname(uid){
+  const cur=_memberNicknames[uid]||'';
+  const m=_members.find(x=>x.id===uid);
+  const profileName=m?.profileName;
+  const newNick=prompt(
+    'Surnom local pour ce membre'+(profileName?' (nom Supabase: '+profileName+')':'')+' :\n(laisse vide pour réinitialiser)',
+    cur
+  );
+  if(newNick===null)return;
+  if(newNick.trim()===''){
+    delete _memberNicknames[uid];
+  }else{
+    _memberNicknames[uid]=newNick.trim();
+  }
+  saveMemberNicknames();
+  loadMembers().then(()=>{
+    renderMembersList();
+    renderLogs();
+    if(document.getElementById('tab-charts').classList.contains('active'))renderCharts();
+  });
+}
+
+function renderMembersList(){
+  const el=document.getElementById('membersList');
+  if(!el)return;
+  if(!_members.length){
+    el.innerHTML='<div style="color:var(--muted);font-size:.78rem;padding:14px;text-align:center">Aucun membre lié à ce bateau dans Supabase.</div>';
+    return;
+  }
+  el.innerHTML=_members.map(m=>{
+    const isMe=m.id===user.id;
+    const ico=isMe?'⭐':'🔗';
+    const hasNick=!!m.nick;
+    const editBtn=`<button class="btn btn-ghost btn-xs" onclick="setMemberNickname('${m.id}')" style="margin-left:6px" title="Surnom local">✏️</button>`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.83rem">
+      <span>${ico}</span>
+      <span style="flex:1">${m.label}${hasNick?'<span style="color:var(--muted);font-size:.62rem;margin-left:4px">(surnom local)</span>':''}</span>
+      <code style="font-size:.62rem;color:var(--muted)">${m.id.slice(0,8)}…</code>${editBtn}
+    </div>`;
+  }).join('');
+}
+
+
+async function changeBoat(){
+  const id=document.getElementById('boatSelect').value;
+  const {data}=await sb.from('boats').select('*').eq('id',id).single();
+  boat=data;
+  document.getElementById('boat-name-hdr').textContent=boat.name;
+  updateBoatChips();
+  await loadMembers();
+  loadLogs();
+}
+
+function updateBoatChips(){
+  const el=document.getElementById('boatChips');
+  if(!boat){el.innerHTML='';return;}
+  const withDist=allLogs.filter(l=>l.type==='cruise'&&l.liters&&l.distance_nm);
+  let avgLnm=null;
+  if(withDist.length){
+    const tL=withDist.reduce((s,l)=>s+(l.liters||0),0);
+    const tNm=withDist.reduce((s,l)=>s+(l.distance_nm||0),0);
+    avgLnm=tL/tNm;
+  }
+  const reelleLabel=avgLnm?(avgLnm.toFixed(2)+'<span style="font-size:.65rem"> L/nm</span>'):'<span style="font-size:.6rem;color:var(--warn)">ajouter des sorties mesurées</span>';
+  const localEngine=JSON.parse(localStorage.getItem('boat-engine-'+boat.id)||'{}');
+  const engineStr=[localEngine.hp?localEngine.hp+'cv':'',localEngine.type||''].filter(Boolean).join(' ')||'—';
+  el.innerHTML=`
+    <div class="chip"><div class="val">${reelleLabel}</div><div class="lbl">Conso réelle${withDist.length?' ('+withDist.length+' sorties)':''}</div></div>
+    <div class="chip"><div class="val">${boat.tank_l??'—'}<span style="font-size:.65rem"> L</span></div><div class="lbl">Réservoir</div></div>
+    <div class="chip"><div class="val" style="font-size:.75rem">${engineStr}</div><div class="lbl">${boat.fuel_type??'Carburant'}</div></div>`;
+}
+
+// ── Chargement logs ───────────────────────────────────────────────────────────
+async function loadLogs(){
+  if(!boat)return;
+  // Charger TOUS les logs (sans limite) pour que les calculs FOB, conso réelle
+  // et graphes soient complets — même si une sortie a une date ancienne
+  const {data,error}=await sb.from('boat_fuel_logs').select('*').eq('boat_id',boat.id)
+    .order('created_at',{ascending:false});
+  if(error){toast('Erreur logs: '+error.message,'err');return;}
+  allLogs=data||[];
+  computeFOB();
+  renderLogs();
+  updateBoatChips();
+  updateBidonSourceSelect();
+  updateFillBidonSelect();
+  renderBidonsInline();
+  // Mettre à jour les graphes si l'onglet est actif
+  if(document.getElementById('tab-charts').classList.contains('active'))renderCharts();
+}
+
+// ── FOB — méthode aviatique chaîne comptable ──────────────────────────────────
+function computeFOB(){
+  estimatedLevel=null;
+  if(!boat?.tank_l){document.getElementById('gaugeWrap').style.display='none';return;}
+  const tank=boat.tank_l;
+
+  const sorted=[...allLogs].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+
+  // Trouver le dernier "anchor point" :
+  //  • correction explicite (mesure dipstick) = ancre forte
+  //  • refuel avec full_tank coché ET volume >= 50% tank = ancre (sinon flag douteux)
+  let anchorIdx=-1,anchorLevel=null;
+  for(let i=sorted.length-1;i>=0;i--){
+    const l=sorted[i];
+    if(l.type==='correct'){
+      anchorIdx=i; anchorLevel=l.liters; break;
+    }
+    if(l.type==='refuel'&&l.full_tank&&(l.liters||0)>=tank*0.5){
+      // Plein ras coché + volume crédible → on peut ancrer au tank max
+      anchorIdx=i; anchorLevel=tank; break;
+    }
+  }
+
+  // Si pas d'anchor → chercher premier ravitaillement (ancrage faible)
+  if(anchorIdx<0){
+    for(let i=0;i<sorted.length;i++){
+      if(sorted[i].type==='refuel'){
+        anchorIdx=i;
+        anchorLevel=Math.min(sorted[i].liters||0,tank);
+        break;
+      }
+    }
+  }
+
+  let level=null,logsSinceAnchor=0,confidence=0;
+
+  if(anchorIdx>=0){
+    level=anchorLevel;
+    // Chaîne comptable depuis l'anchor
+    for(let i=anchorIdx+1;i<sorted.length;i++){
+      const l=sorted[i];
+      if(l.type==='refuel')     level=Math.min(level+(l.liters||0),tank);
+      else if(l.type==='cruise')level=Math.max(level-(l.liters||0),0);
+      else if(l.type==='correct'){level=l.liters;logsSinceAnchor=0;continue;}
+      // Verser bidon dans réservoir
+      else if(l.type==='pour')  level=Math.min(level+(l.liters||0),tank);
+      logsSinceAnchor++;
+    }
+    // Confiance FOB (inspiré aviation fuel state)
+    const anchorLog=sorted[anchorIdx];
+    const isExact=anchorLog.type==='correct'||anchorLog.full_tank;
+    if(logsSinceAnchor===0&&isExact)        confidence=5;
+    else if(logsSinceAnchor<=2&&isExact)    confidence=4;
+    else if(logsSinceAnchor<=2)             confidence=4;
+    else if(logsSinceAnchor<=5)             confidence=3;
+    else if(logsSinceAnchor<=10)            confidence=2;
+    else                                     confidence=1;
+  } else {
+    confidence=0;
+  }
+
+  estimatedLevel=level;
+
+  // Incertitude croissante (2% par log depuis anchor, max 35%)
+  const unc=level!==null?Math.min(0.35,0.02+logsSinceAnchor*0.025)*tank:tank*0.4;
+
+  // ── Rendu jauge ──────────────────────────────────────────────────────────────
+  const wrap=document.getElementById('gaugeWrap');
+  if(level===null){wrap.style.display='none';return;}
+  wrap.style.display='block';
+
+  const pct=Math.max(0,Math.min(100,(level/tank)*100));
+  const fill=document.getElementById('gauge-fill');
+  const col=pct>50?'var(--green)':pct>25?'var(--warn)':'var(--red)';
+  fill.style.width=pct.toFixed(1)+'%';
+  fill.style.background=col;
+
+  // Bande d'incertitude
+  const uncPct=(unc/tank)*100;
+  const lo=Math.max(0,pct-uncPct/2);
+  const w=Math.min(uncPct,100-lo);
+  const band=document.getElementById('gauge-unc');
+  band.style.left=lo.toFixed(1)+'%';
+  band.style.width=w.toFixed(1)+'%';
+
+  document.getElementById('gauge-val').textContent=
+    '~'+Math.round(level)+' L / '+tank+' L ('+Math.round(pct)+'%) ±'+Math.round(unc)+'L';
+  document.getElementById('gauge-val').style.color=col;
+
+  // Dots confiance
+  const confLabels=['Inconnu','Faible','Modérée','Correcte','Bonne','Élevée'];
+  const confCols=[null,'#f43f5e','#f43f5e','#f59e0b','#10b981','#10b981'];
+  const dots=document.getElementById('conf-dots').querySelectorAll('.conf-dot');
+  dots.forEach((d,i)=>{
+    d.style.background=i<confidence?(confCols[confidence]||'var(--a)'):'var(--s3)';
+  });
+  document.getElementById('conf-lbl').textContent='Confiance: '+(confLabels[confidence]||'—');
+  document.getElementById('conf-lbl').style.color=confCols[confidence]||'var(--muted)';
+
+  // ── Autonomie ────────────────────────────────────────────────────────────────
+  const resPct=15;
+  const reserveL=tank*resPct/100;
+  const usable=Math.max(0,level-reserveL);
+  const speed=boat.speed_kts||18;
+
+  // L/nm pondéré
+  const withDist=[...allLogs].filter(l=>l.type==='cruise'&&l.liters&&l.distance_nm)
+    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  let lnm=null;
+  if(withDist.length){
+    let ws=0,wt=0;
+    withDist.forEach((l,i)=>{const w=Math.pow(0.8,i);ws+=(l.liters/l.distance_nm)*w;wt+=w;});
+    lnm=ws/wt;
+  }
+  // Note: on n'utilise PAS conso_l_h pour l'autonomie car on n'a pas les données de durée
+
+  // Render inline bidons after FOB
+  renderBidonsInline();
+
+  const autoBox=document.getElementById('auto-box');
+  if(lnm&&level!==null){
+    autoBox.style.display='block';
+    const autoNm=Math.round(usable/lnm);
+    const autoRT=Math.round(autoNm/2);
+    const autoRes=Math.round(Math.max(0,level/lnm*0.85));
+    document.getElementById('auto-one').textContent=autoNm+' nm';
+    document.getElementById('auto-rt').textContent=autoRT+' nm';
+    document.getElementById('auto-res').textContent=autoRes+' nm';
+  }else{autoBox.style.display='none';}
+}
+
+// ── Rendu logs ────────────────────────────────────────────────────────────────
+function renderLogs(){
+  const el=document.getElementById('logList');
+  if(!allLogs.length){el.innerHTML='<div class="empty"><span class="eico">🌊</span>Aucun log pour ce bateau</div>';return;}
+  el.innerHTML=allLogs.map(l=>{
+    const type=l.type||'cruise';
+    const isCruise=type==='cruise', isRefuel=type==='refuel';
+    const isCorrect=type==='correct', isPour=type==='pour', isNav=type==='nav';
+    const isBidonFill=type==='bidon_fill', isExpense=type==='expense';
+
+    const catIcons={equipment:'🔧',maintenance:'🛠',parking:'🏠',transport:'🚗',assurance:'🛡',admin:'📄',food:'🍔',other:'📦',personal:'👤'};
+    const catLabels={equipment:'Équipement',maintenance:'Entretien',parking:'Parking',transport:'Transport',assurance:'Assurance',admin:'Admin',food:'Repas',other:'Autre',personal:'Perso'};
+
+    // Reconnaître les remboursements stockés en expense + marker __REMB__
+    const isReimbMarker=type==='expense'&&l.note&&l.note.includes('__REMB__');
+    const isReimburse=type==='reimburse'||isReimbMarker;
+    let badgeClass='b-cruise';
+    if(isRefuel)badgeClass='b-refuel';
+    else if(isPour||isBidonFill)badgeClass='b-bidon';
+    else if(isNav)badgeClass='b-nav';
+    else if(isCorrect)badgeClass='b-correct';
+    else if(isReimburse)badgeClass='b-bidon';
+    else if(isExpense)badgeClass='b-expense';
+
+    let badgeLabel='';
+    if(isCruise)badgeLabel='📐 Mesure';
+    else if(isRefuel)badgeLabel=l.full_tank?'🎯 Plein ras':'🔋 Plein';
+    else if(isBidonFill)badgeLabel='🛢 Bidon';
+    else if(isPour)badgeLabel='🛢→⛽';
+    else if(isNav)badgeLabel='🧭 Sortie';
+    else if(isCorrect)badgeLabel='📏 Correct';
+    else if(isReimburse)badgeLabel='💸 Remb.';
+    else if(isExpense)badgeLabel=(catIcons[l.category]||'💰')+' '+(catLabels[l.category]||'Dépense');
+
+    let main='';
+    if(isCruise)main=`${l.liters??'—'} L · ${l.distance_nm??'—'} nm`;
+    else if(isNav)main=`${l.distance_nm??'—'} nm`;
+    else if(isRefuel)main=`+${l.liters??'—'} L au réservoir`;
+    else if(isBidonFill)main=`+${l.liters??'—'} L au bidon`;
+    else if(isCorrect)main=`Niveau: ${l.liters} L`;
+    else if(isPour)main=`+${l.liters} L → rés.`;
+    else if(isExpense)main=fmt(l.total_price||0)+' XPF';
+    else if(isReimburse)main=fmt(l.total_price||0)+' XPF';
+
+    const sub=[];
+    if(isCruise&&l.liters&&l.distance_nm)sub.push('⭐ '+(l.liters/l.distance_nm).toFixed(2)+' L/nm');
+    if(isRefuel&&l.price)sub.push(fmt(l.price)+' XPF/L');
+    if((isRefuel||isBidonFill)&&l.total_price)sub.push(fmt(l.total_price)+' XPF');
+    if(isBidonFill&&l.price)sub.push(fmt(l.price)+' XPF/L');
+    if(l.pax)sub.push('👥 '+l.pax+'p');
+    if(l.weight_kg)sub.push('⚖️ '+l.weight_kg+'kg');
+    if(l.paid_by){
+      const m=_members.find(x=>x.id===l.paid_by);
+      if(m)sub.push('💵 '+m.label);
+    }
+    // Indicateur de split personnalisé
+    let hasSplit=false;
+    if(l.split&&typeof l.split==='object'&&l.split.shares)hasSplit=true;
+    else if(l.note&&l.note.includes('SPLIT:'))hasSplit=true;
+    if(hasSplit)sub.push('⚖️ split custom');
+    if(l.category==='personal')sub.push('👤 perso');
+    // Nettoyer la note : retirer SPLIT:{...} et __REMB__ avant affichage
+    if(l.note){
+      const cleanNote=l.note.replace(/SPLIT:\{[^}]*\}/g,'').replace(/__REMB__/g,'').replace(/\s+/g,' ').trim();
+      if(cleanNote)sub.push('📝 '+cleanNote);
+    }
+    return `<div class="log-item">
+      <span class="log-badge ${badgeClass}">${badgeLabel}</span>
+      <div class="log-body">
+        <div class="log-main">${main}${sub.length?' · ':''}<span style="color:var(--muted2);font-size:.78rem">${sub.join(' · ')}</span></div>
+      </div>
+      <div class="log-meta">
+        <div class="log-date">${fmtDate(l.created_at)}</div>
+        <div class="log-actions">
+          <button class="btn btn-warn-soft btn-xs" onclick="openEdit('${l.id}')">✏️</button>
+          <button class="btn btn-danger-soft btn-xs" onclick="openDel('${l.id}')">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Formulaire ajout ──────────────────────────────────────────────────────────
+function onTypeChange(){
+  const t=document.getElementById('logType').value;
+  const isCruise=t==='cruise', isRefuel=t==='refuel', isNav=t==='nav';
+  const isExpense=t==='expense', isReimburse=t==='reimburse', isBidonFill=t==='bidon_fill';
+  const isCruiseRefuel=t==='cruise_refuel';
+
+  // Libellé dynamique des litres
+  const lbl=document.getElementById('fuelL-label');
+  if(lbl)lbl.textContent=(isCruise||isCruiseRefuel)?'Litres consommés ⭐':'Litres';
+
+  // Distance : cruise, cruise_refuel, nav
+  document.getElementById('dist-wrap').style.display=(isRefuel||isExpense||isReimburse||isBidonFill)?'none':'';
+  // Volume consommé : masqué pour nav, expense, reimburse
+  document.getElementById('fuelL').closest('.field').style.display=(isNav||isExpense||isReimburse)?'none':'';
+  // Volume ajouté (plein intégré) : seulement cruise_refuel
+  document.getElementById('fuelL-added-wrap').style.display=isCruiseRefuel?'':'none';
+  // Prix/total : ravitaillement + bidon + expense + reimburse + cruise_refuel
+  document.getElementById('price-wrap').style.display=(isCruise||isNav)?'none':'';
+  document.getElementById('total-wrap').style.display=(isCruise||isNav)?'none':'';
+  // Plein entier + option bidon simultané : seulement pour refuel
+  document.getElementById('full-tank-wrap').style.display=isRefuel?'':'none';
+  const alsoBidonWrap=document.getElementById('refuel-also-bidon-wrap');
+  if(alsoBidonWrap){
+    alsoBidonWrap.style.display=isRefuel?'':'none';
+    if(!isRefuel){
+      // Reset si on change de type
+      const cb=document.getElementById('refuelAlsoBidon');
+      if(cb)cb.checked=false;
+      document.getElementById('refuel-bidon-details').style.display='none';
+    }
+  }
+  // Payé par : tout sauf reimburse
+  document.getElementById('paidby-wrap').style.display=isReimburse?'none':'';
+  // Remboursé à : reimburse seulement
+  document.getElementById('reimbto-wrap').style.display=isReimburse?'':'none';
+  // Pax/poids : cruise, cruise_refuel, nav
+  document.getElementById('pax-wrap').style.display=(isCruise||isNav||isCruiseRefuel)?'':'none';
+  document.getElementById('weight-wrap').style.display=(isCruise||isNav||isCruiseRefuel)?'':'none';
+  // Catégorie : expense seulement
+  document.getElementById('expense-cat-wrap').style.display=isExpense?'':'none';
+  // Scope perso : expense seulement
+  document.getElementById('scope-wrap').style.display=isExpense?'':'none';
+  // Bidon cible : bidon_fill seulement
+  const bidonTargetWrap=document.getElementById('bidon-target-wrap');
+  if(bidonTargetWrap){
+    bidonTargetWrap.style.display=isBidonFill?'':'none';
+    if(isBidonFill){refreshBidonTargetSelect();onBidonTargetChange();}
+    else{const ncw=document.getElementById('bidon-newcap-wrap');if(ncw)ncw.style.display='none';}
+  }
+  // Répartition : refuel, bidon_fill, expense, cruise_refuel (cruise pur = pas de coût)
+  document.getElementById('split-wrap').style.display=(isRefuel||isBidonFill||isExpense||isCruiseRefuel)?'':'none';
+  if(document.getElementById('split-wrap').style.display!=='none')renderSplitInputs();
+}
+
+function refreshBidonTargetSelect(){
+  const sel=document.getElementById('fuelBidonTarget');
+  if(!sel)return;
+  const cur=sel.value;
+  // Trier : bidons avec espace dispo en premier, puis pleins
+  const opts=_bidons.map((b,i)=>{
+    const space=b.cap-b.level;
+    const label=(b.note?b.note+' · ':'')+b.cap+'L'+
+      ' (rempli '+b.level.toFixed(1)+'/'+b.cap+'L'+
+      (space>0.5?' · place pour +'+space.toFixed(1)+'L':' · plein')+')';
+    return {idx:i,label,space};
+  });
+  // Tri : ceux avec de la place en premier
+  opts.sort((a,b)=>(b.space>0.5?1:0)-(a.space>0.5?1:0));
+  sel.innerHTML='<option value="new">➕ Nouveau bidon (créé automatiquement)</option>'+
+    opts.map(o=>`<option value="${o.idx}">🛢 ${o.label}</option>`).join('');
+  if(cur)sel.value=cur;
+}
+
+function onRefuelAlsoBidonChange(){
+  const checked=document.getElementById('refuelAlsoBidon').checked;
+  document.getElementById('refuel-bidon-details').style.display=checked?'':'none';
+  if(checked){
+    refreshRefuelBidonSelect();
+    onRefuelBidonTargetChange();
+  }
+}
+
+function onRefuelBidonTargetChange(){
+  const tgt=document.getElementById('refuelBidonTarget')?.value||'new';
+  document.getElementById('refuel-bidon-newcap-wrap').style.display=tgt==='new'?'':'none';
+}
+
+function refreshRefuelBidonSelect(){
+  const sel=document.getElementById('refuelBidonTarget');
+  if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="new">➕ Nouveau bidon</option>'+
+    _bidons.map((b,i)=>{
+      const space=b.cap-b.level;
+      const lbl=(b.note?b.note+' · ':'')+b.cap+'L ('+b.level.toFixed(1)+'/'+b.cap+'L'+(space>0.5?', +'+space.toFixed(1)+'L possible':' plein')+')';
+      return `<option value="${i}">🛢 ${lbl}</option>`;
+    }).join('');
+  if(cur)sel.value=cur;
+}
+
+function refuelBidonCalc(){
+  const l=parseFloat(document.getElementById('refuelBidonL').value)||0;
+  const price=parseFloat(document.getElementById('fuelP').value)||null;
+  const date=document.getElementById('fuelDate').value;
+  const refPrice=date?getFuelPrice(new Date(date).toISOString()):null;
+  const unitPrice=price||refPrice||null;
+  const est=document.getElementById('refuelBidonEst');
+  if(l>0&&unitPrice){
+    const cost=Math.round(l*unitPrice);
+    est.textContent=`→ ${l}L × ${unitPrice} XPF/L ≈ ${fmt(cost)} XPF`;
+    // Auto-remplir le coût bidon si vide
+    const totalEl=document.getElementById('refuelBidonTotal');
+    if(!totalEl.value)totalEl.value=cost;
+  }else{
+    est.textContent='';
+  }
+}
+
+function onBidonTargetChange(){
+  const tgt=document.getElementById('fuelBidonTarget')?.value||'new';
+  const ncw=document.getElementById('bidon-newcap-wrap');
+  if(ncw)ncw.style.display=tgt==='new'?'':'none';
+}
+
+function autoCalcTotal(){
+  const t=document.getElementById('logType')?.value||'';
+  // cruise_refuel : facturer les litres ajoutés (plein), pas les consommés
+  const lId=t==='cruise_refuel'?'fuelLAdded':'fuelL';
+  const l=parseFloat(document.getElementById(lId)?.value)||0;
+  const p=parseFloat(document.getElementById('fuelP').value)||0;
+  if(l>0&&p>0)document.getElementById('fuelTotal').value=Math.round(l*p);
+  if(document.getElementById('splitMode')?.value==='equal')renderSplitInputs();
+}
+
+// ── Répartition des frais ────────────────────────────────────────────────────
+function onSplitModeChange(){
+  renderSplitInputs();
+}
+
+function renderSplitInputs(){
+  const mode=document.getElementById('splitMode')?.value||'equal';
+  const total=parseFloat(document.getElementById('fuelTotal').value)
+    ||(parseFloat(document.getElementById('fuelL').value)*parseFloat(document.getElementById('fuelP').value))
+    ||0;
+  const payerId=document.getElementById('fuelPaidBy').value||null;
+  const inputsEl=document.getElementById('splitInputs');
+  const totalLbl=document.getElementById('splitTotal');
+  if(!inputsEl||!_members.length){
+    if(inputsEl)inputsEl.style.display='none';
+    if(totalLbl)totalLbl.textContent='';
+    return;
+  }
+  if(mode==='equal'){
+    inputsEl.style.display='none';
+    if(total>0){
+      const share=Math.round(total/_members.length);
+      totalLbl.innerHTML=`Part équitable : <span style="color:var(--a2)">${fmt(share)} XPF</span> × ${_members.length} membre(s)`;
+    }else totalLbl.textContent='';
+    return;
+  }
+  if(mode==='exclude_payer'){
+    inputsEl.style.display='none';
+    if(total>0&&payerId){
+      const others=_members.filter(m=>m.id!==payerId);
+      if(others.length){
+        const share=Math.round(total/others.length);
+        const payerLbl=_members.find(m=>m.id===payerId)?.label||'?';
+        totalLbl.innerHTML=`Part : <span style="color:var(--a2)">${fmt(share)} XPF</span> × ${others.length} (sans ${payerLbl})`;
+      }else totalLbl.innerHTML='<span style="color:var(--warn)">Aucun autre membre</span>';
+    }else if(total>0&&!payerId){
+      totalLbl.innerHTML='<span style="color:var(--warn)">⚠️ Renseigne "Payé par" d\'abord</span>';
+    }else totalLbl.textContent='';
+    return;
+  }
+  // Mode manuel : un input par membre
+  inputsEl.style.display='block';
+  inputsEl.innerHTML=_members.map((m,i)=>
+    `<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:6px">
+      <label style="font-size:.8rem;color:var(--txt)">${m.label}</label>
+      <input type="number" data-split-member="${m.id}" step="1" min="0" placeholder="0" style="width:120px;padding:7px 10px;font-size:.82rem" oninput="updateSplitTotal()">
+    </div>`
+  ).join('')+
+  '<button type="button" class="btn btn-ghost btn-xs" onclick="splitEqual()" style="margin-top:4px">↻ Répartir égal</button>';
+  updateSplitTotal();
+}
+
+function updateSplitTotal(){
+  const total=parseFloat(document.getElementById('fuelTotal').value)||0;
+  const inputs=document.querySelectorAll('[data-split-member]');
+  let sum=0;
+  inputs.forEach(i=>sum+=parseFloat(i.value)||0);
+  const totalLbl=document.getElementById('splitTotal');
+  const diff=total-sum;
+  const col=Math.abs(diff)<=1?'var(--green)':'var(--warn)';
+  totalLbl.innerHTML=`Somme attribuée : <span style="color:${col};font-weight:500">${fmt(sum)}</span> / ${fmt(total)} XPF`+
+    (Math.abs(diff)>1?` <span style="color:var(--warn)">(reste ${fmt(diff)})</span>`:' ✓');
+}
+
+function splitEqual(){
+  const total=parseFloat(document.getElementById('fuelTotal').value)||0;
+  if(!total||!_members.length)return;
+  const share=Math.round(total/_members.length);
+  let assigned=0;
+  document.querySelectorAll('[data-split-member]').forEach((inp,i)=>{
+    if(i<_members.length-1){inp.value=share;assigned+=share;}
+    else inp.value=total-assigned; // dernier prend le reste pour faire pile le total
+  });
+  updateSplitTotal();
+}
+
+// Construit l'objet split à enregistrer en base (jsonb)
+// Retourne null si mode 'equal' (= pas besoin de stocker, calcul implicite)
+function buildSplitPayload(total,payerId){
+  if(!total||!_members.length)return null;
+  const mode=document.getElementById('splitMode')?.value||'equal';
+  if(mode==='equal')return null; // implicite
+  if(mode==='exclude_payer'){
+    if(!payerId)return null;
+    const others=_members.filter(m=>m.id!==payerId);
+    if(!others.length)return null;
+    const share=total/others.length;
+    const shares={};
+    others.forEach(m=>{shares[m.id]=Math.round(share);});
+    return {mode:'exclude_payer',shares};
+  }
+  if(mode==='manual'){
+    const shares={};
+    document.querySelectorAll('[data-split-member]').forEach(inp=>{
+      const v=parseFloat(inp.value)||0;
+      if(v>0)shares[inp.dataset.splitMember]=v;
+    });
+    if(!Object.keys(shares).length)return null;
+    return {mode:'manual',shares};
+  }
+  return null;
+}
+
+function liveEstimate(){
+  const liters=parseFloat(document.getElementById('fuelL').value)||0;
+  const dist=parseFloat(document.getElementById('fuelD').value)||0;
+  const price=parseFloat(document.getElementById('fuelP').value)||0;
+  const box=document.getElementById('est-box');
+  if(liters<=0){box.style.display='none';return;}
+  box.style.display='block';
+
+  const lnmEl=document.getElementById('est-lnm');
+  if(liters&&dist){lnmEl.textContent=(liters/dist).toFixed(2)+' L/nm';lnmEl.className='est-val ok';}
+  else lnmEl.textContent='—';
+
+  const avgEl=document.getElementById('est-avg');
+  const wd=allLogs.filter(l=>l.type==='cruise'&&l.liters&&l.distance_nm);
+  if(wd.length){
+    const avg=(wd.reduce((s,l)=>s+l.liters,0))/(wd.reduce((s,l)=>s+l.distance_nm,0));
+    avgEl.textContent=avg.toFixed(2)+' L/nm';
+    avgEl.className='est-val '+(liters&&dist&&(liters/dist)>avg*1.25?'warn':'ok');
+  }else avgEl.textContent='—';
+
+  const xpf=document.getElementById('est-xpf');
+  if(liters&&price){xpf.textContent=fmt(Math.round(liters*price))+' XPF';xpf.className='est-val';}
+  else xpf.textContent='—';
+}
+
+async function addLog(){
+  if(!boat)return toast('Pas de bateau sélectionné','err');
+  const type=document.getElementById('logType').value;
+  const isCruiseRefuel=type==='cruise_refuel';
+  const liters=parseFloat(document.getElementById('fuelL').value)||0;
+  const litersAdded=isCruiseRefuel?(parseFloat(document.getElementById('fuelLAdded').value)||0):0;
+  const dist=parseFloat(document.getElementById('fuelD').value)||null;
+  const price=parseFloat(document.getElementById('fuelP').value)||null;
+  const totalRaw=parseFloat(document.getElementById('fuelTotal').value)||null;
+  // Pour cruise_refuel : total = prix du plein intégré
+  const total=totalRaw||(litersAdded&&price?Math.round(litersAdded*price):null);
+  const note=document.getElementById('fuelNote').value.trim()||null;
+  const fullTank=document.getElementById('fullTank').checked&&type==='refuel';
+
+  if(type==='expense'){
+    if(!total||total<=0)return toast('Montant invalide','err');
+  } else if(type==='nav'){
+    if(!dist||dist<=0)return toast('Distance invalide','err');
+  } else if(isCruiseRefuel){
+    if(liters<=0)return toast('Litres consommés invalides','err');
+    if(litersAdded<=0)return toast('Litres ajoutés invalides','err');
+  } else {
+    if(liters<=0)return toast('Litres invalides','err');
+  }
+
+  const pax=parseInt(document.getElementById('fuelPax').value)||null;
+  const weight=parseFloat(document.getElementById('fuelWeight').value)||null;
+  const paidBy=document.getElementById('fuelPaidBy').value||null;
+  const reimbTo=document.getElementById('fuelReimbTo')?.value||null;
+  const category=document.getElementById('fuelCategory').value||null;
+  const isPersonal=document.getElementById('fuelPersonal')?.checked||false;
+  const dateStr=document.getElementById('fuelDate').value;
+  const createdAt=dateStr?new Date(dateStr).toISOString():new Date().toISOString();
+
+  // ── cruise_refuel : on insère DEUX logs atomiquement
+  //   1. cruise  : liters consommés + distance + pax/poids
+  //   2. refuel  : litersAdded + prix + total (le plein fait pendant/après la sortie)
+  if(isCruiseRefuel){
+    document.getElementById('save-txt').innerHTML='<span class="spin"></span>';
+    const splitPayload=buildSplitPayload(total,paidBy);
+    const cruisePayload={
+      boat_id:boat.id,user_id:user.id,type:'cruise',
+      liters,distance_nm:dist,price:null,total_price:null,note,
+      full_tank:false,pax,weight_kg:weight,
+      paid_by:null, // le coût est sur le refuel
+      created_at:createdAt
+    };
+    const refuelPayload={
+      boat_id:boat.id,user_id:user.id,type:'refuel',
+      liters:litersAdded,distance_nm:null,price,total_price:total,
+      note:note?'Plein après sortie · '+note:'Plein après sortie',
+      full_tank:false,pax:null,weight_kg:null,
+      paid_by:paidBy||null,
+      created_at:createdAt
+    };
+    if(splitPayload){
+      refuelPayload.split=splitPayload;
+    }
+    const r1=await sb.from('boat_fuel_logs').insert(cruisePayload);
+    if(r1.error){document.getElementById('save-txt').textContent='Enregistrer';return toast('Erreur cruise: '+r1.error.message,'err');}
+    let r2=await sb.from('boat_fuel_logs').insert(refuelPayload);
+    if(r2.error&&splitPayload&&/split/i.test(r2.error.message||'')){
+      delete refuelPayload.split;
+      refuelPayload.note+=' SPLIT:'+JSON.stringify(splitPayload);
+      r2=await sb.from('boat_fuel_logs').insert(refuelPayload);
+    }
+    document.getElementById('save-txt').textContent='Enregistrer';
+    if(r2.error)return toast('Erreur refuel: '+r2.error.message,'err');
+    toast('Sortie + plein enregistrés ✅');
+    ['fuelL','fuelD','fuelP','fuelTotal','fuelNote','fuelPax','fuelWeight','fuelPaidBy','fuelLAdded'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    if(document.getElementById('fuelPersonal'))document.getElementById('fuelPersonal').checked=false;
+    if(document.getElementById('splitMode'))document.getElementById('splitMode').value='equal';
+    document.getElementById('splitInputs').style.display='none';
+    document.getElementById('splitInputs').innerHTML='';
+    document.getElementById('splitTotal').textContent='';
+    loadLogs();
+    return;
+  }
+
+  // ── Autres types ─────────────────────────────────────────────────────────────
+  const logLiters=(type==='nav'||type==='expense'||type==='reimburse')?null:liters;
+  const logDist=(type==='refuel'||type==='bidon_fill'||type==='expense'||type==='reimburse')?null:dist;
+
+  const payload={
+    boat_id:boat.id,user_id:user.id,type,
+    liters:logLiters,
+    distance_nm:logDist,
+    price:(type==='expense'||type==='reimburse')?null:price,
+    total_price:total,note,
+    full_tank:fullTank||false,
+    pax:(type==='cruise'||type==='nav')?pax:null,
+    weight_kg:(type==='cruise'||type==='nav')?weight:null,
+    created_at:createdAt
+  };
+  if(paidBy&&type!=='reimburse')payload.paid_by=paidBy;
+  if(type==='reimburse'&&paidBy)payload.paid_by=paidBy;
+  if(type==='expense'&&category)payload.category=category;
+  if(type==='expense'&&isPersonal){
+    payload.category='personal';
+    if(category)payload.note=(note?note+' · ':'')+'['+category+']';
+  }
+  const splitPayload=buildSplitPayload(total,paidBy);
+  if(splitPayload)payload.split=splitPayload;
+
+  document.getElementById('save-txt').innerHTML='<span class="spin"></span>';
+  let {error}=await sb.from('boat_fuel_logs').insert(payload);
+  if(error&&splitPayload&&/split/i.test(error.message||'')){
+    delete payload.split;
+    payload.note=(payload.note?payload.note+' · ':'')+'SPLIT:'+JSON.stringify(splitPayload);
+    const r2=await sb.from('boat_fuel_logs').insert(payload);
+    error=r2.error;
+  }
+  document.getElementById('save-txt').textContent='Enregistrer';
+  if(error)return toast('Erreur: '+error.message,'err');
+
+  // Si bidon_fill, mettre à jour le stock de bidons local
+  if(type==='bidon_fill'&&liters>0){
+    const tgt=document.getElementById('fuelBidonTarget')?.value||'new';
+    if(tgt==='new'){
+      // Capacité choisie par l'utilisateur (par défaut 20L)
+      const cap=parseFloat(document.getElementById('fuelBidonNewCap')?.value)||20;
+      // Plafonner les litres à la capacité
+      const fillL=Math.min(liters,cap);
+      _bidons.push({
+        id:'b'+Date.now(),cap,level:fillL,
+        price:price,note:note||'Plein bidon',
+        added:createdAt
+      });
+      saveBidons();
+      addBidonLog(_bidons.length-1,+fillL,_bidons[_bidons.length-1],'Création bidon '+cap+'L');
+      if(liters>cap){
+        toast(`⚠️ ${liters}L > capacité ${cap}L — bidon créé avec ${fillL}L`,'err');
+      }
+    }else{
+      const idx=parseInt(tgt);
+      if(!isNaN(idx)&&_bidons[idx]){
+        const space=_bidons[idx].cap-_bidons[idx].level;
+        const actual=Math.min(liters,space);
+        _bidons[idx].level=Math.min(_bidons[idx].cap,_bidons[idx].level+liters);
+        saveBidons();
+        addBidonLog(idx,+actual,_bidons[idx],note||'Remplissage');
+        if(liters>space+0.5){
+          toast(`⚠️ Bidon n'avait que ${space.toFixed(1)}L de place — ${actual.toFixed(1)}L ajoutés`,'err');
+        }
+      }
+    }
+  }
+
+  // ── Bidon simultané lors d'un plein réservoir
+  if(type==='refuel'&&document.getElementById('refuelAlsoBidon')?.checked){
+    const bidonL=parseFloat(document.getElementById('refuelBidonL').value)||0;
+    const bidonTotalEl=document.getElementById('refuelBidonTotal');
+    const bidonTotal=parseFloat(bidonTotalEl?.value)||null;
+    const bidonTgt=document.getElementById('refuelBidonTarget')?.value||'new';
+    if(bidonL>0){
+      // Log bidon_fill en base
+      const bidonPayload={
+        boat_id:boat.id,user_id:user.id,type:'bidon_fill',
+        liters:bidonL,price:price,total_price:bidonTotal,
+        note:note?'Bidon (même facture) · '+note:'Bidon (même facture)',
+        paid_by:paidBy||null,full_tank:false,
+        created_at:createdAt
+      };
+      await sb.from('boat_fuel_logs').insert(bidonPayload);
+      // Mise à jour stock local
+      if(bidonTgt==='new'){
+        const cap=parseFloat(document.getElementById('refuelBidonNewCap')?.value)||20;
+        const fillL=Math.min(bidonL,cap);
+        _bidons.push({id:'b'+Date.now(),cap,level:fillL,price,note:'Bidon (plein simultané)',added:createdAt});
+        saveBidons();
+        addBidonLog(_bidons.length-1,fillL,_bidons[_bidons.length-1],'Création bidon (plein réservoir)');
+      }else{
+        const idx=parseInt(bidonTgt);
+        if(!isNaN(idx)&&_bidons[idx]){
+          const actual=Math.min(bidonL,_bidons[idx].cap-_bidons[idx].level);
+          _bidons[idx].level=Math.min(_bidons[idx].cap,_bidons[idx].level+bidonL);
+          saveBidons();
+          addBidonLog(idx,actual,_bidons[idx],'Plein simultané réservoir');
+        }
+      }
+    }
+  }
+
+  toast('Log ajouté ✅');
+  ['fuelL','fuelD','fuelP','fuelTotal','fuelNote','fuelPax','fuelWeight','fuelPaidBy','fuelCategory','fuelReimbTo','fuelLAdded','refuelBidonL','refuelBidonTotal'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('fullTank').checked=false;
+  const alsoBidonCb=document.getElementById('refuelAlsoBidon');
+  if(alsoBidonCb){alsoBidonCb.checked=false;document.getElementById('refuel-bidon-details').style.display='none';}
+  if(document.getElementById('fuelPersonal'))document.getElementById('fuelPersonal').checked=false;
+  if(document.getElementById('splitMode'))document.getElementById('splitMode').value='equal';
+  document.getElementById('splitInputs').style.display='none';
+  document.getElementById('splitInputs').innerHTML='';
+  document.getElementById('splitTotal').textContent='';
+  const now=new Date();now.setMinutes(now.getMinutes()-now.getTimezoneOffset());
+  document.getElementById('fuelDate').value=now.toISOString().slice(0,16);
+  document.getElementById('est-box').style.display='none';
+  loadLogs();
+  document.querySelector('.tab[data-tab="log"]').click();
+}
+
+// ── Correction niveau réel ────────────────────────────────────────────────────
+function openCorrect(){modal('correctModal',true);}
+async function saveCorrection(){
+  const l=parseFloat(document.getElementById('correct-l').value);
+  if(!l||!boat)return toast('Valeur invalide','err');
+  const note=document.getElementById('correct-note').value.trim()||'Correction niveau réel';
+  const {error}=await sb.from('boat_fuel_logs').insert({
+    boat_id:boat.id,user_id:user.id,type:'correct',liters:l,note
+  });
+  if(error)return toast('Erreur: '+error.message,'err');
+  modal('correctModal',false);
+  document.getElementById('correct-l').value='';
+  document.getElementById('correct-note').value='';
+  toast('Correction enregistrée — FOB recalculé ✅');
+  loadLogs();
+}
+
+// ── Edit / Delete ─────────────────────────────────────────────────────────────
+function openEdit(id){
+  const log=allLogs.find(l=>l.id===id);if(!log)return;
+  document.getElementById('edit-id').value=id;
+  document.getElementById('edit-type').value=log.type||'cruise';
+  document.getElementById('edit-liters').value=log.liters??'';
+  document.getElementById('edit-dist').value=log.distance_nm??'';
+  document.getElementById('edit-price').value=log.price??'';
+  document.getElementById('edit-total').value=log.total_price??'';
+  document.getElementById('edit-note').value=log.note||'';
+  document.getElementById('edit-full-tank').checked=log.full_tank||false;
+  document.getElementById('edit-pax').value=log.pax??'';
+  const wEl=document.getElementById('edit-weight');if(wEl)wEl.value=log.weight_kg??'';
+  const cEl=document.getElementById('edit-category');if(cEl)cEl.value=log.category||'';
+  const paidSel=document.getElementById('edit-paid-by');
+  if(paidSel)paidSel.value=log.paid_by||'';
+  if(log.created_at){
+    const d=new Date(log.created_at);
+    d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
+    document.getElementById('edit-date').value=d.toISOString().slice(0,16);
+  }
+
+  // ── Split : détecter le mode actuel
+  const splitModeEl=document.getElementById('edit-splitMode');
+  const splitObj=log.split&&typeof log.split==='object'?log.split:
+                 (log.note&&log.note.includes('SPLIT:')?(()=>{
+                   try{return JSON.parse(log.note.match(/SPLIT:(\{.*?\})(?:\s|$)/)[1]);}catch(e){return null;}
+                 })():null);
+  if(splitObj&&splitObj.mode){
+    splitModeEl.value=splitObj.mode==='exclude_payer'?'advance':splitObj.mode;
+  }else{
+    splitModeEl.value='equal';
+  }
+  window._editSplitObj=splitObj; // mémoriser pour le rendu
+  renderEditSplitInputs();
+
+  modal('editModal',true);
+}
+
+function onEditSplitModeChange(){renderEditSplitInputs();}
+
+function renderEditSplitInputs(){
+  const mode=document.getElementById('edit-splitMode').value;
+  const total=parseFloat(document.getElementById('edit-total').value)||0;
+  const payerId=document.getElementById('edit-paid-by').value||null;
+  const inputsEl=document.getElementById('edit-splitInputs');
+  const totalLbl=document.getElementById('edit-splitTotal');
+  const descEl=document.getElementById('edit-splitDesc');
+
+  const descs={
+    equal:'Chaque membre doit sa part égale du total.',
+    advance:'Le payeur a avancé 100% — les autres lui doivent chacun leur part. Utile pour sorties solo ou achats pour un seul.',
+    manual:'Tu fixes exactement combien chaque membre doit sur ce log.'
+  };
+  if(descEl)descEl.textContent=descs[mode]||'';
+
+  if(!_members.length){inputsEl.style.display='none';totalLbl.textContent='';return;}
+
+  if(mode==='equal'){
+    inputsEl.style.display='none';
+    if(total>0){
+      const share=Math.round(total/_members.length);
+      totalLbl.innerHTML='Part de chacun : <span style="color:var(--a2)">'+fmt(share)+' XPF</span>';
+    }else totalLbl.textContent='';
+    return;
+  }
+  if(mode==='advance'){
+    inputsEl.style.display='none';
+    if(total>0&&payerId){
+      const others=_members.filter(m=>m.id!==payerId);
+      const payerLbl=_members.find(m=>m.id===payerId)?.label||'?';
+      const sharePerOther=others.length?Math.round(total/others.length):total;
+      totalLbl.innerHTML='<b>'+payerLbl+'</b> a avancé — chaque autre lui doit <span style="color:var(--warn)">'+fmt(sharePerOther)+' XPF</span>';
+    }else if(total>0&&!payerId){
+      totalLbl.innerHTML='<span style="color:var(--warn)">⚠️ Renseigne "Payé par" pour voir le détail</span>';
+    }else totalLbl.textContent='';
+    return;
+  }
+  // Manuel
+  inputsEl.style.display='block';
+  const split=window._editSplitObj;
+  inputsEl.innerHTML=_members.map(m=>{
+    const v=split?.shares?.[m.id]||'';
+    return `<div style="display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;margin-bottom:6px">
+      <label style="font-size:.8rem;color:var(--txt)">${m.label}</label>
+      <input type="number" data-edit-split-member="${m.id}" step="1" min="0" value="${v}" placeholder="0" style="padding:7px 10px;font-size:.82rem" oninput="updateEditSplitTotal()">
+    </div>`;
+  }).join('')+
+  '<button type="button" class="btn btn-ghost btn-xs" onclick="editSplitEqual()" style="margin-top:4px">↻ Répartir égal</button>';
+  updateEditSplitTotal();
+}
+
+function updateEditSplitTotal(){
+  const total=parseFloat(document.getElementById('edit-total').value)||0;
+  const inputs=document.querySelectorAll('[data-edit-split-member]');
+  let sum=0;
+  inputs.forEach(i=>sum+=parseFloat(i.value)||0);
+  const lbl=document.getElementById('edit-splitTotal');
+  const diff=total-sum;
+  const col=Math.abs(diff)<=1?'var(--green)':'var(--warn)';
+  lbl.innerHTML='Somme attribuée : <span style="color:'+col+';font-weight:500">'+fmt(sum)+'</span> / '+fmt(total)+' XPF'+
+    (Math.abs(diff)>1?' <span style="color:var(--warn)">(reste '+fmt(diff)+')</span>':' ✓');
+}
+
+function editSplitEqual(){
+  const total=parseFloat(document.getElementById('edit-total').value)||0;
+  if(!total||!_members.length)return;
+  const share=Math.round(total/_members.length);
+  let assigned=0;
+  document.querySelectorAll('[data-edit-split-member]').forEach((inp,i)=>{
+    if(i<_members.length-1){inp.value=share;assigned+=share;}
+    else inp.value=total-assigned;
+  });
+  updateEditSplitTotal();
+}
+
+function buildEditSplitPayload(total,payerId){
+  if(!total||!_members.length)return null;
+  const mode=document.getElementById('edit-splitMode').value;
+  if(mode==='equal')return null; // implicite
+  if(mode==='advance'){
+    if(!payerId)return null;
+    const others=_members.filter(m=>m.id!==payerId);
+    if(!others.length)return null;
+    const share=total/others.length;
+    const shares={};
+    others.forEach(m=>{shares[m.id]=Math.round(share);});
+    // Mode "avance" = le payeur n'a aucune part (les autres lui doivent tout)
+    return {mode:'advance',shares};
+  }
+  if(mode==='manual'){
+    const shares={};
+    document.querySelectorAll('[data-edit-split-member]').forEach(inp=>{
+      const v=parseFloat(inp.value)||0;
+      if(v>0)shares[inp.dataset.editSplitMember]=v;
+    });
+    if(!Object.keys(shares).length)return null;
+    return {mode:'manual',shares};
+  }
+  return null;
+}
+
+async function saveEdit(){
+  const id=document.getElementById('edit-id').value;
+  const liters=parseFloat(document.getElementById('edit-liters').value);
+  const dist=parseFloat(document.getElementById('edit-dist').value)||null;
+  const price=parseFloat(document.getElementById('edit-price').value)||null;
+  const total=parseFloat(document.getElementById('edit-total').value)||(liters&&price?Math.round(liters*price):null);
+  let note=document.getElementById('edit-note').value.trim()||null;
+  const type=document.getElementById('edit-type').value;
+  const fullTank=document.getElementById('edit-full-tank').checked&&type==='refuel';
+  const pax=parseInt(document.getElementById('edit-pax').value)||null;
+  const weight=parseFloat(document.getElementById('edit-weight')?.value)||null;
+  const category=document.getElementById('edit-category')?.value||null;
+  const paidBy=document.getElementById('edit-paid-by').value||null;
+  const dateStr=document.getElementById('edit-date').value;
+  const createdAt=dateStr?new Date(dateStr).toISOString():undefined;
+
+  // Nettoyer SPLIT:{...} de l'ancienne note
+  if(note)note=note.replace(/\s*SPLIT:\{[^}]*\}\s*/g,' ').replace(/\s+/g,' ').trim()||null;
+
+  // Calculer le nouveau split
+  const splitPayload=buildEditSplitPayload(total,paidBy);
+
+  const update={
+    type,
+    liters:isNaN(liters)?null:liters,
+    distance_nm:dist,price,total_price:total,note,
+    full_tank:fullTank,pax,weight_kg:weight
+  };
+  if(category!==null)update.category=category||null;
+  if(createdAt)update.created_at=createdAt;
+  update.paid_by=paidBy||null;
+  // Réinitialiser le split en base : null si mode 'equal', sinon l'objet
+  update.split=splitPayload;
+
+  document.getElementById('edit-txt').innerHTML='<span class="spin"></span>';
+  let {error}=await sb.from('boat_fuel_logs').update(update).eq('id',id);
+  // Fallback : si la colonne 'split' n'existe pas, encoder dans note
+  if(error&&/split/i.test(error.message||'')){
+    delete update.split;
+    if(splitPayload){
+      update.note=(update.note?update.note+' · ':'')+'SPLIT:'+JSON.stringify(splitPayload);
+    }
+    const r2=await sb.from('boat_fuel_logs').update(update).eq('id',id);
+    error=r2.error;
+  }
+  document.getElementById('edit-txt').textContent='Sauvegarder';
+  if(error)return toast('Erreur: '+error.message,'err');
+  modal('editModal',false);toast('Log modifié ✅');loadLogs();
+}
+
+// Supprimer depuis la modal d'édition
+async function deleteFromEdit(){
+  const id=document.getElementById('edit-id').value;
+  if(!id)return;
+  if(!confirm('Supprimer ce log définitivement ?'))return;
+  const {error}=await sb.from('boat_fuel_logs').delete().eq('id',id);
+  if(error)return toast('Erreur: '+error.message,'err');
+  modal('editModal',false);
+  toast('Log supprimé');
+  loadLogs();
+}
+function openDel(id){document.getElementById('del-id').value=id;modal('delModal',true);}
+async function doDelete(){
+  const id=document.getElementById('del-id').value;
+  document.getElementById('del-txt').innerHTML='<span class="spin"></span>';
+  const {error}=await sb.from('boat_fuel_logs').delete().eq('id',id);
+  document.getElementById('del-txt').textContent='Supprimer';
+  if(error)return toast('Erreur: '+error.message,'err');
+  modal('delModal',false);toast('Log supprimé');loadLogs();
+}
+
+// ══ BIDONS ═══════════════════════════════════════════════════════════════════
+function saveBidons(){
+  localStorage.setItem('marine-bidons',JSON.stringify(_bidons));
+  // Rafraîchir le sélecteur bidon dans le formulaire si on est sur l'onglet Ajouter
+  if(document.getElementById('tab-add')?.classList.contains('active')){
+    const logType=document.getElementById('logType')?.value;
+    if(logType==='bidon_fill')refreshBidonTargetSelect();
+  }
+  // Rafraîchir les logs (jauge bidon inline) si tab-log visible
+  if(document.getElementById('tab-log')?.classList.contains('active'))renderLogs();
+  // Invalider les graphes (le stock bidon change) → ils se rafraîchiront au prochain clic
+  _chartsDirty=true;
+  if(document.getElementById('tab-charts')?.classList.contains('active'))renderCharts();
+}
+
+function renderBidons(){
+  const row=document.getElementById('bidons-row');
+  if(!_bidons.length){
+    row.innerHTML='<div class="empty" style="padding:20px"><span class="eico">🛢</span>Aucun bidon — cliquez "+ Bidon"</div>';
+    document.getElementById('bidons-total').textContent='0 L';
+    document.getElementById('bidons-sub').textContent='';
+    return;
+  }
+  const totalL=_bidons.reduce((s,b)=>s+b.level,0);
+  const totalCap=_bidons.reduce((s,b)=>s+b.cap,0);
+
+  row.innerHTML=_bidons.map((b,i)=>{
+    const pct=b.cap>0?b.level/b.cap:0;
+    // SVG bidon dessiné
+    const svg=drawBidonSVG(b.cap,b.level,pct);
+    return `<div class="bidon" onclick="editBidonLevel(${i})">
+      ${svg}
+      <div class="bidon-val">${b.level.toFixed(1)} / ${b.cap} L</div>
+      <div class="bidon-lbl">${b.note||b.cap+'L'}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('bidons-total').textContent=totalL.toFixed(1)+' L / '+totalCap+' L';
+  document.getElementById('bidons-sub').textContent=_bidons.length+' bidon(s)';
+
+  updateBidonSourceSelect();
+}
+
+function drawBidonSVG(cap,level,pct){
+  // Bidon dessiné en SVG : corps arrondi avec liquide proportionnel
+  const H=90, W=50;
+  const bodyTop=18, bodyH=H-bodyTop-8;
+  const fillH=Math.max(0,bodyH*pct);
+  const fillY=bodyTop+bodyH-fillH;
+  const col=pct>0.5?'#0ea5e9':pct>0.25?'#f59e0b':'#f43f5e';
+  const colLight=pct>0.5?'rgba(14,165,233,.3)':pct>0.25?'rgba(245,158,11,.3)':'rgba(244,63,94,.3)';
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    <!-- Bouchon -->
+    <rect x="18" y="6" width="14" height="10" rx="3" fill="#234070"/>
+    <rect x="20" y="8" width="10" height="6" rx="2" fill="#1b3050"/>
+    <!-- Corps bidon -->
+    <rect x="4" y="${bodyTop}" width="${W-8}" height="${bodyH}" rx="8" fill="#111f35" stroke="#234070" stroke-width="1.5"/>
+    <!-- Liquide -->
+    <clipPath id="bc${cap}${Math.round(level)}">
+      <rect x="4" y="${bodyTop}" width="${W-8}" height="${bodyH}" rx="8"/>
+    </clipPath>
+    <rect x="4" y="${fillY}" width="${W-8}" height="${fillH}" fill="${col}" opacity=".7" clip-path="url(#bc${cap}${Math.round(level)})"/>
+    <!-- Reflet -->
+    <rect x="10" y="${bodyTop+4}" width="6" height="${bodyH-8}" rx="3" fill="white" opacity=".06"/>
+    <!-- Niveau texte -->
+    <text x="${W/2}" y="${bodyTop+bodyH/2+4}" text-anchor="middle" font-size="9" font-family="DM Mono,monospace" fill="${colLight}" font-weight="500">${Math.round(pct*100)}%</text>
+    <!-- Poignée -->
+    <rect x="${W-10}" y="${bodyTop+8}" width="7" height="${bodyH-16}" rx="3.5" fill="#1b3050" stroke="#234070" stroke-width="1"/>
+  </svg>`;
+}
+
+function openAddBidon(){modal('bidonModal',true);}
+// Remplir un bidon
+function updateFillBidonSelect(){
+  const sel=document.getElementById('bidon-fill-src');
+  if(!sel)return;
+  sel.innerHTML=_bidons.length
+    ?_bidons.map((b,i)=>`<option value="${i}">${b.note||b.cap+'L'} (${b.level.toFixed(1)}/${b.cap}L)</option>`).join('')
+    :'<option value="">Aucun bidon</option>';
+}
+
+function fillBidon(){
+  const idx=parseInt(document.getElementById('bidon-fill-src').value);
+  const l=parseFloat(document.getElementById('bidon-fill-l').value)||0;
+  const price=parseFloat(document.getElementById('bidon-fill-price').value)||null;
+  const note=document.getElementById('bidon-fill-note').value.trim()||'Remplissage bidon';
+  if(isNaN(idx)||l<=0)return toast('Valeur invalide','err');
+  const b=_bidons[idx];
+  const space=b.cap-b.level;
+  if(l>space+0.5)return toast(`Max ${space.toFixed(1)}L disponible dans ce bidon`,'err');
+  const actualL=Math.min(l,space);
+  addBidonLog(idx,+actualL,b,note+(price?' @ '+price+' XPF/L':''));
+  _bidons[idx].level=Math.min(b.cap,b.level+actualL);
+  saveBidons();
+  ['bidon-fill-l','bidon-fill-price','bidon-fill-note'].forEach(id=>document.getElementById(id).value='');
+  renderBidons();
+  toast(`Bidon rempli +${actualL.toFixed(1)}L ✅`);
+}
+
+// Rendu inline (tab-log)
+function renderBidonsInline(){
+  const row=document.getElementById('bidons-inline-row');
+  const wrap=document.getElementById('bidons-inline');
+  if(!row||!wrap)return;
+  if(!_bidons.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  const totalL=_bidons.reduce((s,b)=>s+b.level,0);
+  row.innerHTML=_bidons.map((b,i)=>{
+    const pct=b.level/b.cap;
+    return drawBidonSVG(b.cap,b.level,pct)+'<div style="font-size:.62rem;font-family:var(--mono);color:var(--muted2);text-align:center;margin-top:2px">'+b.level.toFixed(0)+'L</div>';
+  }).join('');
+  document.getElementById('bidons-inline-total').textContent=totalL.toFixed(1)+' L';
+  // FOB total = réservoir + bidons
+  if(estimatedLevel!==null&&boat?.tank_l){
+    const fobTotal=estimatedLevel+totalL;
+    document.getElementById('fob-total-lbl').textContent='FOB total: '+fobTotal.toFixed(0)+'L';
+    document.getElementById('fob-total-lbl').style.color=fobTotal>boat.tank_l*0.5?'var(--green)':'var(--warn)';
+  }
+}
+
+function saveBidon(){
+  const cap=parseFloat(document.getElementById('bidon-cap').value)||20;
+  const rawLevel=document.getElementById('bidon-level').value;
+  const level=rawLevel!==''?parseFloat(rawLevel):cap;
+  const price=parseFloat(document.getElementById('bidon-price').value)||null;
+  const note=document.getElementById('bidon-note').value.trim()||null;
+  const dateStr=document.getElementById('bidon-date').value;
+  const added=dateStr?new Date(dateStr).toISOString():new Date().toISOString();
+  _bidons.push({id:'b'+Date.now(),cap,level,price,note,added});
+  saveBidons();
+  modal('bidonModal',false);
+  ['bidon-level','bidon-price','bidon-note'].forEach(id=>document.getElementById(id).value='');
+  renderBidons();
+  toast('Bidon ajouté ✅');
+}
+
+function editBidonLevel(idx){
+  const b=_bidons[idx];
+  const choice=prompt(`Bidon ${b.cap}L — Niveau: ${b.level.toFixed(1)}L\n\nQue voulez-vous faire ?\n  1 = Corriger le niveau\n  2 = Changer la capacité\n  3 = Modifier la note\n  4 = Supprimer ce bidon\n\nTapez 1, 2, 3 ou 4 :`);
+  if(!choice)return;
+  if(choice==='1'){
+    const newL=prompt('Nouveau niveau (L) :',b.level);
+    if(newL===null)return;
+    const v=parseFloat(newL);
+    if(isNaN(v)||v<0||v>b.cap)return toast('Valeur invalide (0-'+b.cap+'L)','err');
+    const diff=v-b.level;
+    addBidonLog(idx,diff,b,'Correction niveau');
+    _bidons[idx].level=v;
+  }else if(choice==='2'){
+    const newCap=prompt('Nouvelle capacité (L) :',b.cap);
+    if(newCap===null)return;
+    const v=parseFloat(newCap);
+    if(isNaN(v)||v<=0)return toast('Valeur invalide','err');
+    _bidons[idx].cap=v;
+    if(_bidons[idx].level>v)_bidons[idx].level=v;
+  }else if(choice==='3'){
+    const newNote=prompt('Note :',b.note||'');
+    if(newNote===null)return;
+    _bidons[idx].note=newNote;
+  }else if(choice==='4'){
+    if(!confirm('Supprimer ce bidon '+b.cap+'L ?'))return;
+    _bidons.splice(idx,1);
+  }else{return;}
+  saveBidons();
+  renderBidons();
+  toast('Bidon mis à jour');
+}
+
+let _bidonLogs=[];
+try{_bidonLogs=JSON.parse(localStorage.getItem('marine-bidon-logs')||'[]');}catch(e){}
+
+function addBidonLog(bidonIdx,deltaL,bidon,note){
+  _bidonLogs.unshift({
+    id:'bl'+Date.now(),
+    date:new Date().toISOString(),
+    bidonIdx,deltaL,cap:bidon.cap,note
+  });
+  if(_bidonLogs.length>100)_bidonLogs.pop();
+  localStorage.setItem('marine-bidon-logs',JSON.stringify(_bidonLogs));
+  renderBidonLogs();
+}
+
+function renderBidonLogs(){
+  const el=document.getElementById('bidon-log-list');
+  if(!_bidonLogs.length){el.innerHTML='<div class="empty"><span class="eico">🛢</span>Aucun mouvement</div>';return;}
+  el.innerHTML=_bidonLogs.slice(0,30).map((l,i)=>{
+    const col=l.deltaL>0?'var(--green)':l.deltaL<0?'var(--red)':'var(--muted)';
+    const sign=l.deltaL>0?'+':'';
+    return `<div class="log-item">
+      <span class="log-badge b-bidon">🛢 ${l.cap}L</span>
+      <div class="log-body">
+        <div class="log-main" style="color:${col}">${sign}${l.deltaL.toFixed(1)} L</div>
+        <div class="log-sub">${l.note||''}</div>
+      </div>
+      <div class="log-meta">
+        <div class="log-date">${fmtDate(l.date)}</div>
+        <div class="log-actions">
+          <button class="btn btn-warn-soft btn-xs" onclick="editBidonLog(${i})">✏️</button>
+          <button class="btn btn-danger-soft btn-xs" onclick="deleteBidonLog(${i})">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Éditer un log de bidon (date + delta + note)
+function editBidonLog(idx){
+  const l=_bidonLogs[idx];if(!l)return;
+  const newDateStr=prompt('Date (YYYY-MM-DD HH:MM)',new Date(l.date).toISOString().slice(0,16).replace('T',' '));
+  if(newDateStr===null)return;
+  const newDelta=prompt('Delta L (+ ajout, - retrait)',l.deltaL);
+  if(newDelta===null)return;
+  const newNote=prompt('Note',l.note||'');
+  if(newNote===null)return;
+  try{
+    _bidonLogs[idx].date=new Date(newDateStr.replace(' ','T')).toISOString();
+    _bidonLogs[idx].deltaL=parseFloat(newDelta);
+    _bidonLogs[idx].note=newNote;
+    localStorage.setItem('marine-bidon-logs',JSON.stringify(_bidonLogs));
+    renderBidonLogs();
+    toast('Log bidon modifié ✅');
+  }catch(e){toast('Erreur: date invalide','err');}
+}
+
+function deleteBidonLog(idx){
+  if(!confirm('Supprimer ce log bidon ?'))return;
+  _bidonLogs.splice(idx,1);
+  localStorage.setItem('marine-bidon-logs',JSON.stringify(_bidonLogs));
+  renderBidonLogs();
+  toast('Log bidon supprimé');
+}
+
+function updateBidonSourceSelect(){
+  const sel=document.getElementById('bidon-pour-src');
+  if(!sel)return;
+  sel.innerHTML=_bidons.length
+    ?_bidons.map((b,i)=>`<option value="${i}">${b.note||b.cap+'L bidon'} (${b.level.toFixed(1)}L dispo)</option>`).join('')
+    :'<option value="">Aucun bidon</option>';
+}
+
+async function pourBidon(){
+  if(!boat)return toast('Pas de bateau sélectionné','err');
+  const idx=parseInt(document.getElementById('bidon-pour-src').value);
+  const l=parseFloat(document.getElementById('bidon-pour-l').value)||0;
+  if(isNaN(idx)||l<=0)return toast('Valeur invalide','err');
+  const b=_bidons[idx];
+  if(l>b.level)return toast(`Impossible: bidon contient seulement ${b.level.toFixed(1)}L`,'err');
+
+  // Log dans Supabase (type 'pour' = versement bidon→réservoir)
+  const {error}=await sb.from('boat_fuel_logs').insert({
+    boat_id:boat.id,user_id:user.id,type:'pour',liters:l,
+    note:`Versé bidon ${b.cap}L dans réservoir`
+  });
+  if(error)return toast('Erreur: '+error.message,'err');
+
+  // Mettre à jour bidon local
+  addBidonLog(idx,-l,b,`Versé dans réservoir ${boat.name}`);
+  _bidons[idx].level=Math.max(0,b.level-l);
+  saveBidons();
+  document.getElementById('bidon-pour-l').value='';
+  renderBidons();
+  loadLogs();
+  toast(`${l}L versé dans le réservoir ✅`);
+}
+
+// ══ GRAPHES ═══════════════════════════════════════════════════════════════════
+let _chartPeriod='all'; // 'all' | '3m' | '1m'
+function renderCharts(){
+  const el=document.getElementById('charts-container');
+  if(!allLogs.length){el.innerHTML='<div class="empty" style="padding:60px"><span class="eico">📊</span>Pas encore de données</div>';return;}
+
+  Object.values(chartInstances).forEach(c=>{try{c.destroy();}catch(e){}});
+  chartInstances={};
+
+  const CD={color:'rgba(255,255,255,.55)',font:{family:'DM Mono,monospace',size:11}};
+  const GO={color:'rgba(255,255,255,.04)',borderColor:'rgba(255,255,255,.06)'};
+  const TOOLTIP_BASE={backgroundColor:'rgba(10,20,36,.96)',borderColor:'rgba(56,189,248,.25)',borderWidth:1,padding:12,titleFont:{family:'DM Mono',size:11},bodyFont:{family:'DM Mono',size:11},cornerRadius:10};
+
+  // ── Period filter ──
+  const now=new Date();
+  function inPeriod(dateStr){
+    if(_chartPeriod==='all') return true;
+    const d=new Date(dateStr);
+    const months=_chartPeriod==='3m'?3:1;
+    const cutoff=new Date(now);cutoff.setMonth(cutoff.getMonth()-months);
+    return d>=cutoff;
+  }
+
+  const filteredLogs=allLogs.filter(l=>inPeriod(l.created_at));
+  const cruises=[...filteredLogs].filter(l=>l.type==='cruise'&&l.liters>0).reverse();
+  const refuels=[...filteredLogs].filter(l=>l.type==='refuel'&&l.liters>0).reverse();
+  const bidonFills=[...filteredLogs].filter(l=>l.type==='bidon_fill'&&l.liters>0).reverse();
+  const withDist=cruises.filter(l=>l.distance_nm);
+  const navs=filteredLogs.filter(l=>l.type==='nav');
+  const allWithDist=filteredLogs.filter(l=>(l.type==='cruise'||l.type==='nav')&&l.distance_nm);
+
+  const totalConsumed=cruises.reduce((s,l)=>s+(l.liters||0),0);
+  const totalRefueled=refuels.reduce((s,l)=>s+(l.liters||0),0);
+  const totalNm=allWithDist.reduce((s,l)=>s+l.distance_nm,0);
+  const avgLnm=withDist.length?(withDist.reduce((s,l)=>s+l.liters,0)/withDist.reduce((s,l)=>s+l.distance_nm,0)).toFixed(2):null;
+  const measured=cruises.filter(l=>l.distance_nm&&l.liters);
+  const measuredWithLoad=measured.filter(l=>l.weight_kg||l.pax);
+
+  // ── Balance (always computed on allLogs, not filtered) ──
+  function getLogSplit(l){if(l.split&&typeof l.split==='object')return l.split;if(l.note&&l.note.includes('SPLIT:')){try{const m=l.note.match(/SPLIT:(\{.*?\})(?:\s|$)/);if(m)return JSON.parse(m[1]);}catch(e){}}return null;}
+  function isReimburseLog(l){return l.type==='reimburse'||(l.note&&l.note.includes('__REMB__'));}
+  function isShareable(l){if(isReimburseLog(l))return false;if(!l.total_price||l.total_price<=0)return false;return l.type==='refuel'||l.type==='bidon_fill'||l.type==='cruise'||l.type==='expense';}
+  function computeShares(l){const total=l.total_price;const split=getLogSplit(l);if(split&&split.shares){const out={};_members.forEach(m=>{out[m.id]=split.shares[m.id]||0;});return out;}const out={};_members.forEach(m=>{out[m.id]=total/_members.length;});return out;}
+  const knownIds=new Set(_members.map(m=>m.id));
+  const unknownPayerIds=new Set();
+  let totalGlobal=0,unattributed=0;
+  const paid={},owed={};
+  _members.forEach(m=>{paid[m.id]=0;owed[m.id]=0;});
+  allLogs.forEach(l=>{if(!isShareable(l))return;const total=l.total_price;totalGlobal+=total;const payer=l.paid_by;if(payer&&knownIds.has(payer)){paid[payer]+=total;}else{if(payer&&!knownIds.has(payer))unknownPayerIds.add(payer);unattributed+=total;}const shares=computeShares(l);Object.entries(shares).forEach(([uid,amt])=>{if(owed[uid]!==undefined)owed[uid]+=amt;});});
+  const fairShare=_members.length?totalGlobal/_members.length:0;
+  const reimbursed={};_members.forEach(m=>{reimbursed[m.id]={};});
+  allLogs.forEach(l=>{if(!isReimburseLog(l)||!l.total_price)return;const from=l.paid_by;if(!from||!knownIds.has(from))return;const others=_members.filter(m=>m.id!==from);if(!others.length)return;const to=others[0].id;reimbursed[from][to]=(reimbursed[from][to]||0)+l.total_price;});
+  const balance={};
+  _members.forEach(m=>{const meId=m.id;let rembOut=0,rembIn=0;_members.forEach(other=>{if(other.id===meId)return;rembOut+=(reimbursed[meId][other.id]||0);rembIn+=(reimbursed[other.id][meId]||0);});balance[meId]={paid:paid[meId],owed:owed[meId],fairShare,rembOut,rembIn,total:(paid[meId]-owed[meId])+(rembOut-rembIn)};});
+  const totalReimbursed=Object.values(reimbursed).reduce((s,o)=>s+Object.values(o).reduce((ss,v)=>ss+v,0),0);
+  const totalBoatExpense=totalGlobal;
+
+  // ── Balance transfers ──
+  const rows=_members.map(m=>({m,...balance[m.id]}));
+  const debtors=rows.filter(r=>r.total<-1).sort((a,b)=>a.total-b.total);
+  const creditors=rows.filter(r=>r.total>1).sort((a,b)=>b.total-a.total);
+  const transfers=[];
+  const debCopy=debtors.map(r=>({...r,rem:-r.total}));
+  const credCopy=creditors.map(r=>({...r,rem:r.total}));
+  let di=0,ci=0;
+  while(di<debCopy.length&&ci<credCopy.length){
+    const amt=Math.min(debCopy[di].rem,credCopy[ci].rem);
+    if(amt>1)transfers.push({from:debCopy[di].m.label,to:credCopy[ci].m.label,amt:Math.round(amt)});
+    debCopy[di].rem-=amt;credCopy[ci].rem-=amt;
+    if(debCopy[di].rem<1)di++;if(credCopy[ci].rem<1)ci++;
+  }
+
+  // ── Bidon display ──
+  const totalBidonFilled=allLogs.filter(l=>l.type==='bidon_fill').reduce((s,l)=>s+(l.liters||0),0);
+  const totalPoured=allLogs.filter(l=>l.type==='pour').reduce((s,l)=>s+(l.liters||0),0);
+  const bidonDisplay=_bidons.length>0?_bidons.reduce((s,b)=>s+b.level,0):Math.max(0,totalBidonFilled-totalPoured);
+
+  // ── KPI data ──
+  const kpis=[
+    {ico:'⚡',val:avgLnm??'—',unit:'L/nm',lbl:'Conso moyenne',sub:withDist.length+' sortie(s) mesurée(s)',col:'#38bdf8',pct:avgLnm?Math.min(1,avgLnm/5):0},
+    {ico:'🔥',val:Math.round(totalConsumed)||'—',unit:'L',lbl:'Consommés',sub:cruises.length+' sortie(s) avec mesure',col:'#f43f5e',pct:totalRefueled?Math.min(1,totalConsumed/totalRefueled):0},
+    {ico:'⛽',val:Math.round(totalRefueled)||'—',unit:'L',lbl:'Ravitaillés',sub:refuels.length+' plein(s) réservoir',col:'#10b981',pct:.8},
+    {ico:'🧭',val:Math.round(totalNm)||'—',unit:'nm',lbl:'Milles parcourus',sub:allWithDist.length+'/'+(cruises.length+navs.length)+' sorties tracées',col:'#a78bfa',pct:1},
+    {ico:'💰',val:totalBoatExpense?fmt(Math.round(totalBoatExpense)):'—',unit:'XPF',lbl:'Total partagé',sub:'part : '+fmt(Math.round(fairShare))+' / membre',col:'#f59e0b',pct:.6},
+    {ico:'🛢',val:bidonDisplay.toFixed(0),unit:'L',lbl:'En bidons',sub:_bidons.length+' bidon(s) en stock',col:'#a78bfa',pct:_bidons.length?bidonDisplay/(_bidons.reduce((s,b)=>s+b.cap,0)||1):0},
+  ];
+
+  // ── Allravi ──
+  const allRavi=[
+    ...refuels.map(l=>({...l,_kind:'pompe'})),
+    ...bidonFills.map(l=>({...l,_kind:'bidon'}))
+  ].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+
+  // ── Build HTML ──
+  el.innerHTML=`
+  <div class="charts-stack">
+
+    <!-- Period filter -->
+    <div class="period-filter">
+      <button class="pf-btn ${_chartPeriod==='all'?'active':''}" onclick="_chartPeriod='all';renderCharts()">Tout</button>
+      <button class="pf-btn ${_chartPeriod==='3m'?'active':''}" onclick="_chartPeriod='3m';renderCharts()">3 mois</button>
+      <button class="pf-btn ${_chartPeriod==='1m'?'active':''}" onclick="_chartPeriod='1m';renderCharts()">1 mois</button>
+    </div>
+
+    <!-- KPI strip -->
+    <div class="kpi-strip">
+      ${kpis.map(k=>`
+      <div class="kpi">
+        <span class="kpi-ico">${k.ico}</span>
+        <div class="kpi-val" style="color:${k.col}">${k.val}<span style="font-size:.75rem;opacity:.6;margin-left:3px">${k.unit}</span></div>
+        <div class="kpi-lbl">${k.lbl}</div>
+        <div class="kpi-sub">${k.sub}</div>
+        <div class="kpi-bar" style="background:${k.col};width:${Math.round((k.pct||0)*100)}%;min-width:4px"></div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Conso vs charge -->
+    <div class="ccard">
+      <div class="ccard-head">
+        <div class="ccard-title">Consommation vs charge</div>
+        <div class="ccard-sub">${measuredWithLoad.length} point(s)</div>
+      </div>
+      <div class="ccard-meta">
+        <span><span class="chart-legend-dot" style="background:#38bdf8"></span>Sortie mesurée</span>
+        <span><span class="chart-legend-dot" style="background:rgba(245,158,11,.7);"></span>Tendance</span>
+      </div>
+      ${measuredWithLoad.length>=2
+        ?'<div class="chart-wrap" style="height:260px"><canvas id="c-load"></canvas></div><div style="font-size:.62rem;color:var(--muted);margin-top:8px">Axe X = charge totale (kg estimé ou renseigné) · Axe Y = litres / mille nautique</div>'
+        :'<div class="no-data">Besoin d\'au moins 2 sorties avec poids/pax renseigné<br><small>Type "Mesure" → champ Personnes ou Charge</small></div>'}
+    </div>
+
+    <!-- Ravitaillements -->
+    <div class="ccard">
+      <div class="ccard-head">
+        <div class="ccard-title">Ravitaillements</div>
+        <div class="ccard-sub">${allRavi.length} opération(s)</div>
+      </div>
+      <div class="ccard-meta">
+        <span><span class="chart-legend-dot" style="background:#10b981"></span>Pompe (L)</span>
+        <span><span class="chart-legend-dot" style="background:#a78bfa"></span>Bidon (L)</span>
+        <span><span class="chart-legend-dot" style="background:#f59e0b;border-radius:50%"></span>Coût (XPF)</span>
+      </div>
+      ${allRavi.length
+        ?'<div class="chart-wrap" style="height:240px"><canvas id="c-refuel"></canvas></div>'
+        :'<div class="no-data">Aucun ravitaillement enregistré</div>'}
+    </div>
+
+    <!-- Balance -->
+    <div class="ccard">
+      <div class="ccard-head">
+        <div class="ccard-title">Équilibre des comptes</div>
+        <button class="btn btn-ghost btn-xs" onclick="openBalanceInfoModal()">ℹ️</button>
+      </div>
+      ${_members.length&&totalBoatExpense?`
+      <div style="font-size:.65rem;color:var(--muted2);margin-bottom:12px;line-height:1.6">
+        <span style="color:var(--a2);font-family:var(--mono);font-weight:500">${fmt(Math.round(totalBoatExpense))} XPF</span> partagés
+        · part idéale <span style="color:var(--warn);font-family:var(--mono)">${fmt(Math.round(fairShare))} XPF</span>
+        ${totalReimbursed?`· <span style="color:var(--purple);font-family:var(--mono)">${fmt(Math.round(totalReimbursed))} XPF</span> remboursés`:''}
+      </div>
+      <div class="bal-cards">
+        ${rows.map(r=>{
+          const col=r.total>500?'#10b981':r.total<-500?'#f43f5e':'#a78bfa';
+          const sign=r.total>=0?'+':'';
+          const rembNet=r.rembOut-r.rembIn;
+          const dep=r.paid-r.owed;
+          const paidPct=totalBoatExpense?Math.min(1,r.paid/totalBoatExpense):0;
+          return `<div class="bal-card" style="border-color:${r.total>500?'rgba(16,185,129,.25)':r.total<-500?'rgba(244,63,94,.2)':'var(--border)'}">
+            <div class="bal-card-head">
+              <div class="bal-name">${r.m.label}</div>
+              <div class="bal-total" style="color:${col}">${sign}${fmt(Math.round(r.total))} XPF</div>
+            </div>
+            <div class="bal-bar-wrap">
+              <div class="bal-bar-fill" style="width:${Math.round(paidPct*100)}%;background:${col}"></div>
+            </div>
+            <div class="bal-rows">
+              <div class="bal-row">
+                <span class="bal-row-lbl">💰 Payé</span>
+                <span class="bal-row-val" style="color:var(--a2)">${fmt(Math.round(r.paid))} XPF</span>
+              </div>
+              <div class="bal-row">
+                <span class="bal-row-lbl">📐 Sa part</span>
+                <span class="bal-row-val" style="color:var(--warn)">${fmt(Math.round(r.owed))} XPF</span>
+              </div>
+              <div class="bal-row">
+                <span class="bal-row-lbl">📊 Écart</span>
+                <span class="bal-row-val" style="color:${dep>=0?'var(--green)':'var(--red)'}">${dep>=0?'+':''}${fmt(Math.round(dep))} XPF</span>
+              </div>
+              ${rembNet!==0?`<div class="bal-row">
+                <span class="bal-row-lbl">💸 Remb. nets</span>
+                <span class="bal-row-val" style="color:var(--muted2)">${rembNet>=0?'+':''}${fmt(Math.round(rembNet))} XPF</span>
+              </div>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${transfers.length?`
+      <div class="transfers-box" style="margin-top:12px">
+        <div style="font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--a2);margin-bottom:10px">💸 Régularisation à faire</div>
+        ${transfers.map(t=>`<div class="transfer-row">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="transfer-from">${t.from}</span>
+            <span style="color:var(--muted);font-size:.75rem">→</span>
+            <span class="transfer-to">${t.to}</span>
+          </div>
+          <span class="transfer-amt">${fmt(t.amt)} XPF</span>
+        </div>`).join('')}
+      </div>`
+      :'<div style="margin-top:10px;font-size:.75rem;color:var(--green)">✅ Comptes équilibrés</div>'}
+      ${unattributed>0?`<div style="margin-top:10px;padding:8px 10px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:8px;font-size:.68rem;color:var(--warn)">⚠️ <b>${fmt(Math.round(unattributed))} XPF</b> sans payeur identifié</div>`:''}
+      `:'<div class="no-data">Ajoutez "Payé par" dans vos logs pour suivre l\'équilibre</div>'}
+    </div>
+
+  </div>`;
+
+  // ── Scatter chart ──
+  if(measuredWithLoad.length>=2){
+    const points=measuredWithLoad.map(l=>{
+      const load=l.weight_kg||(l.pax?l.pax*80:0);
+      return {x:load,y:+(l.liters/l.distance_nm).toFixed(3),date:fmtDateShort(l.created_at),liters:l.liters,dist:l.distance_nm,pax:l.pax,weight:l.weight_kg,note:l.note};
+    }).sort((a,b)=>a.x-b.x);
+    const n2=points.length,sumX=points.reduce((s,p)=>s+p.x,0),sumY=points.reduce((s,p)=>s+p.y,0),sumXY=points.reduce((s,p)=>s+p.x*p.y,0),sumX2=points.reduce((s,p)=>s+p.x*p.x,0);
+    const denom=n2*sumX2-sumX*sumX;
+    let a=0,b=sumY/n2;
+    if(Math.abs(denom)>1e-6){a=(n2*sumXY-sumX*sumY)/denom;b=(sumY-a*sumX)/n2;}
+    const xMin=Math.min(...points.map(p=>p.x)),xMax=Math.max(...points.map(p=>p.x));
+    chartInstances.load=new Chart(document.getElementById('c-load'),{
+      type:'scatter',
+      data:{datasets:[
+        {label:'Sorties',data:points,backgroundColor:'rgba(56,189,248,.8)',borderColor:'rgba(56,189,248,1)',pointRadius:8,pointHoverRadius:11,borderWidth:1.5},
+        {label:`Tendance`,type:'line',data:[{x:xMin,y:+(a*xMin+b).toFixed(3)},{x:xMax,y:+(a*xMax+b).toFixed(3)}],borderColor:'rgba(245,158,11,.75)',backgroundColor:'transparent',borderDash:[6,4],borderWidth:2,pointRadius:0,fill:false,tension:0}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{...TOOLTIP_BASE,callbacks:{label:ctx=>{
+          if(ctx.datasetIndex===1)return 'Tendance : '+ctx.parsed.y.toFixed(3)+' L/nm';
+          const p=ctx.raw;const lines=['⛽ '+p.y+' L/nm','📐 '+p.liters+'L / '+p.dist+'nm'];
+          if(p.pax)lines.push('👥 '+p.pax+' pers.');if(p.weight)lines.push('⚖️ '+p.weight+'kg');if(p.note)lines.push('📝 '+p.note.slice(0,40));
+          return lines;
+        },title:ctx=>[ctx[0].raw.date||'']}}},
+        scales:{
+          x:{type:'linear',title:{display:true,text:'Charge (kg)',color:'rgba(255,255,255,.4)',font:{size:10}},ticks:{...CD,callback:v=>v+'kg'},grid:GO},
+          y:{title:{display:true,text:'L/nm',color:'rgba(255,255,255,.4)',font:{size:10}},ticks:{...CD,callback:v=>v.toFixed(2)},grid:GO}
+        }}
+    });
+  }
+
+  // ── Bar chart ravitaillements ──
+  if(allRavi.length){
+    chartInstances.refuel=new Chart(document.getElementById('c-refuel'),{
+      type:'bar',
+      data:{
+        labels:allRavi.map(l=>fmtDateShort(l.created_at)+(l.full_tank?' 🎯':'')),
+        datasets:[
+          {label:'Pompe (L)',yAxisID:'y',data:allRavi.map(l=>l._kind==='pompe'?l.liters:null),
+            backgroundColor:allRavi.map(l=>l.full_tank?'rgba(16,185,129,.9)':'rgba(16,185,129,.55)'),
+            borderColor:'rgba(16,185,129,.9)',borderWidth:1,borderRadius:5,borderSkipped:false},
+          {label:'Bidon (L)',yAxisID:'y',data:allRavi.map(l=>l._kind==='bidon'?l.liters:null),
+            backgroundColor:'rgba(167,139,250,.65)',borderColor:'rgba(167,139,250,.9)',borderWidth:1,borderRadius:5,borderSkipped:false},
+          {label:'XPF',type:'line',yAxisID:'y1',data:allRavi.map(l=>l.total_price||null),
+            borderColor:'rgba(245,158,11,.85)',backgroundColor:'rgba(245,158,11,.08)',
+            tension:.35,pointRadius:5,pointBackgroundColor:'rgba(245,158,11,.9)',spanGaps:true,fill:true}
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{...TOOLTIP_BASE,callbacks:{
+          title:ctx=>{const l=allRavi[ctx[0].dataIndex];return fmtDate(l.created_at)+' · '+(l._kind==='pompe'?'⛽ Pompe':'🛢 Bidon')+(l.full_tank?' (plein)':'');},
+          afterBody:ctx=>{const l=allRavi[ctx[0].dataIndex];const info=[];if(l.price)info.push('Prix: '+fmt(l.price)+' XPF/L');if(l.paid_by){const m=_members.find(x=>x.id===l.paid_by);if(m)info.push('Payé: '+m.label);}if(l.note)info.push('📝 '+l.note.slice(0,40));return info;}
+        }}},
+        scales:{
+          x:{ticks:{...CD,maxRotation:40},grid:GO},
+          y:{position:'left',ticks:{...CD,callback:v=>v+'L'},grid:GO,title:{display:true,text:'Litres',color:'rgba(16,185,129,.6)',font:{size:10}}},
+          y1:{position:'right',ticks:{...CD,callback:v=>fmt(v)},grid:{display:false},title:{display:true,text:'XPF',color:'rgba(245,158,11,.6)',font:{size:10}}}
+        }}
+    });
+  }
+  // ── Dépenses chart retiré (fusionné ci-dessus)
+}
+
+// ── Recherche dans les logs ───────────────────────────────────────────────────
+function filterLogs(){
+  const q=(document.getElementById('logSearch')?.value||'').toLowerCase().trim();
+  if(!q){renderLogs();return;}
+  const typeLabels={cruise:'mesure consommation',nav:'sortie navigation',refuel:'plein essence ravitaillement',
+    bidon_fill:'bidon plein',correct:'correction niveau',pour:'versé réservoir',expense:'dépense'};
+  const catLabels={equipment:'équipement',maintenance:'entretien',parking:'parking loyer',transport:'transport voiture',
+    assurance:'assurance',admin:'admin',food:'repas nourriture',other:'autre'};
+  const filtered=allLogs.filter(l=>{
+    const parts=[
+      typeLabels[l.type]||l.type,
+      l.note||'',
+      l.liters!=null?l.liters+'L':'',
+      l.distance_nm!=null?l.distance_nm+'nm':'',
+      l.total_price!=null?l.total_price+'':'',
+      catLabels[l.category]||'',
+      fmtDate(l.created_at)
+    ];
+    if(l.paid_by){const m=_members.find(x=>x.id===l.paid_by);if(m)parts.push(m.label);}
+    return parts.join(' ').toLowerCase().includes(q);
+  });
+  const el=document.getElementById('logList');
+  if(!filtered.length){el.innerHTML='<div class="empty"><span class="eico">🔍</span>Aucun résultat pour "'+q+'"</div>';return;}
+  // Re-use renderLogs logic on filtered set
+  const saved=allLogs;
+  allLogs=filtered;
+  renderLogs();
+  allLogs=saved;
+}
+
+// ── Édition paramètres bateau ─────────────────────────────────────────────────
+function openBoatEditModal(){
+  if(!boat)return;
+  document.getElementById('be-tank').value=boat.tank_l||'';
+  const localEngine=JSON.parse(localStorage.getItem('boat-engine-'+boat.id)||'{}');
+  document.getElementById('be-hp').value=localEngine.hp||'';
+  document.getElementById('be-engine-type').value=localEngine.type||'';
+
+  // Debug : afficher toutes les colonnes de boat pour identifier les champs alias
+  const known=['id','name','tank_l','created_at','updated_at'];
+  const extra=Object.entries(boat).filter(([k])=>!known.includes(k));
+  const debugEl=document.getElementById('be-debug');
+  if(debugEl){
+    if(extra.length){
+      debugEl.innerHTML='<div style="font-size:.6rem;color:var(--muted2);margin-top:14px;font-family:var(--mono)">'+
+        '<b style="color:var(--muted)">Colonnes supplémentaires de la table boats :</b><br>'+
+        extra.map(([k,v])=>`<span style="color:var(--a2)">${k}</span> : ${JSON.stringify(v)}`).join('<br>')+
+      '</div>';
+    }else{
+      debugEl.innerHTML='<div style="font-size:.6rem;color:var(--muted);margin-top:8px">Aucune colonne supplémentaire détectée dans boats (id, name, tank_l, created_at seulement)</div>';
+    }
+  }
+  modal('boatEditModal',true);
+}
+async function saveBoatSettings(){
+  if(!boat)return;
+  const tank=parseFloat(document.getElementById('be-tank').value)||null;
+  const hp=parseFloat(document.getElementById('be-hp').value)||null;
+  const etype=document.getElementById('be-engine-type').value||null;
+  document.getElementById('be-txt').innerHTML='<span class="spin"></span>';
+  // Seul tank_l est un champ connu de la table boats — on ne tente pas engine_hp/type
+  const {error}=await sb.from('boats').update({tank_l:tank}).eq('id',boat.id);
+  document.getElementById('be-txt').textContent='Sauvegarder';
+  if(error)return toast('Erreur: '+error.message,'err');
+  // Moteur stocké localement (champs absents de la table Supabase)
+  localStorage.setItem('boat-engine-'+boat.id,JSON.stringify({hp,type:etype}));
+  boat={...boat,tank_l:tank};
+  modal('boatEditModal',false);
+  toast('Paramètres enregistrés ✅');
+  updateBoatChips();
+  computeFOB();
+}
+
+// ── Import logs bidons depuis CSV ──────────────────────────────────────────────
+// Format CSV attendu: dépenses_et_équilibre avec colonne "quoi" contenant "bidon"
+// ou colonne "essence bidon"
+function importBidonsFromCSV(){
+  // Les données CSV sont parsées et injectées comme logs bidons locaux
+  // Données extraites des CSV uploadés (Cool_Breeze_-_dépenses_et_équilibre.csv)
+  const csvBidonRows=[
+    {date:'2025-07-14',deltaL:+8, cap:8,  note:'essence bidon 8L — 1 250 XPF (payé par Lucas)'},
+    {date:'2026-01-26',deltaL:+10,cap:10, note:'bidon 10L — 1 600 XPF (payé par Lucas)'},
+    {date:'2026-01-29',deltaL:+10,cap:10, note:'bidon vide 10L + bouchon essence — 4 100 XPF (payé par Lucas)'},
+  ];
+  // Données remboursements (essence bidon ou achat bidon)
+  // Détection automatique : lignes avec "bidon" dans le CSV dépenses
+  let added=0;
+  csvBidonRows.forEach(row=>{
+    const exists=_bidonLogs.some(l=>l.note===row.note&&l.date.startsWith(row.date));
+    if(!exists){
+      _bidonLogs.push({id:'csv'+row.date+row.deltaL,date:new Date(row.date).toISOString(),
+        bidonIdx:-1,deltaL:row.deltaL,cap:row.cap||20,note:row.note});
+      added++;
+    }
+  });
+  if(added>0){
+    _bidonLogs.sort((a,b)=>new Date(b.date)-new Date(a.date));
+    localStorage.setItem('marine-bidon-logs',JSON.stringify(_bidonLogs));
+    renderBidonLogs();
+    toast(`${added} log(s) bidon importé(s) depuis CSV ✅`);
+  }else{
+    toast('Logs CSV déjà à jour','ok');
+  }
+}
+
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/surf-journal/sw.js');
+    });
+  }
+</script>
+</body>
+</html>

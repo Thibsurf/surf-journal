@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  width: 280px;
+  background: #060f1e;
+  color: #c8dff0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  padding: 14px;
+}
+h1 {
+  font-size: 13px; font-weight: 700; color: #4fa3c7;
+  margin-bottom: 12px; display: flex; align-items: center; gap: 7px;
+}
+h1 a { color: inherit; text-decoration: none; }
+h1 a:hover { color: #7fd4ff; }
+.wave { display: inline-block; animation: bob 2.4s ease-in-out infinite; }
+@keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+
+.card {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 8px;
+  padding: 8px 11px;
+  margin-bottom: 7px;
+}
+.lbl {
+  font-size: 10px; color: #7a94aa;
+  text-transform: uppercase; letter-spacing: .04em;
+  margin-bottom: 3px;
+}
+.val { font-size: 11px; }
+
+.ok   { color: #3dba8a; }
+.warn { color: #e8a057; }
+.bad  { color: #e05c5c; }
+
+#tok-preview {
+  font-size: 9px; color: #4fa3c7;
+  background: rgba(79,163,199,.08);
+  border: 1px solid rgba(79,163,199,.15);
+  border-radius: 5px; padding: 3px 7px; margin-top: 5px;
+  cursor: pointer; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  font-family: monospace;
+}
+#tok-preview:hover { background: rgba(79,163,199,.2); }
+#tok-preview::after { content: ' 📋'; opacity: .5; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+button {
+  display: block; width: 100%; padding: 9px;
+  border-radius: 7px; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 600; margin-bottom: 6px;
+  transition: opacity .15s, background .15s;
+}
+button:disabled { opacity: .35; cursor: default; }
+
+#bopen {
+  background: rgba(79,163,199,.18);
+  color: #6ab4d4;
+  border: 1px solid rgba(79,163,199,.35);
+}
+#bopen:hover:not(:disabled) { background: rgba(79,163,199,.3); }
+
+#bsync {
+  background: rgba(61,186,138,.13);
+  color: #3dba8a;
+  border: 1px solid rgba(61,186,138,.35);
+}
+#bsync:hover:not(:disabled) { background: rgba(61,186,138,.25); }
+
+#msg {
+  font-size: 10px; text-align: center;
+  min-height: 14px; color: #3dba8a;
+  padding: 2px 0;
+}
+
+.hint {
+  font-size: 9px; color: rgba(122,148,170,.6);
+  text-align: center; margin-top: 4px; line-height: 1.4;
+}
+</style>
+</head>
+<body>
+
+<h1>
+  <span class="wave">🌊</span>
+  <a href="https://thibsurf.github.io/surf-journal/previsions.html" target="_blank">NC Surf Token v10</a>
+  <a href="https://thibsurf.github.io/surf-journal/extension-guide.html" target="_blank" title="Guide d'installation" style="font-size:13px;color:#7a94aa;text-decoration:none;margin-left:4px;">❓</a>
+</h1>
+
+<!-- Statut token local -->
+<div class="card">
+  <div class="lbl">Token local</div>
+  <div id="st" class="val warn">Lecture…</div>
+  <div id="tok-preview" style="display:none" title="Cliquer pour copier"></div>
+</div>
+
+<!-- Détails (caché si pas de token) -->
+<div class="card" id="info" style="display:none">
+  <div class="grid2">
+    <div>
+      <div class="lbl">Expiration</div>
+      <div id="expiry" class="val">—</div>
+    </div>
+    <div>
+      <div class="lbl">Source · âge</div>
+      <div id="src" class="val" style="color:#7a94aa;font-size:10px">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Statut Worker -->
+<div class="card">
+  <div class="lbl">Sync cloud</div>
+  <div id="worker-st" class="val" style="font-size:11px;color:#7a94aa">Vérification…</div>
+</div>
+
+<!-- Actions -->
+<button id="bopen">🔄 Capturer / Renouveler</button>
+<button id="bsync">☁ Sync → Worker</button>
+
+<div id="msg"></div>
+<div class="hint">
+  Auto-renouvellement toutes les 20 min<br>
+  Sync worker toutes les 10 min 
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

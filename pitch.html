@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surf NC — Présentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --ocean:#060f1e;--deep:#0c1c32;--card:#0f2240;--mid:#162d4a;
+  --accent:#4fa3c7;--green:#3dba8a;--warm:#e8a057;--purple:#a99ff8;--red:#e05c5c;
+  --text:#dde8f0;--muted:#7a94aa;--faint:#2e4a62;
+  --r:14px;
+}
+html{scroll-behavior:smooth;}
+body{font-family:'Sora',sans-serif;background:var(--ocean);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* ── FOND ANIMÉ ── */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%,rgba(79,163,199,.08) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 110%,rgba(61,186,138,.06) 0%,transparent 60%),
+    radial-gradient(ellipse 40% 30% at 50% 50%,rgba(169,159,248,.04) 0%,transparent 70%);
+}
+
+/* ── VAGUES SVG EN BAS DU HERO ── */
+.wave-divider{display:block;width:100%;margin-top:-2px;}
+
+/* ── HEADER ── */
+header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(6,15,30,.85);backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(79,163,199,.12);
+  padding:0 2rem;height:56px;
+  display:flex;align-items:center;gap:1rem;
+}
+.logo{font-size:.95rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;}
+.logo-wave{font-size:1.4rem;animation:bob 2.8s ease-in-out infinite;}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.header-url{
+  margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--accent);background:rgba(79,163,199,.1);
+  border:1px solid rgba(79,163,199,.25);border-radius:20px;
+  padding:3px 12px;text-decoration:none;transition:.2s;
+}
+.header-url:hover{background:rgba(79,163,199,.2);}
+
+/* ── HERO ── */
+.hero{
+  position:relative;z-index:1;
+  padding:5rem 2rem 3rem;text-align:center;
+  max-width:900px;margin:0 auto;
+}
+.hero-eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);background:rgba(79,163,199,.1);
+  border:1px solid rgba(79,163,199,.25);border-radius:20px;padding:5px 14px;
+  margin-bottom:1.5rem;
+}
+.hero h1{
+  font-size:clamp(2rem,5vw,3.4rem);font-weight:800;line-height:1.15;
+  margin-bottom:1rem;
+}
+.hero h1 em{
+  font-style:normal;
+  background:linear-gradient(135deg,var(--accent),var(--green));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.hero p{
+  font-size:1.1rem;color:var(--muted);max-width:600px;margin:0 auto 2.5rem;
+  font-weight:300;line-height:1.7;
+}
+.hero-cta{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:14px 28px;border-radius:12px;
+  background:linear-gradient(135deg,var(--accent),#3d8fb0);
+  color:#fff;font-weight:700;font-size:1rem;text-decoration:none;
+  box-shadow:0 8px 32px rgba(79,163,199,.3);transition:.2s;
+}
+.hero-cta:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(79,163,199,.4);}
+.hero-sub{
+  margin-top:1rem;font-size:.85rem;color:var(--muted);
+}
+
+/* ── STATS RAPIDES ── */
+.stats-row{
+  position:relative;z-index:1;
+  display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;
+  padding:2rem 2rem 3rem;max-width:800px;margin:0 auto;
+}
+.stat{text-align:center;}
+.stat-num{font-size:2rem;font-weight:800;color:var(--accent);font-family:'JetBrains Mono',monospace;}
+.stat-lbl{font-size:.8rem;color:var(--muted);margin-top:2px;}
+
+/* ── SECTIONS ── */
+.section{position:relative;z-index:1;padding:4rem 1.5rem;max-width:1100px;margin:0 auto;}
+.section-tag{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 10px;border-radius:20px;margin-bottom:1rem;
+}
+.tag-blue{color:var(--accent);background:rgba(79,163,199,.1);border:1px solid rgba(79,163,199,.2);}
+.tag-green{color:var(--green);background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.2);}
+.tag-purple{color:var(--purple);background:rgba(169,159,248,.1);border:1px solid rgba(169,159,248,.2);}
+.tag-warm{color:var(--warm);background:rgba(232,160,87,.1);border:1px solid rgba(232,160,87,.2);}
+
+.section-title{font-size:clamp(1.4rem,3vw,2rem);font-weight:700;line-height:1.25;margin-bottom:.8rem;}
+.section-sub{font-size:.95rem;color:var(--muted);line-height:1.7;max-width:520px;margin-bottom:2rem;}
+
+/* ── FEATURE GRID ── */
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+.feat-card{
+  background:var(--card);border:1px solid rgba(255,255,255,.07);border-radius:var(--r);
+  padding:20px;transition:.25s;
+}
+.feat-card:hover{border-color:rgba(79,163,199,.3);background:rgba(15,34,64,.8);transform:translateY(-2px);}
+.feat-icon{font-size:1.8rem;margin-bottom:12px;}
+.feat-title{font-size:.95rem;font-weight:700;margin-bottom:6px;color:var(--text);}
+.feat-desc{font-size:.82rem;color:var(--muted);line-height:1.6;}
+
+/* ── TOOL CARDS (grande mise en page) ── */
+.tool-block{
+  display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center;
+  margin-bottom:5rem;
+}
+.tool-block.rev{direction:rtl;}
+.tool-block.rev > *{direction:ltr;}
+@media(max-width:720px){.tool-block,.tool-block.rev{grid-template-columns:1fr;direction:ltr;}}
+
+.tool-visual{
+  background:var(--deep);border:1px solid rgba(255,255,255,.07);border-radius:16px;
+  padding:24px;min-height:220px;
+  display:flex;flex-direction:column;gap:10px;
+  position:relative;overflow:hidden;
+}
+.tool-visual::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(79,163,199,.04),transparent 60%);
+  pointer-events:none;
+}
+
+/* Mockup éléments visuels */
+.mock-bar{height:8px;border-radius:4px;background:rgba(79,163,199,.3);}
+.mock-bar.tall{height:24px;}
+.mock-bar.green{background:rgba(61,186,138,.4);}
+.mock-bar.warm{background:rgba(232,160,87,.35);}
+.mock-bar.purple{background:rgba(169,159,248,.35);}
+.mock-row{display:flex;gap:8px;align-items:center;}
+.mock-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.mock-dot.green{background:var(--green);}
+.mock-dot.red{background:var(--red);}
+.mock-dot.warm{background:var(--warm);}
+.mock-txt{height:8px;border-radius:4px;background:rgba(255,255,255,.08);}
+.mock-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:9px;font-weight:700;padding:3px 8px;border-radius:6px;
+  background:rgba(61,186,138,.15);border:1px solid rgba(61,186,138,.3);color:var(--green);
+  font-family:'JetBrains Mono',monospace;white-space:nowrap;
+}
+.mock-card{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+  border-radius:8px;padding:10px 12px;
+}
+.mock-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;}
+.mock-val{font-size:13px;font-weight:700;color:var(--accent);font-family:'JetBrains Mono',monospace;}
+.mock-val.green{color:var(--green);}
+.mock-val.warm{color:var(--warm);}
+
+.chart-mock{display:flex;gap:4px;align-items:flex-end;height:60px;margin-top:8px;}
+.chart-bar{flex:1;border-radius:3px 3px 0 0;min-width:8px;background:rgba(79,163,199,.35);}
+
+/* ── TRICOUNT MOCKUP ── */
+.tc-row{
+  display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;
+}
+.tc-name{font-weight:600;min-width:70px;color:var(--text);}
+.tc-bar{flex:1;height:6px;border-radius:3px;}
+.tc-bar.pos{background:var(--green);}
+.tc-bar.neg{background:var(--red);}
+.tc-amt{font-weight:700;font-family:'JetBrains Mono',monospace;font-size:11px;}
+.tc-amt.pos{color:var(--green);}
+.tc-amt.neg{color:var(--red);}
+
+/* ── EXTENSION MOCKUP ── */
+.ext-popup-mock{
+  width:230px;margin:0 auto;
+  background:#060f1e;border:1px solid rgba(79,163,199,.25);border-radius:12px;
+  overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.6);
+}
+.ext-header{
+  background:rgba(79,163,199,.08);padding:10px 14px;
+  display:flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:700;color:var(--accent);border-bottom:1px solid rgba(79,163,199,.15);
+}
+.ext-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;}
+.ext-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:8px 10px;}
+.ext-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+.ext-val{font-size:10px;color:var(--green);font-weight:700;}
+.ext-btn{
+  width:100%;padding:8px;border-radius:7px;border:1px solid rgba(79,163,199,.35);
+  background:rgba(79,163,199,.15);color:var(--accent);font-size:11px;font-weight:700;
+  text-align:center;margin-top:2px;
+}
+
+/* ── PILLS FEATURES ── */
+.pill-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:1.5rem;}
+.pill{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:.78rem;padding:5px 12px;border-radius:20px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--muted);
+}
+.pill .pi{font-size:.9rem;}
+
+/* ── BANDE SÉPARATRICE ── */
+.divider{
+  position:relative;z-index:1;
+  margin:0;padding:2.5rem 1.5rem;
+  background:rgba(12,28,50,.5);border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05);
+}
+.divider-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:2rem;flex-wrap:wrap;}
+.divider-icon{font-size:2rem;flex-shrink:0;}
+.divider-text{font-size:.9rem;color:var(--muted);line-height:1.6;}
+.divider-text strong{color:var(--text);}
+
+/* ── QUOTE ── */
+.quote-block{
+  position:relative;z-index:1;max-width:700px;margin:3rem auto;
+  text-align:center;padding:0 2rem;
+}
+.quote-text{
+  font-size:1.25rem;font-weight:300;color:var(--text);
+  line-height:1.7;font-style:italic;margin-bottom:1rem;
+}
+.quote-text strong{font-style:normal;font-weight:700;color:var(--accent);}
+
+/* ── FOOTER ── */
+footer{
+  position:relative;z-index:1;
+  border-top:1px solid rgba(255,255,255,.06);
+  padding:2rem 1.5rem;text-align:center;
+  font-size:.8rem;color:var(--muted);
+}
+footer a{color:var(--accent);text-decoration:none;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:600px){
+  .stats-row{gap:1.2rem;}
+  .stat-num{font-size:1.6rem;}
+  header{padding:0 1rem;}
+  .hero{padding:3.5rem 1rem 2rem;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="logo-wave">🌊</span> Surf NC</div>
+  <a href="https://thibsurf.github.io/surf-journal/" target="_blank" class="header-url">thibsurf.github.io/surf-journal</a>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-eyebrow">🏄 Communauté surf · Nouvelle-Calédonie</div>
+  <h1>Tout ce qu'il faut pour<br><em>surfer ensemble</em></h1>
+  <p>Prévisions locales, logbook de sessions, organisation des sorties, partage de frais, suivi carburant. Un seul compte, tous les outils — fait par des surfeurs NC, pour les surfeurs NC.</p>
+  <a href="https://thibsurf.github.io/surf-journal/" target="_blank" class="hero-cta">
+    🚀 Ouvrir le site
+  </a>
+  <div class="hero-sub">Gratuit · Fonctionne sur mobile · Données meteo.nc</div>
+</section>
+
+<!-- STATS -->
+<div class="stats-row">
+  <div class="stat"><div class="stat-num">5</div><div class="stat-lbl">Outils intégrés</div></div>
+  <div class="stat"><div class="stat-num">7j</div><div class="stat-lbl">De prévisions marine</div></div>
+  <div class="stat"><div class="stat-num">100%</div><div class="stat-lbl">Local NC</div></div>
+  <div class="stat"><div class="stat-num">0€</div><div class="stat-lbl">Coût pour toi</div></div>
+</div>
+
+<!-- SÉPARATEUR -->
+<div class="divider">
+  <div class="divider-inner">
+    <div class="divider-icon">📡</div>
+    <div class="divider-text">
+      <strong>Données réelles de meteo.nc</strong> — pas GFS, pas Windguru, pas Windy.<br>
+      Le modèle AROME local calibré pour la Nouvelle-Calédonie : houle, vent, marées, SST, UV. Exactement ce que regarde le prévisionniste de Météo France NC.
+    </div>
+  </div>
+</div>
+
+<!-- ═══ OUTIL 1 — PRÉVISIONS ═══ -->
+<section class="section">
+  <div class="tool-block">
+    <div>
+      <div class="section-tag tag-blue">🌊 Prévisions</div>
+      <h2 class="section-title">Les vraies prévisions,<br>pas les estimations génériques</h2>
+      <p class="section-sub">Accède aux mêmes données que meteo.nc avec une interface pensée pour le surf : histogramme Hs empilé (houle primaire, secondaire, mer de vent), direction, période, puissance, SST, UV, marées et météo locale.</p>
+      <div class="pill-list">
+        <span class="pill"><span class="pi">📊</span> Graphiques interactifs</span>
+        <span class="pill"><span class="pi">🗺️</span> Carte des spots</span>
+        <span class="pill"><span class="pi">🌡️</span> SST & UV</span>
+        <span class="pill"><span class="pi">🌊</span> Marées</span>
+        <span class="pill"><span class="pi">🌐</span> Fallback GFS</span>
+        <span class="pill"><span class="pi">📸</span> Météogramme PNG</span>
+      </div>
+    </div>
+    <div class="tool-visual">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">🌊 Hs — Passe de Dumbéa</div>
+      <div style="display:flex;gap:5px;margin-bottom:8px;">
+        <span style="font-size:9px;background:rgba(61,186,138,.15);color:var(--green);border:1px solid rgba(61,186,138,.3);border-radius:5px;padding:2px 7px;font-weight:700;">🛰 meteo.nc</span>
+        <span style="font-size:9px;background:none;color:var(--muted);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:2px 7px;">🌐 GFS</span>
+      </div>
+      <!-- Simulated chart bars -->
+      <div class="chart-mock">
+        <div class="chart-bar" style="height:18%;background:rgba(26,95,138,.6);"></div>
+        <div class="chart-bar" style="height:28%;background:rgba(26,95,138,.6);"></div>
+        <div class="chart-bar" style="height:45%;background:rgba(26,95,138,.6);"></div>
+        <div class="chart-bar" style="height:60%;background:rgba(26,95,138,.7);"></div>
+        <div class="chart-bar" style="height:80%;background:rgba(26,95,138,.8);"></div>
+        <div class="chart-bar" style="height:95%;background:rgba(26,95,138,.9);"></div>
+        <div class="chart-bar" style="height:85%;background:rgba(106,180,212,.7);"></div>
+        <div class="chart-bar" style="height:70%;background:rgba(106,180,212,.6);"></div>
+        <div class="chart-bar" style="height:55%;background:rgba(106,180,212,.5);"></div>
+        <div class="chart-bar" style="height:40%;background:rgba(26,95,138,.5);"></div>
+        <div class="chart-bar" style="height:30%;background:rgba(26,95,138,.4);"></div>
+        <div class="chart-bar" style="height:22%;background:rgba(26,95,138,.4);"></div>
+        <div class="chart-bar" style="height:35%;background:rgba(26,95,138,.5);"></div>
+        <div class="chart-bar" style="height:50%;background:rgba(26,95,138,.6);"></div>
+        <div class="chart-bar" style="height:65%;background:rgba(26,95,138,.7);"></div>
+        <div class="chart-bar" style="height:75%;background:rgba(106,180,212,.65);"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <div class="mock-card" style="flex:1;">
+          <div class="mock-label">Hs max</div>
+          <div class="mock-val">1.8 m</div>
+        </div>
+        <div class="mock-card" style="flex:1;">
+          <div class="mock-label">Vent</div>
+          <div class="mock-val warm">12 nds</div>
+        </div>
+        <div class="mock-card" style="flex:1;">
+          <div class="mock-label">Période</div>
+          <div class="mock-val green">11 s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ OUTIL 2 — JOURNAL ═══ -->
+<section class="section" style="padding-top:0;">
+  <div class="tool-block rev">
+    <div>
+      <div class="section-tag tag-green">📓 Journal de sessions</div>
+      <h2 class="section-title">Ton logbook,<br>accessible partout</h2>
+      <p class="section-sub">Enregistre chaque session : spot, conditions, durée, ressenti, équipement. Visualise ta progression dans le temps, vois où tu surfe le plus et par quelles conditions. Tout synchronisé dans le cloud.</p>
+      <div class="pill-list">
+        <span class="pill"><span class="pi">📍</span> Spots NC</span>
+        <span class="pill"><span class="pi">📈</span> Stats de progression</span>
+        <span class="pill"><span class="pi">☁️</span> Sync cloud</span>
+        <span class="pill"><span class="pi">🔎</span> Historique illimité</span>
+        <span class="pill"><span class="pi">🤙</span> Partage de session</span>
+      </div>
+    </div>
+    <div class="tool-visual">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;">📓 Sessions récentes</div>
+      <div class="mock-card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="font-size:12px;font-weight:700;">Passe de Dumbéa</div>
+          <span class="mock-badge">🟢 Hier</span>
+        </div>
+        <div style="display:flex;gap:10px;font-size:10px;color:var(--muted);">
+          <span>⏱ 2h30</span><span>🌊 1.5m</span><span>💨 8 nds</span>
+        </div>
+      </div>
+      <div class="mock-card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="font-size:12px;font-weight:700;">Ilot Ténia</div>
+          <span style="font-size:9px;color:var(--muted);">Sam 3/5</span>
+        </div>
+        <div style="display:flex;gap:10px;font-size:10px;color:var(--muted);">
+          <span>⏱ 3h</span><span>🌊 2.1m</span><span>💨 5 nds</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06);">
+        <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">SESSIONS CE MOIS</div>
+        <div style="display:flex;gap:4px;align-items:flex-end;height:30px;">
+          <div style="flex:1;height:40%;background:rgba(61,186,138,.4);border-radius:2px;"></div>
+          <div style="flex:1;height:70%;background:rgba(61,186,138,.5);border-radius:2px;"></div>
+          <div style="flex:1;height:50%;background:rgba(61,186,138,.4);border-radius:2px;"></div>
+          <div style="flex:1;height:90%;background:rgba(61,186,138,.7);border-radius:2px;"></div>
+          <div style="flex:1;height:60%;background:rgba(61,186,138,.5);border-radius:2px;"></div>
+          <div style="flex:1;height:80%;background:rgba(61,186,138,.6);border-radius:2px;"></div>
+          <div style="flex:1;height:100%;background:rgba(61,186,138,.8);border-radius:2px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ OUTIL 3 — SORTIES ═══ -->
+<section class="section" style="padding-top:0;">
+  <div class="tool-block">
+    <div>
+      <div class="section-tag tag-purple">🏄 Sorties en groupe</div>
+      <h2 class="section-title">Organise, invite,<br>partage les frais</h2>
+      <p class="section-sub">Crée une sortie, choisis le spot et l'heure, invites tes potes — avec ou sans compte. Gère le covoiturage, la répartition sur les bateaux. Et le Tricount intégré calcule automatiquement qui doit combien à qui.</p>
+      <div class="pill-list">
+        <span class="pill"><span class="pi">📅</span> Planning de sortie</span>
+        <span class="pill"><span class="pi">🚗</span> Covoiturage</span>
+        <span class="pill"><span class="pi">⛵</span> Répartition bateaux</span>
+        <span class="pill"><span class="pi">⚖️</span> Tricount intégré</span>
+        <span class="pill"><span class="pi">👤</span> Invités sans compte</span>
+        <span class="pill"><span class="pi">💸</span> Virements minimaux</span>
+      </div>
+    </div>
+    <div class="tool-visual">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">⚖️ Bilan Tricount</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Total dépenses : <strong style="color:var(--text);">6 500 CFP</strong></div>
+      <div class="tc-row">
+        <span class="tc-name">⭐ Thib</span>
+        <div class="tc-bar pos" style="width:80%;"></div>
+        <span class="tc-amt pos">+5 200</span>
+      </div>
+      <div class="tc-row">
+        <span class="tc-name">Clément</span>
+        <div class="tc-bar neg" style="width:25%;"></div>
+        <span class="tc-amt neg">−1 300</span>
+      </div>
+      <div class="tc-row">
+        <span class="tc-name">Mallory</span>
+        <div class="tc-bar neg" style="width:25%;"></div>
+        <span class="tc-amt neg">−1 300</span>
+      </div>
+      <div class="tc-row" style="border:none;">
+        <span class="tc-name">Élodie</span>
+        <div class="tc-bar neg" style="width:25%;"></div>
+        <span class="tc-amt neg">−1 300</span>
+      </div>
+      <div style="margin-top:12px;padding:8px 10px;background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.2);border-radius:8px;font-size:10px;">
+        <div style="color:var(--muted);margin-bottom:4px;font-weight:700;text-transform:uppercase;font-size:9px;">💸 Pour solder</div>
+        <div style="color:var(--text);">Clément → Thib <strong style="color:var(--warm);font-family:'JetBrains Mono',monospace;margin-left:8px;">1 300 CFP</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ OUTIL 4 — MARINE FUEL ═══ -->
+<section class="section" style="padding-top:0;">
+  <div class="tool-block rev">
+    <div>
+      <div class="section-tag tag-warm">⛽ Marine Fuel Pro</div>
+      <h2 class="section-title">Gère le carburant<br>de ton bateau</h2>
+      <p class="section-sub">Enregistre chaque plein, chaque sortie, chaque kilomètre nautique. Calcule la consommation réelle, le coût par personne, et suit l'évolution dans le temps. Pour les copropriétaires de bateaux, répartition automatique des coûts.</p>
+      <div class="pill-list">
+        <span class="pill"><span class="pi">📊</span> Consommation L/nm</span>
+        <span class="pill"><span class="pi">💰</span> Coût par sortie</span>
+        <span class="pill"><span class="pi">👥</span> Multi-propriétaires</span>
+        <span class="pill"><span class="pi">📈</span> Historique complet</span>
+        <span class="pill"><span class="pi">🔧</span> Entretien & dépenses</span>
+      </div>
+    </div>
+    <div class="tool-visual">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;">⛽ Suivi carburant</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div class="mock-card">
+          <div class="mock-label">Ce mois</div>
+          <div class="mock-val warm">47 L</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-label">Conso. moy.</div>
+          <div class="mock-val">3.2 L/nm</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-label">Coût total</div>
+          <div class="mock-val warm">18 800 CFP</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-label">Par sortie</div>
+          <div class="mock-val green">3 133 CFP</div>
+        </div>
+      </div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">PLEINS RÉCENTS</div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <div class="mock-row"><span class="mock-dot warm"></span><div class="mock-txt" style="width:60%;"></div><span style="font-size:9px;color:var(--warm);margin-left:auto;font-family:'JetBrains Mono',monospace;">25 L</span></div>
+        <div class="mock-row"><span class="mock-dot warm"></span><div class="mock-txt" style="width:45%;"></div><span style="font-size:9px;color:var(--warm);margin-left:auto;font-family:'JetBrains Mono',monospace;">18 L</span></div>
+        <div class="mock-row"><span class="mock-dot warm"></span><div class="mock-txt" style="width:55%;"></div><span style="font-size:9px;color:var(--warm);margin-left:auto;font-family:'JetBrains Mono',monospace;">22 L</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ OUTIL 5 — EXTENSION ═══ -->
+<div class="divider">
+  <div class="divider-inner">
+    <div style="display:flex;flex-direction:column;gap:1rem;flex:1;">
+      <div class="section-tag tag-blue" style="width:fit-content;">🧩 Extension Chrome</div>
+      <div style="font-size:1.2rem;font-weight:700;line-height:1.3;">NC Surf Token — les données meteo.nc sur mobile et desktop</div>
+      <p style="font-size:.88rem;color:var(--muted);line-height:1.6;max-width:480px;">
+        meteo.nc exige une authentification pour ses données haute résolution. L'extension capture automatiquement ton accès quand tu visites le site, et le synchronise dans le cloud. Résultat : les prévisions chargent directement, même sur mobile sans extension.
+      </p>
+      <div class="pill-list">
+        <span class="pill"><span class="pi">🔄</span> Auto-renouvellement 20min</span>
+        <span class="pill"><span class="pi">☁️</span> Sync cloud instantané</span>
+        <span class="pill"><span class="pi">📱</span> Mobile sans rien faire</span>
+        <span class="pill"><span class="pi">🔒</span> Token local, rien partagé</span>
+      </div>
+    </div>
+    <div style="flex-shrink:0;">
+      <div class="ext-popup-mock">
+        <div class="ext-header">🌊 NC Surf Token v10</div>
+        <div class="ext-body">
+          <div class="ext-card">
+            <div class="ext-lbl">Token local</div>
+            <div class="ext-val">🟢 Valide — 18 min restantes</div>
+          </div>
+          <div class="ext-card">
+            <div class="ext-lbl">Sync cloud</div>
+            <div class="ext-val">☁ Worker KV ✓</div>
+          </div>
+          <div class="ext-btn">🔄 Capturer / Renouveler</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- QUOTE -->
+<div class="quote-block">
+  <p class="quote-text">
+    Un seul compte. <strong>Toutes les données meteo.nc.</strong><br>
+    Tes potes. Tes sessions. Tes frais.<br>
+    Tout au même endroit.
+  </p>
+</div>
+
+<!-- ═══ COMMENT DÉMARRER ═══ -->
+<section class="section" style="padding-top:0;padding-bottom:3rem;">
+  <div style="text-align:center;margin-bottom:2.5rem;">
+    <div class="section-tag tag-green" style="margin:0 auto 1rem;">🚀 Démarrage rapide</div>
+    <h2 class="section-title" style="max-width:500px;margin:0 auto .8rem;">Prêt en 3 minutes</h2>
+    <p style="font-size:.9rem;color:var(--muted);">Un compte, une appli, c'est parti.</p>
+  </div>
+  <div class="feat-grid" style="max-width:900px;margin:0 auto;">
+    <div class="feat-card">
+      <div class="feat-icon">1️⃣</div>
+      <div class="feat-title">Créer un compte</div>
+      <div class="feat-desc">Va sur <strong style="color:var(--accent);">thibsurf.github.io/surf-journal</strong> → <em>Mon profil</em> → <em>Créer un compte</em>. Email + mot de passe, c'est tout.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">2️⃣</div>
+      <div class="feat-title">Installer l'extension Chrome</div>
+      <div class="feat-desc">Télécharge le zip depuis le site, dézippe, charge dans <code style="background:rgba(79,163,199,.1);padding:1px 5px;border-radius:4px;">chrome://extensions</code>. Visite meteo.nc une fois → token capturé automatiquement.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">3️⃣</div>
+      <div class="feat-title">Ajouter en PWA</div>
+      <div class="feat-desc">Sur mobile : bouton <em>Partager → Ajouter à l'écran d'accueil</em>. Sur desktop : icône ⊕ dans la barre d'adresse. L'app s'ouvre comme une vraie appli native.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">4️⃣</div>
+      <div class="feat-title">Inviter ses potes</div>
+      <div class="feat-desc">Partage ce lien ou le lien direct d'une sortie. Les invités peuvent rejoindre une sortie sans compte — et créer le leur quand ils veulent.</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:3rem;">
+    <a href="https://thibsurf.github.io/surf-journal/" target="_blank" class="hero-cta">
+      🌊 Ouvrir Surf NC
+    </a>
+    <div class="hero-sub" style="margin-top:.8rem;">
+      Guide complet : <a href="https://thibsurf.github.io/surf-journal/guide.html" target="_blank" style="color:var(--accent);text-decoration:none;">thibsurf.github.io/surf-journal/guide.html</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Surf NC · Fait à Nouméa, pour les surfeurs de Nouvelle-Calédonie ·
+  <a href="https://thibsurf.github.io/surf-journal/" target="_blank">thibsurf.github.io/surf-journal</a>
+</footer>
+
+</body>
+</html>

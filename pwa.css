@@ -1,0 +1,23 @@
+/* pwa.css — optimisations mobile/PWA communes à toutes les pages */
+
+.form-input, .form-select, .form-textarea, input, select, textarea {
+  font-size: 16px !important;
+}
+
+body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media (max-width: 600px) {
+  button, .btn, a[role="button"] {
+    min-height: 44px;
+  }
+}
