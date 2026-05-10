@@ -3575,6 +3575,8 @@ function renderTricount() {
       var payer = exp.payer_id;
       // Alias rétroactif : si pas de payer_id mais un payer_name connu → résoudre
       if (!payer && exp.payer_name) payer = aliasMap[exp.payer_name.toLowerCase()] || null;
+      // Résoudre les guest IDs (guest-XXX-nom) vers le vrai user_id via aliasMap
+      if (payer && aliasMap[payer.toLowerCase()]) payer = aliasMap[payer.toLowerCase()];
       var amt = parseFloat(exp.amount) || 0;
       if (!payer || amt <= 0) return;
 
@@ -3725,64 +3727,87 @@ function renderTricount() {
   list.innerHTML = tricountList.map(function(s) {
     var inscriptions = (s.inscriptions || []).filter(function(i) { return i.status === 'in'; });
     var expenses = s.expenses || [];
-    var total = expenses.reduce(function(a, e) { return a + (e.is_reimbursement ? 0 : (parseFloat(e.amount) || 0)); }, 0);
-    var totalRembSortie = expenses.reduce(function(a, e) { return a + (e.is_reimbursement ? (parseFloat(e.amount) || 0) : 0); }, 0);
+    var depenses = expenses.filter(function(e){ return !e.is_reimbursement; });
+    var rembs    = expenses.filter(function(e){ return  e.is_reimbursement; });
+    var total    = depenses.reduce(function(a, e){ return a + (parseFloat(e.amount)||0); }, 0);
     var isCreator = currentUser && s.created_by === currentUser.id;
 
-    // Équilibre bateaux ↔ personnes
-    var owners = s.boat_owners || [];
-    var boatList = (s.boats || '').split(',').map(function(b) { return b.trim(); }).filter(Boolean);
-    var boatBalance = '';
-    if (boatList.length && owners.length) {
-      var perBoat = Math.ceil(inscriptions.length / boatList.length);
-      boatBalance = '<div class="boat-balance">'
-        + '<div class="boat-balance-title">⛵ Répartition bateaux (' + inscriptions.length + ' surfeurs · ' + boatList.length + ' bateau' + (boatList.length > 1 ? 'x' : '') + ')</div>'
-        + '<div style="font-size:11px;color:var(--text-muted);">Environ <b style="color:var(--text);">' + perBoat + '</b> pers/bateau</div>'
-        + '<div class="boat-person-grid" style="margin-top:8px;">'
-        + boatList.map(function(boat, bi) {
-            var ownerId = owners[bi % owners.length];
-            var ownerName = profileCache[ownerId] || 'Propriétaire';
-            var count = Math.ceil((inscriptions.length - bi) / boatList.length);
-            return '<div class="boat-person-cell">'
-              + '<div class="bp-name">' + escapeHtml(boat) + '</div>'
-              + '<div class="bp-boat">🧑 ' + escapeHtml(ownerName) + '</div>'
-              + '<div class="bp-status">~' + Math.max(0, count) + ' pers.</div>'
-              + '</div>';
-          }).join('')
-        + '</div></div>';
+    // Participants pour le détail des parts
+    var participants = inscriptions.map(function(i) {
+      var id = i.is_guest ? (i.guest_id||('guest-'+i.username)) : i.user_id;
+      var resolved = aliasMap[(id||'').toLowerCase()] || id;
+      var name = i.username || profileCache[i.user_id] || resolveName(resolved);
+      return { id: resolved, raw: id, name: name };
+    });
+
+    // Helper : résoudre le nom affiché d'un user_id ou guest_id
+    function pName(uid) {
+      if (!uid) return '?';
+      var resolved = aliasMap[uid.toLowerCase()] || uid;
+      if (profileCache[resolved]) return profileCache[resolved];
+      var p = participants.find(function(x){ return x.id===resolved||x.raw===uid; });
+      return p ? p.name : uid.startsWith('guest-') ? uid.replace(/^guest-\d+-/,'').replace(/-/g,' ') : uid.slice(0,8);
     }
 
-    var canAddExpense = !!currentUser; // tout membre connecté peut ajouter une dépense
+    // Tableau des dépenses (ligne par ligne)
+    function expRow(e, ei, isRemb) {
+      var payerName = e.payer_name || pName(e.payer_id);
+      var amt = parseFloat(e.amount) || 0;
+      var canDel = currentUser && (
+        (e.payer_id && (aliasMap[e.payer_id.toLowerCase()]||e.payer_id) === currentUser.id) || isCreator
+      );
+      // Parts : chaque participant + sa quote-part
+      var splits = e.splits && e.splits.length ? e.splits : participants.map(function(p){return p.id;});
+      var partsHtml = splits.map(function(uid, si) {
+        var share = (e.custom_shares && e.custom_shares[uid] != null)
+          ? e.custom_shares[uid] : (amt / splits.length);
+        var resolved = aliasMap[(uid||'').toLowerCase()] || uid;
+        var isSelf = currentUser && resolved === currentUser.id;
+        return '<span style="font-size:10px;white-space:nowrap;color:'+(isSelf?'#e8a057':'var(--text-faint)')+';">'
+          + escapeHtml(pName(uid)) + ' <b style="color:var(--bad);">-'+Math.round(share).toLocaleString('fr')+'</b></span>';
+      }).join(' · ');
 
-    return '<div class="sortie-card" style="margin-bottom:14px;">'
-      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-      + '<div><div class="sortie-spot" style="font-size:1.1rem;">' + escapeHtml(s.spot) + '</div>'
+      var bg = isRemb ? 'rgba(61,186,138,.07)' : 'transparent';
+      var borderL = isRemb ? '3px solid rgba(61,186,138,.4)' : '3px solid transparent';
+      return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:'+bg+';border-left:'+borderL+';margin-bottom:2px;">'
+        + '<div style="flex:1;min-width:0;">'
+        + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+        + '<span style="font-size:11px;font-weight:600;color:'+(isRemb?'#3dba8a':'var(--text)')+';">'
+        + escapeHtml(e.label||'Dépense') + '</span>'
+        + '<span style="font-size:12px;font-weight:700;color:'+(isRemb?'#3dba8a':'var(--accent)')+';">'
+        + escapeHtml(payerName) + ' +' + amt.toLocaleString('fr') + ' CFP</span>'
+        + '</div>'
+        + (isRemb
+          ? '<div style="font-size:10px;color:#3dba8a;margin-top:1px;">💸 Remboursement : solde la dette</div>'
+          : (splits.length ? '<div style="margin-top:2px;display:flex;gap:4px;flex-wrap:wrap;">'+partsHtml+'</div>' : ''))
+        + '</div>'
+        + (canDel ? '<button onclick="deleteExpense(\''+s.id+'\','+ei+')" title="Supprimer" style="background:none;border:none;color:var(--bad);cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0;">×</button>' : '')
+        + '</div>';
+    }
+
+    var expHtml = depenses.map(function(e){ var i=expenses.indexOf(e); return expRow(e,i,false); }).join('');
+    var rembHtml = rembs.map(function(e){ var i=expenses.indexOf(e); return expRow(e,i,true); }).join('');
+
+    return '<div class="sortie-card" style="margin-bottom:10px;">'
+      // En-tête sortie
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+      + '<div><div class="sortie-spot" style="font-size:1rem;">' + escapeHtml(s.spot) + '</div>'
       + '<div class="sortie-date">' + formatSortieDate(s) + '</div></div>'
-      + '<div style="text-align:right;"><div style="font-size:18px;font-weight:700;font-family:var(--font-d);color:var(--text);">'
+      + '<div style="text-align:right;">'
+      + '<div style="font-size:16px;font-weight:700;font-family:var(--font-d);color:var(--text);">'
       + total.toLocaleString('fr') + ' CFP</div>'
-      + (totalRembSortie > 0 ? '<div style="font-size:10px;color:#3dba8a;">✓ ' + totalRembSortie.toLocaleString('fr') + ' CFP remboursés</div>' : '')
-      + '<div style="font-size:10px;color:var(--text-faint);">' + (expenses.length - (expenses.filter(function(e){return e.is_reimbursement;}).length)) + ' dépense' + (expenses.length > 1 ? 's' : '') + (expenses.some(function(e){return e.is_reimbursement;}) ? ' + ' + expenses.filter(function(e){return e.is_reimbursement;}).length + ' remb.' : '') + '</div></div>'
-      + '</div>'
-      + boatBalance
-      + (expenses.length ? '<div style="margin-bottom:10px;">'
-        + expenses.map(function(e, ei) {
-            var name = e.payer_name || profileCache[e.payer_id] || 'Surfeur';
-            var canDel = currentUser && (e.payer_id === currentUser.id || isCreator);
-            return '<div class="tricount-expense-row">'
-              + '<span class="tc-who">' + escapeHtml(name) + '</span>'
-              + '<span class="tc-what">' + escapeHtml(e.label || 'Dépense') + '</span>'
-              + '<span class="tc-amt">' + parseFloat(e.amount).toLocaleString('fr') + ' CFP</span>'
-              + (canDel ? '<button onclick="deleteExpense(\'' + s.id + '\''+',' + ei + ')" style="background:none;border:none;color:var(--bad);cursor:pointer;font-size:12px;padding:0 4px;" title="Supprimer">×</button>' : '')
-              + '</div>';
-          }).join('') + '</div>'
-        : '<div style="font-size:11px;color:var(--text-faint);font-style:italic;margin-bottom:10px;">Aucune dépense pour cette sortie</div>')
-      + (canAddExpense
-        ? '<button type="button" onclick="openQuickExpense(\'' + s.id + '\')"'
-          + ' style="width:100%;padding:9px;background:rgba(123,108,246,.12);border:1px solid rgba(123,108,246,.3);'
-          + 'color:#a99ff8;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">💰 Ajouter une dépense</button>'
-        : '')
+      + (rembs.length ? '<div style="font-size:10px;color:#3dba8a;">✓ '+rembs.reduce(function(a,e){return a+(parseFloat(e.amount)||0);},0).toLocaleString('fr')+' CFP remboursés</div>' : '')
+      + '</div></div>'
+      // Tableau dépenses
+      + (depenses.length ? expHtml : '<div style="font-size:11px;color:var(--text-faint);font-style:italic;padding:4px 8px;">Aucune dépense</div>')
+      // Remboursements séparés (si présents)
+      + (rembHtml ? '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.08);">'
+        + '<div style="font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;padding-left:8px;">Remboursements</div>'
+        + rembHtml + '</div>' : '')
+      // Bouton ajouter
+      + (currentUser ? '<button type="button" onclick="openQuickExpense(\''+s.id+'\')" style="width:100%;margin-top:8px;padding:7px;background:rgba(123,108,246,.1);border:1px solid rgba(123,108,246,.25);color:#a99ff8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;">+ Dépense</button>' : '')
       + '</div>';
-  }).join('') || '<div class="empty"><div class="empty-icon">💰</div><div class="empty-title">Aucune sortie à venir</div></div>';
+  }).join('') || '<div class="empty"><div class="empty-icon">💰</div><div class="empty-title">Aucune sortie récente</div></div>';
 }
 
 // Modal rapide ajout dépense depuis la carte sortie
@@ -4320,10 +4345,29 @@ async function _submitManualRemb() {
 }
 
 async function _recordReimbursement(fromId, fromName, toId, toName, amt) {
-  var now = new Date();
-  var past = allSorties.filter(function(s) { return parseLocalDate(s.date_start) < now; })
-    .sort(function(a, b) { return parseLocalDate(b.date_start) - parseLocalDate(a.date_start); });
-  var target = past[0] || allSorties[0];
+  // Résoudre les IDs via aliasMap (guest → user_id réel)
+  var fromResolved = aliasMap[fromId.toLowerCase()] || fromId;
+  var toResolved   = aliasMap[toId.toLowerCase()]   || toId;
+
+  // Trouver la sortie la plus récente où les deux sont inscrits
+  var target = null;
+  allSorties.forEach(function(s) {
+    var ids = (s.inscriptions || []).map(function(i) {
+      var raw = i.is_guest ? (i.guest_id || '') : (i.user_id || '');
+      return [raw, aliasMap[raw.toLowerCase()] || raw]; // raw + résolu
+    }).flat();
+    var hasFrom = ids.includes(fromId) || ids.includes(fromResolved);
+    var hasTo   = ids.includes(toId)   || ids.includes(toResolved);
+    if (hasFrom && hasTo) {
+      if (!target || parseLocalDate(s.date_start) > parseLocalDate(target.date_start)) target = s;
+    }
+  });
+  // Fallback : sortie la plus récente
+  if (!target) {
+    var past = allSorties.filter(function(s) { return parseLocalDate(s.date_start) < new Date(); })
+      .sort(function(a, b) { return parseLocalDate(b.date_start) - parseLocalDate(a.date_start); });
+    target = past[0] || allSorties[0];
+  }
   if (!target) { toast('Aucune sortie disponible', 'err'); return; }
 
   var expense = {

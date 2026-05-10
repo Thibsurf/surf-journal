@@ -2332,8 +2332,9 @@ async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir
     var tc = window._ncTideCache && window._ncTideCache.properties && window._ncTideCache.properties.tide;
     function _extractTide(arr, key) {
       (arr || []).forEach(function(e) {
-        // Les temps API sont UTC — heure locale NC = UTC + 11h
-        var ncMs = new Date(e.time).getTime() + 11*3600000;
+        // API retourne temps NC local naïf → forcer interprétation UTC puis + 11h
+        var rawMs = (function(t){if(!t)return 0;if(t.endsWith('Z')||t.match(/[+-]\d{2}:\d{2}$/))return new Date(t).getTime();return new Date(t+'Z').getTime()-11*3600000;})(e.time);
+        var ncMs = rawMs + 11*3600000;
         var ncD = new Date(ncMs);
         var ds = ncD.getUTCFullYear()+'-'+String(ncD.getUTCMonth()+1).padStart(2,'0')+'-'+String(ncD.getUTCDate()).padStart(2,'0');
         var ts = String(ncD.getUTCHours()).padStart(2,'0')+'h'+String(ncD.getUTCMinutes()).padStart(2,'0');
@@ -2649,7 +2650,16 @@ function renderTideEncart(tide, spot) {
   var t=tide&&tide.properties&&tide.properties.tide;
   if(!t){el.innerHTML='<div style="color:var(--faint);font-size:11px;">Marées indisponibles</div>';return;}
   var now=Date.now(), cutoff=now-3600000;
-  function parseEv(arr,type){return(arr||[]).map(function(e){return{type:type,ms:new Date(e.time).getTime(),h:e.tidal_height,coeff:e.tidal_coefficient||null};});}
+  function _parseTideMs(t) {
+    // L'API retourne des heures locales NC (UTC+11) en ISO sans timezone.
+    // Le browser les interprète comme temps local du navigateur → faux si ≠ UTC+11.
+    // Fix : si la string est naïve (pas de Z ni de +HH:MM), on la force en UTC
+    // puis on soustrait 11h pour obtenir le vrai UTC correspondant à l'heure NC.
+    if (!t) return 0;
+    if (t.endsWith('Z') || t.match(/[+-]\d{2}:\d{2}$/)) return new Date(t).getTime();
+    return new Date(t + 'Z').getTime() - 11 * 3600000; // NC local naïf → vrai UTC
+  }
+  function parseEv(arr,type){return(arr||[]).map(function(e){return{type:type,ms:_parseTideMs(e.time),h:e.tidal_height,coeff:e.tidal_coefficient||null};});}
   var all=parseEv(t.high_tide,'pm').concat(parseEv(t.low_tide,'bm'))
     .filter(function(e){return e.ms>=cutoff;}).sort(function(a,b){return a.ms-b.ms;}).slice(0,6);
   if(!all.length){el.innerHTML='<div style="color:var(--faint);font-size:11px;padding:4px;">Pas d\'événement à venir</div>';return;}
@@ -4441,14 +4451,8 @@ async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
     svg.push('<text x="'+(pad.l-3)+'" y="'+(gy+3)+'" text-anchor="end" font-size="8" fill="rgba(170,200,225,.5)">'+Math.round(gv)+'</text>');
   }
 
-  // Axe Hs (droite, optionnel)
-  var hsMax = 0;
-  allDates.forEach(function(ds){ var c=cacheByDate[ds]; if(c&&c.hs>hsMax) hsMax=c.hs; });
-  function toYhs(v) { return pad.t + cH - (v / (hsMax||3)) * cH; }
-
-  // Barres + labels
+  // Barres + labels (Hs retiré — station obs ne mesure pas les vagues)
   var DAY_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-  var hsLinePts = [];
 
   allDates.forEach(function(ds, i) {
     var obs = obsByDate[ds] || {};
@@ -4481,24 +4485,7 @@ async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
       svg.push('<text x="'+(cx+bw/2+1)+'" y="'+(toY(cache.windKt)-2)+'" text-anchor="middle" font-size="7" fill="#3dba8a">'+cache.windKt+'</text>');
     }
 
-    // Point Hs pour la ligne
-    if (cache.hs != null && hsMax > 0) {
-      var hsY = toYhs(cache.hs);
-      hsLinePts.push({x: cx, y: hsY, hs: cache.hs});
-    }
   });
-
-  // Ligne Hs (si dispo) — axe secondaire droit
-  if (hsLinePts.length > 1) {
-    var hsPath = hsLinePts.map(function(p,j){return (j===0?'M':'L')+' '+p.x+' '+p.y;}).join(' ');
-    svg.push('<path d="'+hsPath+'" fill="none" stroke="rgba(123,108,246,.7)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>');
-    hsLinePts.forEach(function(p) {
-      svg.push('<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="rgba(123,108,246,.9)"/>');
-      svg.push('<text x="'+p.x+'" y="'+(p.y-5)+'" text-anchor="middle" font-size="7" fill="rgba(169,159,248,.9)">'+p.hs+'m</text>');
-    });
-    // Label axe Hs
-    svg.push('<text x="'+(W-pad.r)+'" y="'+pad.t+'" text-anchor="end" font-size="8" fill="rgba(123,108,246,.6)">Hs</text>');
-  }
 
   svg.push('<text x="'+pad.l+'" y="12" font-size="8" fill="rgba(160,195,220,.4)">kt</text>');
 
@@ -4537,7 +4524,6 @@ async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
     + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">'
     + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:7px;background:#4fa3c7;border-radius:1px;display:inline-block;"></span>Vent obs. ('+stName+')</span>'
     + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:7px;background:#3dba8a;border-radius:1px;display:inline-block;"></span>Vent prévi NC cache ('+spotName+')</span>'
-    + (hsLinePts.length ? '<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;border-top:2px solid rgba(123,108,246,.7);display:inline-block;"></span>Hs prévi NC cache</span>' : '')
     + '</div>'
     + '<div style="font-size:8px;color:var(--faint);margin-top:3px;">↑ Heure de comparaison : '+sessionH+'h (sessionHour du spot) · Obs ≠ spot : vent peut différer selon exposition</div>'
     + '</div>';
@@ -5602,7 +5588,10 @@ function renderTideCurve(offset) {
     var allEv = [];
     function addEv(arr, type) {
       (arr||[]).forEach(function(e){
-        var ms = new Date(e.time).getTime();
+        var t = e.time;
+        var ms = (t && !t.endsWith('Z') && !t.match(/[+-]\d{2}:\d{2}$/))
+          ? new Date(t+'Z').getTime() - 11*3600000
+          : new Date(t).getTime();
         allEv.push({ms:ms, h:e.tidal_height, type:type});
       });
     }
