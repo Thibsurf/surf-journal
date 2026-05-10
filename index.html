@@ -2036,10 +2036,24 @@ async function _autoFillConditions(targetDate) {
       }
     } catch(e) { console.warn('[autofill] Worker error:', e); }
 
-    // ── Priorité 2 : Meteo.nc direct si token local dispo ──────────────
+    // ── Priorité 2 : Meteo.nc direct (token local ou worker KV) ──────────
     if (!ncData) {
       var _ncToken = null;
       try { _ncToken = localStorage.getItem('nc-token'); } catch(e) {}
+      // Si pas en localStorage → essayer le worker KV (même si /forecast a échoué, /token peut fonctionner)
+      if (!_ncToken) {
+        try {
+          var tokResp = await fetch(WORKER_URL + '/token');
+          if (tokResp.ok) {
+            var tokData = await tokResp.json();
+            if (tokData.token) {
+              _ncToken = tokData.token;
+              try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
+              console.log('[autofill] Token récupéré depuis worker KV ✅');
+            }
+          }
+        } catch(e) {}
+      }
       if (_ncToken) {
         try {
           var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'

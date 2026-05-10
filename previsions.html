@@ -2099,22 +2099,50 @@ function updateHsToggleUI() {
 
 // Sauvegarde les conditions de TOUS les jours du forecast dans meteo_cache Supabase
 // Priorité NC > GFS : ne pas écraser une entrée NC avec du GFS
+// Sauvegarde PLUSIEURS créneaux par jour (6h/9h/12h/15h/18h heure locale NC) + marées
 async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir, source) {
   if (!_ensureSupabaseClient() || !dates || !dates.length) return;
   var sessionHour = spot.sessionHour || 7;
+  var SLOT_HOURS = [6, 9, 12, 15, 18]; // heures locales NC cibles
 
-  // 1. Grouper les indices par date, garder celui le plus proche de sessionHour
+  // 1. Grouper les indices par date : valeur principale + slots horaires
+  // dates[i].getUTCHours() = heure locale NC (le +11h a déjà été appliqué au push)
   var dayMap = {};
   dates.forEach(function(dt, i) {
     if (!dt || sw1h[i] == null) return;
     var d = dt.getDate ? dt : new Date(dt);
     var dateStr = d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
     var h = d.getUTCHours();
-    var diff = Math.abs(h - sessionHour);
-    if (!dayMap[dateStr] || diff < dayMap[dateStr].diff) dayMap[dateStr] = {idx:i, diff:diff};
+    if (!dayMap[dateStr]) dayMap[dateStr] = {main: null, mainDiff: Infinity, slots: {}};
+    var mainDiff = Math.abs(h - sessionHour);
+    if (mainDiff < dayMap[dateStr].mainDiff) { dayMap[dateStr].main = i; dayMap[dateStr].mainDiff = mainDiff; }
+    SLOT_HOURS.forEach(function(sh) {
+      var slotDiff = Math.abs(h - sh);
+      if (!dayMap[dateStr].slots[sh] || slotDiff < dayMap[dateStr].slots[sh].diff) {
+        dayMap[dateStr].slots[sh] = {idx: i, diff: slotDiff};
+      }
+    });
   });
 
-  // 2. Lire les entrées déjà en cache pour ne pas écraser NC par GFS
+  // 2. Préparer les données marée (une fois pour toutes) depuis _ncTideCache global
+  var tideByDate = {}; // dateStr → {highs: [...], lows: [...]}
+  try {
+    var tc = window._ncTideCache && window._ncTideCache.properties && window._ncTideCache.properties.tide;
+    function _extractTide(arr, key) {
+      (arr || []).forEach(function(e) {
+        // Les temps API sont UTC — heure locale NC = UTC + 11h
+        var ncMs = new Date(e.time).getTime() + 11*3600000;
+        var ncD = new Date(ncMs);
+        var ds = ncD.getUTCFullYear()+'-'+String(ncD.getUTCMonth()+1).padStart(2,'0')+'-'+String(ncD.getUTCDate()).padStart(2,'0');
+        var ts = String(ncD.getUTCHours()).padStart(2,'0')+'h'+String(ncD.getUTCMinutes()).padStart(2,'0');
+        if (!tideByDate[ds]) tideByDate[ds] = {highs:[], lows:[]};
+        tideByDate[ds][key].push({t: ts, h: e.tidal_height != null ? +e.tidal_height.toFixed(2) : null, c: e.tidal_coefficient || null});
+      });
+    }
+    if (tc) { _extractTide(tc.high_tide, 'highs'); _extractTide(tc.low_tide, 'lows'); }
+  } catch(e) {}
+
+  // 3. Vérifier quelles entrées existent déjà (NC > GFS)
   var ids = Object.keys(dayMap).map(function(d){ return d+'_'+spot.lat.toFixed(3)+'_'+spot.lon.toFixed(3); });
   var existingStatus = {};
   try {
@@ -2122,22 +2150,44 @@ async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir
     if (ex) ex.forEach(function(e){ existingStatus[e.id] = e.status; });
   } catch(e) {}
 
-  // 3. Construire les entrées à écrire
+  // 4. Construire les entrées
   var toWrite = [];
   Object.keys(dayMap).forEach(function(dateStr) {
     var id = dateStr+'_'+spot.lat.toFixed(3)+'_'+spot.lon.toFixed(3);
-    if (existingStatus[id] === 'nc' && source === 'gfs') return; // NC > GFS
-    var i = dayMap[dateStr].idx;
-    var hs = sw1h[i]; if (!hs) return;
+    if (existingStatus[id] === 'nc' && source === 'gfs') return;
+    var info = dayMap[dateStr];
+    var mi = info.main; if (mi === null || !sw1h[mi]) return;
+
+    // Créneaux horaires
+    var slots = [];
+    SLOT_HOURS.forEach(function(sh) {
+      var si = info.slots[sh] && info.slots[sh].idx;
+      if (si == null) return;
+      var hs2 = sw1h[si]; if (!hs2) return;
+      var per2 = sw1t&&sw1t[si]!=null ? sw1t[si] : null;
+      slots.push({
+        h: sh, hs: hs2, period: per2,
+        swellDir: sw1d&&sw1d[si]!=null ? sw1d[si] : null,
+        windKt: wSpd&&wSpd[si]!=null ? Math.round(wSpd[si]) : null,
+        windGst: wGst&&wGst[si]!=null ? Math.round(wGst[si]) : null,
+        windDir: wDir&&wDir[si]!=null ? wDir[si] : null,
+        pwr: hs2&&per2 ? +(0.5*hs2*hs2*per2).toFixed(1) : null
+      });
+    });
+
+    var tideDay = tideByDate[dateStr] || {};
     toWrite.push({
       id: id, spot_name: spot.marineName||spot.name, lat: spot.lat, lon: spot.lon,
       data: {
-        hs: hs,
-        period:   sw1t&&sw1t[i]!=null  ? sw1t[i]          : null,
-        swellDir: sw1d&&sw1d[i]!=null  ? sw1d[i]          : null,
-        windKt:   wSpd&&wSpd[i]!=null  ? Math.round(wSpd[i]) : null,
-        windDir:  wDir&&wDir[i]!=null  ? wDir[i]          : null,
-        source:   source
+        hs: sw1h[mi],
+        period: sw1t&&sw1t[mi]!=null ? sw1t[mi] : null,
+        swellDir: sw1d&&sw1d[mi]!=null ? sw1d[mi] : null,
+        windKt: wSpd&&wSpd[mi]!=null ? Math.round(wSpd[mi]) : null,
+        windDir: wDir&&wDir[mi]!=null ? wDir[mi] : null,
+        source: source,
+        slots: slots.length ? slots : null,
+        tideHighs: tideDay.highs && tideDay.highs.length ? tideDay.highs : null,
+        tideLows:  tideDay.lows  && tideDay.lows.length  ? tideDay.lows  : null
       },
       status: source, updated_at: new Date().toISOString()
     });
@@ -6616,6 +6666,56 @@ async function loadPastConditions() {
     function dir(deg){ return deg!=null ? compass[Math.round(((deg%360)+360)%360/22.5)%16]+' ('+Math.round(deg)+'°)' : '—'; }
     function val(v,u){ return v!=null ? v+u : '—'; }
 
+    // ── Bloc marée ──────────────────────────────────────────────────────────
+    var tideHtml = '';
+    if ((d2.tideHighs && d2.tideHighs.length) || (d2.tideLows && d2.tideLows.length)) {
+      var allTide = [];
+      (d2.tideHighs||[]).forEach(function(t){ allTide.push({type:'PM', t:t.t, h:t.h, c:t.c}); });
+      (d2.tideLows||[]).forEach(function(t){ allTide.push({type:'BM', t:t.t, h:t.h, c:t.c}); });
+      allTide.sort(function(a,b){ return (a.t||'').localeCompare(b.t||''); });
+      tideHtml = '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">'
+        +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">⚓ Marées</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+      allTide.forEach(function(ev){
+        var col = ev.type==='PM' ? '#4fa3c7' : '#e8a057';
+        tideHtml += '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:5px 9px;font-size:11px;text-align:center;">'
+          +'<div style="font-size:8px;font-weight:700;color:'+col+';letter-spacing:.05em;">'+ev.type+'</div>'
+          +'<div style="font-weight:700;color:var(--text);">'+ev.t+'</div>'
+          +(ev.h!=null?'<div style="font-size:10px;color:var(--muted);">'+ev.h+'m'+(ev.c?' · coef '+ev.c:'')+'</div>':'')
+          +'</div>';
+      });
+      tideHtml += '</div></div>';
+    }
+
+    // ── Bloc multi-créneaux ─────────────────────────────────────────────────
+    var slotsHtml = '';
+    if (d2.slots && d2.slots.length > 1) {
+      slotsHtml = '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">'
+        +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">📊 Créneaux horaires</div>'
+        +'<div style="overflow-x:auto;">'
+        +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+        +'<thead><tr style="color:var(--muted);font-size:9px;">'
+        +'<th style="text-align:left;padding:3px 6px;">Heure</th>'
+        +'<th style="padding:3px 4px;">Hs</th><th style="padding:3px 4px;">T</th>'
+        +'<th style="padding:3px 4px;">Dir</th><th style="padding:3px 4px;">Vent</th>'
+        +'<th style="padding:3px 4px;">⚡</th>'
+        +'</tr></thead><tbody>';
+      d2.slots.forEach(function(s, si) {
+        var hsCol = !s.hs?'var(--muted)':s.hs<0.5?'var(--muted)':s.hs<1.2?'#4fa3c7':s.hs<2?'#3dba8a':'#a99ff8';
+        var wCol = !s.windKt?'var(--muted)':s.windKt<12?'#3dba8a':s.windKt<20?'#e8a057':'#e05c5c';
+        var bg = si%2===0?'rgba(255,255,255,.015)':'transparent';
+        slotsHtml += '<tr style="background:'+bg+';">'
+          +'<td style="padding:3px 6px;font-weight:600;color:var(--accent);">'+String(s.h).padStart(2,'0')+'h</td>'
+          +'<td style="padding:3px 4px;color:'+hsCol+';font-weight:600;text-align:center;">'+(s.hs!=null?s.hs+'m':'—')+'</td>'
+          +'<td style="padding:3px 4px;color:var(--text);text-align:center;">'+(s.period!=null?s.period+'s':'—')+'</td>'
+          +'<td style="padding:3px 4px;color:var(--muted);text-align:center;">'+(s.swellDir!=null?compass[Math.round(((s.swellDir%360)+360)%360/22.5)%16]:'—')+'</td>'
+          +'<td style="padding:3px 4px;color:'+wCol+';text-align:center;">'+(s.windKt!=null?s.windKt+'kt'+(s.windGst?' ('+s.windGst+')'  :''):'—')+'</td>'
+          +'<td style="padding:3px 4px;color:var(--accent);text-align:center;font-weight:600;">'+(s.pwr!=null?s.pwr:'—')+'</td>'
+          +'</tr>';
+      });
+      slotsHtml += '</tbody></table></div></div>';
+    }
+
     resEl.innerHTML =
       '<div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">'
@@ -6633,6 +6733,8 @@ async function loadPastConditions() {
       +_pastCell('🧭 Dir. vent', dir(d2.windDir), 'var(--text)')
       +(d2.hs&&d2.period?_pastCell('⚡ Puissance', (0.5*d2.hs*d2.hs*d2.period).toFixed(1)+' kW/m', 'var(--accent)'):'')
       +'</div>'
+      +slotsHtml
+      +tideHtml
       +'</div>';
   } catch(e) {
     resEl.innerHTML = '<div style="font-size:12px;color:var(--bad);">Erreur : '+escapeHtml(e.message)+'</div>';
