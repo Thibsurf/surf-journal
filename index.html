@@ -463,6 +463,7 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
        class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">⛽ Marine Fuel – Pro</a>
   </div>
   <button class="nav-btn primary" id="nav-new-session-btn" onclick="openAddSession()">+ Session</button>
+  <div id="nav-token-dot" title="Token meteo.nc : —" style="width:9px;height:9px;border-radius:50%;background:var(--border);flex-shrink:0;cursor:default;transition:background .3s;"></div>
   <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')">?</div>
   <button class="nav-hamburger-btn" id="nav-hamburger-idx" onclick="toggleIndexMenu()" aria-label="Menu">☰</button>
 </nav>
@@ -2009,86 +2010,104 @@ async function _autoFillConditions(targetDate) {
     }
 
   } else {
-    // ── Priorité 1 : Worker Cloudflare (token géré côté serveur) ──────
-    try {
-      if (_srcPref === 'gfs') throw new Error('skip');
-      var workerUrl = WORKER_URL + '/forecast?lat=' + lat + '&lon=' + lon;
-      var wRes = await fetch(workerUrl);
-      if (wRes.ok) {
-        var wJson = await wRes.json();
-        var rows = wJson && wJson.properties && wJson.properties.marine;
-        if (rows && rows.length > 0) {
-          var now = Date.now();
-          var best = rows.reduce(function(b, r) {
-            return Math.abs(new Date(r.time).getTime() - now) < Math.abs(new Date(b.time).getTime() - now) ? r : b;
-          }, rows[0]);
-          ncData = {
-            hs:       best.primary_swell_height   != null ? best.primary_swell_height   : best.wave_height,
-            period:   best.primary_swell_period   != null ? best.primary_swell_period   : null,
-            swellDir: best.primary_swell_direction != null ? best.primary_swell_direction : null,
-            windKt:   best.wind_speed_kt          != null ? best.wind_speed_kt           : null,
-            windDir:  best.wind_direction         != null ? best.wind_direction          : null,
-            source: 'worker'
-          };
-          console.log('[autofill] Worker OK ✅', ncData);
-          _saveDailyCache(today, lat, lon, station.name, ncData);
-        }
-      }
-    } catch(e) { console.warn('[autofill] Worker error:', e); }
+    // ══ DONNÉES DU JOUR / FUTUR ══════════════════════════════════════════
+    // Le worker /forecast ne fonctionne PAS (rpcache lie le token à l'IP client,
+    // l'IP du worker ≠ l'IP du navigateur). Stratégie : récupérer le token
+    // depuis toutes les sources disponibles, puis appel DIRECT navigateur.
+    // ─────────────────────────────────────────────────────────────────────
 
-    // ── Priorité 2 : Meteo.nc direct (token local ou worker KV) ──────────
-    if (!ncData) {
-      var _ncToken = null;
-      try { _ncToken = localStorage.getItem('nc-token'); } catch(e) {}
-      // Si pas en localStorage → essayer le worker KV (même si /forecast a échoué, /token peut fonctionner)
-      if (!_ncToken) {
+    // ── Étape 1 : Obtenir le token NC (4 sources en cascade) ─────────────
+    var _ncToken = null;
+
+    // 1a. localStorage (le plus rapide, déjà disponible si extension a posté)
+    try { _ncToken = localStorage.getItem('nc-token'); } catch(e) {}
+
+    // 1b. chrome.storage.local (extension Chrome — accessible même en file://)
+    if (!_ncToken && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      _ncToken = await new Promise(function(resolve) {
         try {
-          var tokResp = await fetch(WORKER_URL + '/token');
-          if (tokResp.ok) {
-            var tokData = await tokResp.json();
-            if (tokData.token) {
-              _ncToken = tokData.token;
-              try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
-              console.log('[autofill] Token récupéré depuis worker KV ✅');
-            }
-          }
-        } catch(e) {}
-      }
-      if (_ncToken) {
-        try {
-          var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'
-            + '?lat=' + lat + '&lon=' + lon + '&range=24&output=json';
-          var ncRes = await fetch(ncUrl, {
-            headers: { 'Authorization': 'Bearer ' + _ncToken },
-            credentials: 'omit'
+          chrome.storage.local.get(['nc_surf_token'], function(d) {
+            resolve(d && d.nc_surf_token ? d.nc_surf_token : null);
           });
-          if (ncRes.ok) {
-            var ncJson = await ncRes.json();
-            var rows2 = ncJson && ncJson.properties && ncJson.properties.marine;
-            if (rows2 && rows2.length > 0) {
-              var now2 = Date.now();
-              var best2 = rows2.reduce(function(b, r) {
-                return Math.abs(new Date(r.time).getTime() - now2) < Math.abs(new Date(b.time).getTime() - now2) ? r : b;
-              }, rows2[0]);
-              ncData = {
-                hs:       best2.primary_swell_height   != null ? best2.primary_swell_height   : best2.wave_height,
-                period:   best2.primary_swell_period   != null ? best2.primary_swell_period   : null,
-                swellDir: best2.primary_swell_direction != null ? best2.primary_swell_direction : null,
-                windKt:   best2.wind_speed_kt          != null ? best2.wind_speed_kt           : null,
-                windDir:  best2.wind_direction         != null ? best2.wind_direction          : null,
-                source: 'direct'
-              };
-              _saveDailyCache(today, lat, lon, station.name, ncData);
-            }
-          }
-        } catch(e) { console.warn('[autofill] NC direct error:', e); }
+        } catch(e) { resolve(null); }
+      });
+      if (_ncToken) {
+        try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
+        console.log('[autofill] Token via chrome.storage ✅');
       }
     }
 
-    // ── Priorité 3 : GFS Open-Meteo (actuel) ───────────────────────────
+    // 1c. Supabase shared_tokens (mis à jour par previsions.html)
+    // C'est la source la plus fiable en production : même token que previ.
+    if (!_ncToken && sb) {
+      try {
+        var stRes = await sb.from('shared_tokens').select('token').eq('id', 'meteo-nc').maybeSingle();
+        if (stRes.data && stRes.data.token) {
+          _ncToken = stRes.data.token;
+          try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
+          console.log('[autofill] Token via Supabase shared_tokens ✅');
+        }
+      } catch(e) {}
+    }
+
+    // 1d. Worker KV /token (dernier recours)
+    if (!_ncToken) {
+      try {
+        var tokR = await fetch(WORKER_URL + '/token');
+        if (tokR.ok) {
+          var tokD = await tokR.json();
+          if (tokD.token) {
+            _ncToken = tokD.token;
+            try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
+            console.log('[autofill] Token via worker KV ✅');
+          }
+        }
+      } catch(e) {}
+    }
+
+    _updateNavTokenBadge(_ncToken);
+
+    // ── Étape 2 : Appel direct navigateur → meteo.nc ─────────────────────
+    if (_ncToken && _srcPref !== 'gfs') {
+      try {
+        var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'
+          + '?lat=' + lat + '&lon=' + lon + '&range=24&output=json';
+        var ncRes = await fetch(ncUrl, {
+          headers: { 'Authorization': 'Bearer ' + _ncToken },
+          credentials: 'omit'
+        });
+        if (ncRes.ok) {
+          var ncJson = await ncRes.json();
+          var rows2 = ncJson && ncJson.properties && ncJson.properties.marine;
+          if (rows2 && rows2.length > 0) {
+            var nowMs = Date.now();
+            var best2 = rows2.reduce(function(b, r) {
+              return Math.abs(new Date(r.time).getTime() - nowMs) < Math.abs(new Date(b.time).getTime() - nowMs) ? r : b;
+            }, rows2[0]);
+            ncData = {
+              hs:       best2.primary_swell_height   != null ? best2.primary_swell_height   : best2.wave_height,
+              period:   best2.primary_swell_period   != null ? best2.primary_swell_period   : null,
+              swellDir: best2.primary_swell_direction != null ? best2.primary_swell_direction : null,
+              windKt:   best2.wind_speed_kt          != null ? best2.wind_speed_kt           : null,
+              windDir:  best2.wind_direction         != null ? best2.wind_direction          : null,
+              source: 'direct'
+            };
+            console.log('[autofill] NC direct ✅', ncData);
+            _saveDailyCache(today, lat, lon, station.name, ncData);
+          }
+        } else if (ncRes.status === 401) {
+          // Token invalide pour cette IP → nettoyer pour forcer re-sync
+          console.warn('[autofill] Token 401 expiré — nettoyage localStorage');
+          try { localStorage.removeItem('nc-token'); } catch(_) {}
+          _updateNavTokenBadge(null);
+        }
+      } catch(e) { console.warn('[autofill] NC direct error:', e.message); }
+    }
+
+    // ── Étape 3 : GFS Open-Meteo (fallback sans token) ───────────────────
     if (!ncData) {
       try {
-        var responses = await Promise.all([
+        var gfsResp = await Promise.all([
           fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lon
             +'&current=wave_height,swell_wave_height,swell_wave_period,swell_wave_direction&timezone=Pacific%2FNoumea')
             .then(function(r){return r.json();}),
@@ -2096,14 +2115,12 @@ async function _autoFillConditions(targetDate) {
             +'&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Pacific%2FNoumea')
             .then(function(r){return r.json();})
         ]);
-        var cur = responses[0].current || {}, wcur = responses[1].current || {};
+        var cur = gfsResp[0].current || {}, wcur = gfsResp[1].current || {};
         if (cur.swell_wave_height != null || wcur.wind_speed_10m != null) {
           omData = {
-            hs:       cur.swell_wave_height,
-            period:   cur.swell_wave_period,
+            hs:       cur.swell_wave_height,  period:   cur.swell_wave_period,
             swellDir: cur.swell_wave_direction,
-            windKt:   wcur.wind_speed_10m,
-            windDir:  wcur.wind_direction_10m,
+            windKt:   wcur.wind_speed_10m,    windDir:  wcur.wind_direction_10m,
             source: 'gfs'
           };
         }
@@ -3658,6 +3675,7 @@ async function checkTokenAndWorkerStatus() {
 
   _updateTokenUI(tok, tokDate, tok ? (localStorage.getItem('nc-token') ? 'local' : 'extension') : null);
   _updateExtBadge(tok);
+  _updateNavTokenBadge(tok);
 
   // — 2. Vérifier le token Supabase via le Worker (pas de clé en clair dans l'app) —
   var workerEl = document.getElementById('worker-status');
@@ -3711,6 +3729,21 @@ async function checkTokenAndWorkerStatus() {
     workerEl.style.color = '#e05c5c';
     if (latEl) latEl.textContent = e.message;
   }
+}
+
+// Badge token NC dans la nav (petit cercle coloré)
+function _updateNavTokenBadge(tok) {
+  var dot = document.getElementById('nav-token-dot');
+  if (!dot) return;
+  if (!tok) {
+    dot.style.background = 'rgba(224,92,92,.7)';
+    dot.title = 'Token meteo.nc absent — prévisions GFS uniquement';
+    return;
+  }
+  var exp = _decodeJwtExp(tok);
+  var ok = exp ? exp > Date.now() + 60000 : true;
+  dot.style.background = ok ? 'rgba(61,186,138,.85)' : 'rgba(232,160,87,.85)';
+  dot.title = 'Token meteo.nc ' + (ok ? 'valide ✅' : 'expiré ⚠️ — ouvre meteo.nc avec l\'extension');
 }
 
 // Décode l'exp du JWT (en ms) sans vérification de signature

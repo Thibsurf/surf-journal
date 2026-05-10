@@ -2853,23 +2853,37 @@ async function _fetchGustsScrape(spot) {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     var html = await resp.text();
     var doc = new DOMParser().parseFromString(html, 'text/html');
-    var rows = doc.querySelectorAll('table tbody tr');
-    if (!rows.length) throw new Error('aucune ligne dans le tableau');
 
-    // Colonnes tableau meteo.nc: 0=heure, 1=vent moy, 2=rafales, 3=mer totale, 4=houle
-    // Clé = 'YYYY-MM-DD:H' (date NC locale + heure NC) pour éviter les collisions entre jours
+    // Trouver le bon tableau : celui avec le plus de lignes valides (heure en col 0, nombre en col 1)
+    // La page peut contenir plusieurs tableaux (marées, observations, etc.)
+    var bestRows = [];
+    doc.querySelectorAll('table').forEach(function(tbl) {
+      var trows = Array.from(tbl.querySelectorAll('tr'));
+      var valid = trows.filter(function(row) {
+        var cells = row.querySelectorAll('td');
+        if (cells.length < 3) return false;
+        var t = cells[0].textContent.trim();
+        var v = cells[1].textContent.trim();
+        return /^\d{1,2}[:h]/.test(t) && !isNaN(parseFloat(v.replace(',','.')));
+      });
+      if (valid.length > bestRows.length) bestRows = valid;
+    });
+    if (!bestRows.length) throw new Error('aucun tableau avec des lignes horaires trouvé (slug: ' + slug + ')');
+    console.log('[Gusts] Tableau sélectionné:', bestRows.length, 'lignes valides');
+
+    // Colonnes: 0=heure, 1=vent moy, 2=rafales. Clé = 'YYYY-MM-DD:H' (évite collisions entre jours)
     var gustMap = {};
     var ncNow = new Date(Date.now() + 11 * 3600000); // heure locale NC actuelle
     var cy = ncNow.getUTCFullYear(), cm = ncNow.getUTCMonth(), cd = ncNow.getUTCDate();
     var prevH = -1;
     var debugSample = [];
 
-    rows.forEach(function(row) {
+    bestRows.forEach(function(row) {
       var cells = row.querySelectorAll('td');
       if (cells.length < 3) return;
       var timeStr = cells[0].textContent.trim();
       var gustStr = cells[2].textContent.trim();
-      var hMatch = timeStr.match(/(\d{1,2})[:h]/);
+      var hMatch = timeStr.match(/^(\d{1,2})[:h]/);
       if (!hMatch) return;
       var h = parseInt(hMatch[1]);
       // Détection du changement de jour : heure redescend le soir→matin
@@ -4338,73 +4352,84 @@ function loadObsHistory() {
   .catch(function() { chartEl.innerHTML = '<div style="font-size:10px;color:var(--faint);padding:8px;">Erreur réseau</div>'; });
 }
 
-// ─── Graphe comparaison : observations 48h + NC forecast + GFS ──────────────
-// Axe X = ligne de temps commune (-48h → +48h), ligne "maintenant" au centre
-// Obs (barres colorées Beaufort + pointillés rafales) | NC (trait plein cyan) | GFS (tirets orange)
-function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
-  var W = 600, H = 165;
-  var pad = {l:36, r:10, t:22, b:30};
-  var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
-  var now = Date.now();
+// ─── Graphe : obs réelles vs prévisions passées du cache ─────────────────────
+// Charge le meteo_cache Supabase pour le spot actif (7 derniers jours)
+// Groupe les observations par NC date, calcule la moyenne de vent proche de sessionHour
+// Affiche : barres bleues (obs) + barres vertes (cache NC) + ligne Hs (cache)
+async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
+  if (statsEl) statsEl.innerHTML = '';
+  chartEl.innerHTML = '<div style="padding:12px;font-size:10px;color:var(--muted);">⏳ Chargement cache conditions passées…</div>';
 
-  // ── Observations (48h passées) ──────────────────────────────────────────
-  var obsRows = (obsRecent || []).map(function(r) {
-    return {
-      ms: new Date(r.time).getTime(),
-      ws: r.wind_speed != null ? +(r.wind_speed * 1.944).toFixed(1) : null,
-      wg: r.wind_speed_gust != null ? +(r.wind_speed_gust * 1.944).toFixed(1) : null
-    };
-  }).filter(function(r){ return r.ms <= now + 600000; });
+  // ── 1. Charger les 7 derniers jours depuis meteo_cache pour le spot actif ─
+  var spot = SPOTS[currentSpot];
+  var cacheByDate = {}; // dateStr → data object
 
-  // ── NC forecast (_fcastData — spot actif) ───────────────────────────────
-  var ncFcst = [];
-  var activeNC = _fcastData;
-  if (activeNC && activeNC.dates && activeNC.wSpd) {
-    activeNC.dates.forEach(function(dt, i) {
-      if (!dt || activeNC.wSpd[i] == null) return;
-      // dates[i] = new Date(apiUTC + 11h), donc .getTime() - 11h = vrai UTC
-      var ms = (dt.getTime ? dt.getTime() : new Date(dt).getTime()) - 11 * 3600000;
-      if (ms < now - 3600000 || ms > now + 50 * 3600000) return;
-      ncFcst.push({ms: ms, ws: activeNC.wSpd[i], wg: activeNC.wGst[i]});
-    });
+  _ensureSupabaseClient();
+  if (_tokenSbClient && spot) {
+    try {
+      var today = new Date();
+      var ids = [];
+      for (var di = 1; di <= 7; di++) {
+        var d = new Date(today.getTime() - di * 86400000);
+        var ds = d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+        ids.push(ds+'_'+spot.lat.toFixed(3)+'_'+spot.lon.toFixed(3));
+      }
+      var {data: cacheRows} = await _tokenSbClient.from('meteo_cache').select('id,data,status').in('id', ids);
+      (cacheRows || []).forEach(function(row) {
+        var dateStr = row.id.split('_')[0];
+        if (row.data) cacheByDate[dateStr] = Object.assign({src: row.status}, row.data);
+      });
+    } catch(e) { console.warn('[CompChart] Supabase erreur:', e.message); }
   }
 
-  // ── GFS forecast (_omFcastData) ─────────────────────────────────────────
-  var gfsFcst = [];
-  if (_omFcastData && _omFcastData.dates && _omFcastData.wSpd) {
-    _omFcastData.dates.forEach(function(dt, i) {
-      if (!dt || _omFcastData.wSpd[i] == null) return;
-      var ms = (dt.getTime ? dt.getTime() : new Date(dt).getTime()) - 11 * 3600000;
-      if (ms < now - 3600000 || ms > now + 50 * 3600000) return;
-      gfsFcst.push({ms: ms, ws: _omFcastData.wSpd[i], wg: _omFcastData.wGst[i]});
-    });
-  }
+  // ── 2. Grouper obs par NC date, garder valeur proche de sessionHour ────────
+  var sessionH = (spot && spot.sessionHour) || 7;
+  var obsByDate = {}; // dateStr → {ws, wg, count}
+  (obsRecent || []).forEach(function(r) {
+    if (!r.time) return;
+    var ms = new Date(r.time).getTime();
+    var ncDt = new Date(ms + 11*3600000);
+    var ds = ncDt.getUTCFullYear()+'-'+String(ncDt.getUTCMonth()+1).padStart(2,'0')+'-'+String(ncDt.getUTCDate()).padStart(2,'0');
+    var h = ncDt.getUTCHours();
+    var diff = Math.abs(h - sessionH);
+    var ws = r.wind_speed != null ? +(r.wind_speed * 1.944).toFixed(1) : null;
+    var wg = r.wind_speed_gust != null ? +(r.wind_speed_gust * 1.944).toFixed(1) : null;
+    if (!obsByDate[ds] || diff < obsByDate[ds].diff) {
+      obsByDate[ds] = {ws: ws, wg: wg, diff: diff};
+    }
+  });
 
-  // ── Plage de temps ─────────────────────────────────────────────────────
-  var allMs = obsRows.map(function(r){return r.ms;})
-    .concat(ncFcst.map(function(r){return r.ms;}))
-    .concat(gfsFcst.map(function(r){return r.ms;}));
-  if (!allMs.length) {
-    chartEl.innerHTML = '<div style="padding:20px;font-size:11px;color:var(--faint);text-align:center;">Chargez les prévisions et l\'historique pour voir la comparaison.</div>';
+  // ── 3. Construire les jours communs ─────────────────────────────────────
+  var allDates = Object.keys(cacheByDate).concat(Object.keys(obsByDate))
+    .filter(function(v,i,a){return a.indexOf(v)===i;}).sort().reverse().slice(0,7).reverse();
+
+  if (!allDates.length) {
+    chartEl.innerHTML = '<div style="padding:16px;font-size:11px;color:var(--faint);text-align:center;">'
+      + 'Aucune donnée dans le cache pour les 7 derniers jours.<br>'
+      + '<span style="font-size:9px;">Consultez previsions.html régulièrement pour alimenter le cache.</span></div>';
     return;
   }
-  var tMin = Math.min.apply(null, allMs) - 1800000;
-  var tMax = Math.max.apply(null, allMs) + 1800000;
-  var tRange = tMax - tMin || 1;
 
-  function toX(ms) { return pad.l + ((ms - tMin) / tRange) * cW; }
+  // ── 4. SVG barres côte-à-côte : obs (bleu) vs cache NC (vert) + Hs (ligne) ─
+  var W = 480, H = 160;
+  var pad = {l:36, r:10, t:26, b:36};
+  var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+  var n = allDates.length;
+  var slotW = cW / n;
+  var bw = Math.max(4, Math.floor(slotW * 0.3) - 1);
 
-  // ── Plage Y ─────────────────────────────────────────────────────────────
-  var allWind = obsRows.map(function(r){return r.ws;})
-    .concat(obsRows.map(function(r){return r.wg;}))
-    .concat(ncFcst.map(function(r){return r.ws;}))
-    .concat(ncFcst.map(function(r){return r.wg;}))
-    .concat(gfsFcst.map(function(r){return r.ws;}))
-    .concat(gfsFcst.map(function(r){return r.wg;}))
-    .filter(function(v){return v != null;});
-  var yMax = allWind.length ? Math.max(Math.max.apply(null, allWind) * 1.2, 10) : 20;
-  var yMin = 0, yRange = yMax;
+  // Collecte toutes les valeurs pour l'axe Y vent
+  var allWind = [];
+  allDates.forEach(function(ds) {
+    var obs = obsByDate[ds], cache = cacheByDate[ds];
+    if (obs && obs.ws != null) allWind.push(obs.ws);
+    if (obs && obs.wg != null) allWind.push(obs.wg);
+    if (cache && cache.windKt != null) allWind.push(cache.windKt);
+  });
+  var yMax = allWind.length ? Math.max(Math.max.apply(null, allWind) * 1.25, 10) : 20;
+  var yRange = yMax;
   function toY(v) { return pad.t + cH - (v / yRange) * cH; }
+  function toX(i, offset) { return pad.l + i * slotW + slotW / 2 + (offset || 0); }
   function wCol(v) { return !v?'#555':v<7?'#3dba8a':v<17?'#e8c44a':v<28?'#e8874a':'#e05c5c'; }
 
   var svg = [];
@@ -4416,83 +4441,87 @@ function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
     svg.push('<text x="'+(pad.l-3)+'" y="'+(gy+3)+'" text-anchor="end" font-size="8" fill="rgba(170,200,225,.5)">'+Math.round(gv)+'</text>');
   }
 
-  // Labels temps (toutes les 6h)
-  var step6 = 6 * 3600000;
-  for (var tlbl = Math.ceil(tMin / step6) * step6; tlbl <= tMax; tlbl += step6) {
-    var lx = toX(tlbl), ldt = new Date(tlbl + 11 * 3600000);
-    var lhh = String(ldt.getUTCHours()).padStart(2, '0') + 'h';
-    svg.push('<text x="'+lx+'" y="'+(H-4)+'" text-anchor="middle" font-size="8" fill="rgba(160,195,220,.5)">'+lhh+'</text>');
-    if (ldt.getUTCHours() === 0) {
-      svg.push('<line x1="'+lx+'" y1="'+pad.t+'" x2="'+lx+'" y2="'+(H-pad.b)+'" stroke="rgba(255,255,255,.08)" stroke-width="0.8"/>');
-      svg.push('<text x="'+lx+'" y="'+(H-16)+'" text-anchor="middle" font-size="7" fill="rgba(160,195,220,.3)">'+ldt.getUTCDate()+'/'+(ldt.getUTCMonth()+1)+'</text>');
+  // Axe Hs (droite, optionnel)
+  var hsMax = 0;
+  allDates.forEach(function(ds){ var c=cacheByDate[ds]; if(c&&c.hs>hsMax) hsMax=c.hs; });
+  function toYhs(v) { return pad.t + cH - (v / (hsMax||3)) * cH; }
+
+  // Barres + labels
+  var DAY_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var hsLinePts = [];
+
+  allDates.forEach(function(ds, i) {
+    var obs = obsByDate[ds] || {};
+    var cache = cacheByDate[ds] || {};
+    var cx = toX(i);
+
+    // Label date (en bas)
+    var parts = ds.split('-');
+    var dt2 = new Date(Date.UTC(+parts[0], +parts[1]-1, +parts[2]));
+    var dlbl = DAY_FR[dt2.getUTCDay()] + ' ' + dt2.getUTCDate() + '/' + (dt2.getUTCMonth()+1);
+    svg.push('<text x="'+cx+'" y="'+(H-6)+'" text-anchor="middle" font-size="8" fill="rgba(160,195,220,.6)">'+dlbl+'</text>');
+
+    // Séparateur vertical
+    if (i > 0) svg.push('<line x1="'+(cx-slotW/2)+'" y1="'+pad.t+'" x2="'+(cx-slotW/2)+'" y2="'+(H-pad.b)+'" stroke="rgba(255,255,255,.05)" stroke-width="0.8"/>');
+
+    // Barre obs vent (bleue, gauche)
+    if (obs.ws != null) {
+      var bh = toY(0) - toY(obs.ws);
+      svg.push('<rect x="'+(cx-bw-1)+'" y="'+toY(obs.ws)+'" width="'+bw+'" height="'+bh+'" fill="#4fa3c7" opacity="0.85" rx="1"/>');
+      if (obs.wg != null) {
+        svg.push('<rect x="'+(cx-bw-1)+'" y="'+toY(obs.wg)+'" width="'+bw+'" height="3" fill="rgba(224,92,92,.7)" rx="1"/>');
+      }
+      svg.push('<text x="'+(cx-bw/2-1)+'" y="'+(toY(obs.ws)-2)+'" text-anchor="middle" font-size="7" fill="#4fa3c7">'+obs.ws+'</text>');
     }
-  }
 
-  // Ligne "maintenant"
-  var nx = toX(now);
-  svg.push('<rect x="'+pad.l+'" y="'+pad.t+'" width="'+(nx-pad.l)+'" height="'+cH+'" fill="rgba(0,0,0,.08)"/>');
-  svg.push('<line x1="'+nx+'" y1="'+(pad.t-2)+'" x2="'+nx+'" y2="'+(H-pad.b)+'" stroke="rgba(255,255,255,.3)" stroke-width="1.5" stroke-dasharray="4,3"/>');
-  svg.push('<text x="'+nx+'" y="'+(pad.t-5)+'" text-anchor="middle" font-size="7" font-weight="700" fill="rgba(255,255,255,.45)">maintenant</text>');
+    // Barre cache NC vent (verte, droite)
+    if (cache.windKt != null) {
+      var bh2 = toY(0) - toY(cache.windKt);
+      svg.push('<rect x="'+(cx+1)+'" y="'+toY(cache.windKt)+'" width="'+bw+'" height="'+bh2+'" fill="#3dba8a" opacity="0.8" rx="1"/>');
+      svg.push('<text x="'+(cx+bw/2+1)+'" y="'+(toY(cache.windKt)-2)+'" text-anchor="middle" font-size="7" fill="#3dba8a">'+cache.windKt+'</text>');
+    }
 
-  // Barres obs (passé)
-  var bw = Math.max(2, Math.min(7, (nx - pad.l) / Math.max(1, obsRows.length) - 1));
-  obsRows.forEach(function(r) {
-    if (r.ws == null) return;
-    var x = toX(r.ms), bh = toY(0) - toY(r.ws);
-    svg.push('<rect x="'+(x-bw/2)+'" y="'+toY(r.ws)+'" width="'+bw+'" height="'+bh+'" fill="'+wCol(r.ws)+'" opacity="0.8" rx="1"/>');
+    // Point Hs pour la ligne
+    if (cache.hs != null && hsMax > 0) {
+      var hsY = toYhs(cache.hs);
+      hsLinePts.push({x: cx, y: hsY, hs: cache.hs});
+    }
   });
 
-  // Ligne rafales obs (pointillés rouges)
-  function buildPath(pts, fx, fy) {
-    var d = '', first = true;
-    pts.forEach(function(p) {
-      if (p.wg == null && p.ws == null) return;
-      var v = p.wg != null ? p.wg : p.ws;
-      d += (first ? 'M' : ' L') + ' ' + fx(p.ms) + ' ' + fy(v); first = false;
+  // Ligne Hs (si dispo) — axe secondaire droit
+  if (hsLinePts.length > 1) {
+    var hsPath = hsLinePts.map(function(p,j){return (j===0?'M':'L')+' '+p.x+' '+p.y;}).join(' ');
+    svg.push('<path d="'+hsPath+'" fill="none" stroke="rgba(123,108,246,.7)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>');
+    hsLinePts.forEach(function(p) {
+      svg.push('<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="rgba(123,108,246,.9)"/>');
+      svg.push('<text x="'+p.x+'" y="'+(p.y-5)+'" text-anchor="middle" font-size="7" fill="rgba(169,159,248,.9)">'+p.hs+'m</text>');
     });
-    return d;
+    // Label axe Hs
+    svg.push('<text x="'+(W-pad.r)+'" y="'+pad.t+'" text-anchor="end" font-size="8" fill="rgba(123,108,246,.6)">Hs</text>');
   }
-  var obsGP = buildPath(obsRows.filter(function(r){return r.wg!=null;}), toX, toY);
-  if (obsGP) svg.push('<path d="'+obsGP+'" fill="none" stroke="rgba(224,92,92,.65)" stroke-width="1.5" stroke-dasharray="3,2"/>');
 
-  // NC forecast — trait plein cyan
-  var ncP = buildPath(ncFcst.filter(function(r){return r.ws!=null;}), toX, toY);
-  if (ncP) svg.push('<path d="'+ncP+'" fill="none" stroke="#3dba8a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>');
-  var ncGP = buildPath(ncFcst.filter(function(r){return r.wg!=null;}), toX, toY);
-  if (ncGP) svg.push('<path d="'+ncGP+'" fill="none" stroke="rgba(61,186,138,.5)" stroke-width="1.2" stroke-dasharray="4,2"/>');
-
-  // GFS forecast — tirets orange
-  var gfsP = buildPath(gfsFcst.filter(function(r){return r.ws!=null;}), toX, toY);
-  if (gfsP) svg.push('<path d="'+gfsP+'" fill="none" stroke="#f97316" stroke-width="1.8" stroke-dasharray="6,3"/>');
-  var gfsGP = buildPath(gfsFcst.filter(function(r){return r.wg!=null;}), toX, toY);
-  if (gfsGP) svg.push('<path d="'+gfsGP+'" fill="none" stroke="rgba(249,115,22,.45)" stroke-width="1.2" stroke-dasharray="3,2"/>');
-
-  // Étiquettes zones
-  svg.push('<text x="'+(pad.l+4)+'" y="'+(pad.t+10)+'" font-size="8" fill="rgba(255,255,255,.25)" font-weight="600">◀ OBS</text>');
-  if (nx < W - 40) svg.push('<text x="'+(nx+4)+'" y="'+(pad.t+10)+'" font-size="8" fill="rgba(255,255,255,.25)" font-weight="600">PRÉVI ▶</text>');
   svg.push('<text x="'+pad.l+'" y="12" font-size="8" fill="rgba(160,195,220,.4)">kt</text>');
 
-  var svgEl = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" style="display:block;width:100%;min-width:380px;">'
+  var svgEl = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" style="display:block;width:100%;max-width:'+W+'px;">'
     + svg.join('') + '</svg>';
 
-  // ── Stats comparaison ────────────────────────────────────────────────────
-  function mean(arr, key) {
-    var vals = arr.map(function(r){return r[key];}).filter(function(v){return v!=null;});
-    if (!vals.length) return null;
-    return +(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(1);
-  }
-  var obsMean = mean(obsRows,'ws'), ncMean = mean(ncFcst,'ws'), gfsMean = mean(gfsFcst,'ws');
-  var ncDiff = obsMean!=null&&ncMean!=null ? +(ncMean-obsMean).toFixed(1) : null;
-  var gfsDiff = obsMean!=null&&gfsMean!=null ? +(gfsMean-obsMean).toFixed(1) : null;
-  function diffLabel(d) { return d==null?'—':(d>0?'+':'')+d+' kt'; }
-  function diffCol(d) { return d==null?'var(--muted)':Math.abs(d)<2?'#3dba8a':Math.abs(d)<5?'#e8a057':'#e05c5c'; }
+  // ── 5. Stats ───────────────────────────────────────────────────────────
+  var diffs = [];
+  allDates.forEach(function(ds) {
+    var obs = obsByDate[ds], cache = cacheByDate[ds];
+    if (obs && obs.ws != null && cache && cache.windKt != null) diffs.push(+(cache.windKt - obs.ws).toFixed(1));
+  });
+  var meanDiff = diffs.length ? +(diffs.reduce(function(a,b){return a+b;},0)/diffs.length).toFixed(1) : null;
+  var rmse = diffs.length ? +(Math.sqrt(diffs.map(function(d){return d*d;}).reduce(function(a,b){return a+b;},0)/diffs.length)).toFixed(1) : null;
+  function diffCol(d) { return d==null?'var(--muted)':Math.abs(d)<2?'#3dba8a':Math.abs(d)<4?'#e8a057':'#e05c5c'; }
+  var srcLabel = Object.values(cacheByDate).some(function(c){return c.src==='nc';}) ? '🛰 meteo.nc' : '🌐 GFS';
 
   if (statsEl) {
     statsEl.innerHTML = [
-      {lbl:'Obs moy ('+obsRows.length+'h)', val: obsMean!=null?obsMean+' kt':'—', col:'#4fa3c7'},
-      {lbl:'NC prévi ('+ncFcst.length+' pts)', val: ncMean!=null?ncMean+' kt':'—', col:'#3dba8a'},
-      {lbl:'GFS prévi', val: gfsMean!=null?gfsMean+' kt':'—', col:'#f97316'},
-      {lbl:'Écart NC–Obs', val: diffLabel(ncDiff), col: diffCol(ncDiff)},
+      {lbl: 'Jours comparés', val: diffs.length + ' / ' + allDates.length, col: 'var(--accent)'},
+      {lbl: 'Source cache', val: srcLabel, col: '#3dba8a'},
+      {lbl: 'Écart moy (NC–obs)', val: meanDiff != null ? (meanDiff>0?'+':'')+meanDiff+' kt' : '—', col: diffCol(meanDiff)},
+      {lbl: 'RMSE vent', val: rmse != null ? rmse + ' kt' : '—', col: diffCol(rmse)},
     ].map(function(c){
       return '<div style="flex:1;padding:7px 4px;border-right:1px solid var(--border);text-align:center;min-width:55px;">'
         +'<div style="font-size:7px;color:var(--faint);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em;">'+c.lbl+'</div>'
@@ -4501,16 +4530,19 @@ function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
     }).join('');
   }
 
-  // Légende
-  var leg = '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:9px;color:var(--muted);flex-wrap:wrap;padding:0 2px;">'
-    + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:7px;background:#3dba8a;border-radius:1px;display:inline-block;opacity:.85;"></span>Obs vent</span>'
-    + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;border-top:2px dashed rgba(224,92,92,.65);display:inline-block;"></span>Obs rafales</span>'
-    + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;border-top:2px solid #3dba8a;display:inline-block;"></span>NC prévi</span>'
-    + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;border-top:2px dashed #f97316;display:inline-block;"></span>GFS prévi</span>'
-    + (ncFcst.length === 0 ? '<span style="color:var(--warn);">⚠ Chargez les prévisions du spot d\'abord</span>' : '')
+  // ── 6. Légende ────────────────────────────────────────────────────────
+  var spotName = spot ? spot.name : 'spot actif';
+  var stName = station ? station.name : '?';
+  var leg = '<div style="font-size:9px;color:var(--muted);margin-top:5px;padding:0 2px;line-height:1.8;">'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">'
+    + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:7px;background:#4fa3c7;border-radius:1px;display:inline-block;"></span>Vent obs. ('+stName+')</span>'
+    + '<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:7px;background:#3dba8a;border-radius:1px;display:inline-block;"></span>Vent prévi NC cache ('+spotName+')</span>'
+    + (hsLinePts.length ? '<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;border-top:2px solid rgba(123,108,246,.7);display:inline-block;"></span>Hs prévi NC cache</span>' : '')
+    + '</div>'
+    + '<div style="font-size:8px;color:var(--faint);margin-top:3px;">↑ Heure de comparaison : '+sessionH+'h (sessionHour du spot) · Obs ≠ spot : vent peut différer selon exposition</div>'
     + '</div>';
 
-  chartEl.innerHTML = '<div style="overflow-x:auto;">' + svgEl + '</div>' + leg;
+  chartEl.innerHTML = svgEl + leg;
 }
 
 function renderObsHistoryChart(s, h) {
