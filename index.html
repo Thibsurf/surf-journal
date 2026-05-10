@@ -1887,7 +1887,10 @@ async function _loadDailyCache(date, lat, lon) {
   return null;
 }
 
+var _autofillSeq = 0; // guard anti-race : chaque appel a son numéro unique
+
 async function _autoFillConditions(targetDate) {
+  var seq = ++_autofillSeq; // seq de cet appel — si un plus récent arrive, on s'arrête
   var hint = document.getElementById('autofill-hint');
   var stInfoEl = document.getElementById('autofill-station-info');
   if (hint) { hint.textContent = '⏳ Récupération des conditions…'; hint.style.color = 'var(--text-muted)'; }
@@ -2153,6 +2156,9 @@ async function _autoFillConditions(targetDate) {
       } catch(e) { console.warn('[autofill] GFS error:', e); }
     }
   }
+
+  // ── Guard : si un appel plus récent a démarré, on abandonne silencieusement ─
+  if (_autofillSeq !== seq) { console.log('[autofill] #'+seq+' annulé (appel plus récent)'); return; }
 
   // ── Remplissage (partagé historique + temps réel) ────────────────────
   var data = ncData || omData;
@@ -3636,7 +3642,9 @@ function _onNewToken(tok, source) {
   var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
   var hintEl = document.getElementById('autofill-hint');
   var isFormOpen = modal && modal.classList.contains('open');
-  var needsRefresh = hintEl && (hintEl.textContent.includes('?') || hintEl.textContent.includes('indisponible') || hintEl.textContent.trim() === '');
+  var hintText = hintEl ? hintEl.textContent.trim() : '';
+  // Ne relance que si l'autofill n'a pas encore réussi (pas de ✅ NC/worker/cache)
+  var needsRefresh = !hintText || hintText.includes('⏳') || hintText.includes('?') || hintText.includes('indisponible') || hintText.includes('GFS');
   if (isFormOpen && spotVal && needsRefresh) {
     var dateEl = document.getElementById('f-date');
     console.log('[App] Nouveau token ? relance autofill', spotVal);

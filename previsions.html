@@ -2935,7 +2935,7 @@ async function _fetchGustsScrape(spot) {
       wChart.options.scales.y.suggestedMax = Math.ceil(maxGst * 1.25);
       wChart.data.datasets[1].data = _fcastData.wGst.slice();
       wChart.data.datasets[1].label = 'Rafales meteo.nc (kt)';
-      wChart.update(); // avec animation pour que le changement soit visible
+      wChart.update();
     }
     // Badge : raf. GFS → raf. meteo.nc
     var badgeEl = document.getElementById('hs-model-badge');
@@ -2948,7 +2948,8 @@ async function _fetchGustsScrape(spot) {
         rafSpan.title = 'Rafales depuis meteo.nc/fr/marine/' + slug + ' (' + patched + ' créneaux)';
       }
     }
-    console.log('[Gusts] OK — slug:', slug, '· badge mis à jour');
+    console.log('%c[Gusts] ✅ Rafales meteo.nc chargées — slug: ' + slug + ' · ' + patched + ' créneaux patchés', 'color:#3dba8a;font-weight:bold');
+    showToast('💨 Rafales meteo.nc chargées (' + patched + ' créneaux)');
   } catch(e) {
     console.info('[Gusts] Scraping échoué (' + e.message + ') — rafales GFS conservées');
   }
