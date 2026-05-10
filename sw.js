@@ -28,18 +28,26 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+  // Ne pas intercepter les requêtes non-GET ni les APIs externes
+  if (event.request.method !== 'GET') return;
   if (event.request.url.includes('supabase.co') ||
       event.request.url.includes('workers.dev') ||
       event.request.url.includes('googleapis.com') ||
-      event.request.url.includes('meteo.nc')) {
+      event.request.url.includes('meteo.nc') ||
+      event.request.url.includes('open-meteo.com') ||
+      event.request.url.includes('openstreetmap.org') ||
+      event.request.url.includes('esri.com')) {
     return;
   }
 
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        // Ne mettre en cache que les réponses 200 OK (évite "Response body already used" sur 4xx/5xx)
+        if (response.ok && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
         return response;
       })
       .catch(() => caches.match(event.request))

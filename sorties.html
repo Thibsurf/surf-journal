@@ -2994,7 +2994,14 @@ async function shareMeteogramImg() {
 // ════════════════════════════════════════════════════════════════
 // HELPERS
 // ════════════════════════════════════════════════════════════════
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModal(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+  // Réinitialiser l'état d'édition pour éviter les fuites entre sorties
+  if (id === 'modal-create') {
+    _editingId = null; _editInscriptions = []; _editCovoitPax = {}; _editBoatOwners = [];
+  }
+}
 
 function escapeHtml(s) {
   if (!s) return '';
@@ -3169,10 +3176,25 @@ async function _loadNcToken() {
     return local;
   }
 
-  // 2. Worker Cloudflare KV
+  // 2. Supabase shared_tokens (mis à jour par previsions.html)
+  if (sb) {
+    try {
+      var st = await sb.from('shared_tokens').select('token').eq('id','meteo-nc').maybeSingle();
+      if (st.data && st.data.token && _isTokenValid(st.data.token)) {
+        _ncToken = st.data.token;
+        try { localStorage.setItem('nc-token', st.data.token); } catch(e) {}
+        _updateTokenBadge(true);
+        return st.data.token;
+      }
+    } catch(e) {}
+  }
+
+  // 3. Worker Cloudflare KV (dernier recours — peut retourner 410 si expiré)
   try {
     var r = await fetch(WORKER_URL + '/token');
-    if (r.ok) {
+    if (r.status === 410) {
+      console.info('[sorties] Token KV expiré (410) — ouvre meteo.nc avec l\'extension');
+    } else if (r.ok) {
       var d = await r.json();
       if (d && d.token && _isTokenValid(d.token)) {
         _ncToken = d.token;
@@ -3609,29 +3631,54 @@ function renderTricount() {
     if (creditors[ci].rem < 5) ci++;
   }
 
-  // Global summary card
+  // Global summary card — remboursements exclus des dépenses réelles
   var totalExpenses = allSorties.reduce(function(s, sortie) {
-    return s + (sortie.expenses || []).reduce(function(a, e) { return a + (parseFloat(e.amount) || 0); }, 0);
+    return s + (sortie.expenses || []).reduce(function(a, e) {
+      return a + (e.is_reimbursement ? 0 : (parseFloat(e.amount) || 0));
+    }, 0);
+  }, 0);
+  var totalReimb = allSorties.reduce(function(s, sortie) {
+    return s + (sortie.expenses || []).reduce(function(a, e) {
+      return a + (e.is_reimbursement ? (parseFloat(e.amount) || 0) : 0);
+    }, 0);
   }, 0);
 
   var myTransfers = currentUser ? transfers.filter(function(t) { return t.fromId === currentUser.id || t.toId === currentUser.id; }) : [];
 
+  // Bandeau guests non résolus (une seule fois, pas dans chaque ligne)
+  var unresolvedGuests = people.filter(function(p) {
+    return p.id.startsWith('guest-') && !aliasMap[p.id.toLowerCase()];
+  });
+  var guestBanner = unresolvedGuests.length && currentUser
+    ? '<div style="background:rgba(232,160,87,.1);border:1px solid rgba(232,160,87,.3);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:11px;">'
+      + '⚠ <b>' + unresolvedGuests.length + ' invité' + (unresolvedGuests.length>1?'s':'') + ' non relié' + (unresolvedGuests.length>1?'s':'') + ' à un compte</b> — '
+      + 'Utilise <b>🔗 Lier</b> pour les associer définitivement à un compte existant. Une fois lié, c\'est permanent pour toutes les sorties.'
+      + '</div>'
+    : '';
+
   grid.innerHTML = '<div class="tricount-card" style="grid-column:1/-1;">'
     + '<div class="tricount-title">⚖️ Équilibre général</div>'
-    + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Total dépenses : <b style="color:var(--text);">' + totalExpenses.toLocaleString('fr') + ' CFP</b></div>'
+    + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">'
+    + 'Dépenses : <b style="color:var(--text);">' + totalExpenses.toLocaleString('fr') + ' CFP</b>'
+    + (totalReimb > 0 ? ' <span style="color:#3dba8a;font-size:11px;margin-left:8px;">✓ ' + totalReimb.toLocaleString('fr') + ' CFP remboursés</span>' : '')
+    + '</div>'
+    + guestBanner
     + (people.length ? people.map(function(p) {
         var isMe = currentUser && p.id === currentUser.id;
         var col = p.net > 5 ? 'positive' : p.net < -5 ? 'negative' : 'neutral';
         var sign = p.net > 5 ? 'À récupérer' : p.net < -5 ? 'Doit rembourser' : 'À l\'équilibre';
         var maxAbs = Math.max.apply(null, people.map(function(x) { return Math.abs(x.net); })) || 1;
-        // Détecter les guest IDs non résolus (nom = troncature de l'id)
-        var isUnresolvedGuest = p.id.startsWith('guest-') && (p.name === p.id.slice(0,8) || p.name.startsWith('guest-'));
+        var isUnresolvedGuest = p.id.startsWith('guest-') && !aliasMap[p.id.toLowerCase()];
+        // Extraire le prénom lisible depuis l'ID guest (ex: guest-17000-anne-lou → Anne-Lou)
+        var guestDisplayName = isUnresolvedGuest
+          ? p.name.startsWith('guest-') ? p.id.replace(/^guest-\d+-/,'').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}) : p.name
+          : p.name;
         return '<div class="tricount-row">'
           + '<span class="tricount-name">'
           + (isMe ? '⭐ ' : '')
-          + escapeHtml(isUnresolvedGuest ? '👤 ' + p.id.slice(0,18) + '…' : p.name)
+          + escapeHtml(isUnresolvedGuest ? '👤 ' + guestDisplayName : guestDisplayName)
           + (isUnresolvedGuest && currentUser
-            ? ' <button onclick="openAliasManagerForGuest(\'' + p.id + '\')" title="Lier à un compte" style="background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.3);color:var(--accent);border-radius:5px;font-size:9px;padding:1px 6px;cursor:pointer;margin-left:4px;">🔗 Lier</button>'
+            ? ' <button onclick="openAliasManagerForGuest(\'' + p.id + '\')" title="Lier définitivement à un compte" style="background:rgba(232,160,87,.15);border:1px solid rgba(232,160,87,.3);color:#e8a057;border-radius:5px;font-size:9px;padding:1px 6px;cursor:pointer;margin-left:4px;">🔗 Lier</button>'
             : '')
           + '</span>'
           + '<div style="flex:1;margin:0 14px;">'
@@ -3678,7 +3725,8 @@ function renderTricount() {
   list.innerHTML = tricountList.map(function(s) {
     var inscriptions = (s.inscriptions || []).filter(function(i) { return i.status === 'in'; });
     var expenses = s.expenses || [];
-    var total = expenses.reduce(function(a, e) { return a + (parseFloat(e.amount) || 0); }, 0);
+    var total = expenses.reduce(function(a, e) { return a + (e.is_reimbursement ? 0 : (parseFloat(e.amount) || 0)); }, 0);
+    var totalRembSortie = expenses.reduce(function(a, e) { return a + (e.is_reimbursement ? (parseFloat(e.amount) || 0) : 0); }, 0);
     var isCreator = currentUser && s.created_by === currentUser.id;
 
     // Équilibre bateaux ↔ personnes
@@ -3712,7 +3760,8 @@ function renderTricount() {
       + '<div class="sortie-date">' + formatSortieDate(s) + '</div></div>'
       + '<div style="text-align:right;"><div style="font-size:18px;font-weight:700;font-family:var(--font-d);color:var(--text);">'
       + total.toLocaleString('fr') + ' CFP</div>'
-      + '<div style="font-size:10px;color:var(--text-faint);">' + expenses.length + ' dépense' + (expenses.length > 1 ? 's' : '') + '</div></div>'
+      + (totalRembSortie > 0 ? '<div style="font-size:10px;color:#3dba8a;">✓ ' + totalRembSortie.toLocaleString('fr') + ' CFP remboursés</div>' : '')
+      + '<div style="font-size:10px;color:var(--text-faint);">' + (expenses.length - (expenses.filter(function(e){return e.is_reimbursement;}).length)) + ' dépense' + (expenses.length > 1 ? 's' : '') + (expenses.some(function(e){return e.is_reimbursement;}) ? ' + ' + expenses.filter(function(e){return e.is_reimbursement;}).length + ' remb.' : '') + '</div></div>'
       + '</div>'
       + boatBalance
       + (expenses.length ? '<div style="margin-bottom:10px;">'
