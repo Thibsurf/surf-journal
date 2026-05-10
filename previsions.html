@@ -2715,18 +2715,34 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       sw1t.push(p1t); sw1d.push(p1d); sw2d.push(null);
       var wsKt = d.wind_speed_kt;
       wSpd.push(wsKt); wGst.push(null); wDir.push(d.wind_direction);
-      // Note: NC marine n'inclut pas de rafales — elles seront complétées par GFS ci-dessous (_wGstFromGFS=true)
       sst.push(d.T_sea);
       pwr.push((p1h&&p1t)?+(0.5*p1h*p1h*p1t).toFixed(2):(tot&&p1t)?+(0.5*tot*tot*p1t).toFixed(2):null);
     });
-    if(omWind&&omWind.hourly){
-      var _wGstFromGFS = true; // rafales NC viennent de GFS — affichées avec indicateur
+
+    // ── Rafales : priorité API /forecast (wind_speed_gust, même token, même IP) ──
+    // L'API /forecast retourne wind_speed_gust en kt pour la station la plus proche.
+    // On la préfère à Open-Meteo/GFS qui est moins précise localement.
+    var fcRows = ncForecast && ncForecast.properties && ncForecast.properties.forecast;
+    var gotNcGusts = false;
+    if(fcRows && fcRows.length) {
       rows.forEach(function(d,i){
+        var tms = new Date(d.time).getTime();
+        var fcMatch = fcRows.find(function(f){
+          return f.wind_speed_gust != null && Math.abs(new Date(f.time).getTime() - tms) < 5400000;
+        });
+        if(fcMatch) { wGst[i] = Math.round(fcMatch.wind_speed_gust); gotNcGusts = true; }
+      });
+    }
+    // Fallback Open-Meteo pour les créneaux au-delà de la portée de /forecast (~48h)
+    if(omWind&&omWind.hourly){
+      rows.forEach(function(d,i){
+        if(wGst[i]!==null) return; // déjà rempli par NC
         var tms=new Date(d.time).getTime();
-        var idx=omWind.hourly.time.findIndex(function(ot){var ms=new Date(ot).getTime();return Math.abs(ms-tms)<5400000;});
+        var idx=omWind.hourly.time.findIndex(function(ot){return Math.abs(new Date(ot).getTime()-tms)<5400000;});
         if(idx>=0&&omWind.hourly.wind_gusts_10m[idx]!==null) wGst[i]=Math.round(omWind.hourly.wind_gusts_10m[idx]);
       });
     }
+    var _wGstFromGFS = !gotNcGusts; // true seulement si 0 rafale NC disponible
   } else if(omMarine&&omWind){
     var h=omMarine.hourly,wh=omWind.hourly;
     // OM timestamps = heure locale NC (grâce à &timezone=Pacific/Noumea)
@@ -2755,7 +2771,8 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       pwr.push((hs2&&T2)?+(0.5*hs2*hs2*T2).toFixed(2):null);
     }
   }
-  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,wSpd,wGst,wDir,sst,pwr,dates,wGstFromGFS:useNC&&!!(omWind&&omWind.hourly)};
+  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,wSpd,wGst,wDir,sst,pwr,dates,
+    wGstFromGFS: useNC ? (typeof _wGstFromGFS!=='undefined' ? _wGstFromGFS : !!(omWind&&omWind.hourly)) : false};
   // Sauvegarder séparément les données NC pour le toggle
   if(useNC) _ncFcastData = _fcastData;
 
