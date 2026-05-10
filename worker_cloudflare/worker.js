@@ -65,12 +65,9 @@ export default {
 
     // =========================
     // HELPER FETCH METEO
-    // Priorité : token fourni par le navigateur (Authorization header) > token KV
-    // Le navigateur envoie son propre Bearer (frais, issu de l'extension) →
-    // le worker est un pur proxy CORS, sans dépendance au token KV.
     // =========================
-    async function fetchMeteo(endpoint, overrideToken) {
-      const token = overrideToken || (await env.KV_BINDING.get("jwt"));
+    async function fetchMeteo(endpoint) {
+      const token = await env.KV_BINDING.get("jwt");
       if (!token) return json({ ok: false, error: "No token available" }, 500);
       const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
@@ -83,19 +80,12 @@ export default {
       }
     }
 
-    // Token du navigateur transmis dans l'Authorization header (sans "Bearer " prefix)
-    const clientAuth = request.headers.get("Authorization");
-    const clientToken = clientAuth && clientAuth.startsWith("Bearer ")
-      ? clientAuth.slice(7)
-      : null;
-
     if (url.pathname === "/forecast") {
       const lat = url.searchParams.get("lat");
       const lon = url.searchParams.get("lon");
       if (!lat || !lon) return json({ error: "missing lat/lon" }, 400);
       return await fetchMeteo(
-        `https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine?lat=${lat}&lon=${lon}`,
-        clientToken
+        `https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine?lat=${lat}&lon=${lon}`
       );
     }
 
@@ -103,8 +93,7 @@ export default {
       const id = url.searchParams.get("id");
       if (!id) return json({ error: "missing id" }, 400);
       return await fetchMeteo(
-        `https://rpcache.meteo.nc/internet2018client/2.0/tide?id=${id}`,
-        clientToken
+        `https://rpcache.meteo.nc/internet2018client/2.0/tide?id=${id}`
       );
     }
 
@@ -114,8 +103,7 @@ export default {
       const id = url.searchParams.get("id");
       if (!lat || !lon || !id) return json({ error: "missing params" }, 400);
       return await fetchMeteo(
-        `https://rpcache.meteo.nc/internet2018client/2.0/observation/history?lat=${lat}&lon=${lon}&id=${id}`,
-        clientToken
+        `https://rpcache.meteo.nc/internet2018client/2.0/observation/history?lat=${lat}&lon=${lon}&id=${id}`
       );
     }
 

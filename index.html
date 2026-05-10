@@ -2067,37 +2067,63 @@ async function _autoFillConditions(targetDate) {
 
     _updateNavTokenBadge(_ncToken);
 
-    // ── Étape 2 : Appel via worker (proxy CORS) avec le token frais ──────
-    // Le worker forwards notre Authorization header à rpcache — pas de CORS,
-    // et le token est frais (pas le KV potentiellement expiré du worker).
-    if (_ncToken && _srcPref !== 'gfs') {
+    // ── Étape 2 : Worker Cloudflare (KV token, géré par l'extension) ────
+    // Le worker est la voie normale — son KV est synchronisé toutes les 10min.
+    if (_srcPref !== 'gfs') {
       try {
-        var ncUrl = WORKER_URL + '/forecast?lat=' + lat + '&lon=' + lon;
+        var wRes2 = await fetch(WORKER_URL + '/forecast?lat=' + lat + '&lon=' + lon);
+        if (wRes2.ok) {
+          var wJson2 = await wRes2.json();
+          var wRows = wJson2 && wJson2.properties && wJson2.properties.marine;
+          if (wRows && wRows.length > 0) {
+            var nowMs = Date.now();
+            var wBest = wRows.reduce(function(b, r) {
+              return Math.abs(new Date(r.time).getTime() - nowMs) < Math.abs(new Date(b.time).getTime() - nowMs) ? r : b;
+            }, wRows[0]);
+            ncData = {
+              hs:       wBest.primary_swell_height   != null ? wBest.primary_swell_height   : wBest.wave_height,
+              period:   wBest.primary_swell_period   != null ? wBest.primary_swell_period   : null,
+              swellDir: wBest.primary_swell_direction != null ? wBest.primary_swell_direction : null,
+              windKt:   wBest.wind_speed_kt          != null ? wBest.wind_speed_kt           : null,
+              windDir:  wBest.wind_direction         != null ? wBest.wind_direction          : null,
+              source: 'worker'
+            };
+            console.log('[autofill] Worker OK ✅', ncData);
+            _saveDailyCache(today, lat, lon, station.name, ncData);
+          }
+        }
+      } catch(e) { console.warn('[autofill] Worker error:', e.message); }
+    }
+
+    // ── Fallback : direct rpcache si token dispo et worker KV expiré ─────
+    if (!ncData && _ncToken && _srcPref !== 'gfs') {
+      try {
+        var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'
+          + '?lat=' + lat + '&lon=' + lon + '&range=24&output=json';
         var ncRes = await fetch(ncUrl, {
-          headers: { 'Authorization': 'Bearer ' + _ncToken }
+          headers: { 'Authorization': 'Bearer ' + _ncToken },
+          credentials: 'omit'
         });
         if (ncRes.ok) {
           var ncJson = await ncRes.json();
-          var rows2 = ncJson && ncJson.properties && ncJson.properties.marine;
-          if (rows2 && rows2.length > 0) {
-            var nowMs = Date.now();
-            var best2 = rows2.reduce(function(b, r) {
-              return Math.abs(new Date(r.time).getTime() - nowMs) < Math.abs(new Date(b.time).getTime() - nowMs) ? r : b;
-            }, rows2[0]);
+          var ncRows = ncJson && ncJson.properties && ncJson.properties.marine;
+          if (ncRows && ncRows.length > 0) {
+            var nowMs2 = Date.now();
+            var ncBest = ncRows.reduce(function(b, r) {
+              return Math.abs(new Date(r.time).getTime() - nowMs2) < Math.abs(new Date(b.time).getTime() - nowMs2) ? r : b;
+            }, ncRows[0]);
             ncData = {
-              hs:       best2.primary_swell_height   != null ? best2.primary_swell_height   : best2.wave_height,
-              period:   best2.primary_swell_period   != null ? best2.primary_swell_period   : null,
-              swellDir: best2.primary_swell_direction != null ? best2.primary_swell_direction : null,
-              windKt:   best2.wind_speed_kt          != null ? best2.wind_speed_kt           : null,
-              windDir:  best2.wind_direction         != null ? best2.wind_direction          : null,
+              hs:       ncBest.primary_swell_height   != null ? ncBest.primary_swell_height   : ncBest.wave_height,
+              period:   ncBest.primary_swell_period   != null ? ncBest.primary_swell_period   : null,
+              swellDir: ncBest.primary_swell_direction != null ? ncBest.primary_swell_direction : null,
+              windKt:   ncBest.wind_speed_kt          != null ? ncBest.wind_speed_kt           : null,
+              windDir:  ncBest.wind_direction         != null ? ncBest.wind_direction          : null,
               source: 'direct'
             };
-            console.log('[autofill] NC via worker ✅', ncData);
+            console.log('[autofill] NC direct (fallback) ✅', ncData);
             _saveDailyCache(today, lat, lon, station.name, ncData);
           }
         } else if (ncRes.status === 401) {
-          // Token invalide pour cette IP → nettoyer pour forcer re-sync
-          console.warn('[autofill] Token 401 expiré — nettoyage localStorage');
           try { localStorage.removeItem('nc-token'); } catch(_) {}
           _updateNavTokenBadge(null);
         }
