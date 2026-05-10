@@ -1892,6 +1892,7 @@ var _autofillBusy = false; // lock : un seul autofill à la fois
 async function _autoFillConditions(targetDate) {
   if (_autofillBusy) { console.log('[autofill] déjà en cours, ignoré'); return; }
   _autofillBusy = true;
+  try {
   var hint = document.getElementById('autofill-hint');
   var stInfoEl = document.getElementById('autofill-station-info');
   if (hint) { hint.textContent = '⏳ Récupération des conditions…'; hint.style.color = 'var(--text-muted)'; }
@@ -2171,7 +2172,6 @@ async function _autoFillConditions(targetDate) {
 
   if (!data) {
     if (hint) { hint.textContent = '⚠ Données indisponibles'; hint.style.color = 'var(--accent-warm)'; }
-    _autofillBusy = false;
     return;
   }
 
@@ -2219,7 +2219,8 @@ async function _autoFillConditions(targetDate) {
 
   // ── Prévisions horaires (temps réel uniquement) ──────────────────────
   if (!_isHistory) _loadForecastStrip(lat, lon);
-  _autofillBusy = false; // libérer le lock
+  } catch(e) { console.warn('[autofill] exception:', e); }
+  finally { _autofillBusy = false; } // toujours libérer même en cas d'erreur
 }
 
 // Cache des prévisions horaires pour le strip session
