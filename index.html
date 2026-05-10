@@ -2067,14 +2067,14 @@ async function _autoFillConditions(targetDate) {
 
     _updateNavTokenBadge(_ncToken);
 
-    // ── Étape 2 : Appel direct navigateur → meteo.nc ─────────────────────
+    // ── Étape 2 : Appel via worker (proxy CORS) avec le token frais ──────
+    // Le worker forwards notre Authorization header à rpcache — pas de CORS,
+    // et le token est frais (pas le KV potentiellement expiré du worker).
     if (_ncToken && _srcPref !== 'gfs') {
       try {
-        var ncUrl = 'https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine'
-          + '?lat=' + lat + '&lon=' + lon + '&range=24&output=json';
+        var ncUrl = WORKER_URL + '/forecast?lat=' + lat + '&lon=' + lon;
         var ncRes = await fetch(ncUrl, {
-          headers: { 'Authorization': 'Bearer ' + _ncToken },
-          credentials: 'omit'
+          headers: { 'Authorization': 'Bearer ' + _ncToken }
         });
         if (ncRes.ok) {
           var ncJson = await ncRes.json();
@@ -2092,7 +2092,7 @@ async function _autoFillConditions(targetDate) {
               windDir:  best2.wind_direction         != null ? best2.wind_direction          : null,
               source: 'direct'
             };
-            console.log('[autofill] NC direct ✅', ncData);
+            console.log('[autofill] NC via worker ✅', ncData);
             _saveDailyCache(today, lat, lon, station.name, ncData);
           }
         } else if (ncRes.status === 401) {
