@@ -1459,6 +1459,8 @@ async function onLogin(user) {
   await loadMySessions();
 
   console.log("✅ onLogin terminé, dashboard affiché");
+  // Mettre à jour le badge token dès que l'utilisateur est connecté
+  setTimeout(checkTokenAndWorkerStatus, 500);
 }
 
 // ══ SESSIONS ══
@@ -2671,49 +2673,63 @@ function setForecastAccuracy(val) {
 }
 
 async function saveSession() {
-  if (!sb) { showToast('Configure Supabase !', 'error'); return; }
-  const sharedWith = document.getElementById('f-shared-with').value.split(',').map(s=>s.trim()).filter(Boolean);
-  const payload = {
-    user_id: currentUser.id,
-    date: document.getElementById('f-date').value,
-    boat_id: document.getElementById('f-boat-id')?(document.getElementById('f-boat-id').value||null):null,
-    spot: getSpotValue(),
-    distance_nm: document.getElementById('f-distance')?(parseFloat(document.getElementById('f-distance').value)||null):null,
-    launch_point: document.getElementById('f-launch').value.trim(),
-    context: document.getElementById('f-context').value,
-    duration_h: parseFloat(document.getElementById('f-duration').value) || null,
-    hs: parseFloat(document.getElementById('f-hs').value) || null,
-    period: parseFloat(document.getElementById('f-period').value) || null,
-    swell_dir: document.getElementById('f-swell-dir').value.trim(),
-    wind_kts: parseFloat(document.getElementById('f-wind').value) || null,
-    wind_dir: document.getElementById('f-wind-dir').value.trim(),
-    tide: document.getElementById('f-tide').value.trim(),
-    board: document.getElementById('f-board').value.trim(),
-    price_cfp: parseInt(document.getElementById('f-price').value) || null,
-    quality: selectedQuality || null,
-    moves: selectedMoves,
-    tube_count: selectedMoves.includes('tube') ? (selectedTubeCount || 1) : 0,
-    shared_with: sharedWith,
-    is_shared: sharedWith.length > 0,
-    observations: document.getElementById('f-obs').value.trim(),
-    forecast_accuracy: selectedForecastAccuracy || null,
-    tide_ranges: tideRanges.length > 0 ? tideRanges : null,
-    tide_port: document.getElementById('tide-port') ? document.getElementById('tide-port').value : null,
-  };
   const btn = document.getElementById('btn-save-session');
-  btn.textContent = '…'; btn.disabled = true;
-  let error;
-  if (editingSessionId) {
-    ({ error } = await sb.from('sessions').update(payload).eq('id', editingSessionId));
-  } else {
-    ({ error } = await sb.from('sessions').insert(payload));
+  try {
+    if (!sb) { showToast('Configure Supabase !', 'error'); return; }
+    if (!currentUser) { showToast('Non connecté — recharge la page', 'error'); return; }
+    const sharedWith = document.getElementById('f-shared-with').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const dateVal = document.getElementById('f-date').value;
+    if (!dateVal) { showToast('Date obligatoire', 'error'); return; }
+    const payload = {
+      user_id: currentUser.id,
+      date: dateVal,
+      boat_id: document.getElementById('f-boat-id')?(document.getElementById('f-boat-id').value||null):null,
+      spot: getSpotValue(),
+      distance_nm: document.getElementById('f-distance')?(parseFloat(document.getElementById('f-distance').value)||null):null,
+      launch_point: document.getElementById('f-launch').value.trim(),
+      context: document.getElementById('f-context').value,
+      duration_h: parseFloat(document.getElementById('f-duration').value) || null,
+      hs: parseFloat(document.getElementById('f-hs').value) || null,
+      period: parseFloat(document.getElementById('f-period').value) || null,
+      swell_dir: document.getElementById('f-swell-dir').value.trim() || null,
+      wind_kts: parseFloat(document.getElementById('f-wind').value) || null,
+      wind_dir: document.getElementById('f-wind-dir').value.trim() || null,
+      tide: document.getElementById('f-tide').value.trim() || null,
+      board: document.getElementById('f-board').value.trim() || null,
+      price_cfp: parseInt(document.getElementById('f-price').value) || null,
+      quality: selectedQuality || null,
+      moves: selectedMoves,
+      tube_count: selectedMoves.includes('tube') ? (selectedTubeCount || 1) : 0,
+      shared_with: sharedWith,
+      is_shared: sharedWith.length > 0,
+      observations: document.getElementById('f-obs').value.trim() || null,
+      forecast_accuracy: selectedForecastAccuracy || null,
+      tide_ranges: tideRanges.length > 0 ? tideRanges : null,
+      tide_port: document.getElementById('tide-port') ? (document.getElementById('tide-port').value || null) : null,
+    };
+    console.log('[saveSession] payload:', JSON.stringify(payload).slice(0, 300));
+    if (btn) { btn.textContent = '…'; btn.disabled = true; }
+    let error;
+    if (editingSessionId) {
+      ({ error } = await sb.from('sessions').update(payload).eq('id', editingSessionId));
+    } else {
+      ({ error } = await sb.from('sessions').insert(payload));
+    }
+    if (btn) { btn.textContent = 'Enregistrer'; btn.disabled = false; }
+    if (error) {
+      console.error('[saveSession] Supabase error:', error);
+      showToast('Erreur Supabase : ' + error.message, 'error');
+      return;
+    }
+    showToast(editingSessionId ? 'Session mise à jour !' : 'Session ajoutée !', 'success');
+    closeModal('modal-add');
+    await loadMySessions();
+    if (document.getElementById('page-group').classList.contains('active')) await loadGroupSessions();
+  } catch(e) {
+    console.error('[saveSession] Exception JS:', e);
+    if (btn) { btn.textContent = 'Enregistrer'; btn.disabled = false; }
+    showToast('Erreur inattendue : ' + e.message, 'error');
   }
-  btn.textContent = 'Enregistrer'; btn.disabled = false;
-  if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
-  showToast(editingSessionId ? 'Session mise à jour !' : 'Session ajoutée !', 'success');
-  closeModal('modal-add');
-  await loadMySessions();
-  if (document.getElementById('page-group').classList.contains('active')) await loadGroupSessions();
 }
 
 // ══ SESSION DETAIL ══
