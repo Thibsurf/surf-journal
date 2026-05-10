@@ -3559,9 +3559,11 @@ function renderTricount() {
     var ownerIds = s.boat_owners || [];
 
     var participants = inscriptions.map(function(i) {
-      var id = i.is_guest ? (i.guest_id || ('guest-' + (i.username||'').toLowerCase().replace(/\s+/g,'-'))) : i.user_id;
-      var name = i.username || (i.is_guest ? 'Invité' : resolveName(i.user_id));
-      return { id: id, name: name, isGuest: !!i.is_guest };
+      var rawId = i.is_guest ? (i.guest_id || ('guest-' + (i.username||'').toLowerCase().replace(/\s+/g,'-'))) : i.user_id;
+      // Résoudre via aliasMap dès ici pour que tous les calculs utilisent le vrai user_id
+      var id = aliasMap[(rawId||'').toLowerCase()] || rawId;
+      var name = i.username || profileCache[id] || (i.is_guest ? rawId.replace(/^guest-\d+-/,'').replace(/-/g,' ') : resolveName(id));
+      return { id: id, rawId: rawId, name: name, isGuest: !!i.is_guest };
     });
     // Ajouter les copropriétaires non encore dans inscriptions
     ownerIds.forEach(function(uid) {
@@ -4370,13 +4372,16 @@ async function _recordReimbursement(fromId, fromName, toId, toName, amt) {
   }
   if (!target) { toast('Aucune sortie disponible', 'err'); return; }
 
+  // Noms lisibles (pas les guest IDs bruts)
+  var fromDisplay = profileCache[fromResolved] || fromName;
+  var toDisplay   = profileCache[toResolved]   || toName;
   var expense = {
     id: Date.now() + '-remb',
-    payer_id: fromId,
-    payer_name: fromName,
+    payer_id: fromResolved,   // ID résolu (user réel, pas guest ID)
+    payer_name: fromDisplay,  // Nom lisible
     amount: amt,
-    label: '💸 ' + fromName + ' → ' + toName,
-    splits: [toId],
+    label: '💸 ' + fromDisplay + ' → ' + toDisplay,
+    splits: [toResolved],     // beneficiaire résolu
     is_reimbursement: true,
     created_at: new Date().toISOString()
   };

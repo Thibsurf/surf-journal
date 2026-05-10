@@ -1887,10 +1887,11 @@ async function _loadDailyCache(date, lat, lon) {
   return null;
 }
 
-var _autofillSeq = 0; // guard anti-race : chaque appel a son numéro unique
+var _autofillBusy = false; // lock : un seul autofill à la fois
 
 async function _autoFillConditions(targetDate) {
-  var seq = ++_autofillSeq; // seq de cet appel — si un plus récent arrive, on s'arrête
+  if (_autofillBusy) { console.log('[autofill] déjà en cours, ignoré'); return; }
+  _autofillBusy = true;
   var hint = document.getElementById('autofill-hint');
   var stInfoEl = document.getElementById('autofill-station-info');
   if (hint) { hint.textContent = '⏳ Récupération des conditions…'; hint.style.color = 'var(--text-muted)'; }
@@ -2157,9 +2158,6 @@ async function _autoFillConditions(targetDate) {
     }
   }
 
-  // ── Guard : si un appel plus récent a démarré, on abandonne silencieusement ─
-  if (_autofillSeq !== seq) { console.log('[autofill] #'+seq+' annulé (appel plus récent)'); return; }
-
   // ── Remplissage (partagé historique + temps réel) ────────────────────
   var data = ncData || omData;
   var _sessionH = _getSessionHour();
@@ -2173,6 +2171,7 @@ async function _autoFillConditions(targetDate) {
 
   if (!data) {
     if (hint) { hint.textContent = '⚠ Données indisponibles'; hint.style.color = 'var(--accent-warm)'; }
+    _autofillBusy = false;
     return;
   }
 
@@ -2220,6 +2219,7 @@ async function _autoFillConditions(targetDate) {
 
   // ── Prévisions horaires (temps réel uniquement) ──────────────────────
   if (!_isHistory) _loadForecastStrip(lat, lon);
+  _autofillBusy = false; // libérer le lock
 }
 
 // Cache des prévisions horaires pour le strip session

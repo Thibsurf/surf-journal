@@ -1983,7 +1983,7 @@ function setHsSrc(src, skipRedraw) {
   var badgeEl=document.getElementById('hs-model-badge');
   if(badgeEl) {
     var _gfsNote = (src==='nc' && _ncFcastData && d.wGstFromGFS)
-      ? ' <span style="font-size:8px;color:rgba(224,92,92,.6);border:1px solid rgba(224,92,92,.2);padding:0px 4px;border-radius:5px;" title="Les données meteo.nc ne contiennent pas les rafales — elles sont complétées par GFS (Open-Meteo)">raf. GFS</span>'
+      ? ' <span style="font-size:8px;color:rgba(79,163,199,.6);border:1px solid rgba(79,163,199,.2);padding:0px 4px;border-radius:5px;" title="Rafales non fournies par l\'API meteo.nc — complétées par Open-Meteo (modèle GFS)">raf. Open-Meteo</span>'
       : '';
     badgeEl.innerHTML = src==='nc'&&_ncFcastData
       ?'<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 6px;border-radius:8px;">meteo.nc</span>'+_gfsNote+(lastStr?' <span style="font-size:9px;color:var(--faint);">au '+lastStr+'</span>':'')
@@ -2155,7 +2155,7 @@ function _buildSecondaryCharts(d) {
   var cvW=document.getElementById('c-wind');
   if(cvW){
     var crossW = makeCrosshairPlugin('c-wind');
-    var _gstLbl = d.wGstFromGFS ? 'Rafales GFS (kt)' : 'Rafales (kt)';
+    var _gstLbl = d.wGstFromGFS ? 'Rafales Open-Meteo (kt)' : 'Rafales (kt)';
     var maxGst = Math.max.apply(null, (d.wGst||[]).concat(d.wSpd||[]).filter(function(v){return v!=null;})) || 20;
     charts['c-wind']=new Chart(cvW,{type:'line',plugins:[crossW, makeSecDayPlugin('c-wind')],data:{labels:d.lbl,datasets:[
       {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},
@@ -2565,8 +2565,6 @@ async function loadForecast(i) {
     }
     
     renderForecast(ncMarine, ncForecast, omMarine, omWind, s);
-    // Scraping async des rafales meteo.nc via worker /proxy (fire-and-forget, ne bloque pas l'UI)
-    if (hasNC && s.marineId) _fetchGustsScrape(s);
     updateRoseSatBg(s.lat, s.lon);
     
     var srcEl = document.getElementById('tbl-source');
@@ -2842,11 +2840,12 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst);
 }
 
-// ─── SCRAPING RAFALES depuis meteo.nc (via worker /proxy) ───────────────
-// Appelé en fire-and-forget après renderForecast quand source=NC + marineId présent.
-// Tente de parser le tableau HTML meteo.nc/fr/marine/<slug> pour récupérer les rafales
-// (absentes de l'API JSON). Patche _fcastData.wGst et met à jour le chart vent si succès.
-async function _fetchGustsScrape(spot) {
+// NOTE: le scraping de la page meteo.nc/fr/marine/<slug> a été supprimé car la page
+// utilise Vue.js — le HTML brut ne contient que des templates vides sans données.
+// Les rafales proviennent d'Open-Meteo (modèle GFS), labelisées "Open-Meteo" dans l'UI.
+
+/* code scraping supprimé — page meteo.nc utilise Vue.js, HTML statique sans données
+function _fetchGustsScrape_removed(spot) { // supprimé
   if (!spot || !spot.marineId || !_fcastData || !Array.isArray(_fcastData.wGst)) return;
   var marineName = spot.marineName;
   if (!marineName) {
@@ -2951,9 +2950,8 @@ async function _fetchGustsScrape(spot) {
     console.log('%c[Gusts] ✅ Rafales meteo.nc chargées — slug: ' + slug + ' · ' + patched + ' créneaux patchés', 'color:#3dba8a;font-weight:bold');
     showToast('💨 Rafales meteo.nc chargées (' + patched + ' créneaux)');
   } catch(e) {
-    console.info('[Gusts] Scraping échoué (' + e.message + ') — rafales GFS conservées');
-  }
-}
+} // fin fonction supprimée
+*/
 
 // ─── HISTOGRAMME Hs EMPILÉ ─────────────────────────────────────────────
 function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
