@@ -958,11 +958,24 @@ async function loadProfiles() {
 }
 
 async function loadAliases() {
+  // 1. Charger depuis localStorage immédiatement (cache local instantané)
   try {
-    const { data } = await sb.from('aliases').select('alias_text,user_id');
-    if (data) data.forEach(function(a) {
-      if (a.alias_text && a.user_id) aliasMap[a.alias_text.toLowerCase()] = a.user_id;
-    });
+    var cached = JSON.parse(localStorage.getItem('surf-aliases') || '{}');
+    Object.keys(cached).forEach(function(k) { aliasMap[k] = cached[k]; });
+  } catch(e) {}
+
+  // 2. Charger depuis Supabase et fusionner (source de vérité)
+  try {
+    const { data, error } = await sb.from('aliases').select('alias_text,user_id');
+    if (error) console.warn('loadAliases Supabase:', error.message);
+    if (data && data.length) {
+      data.forEach(function(a) {
+        if (a.alias_text && a.user_id) aliasMap[a.alias_text.toLowerCase()] = a.user_id;
+      });
+      // Mettre à jour le cache localStorage avec les données fraîches
+      try { localStorage.setItem('surf-aliases', JSON.stringify(aliasMap)); } catch(e) {}
+      console.log('[Aliases] Chargés:', data.length, 'entrées', aliasMap);
+    }
   } catch(e) { console.warn('loadAliases:', e); }
 }
 
@@ -4271,6 +4284,8 @@ async function addAlias() {
   try {
     await sb.from('aliases').upsert({ alias_text: text, user_id: uid, created_by: currentUser.id }, { onConflict: 'alias_text' });
     aliasMap[text.toLowerCase()] = uid;
+    // Sauvegarder dans localStorage pour persistance cross-session même sans Supabase
+    try { localStorage.setItem('surf-aliases', JSON.stringify(aliasMap)); } catch(e) {}
     toast('Alias ajouté : "'+text+'" → '+( profileCache[uid]||uid.slice(0,8)), 'ok');
     openAliasManager(); openAliasManager(); // ferme puis rouvre pour rafraîchir
     renderTricount();

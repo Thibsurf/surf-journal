@@ -2155,11 +2155,21 @@ function _buildSecondaryCharts(d) {
   var cvW=document.getElementById('c-wind');
   if(cvW){
     var crossW = makeCrosshairPlugin('c-wind');
-    var _gstLbl = d.wGstFromGFS ? 'Rafales Open-Meteo (kt)' : 'Rafales (kt)';
     var maxGst = Math.max.apply(null, (d.wGst||[]).concat(d.wSpd||[]).filter(function(v){return v!=null;})) || 20;
+    // Rafales NC (/forecast) → points cercles stylisés (valeurs discrètes, 0 = pas de point)
+    // Rafales Open-Meteo    → courbe pointillée (interpolation continue)
+    var gustDataset = d.wGstFromGFS
+      ? { label:'Rafales Open-Meteo (kt)', type:'line',
+          data:d.wGst||[], borderColor:'rgba(224,92,92,.6)', backgroundColor:'transparent',
+          borderWidth:1, pointRadius:0, tension:0.3, borderDash:[4,3], order:2 }
+      : { label:'Rafales meteo.nc (kt)', type:'scatter',
+          data:(d.wGst||[]).map(function(v,i){return (v&&v>0)?{x:i,y:v}:null;}).filter(function(p){return p!=null;}),
+          pointRadius:5, pointHoverRadius:7, pointStyle:'circle',
+          backgroundColor:'rgba(61,186,138,0.75)', borderColor:'rgba(61,186,138,0.95)',
+          borderWidth:1.5, showLine:false, order:1 };
     charts['c-wind']=new Chart(cvW,{type:'line',plugins:[crossW, makeSecDayPlugin('c-wind')],data:{labels:d.lbl,datasets:[
-      {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},
-      {label:_gstLbl,data:d.wGst||[],borderColor:'rgba(224,92,92,.8)',backgroundColor:'transparent',borderWidth:1,pointRadius:0,tension:0.3,borderDash:[4,3]},
+      {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,order:3},
+      gustDataset,
     ]},options:{responsive:true,maintainAspectRatio:false,
       layout:{padding:{bottom:22,top:18}}, // top:18 pour que les rafales ne débordent pas
       plugins:{legend:{display:true,labels:{color:'#7a94aa',font:{size:9},boxWidth:10}},tooltip:{enabled:false}},

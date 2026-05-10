@@ -2275,9 +2275,12 @@ function _refreshForecastStrip() {
   var DIRS=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
   function degToCard(d) { return d!=null ? DIRS[Math.round(((+d%360)+360)%360/22.5)%16] : '—'; }
 
-  // Mettre à jour le hint avec les données de l'heure choisie
+  // Mettre à jour le hint SEULEMENT si l'autofill n'a pas déjà obtenu des données NC
+  // (évite d'écraser "✅ Worker" ou "✅ meteo.nc" avec les données GFS du strip)
   var hintEl = document.getElementById('autofill-hint');
-  if (hintEl && (hs != null || ws != null)) {
+  var currentHint = hintEl ? hintEl.textContent.trim() : '';
+  var hasNcResult = currentHint.includes('✅') || currentHint.includes('Cache NC');
+  if (hintEl && !hasNcResult && (hs != null || ws != null)) {
     var parts = [];
     if (hs != null) parts.push('Hs ' + (+hs).toFixed(1) + 'm');
     if (per != null) parts.push(Math.round(per) + 's');
