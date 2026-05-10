@@ -3648,7 +3648,9 @@ function _onNewToken(tok, source) {
   var isFormOpen = modal && modal.classList.contains('open');
   var hintText = hintEl ? hintEl.textContent.trim() : '';
   // Ne relance que si l'autofill n'a pas encore réussi (pas de ✅ NC/worker/cache)
-  var needsRefresh = !hintText || hintText.includes('⏳') || hintText.includes('?') || hintText.includes('indisponible') || hintText.includes('GFS');
+  // Ne relance PAS si NC/Worker déjà affiché (✅), ne relance QUE si vide/erreur/GFS
+  var hasNcData = hintText.includes('✅') || hintText.includes('Cache NC');
+  var needsRefresh = !hasNcData && (!hintText || hintText.includes('⏳') || hintText.includes('GFS') || hintText.includes('?') || hintText.includes('indisponible'));
   if (isFormOpen && spotVal && needsRefresh) {
     var dateEl = document.getElementById('f-date');
     console.log('[App] Nouveau token ? relance autofill', spotVal);

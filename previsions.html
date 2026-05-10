@@ -2158,15 +2158,20 @@ function _buildSecondaryCharts(d) {
     var maxGst = Math.max.apply(null, (d.wGst||[]).concat(d.wSpd||[]).filter(function(v){return v!=null;})) || 20;
     // Rafales NC (/forecast) → points cercles stylisés (valeurs discrètes, 0 = pas de point)
     // Rafales Open-Meteo    → courbe pointillée (interpolation continue)
+    // Rafales : NC = points cercles verts discrets (pas de courbe, 0 = invisible)
+    //           GFS = courbe pointillée rouge
+    var wGstData = (d.wGst||[]).map(function(v){ return (v && v>0) ? v : null; });
+    var wGstPtR  = (d.wGst||[]).map(function(v){ return (v && v>0) ? 5 : 0; });
     var gustDataset = d.wGstFromGFS
-      ? { label:'Rafales Open-Meteo (kt)', type:'line',
+      ? { label:'Rafales Open-Meteo (kt)',
           data:d.wGst||[], borderColor:'rgba(224,92,92,.6)', backgroundColor:'transparent',
           borderWidth:1, pointRadius:0, tension:0.3, borderDash:[4,3], order:2 }
-      : { label:'Rafales meteo.nc (kt)', type:'scatter',
-          data:(d.wGst||[]).map(function(v,i){return (v&&v>0)?{x:i,y:v}:null;}).filter(function(p){return p!=null;}),
-          pointRadius:5, pointHoverRadius:7, pointStyle:'circle',
-          backgroundColor:'rgba(61,186,138,0.75)', borderColor:'rgba(61,186,138,0.95)',
-          borderWidth:1.5, showLine:false, order:1 };
+      : { label:'Rafales meteo.nc (kt)',
+          data: wGstData, borderWidth:0, tension:0, showLine:false,
+          pointRadius: wGstPtR, pointHoverRadius:7, pointStyle:'circle',
+          pointBackgroundColor:'rgba(61,186,138,0.8)',
+          pointBorderColor:'rgba(61,186,138,0.95)',
+          pointBorderWidth:1.5, order:1 };
     charts['c-wind']=new Chart(cvW,{type:'line',plugins:[crossW, makeSecDayPlugin('c-wind')],data:{labels:d.lbl,datasets:[
       {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,order:3},
       gustDataset,
@@ -7152,15 +7157,22 @@ async function loadPastConditions() {
       slotsHtml += '</tbody></table></div></div>';
     }
 
+    // Note si format ancien (pas de créneaux horaires) — cache antérieur à la mise à jour
+    var oldFormatNote = (!d2.slots || !d2.slots.length)
+      ? '<div style="margin-top:6px;padding:5px 8px;background:rgba(232,160,87,.08);border-left:3px solid rgba(232,160,87,.3);border-radius:3px;font-size:10px;color:rgba(232,160,87,.8);">'
+        +'⚠ Données au format simplifié (version avant le 10/05/26) — '
+        +'relance les prévisions du spot dans previsions.html pour obtenir le tableau horaire complet.</div>'
+      : '';
+
     resEl.innerHTML =
       '<div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">'
-      +'<div style="font-size:13px;font-weight:700;color:var(--text);">'+dayStr+' — '+spot.name+'</div>'
-      +'<div style="display:flex;align-items:center;gap:8px;">'
+      +'<div><div style="font-size:13px;font-weight:700;color:var(--text);">'+dayStr+' — '+spot.name+'</div>'
+      +'<div style="font-size:9px;color:var(--faint);margin-top:2px;">📸 Prévision capturée le '+cachedAt+' (heure de session : '+(spot.sessionHour||7)+'h)</div>'
+      +'</div>'
       +'<span style="font-size:10px;font-weight:600;color:'+srcCol+';background:rgba(255,255,255,.05);'
       +'border:1px solid '+srcCol+';border-radius:12px;padding:2px 9px;">'+srcLabel+'</span>'
-      +'<span style="font-size:9px;color:var(--faint);">Capturé le '+cachedAt+'</span>'
-      +'</div></div>'
+      +'</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;">'
       +_pastCell('🌊 Houle', val(d2.hs,'m'), d2.hs ? (d2.hs<0.5?'var(--muted)':d2.hs<1.2?'#4fa3c7':d2.hs<2?'#3dba8a':'#a99ff8') : 'var(--muted)')
       +_pastCell('⏱ Période', val(d2.period,'s'), 'var(--text)')
@@ -7169,6 +7181,7 @@ async function loadPastConditions() {
       +_pastCell('🧭 Dir. vent', dir(d2.windDir), 'var(--text)')
       +(d2.hs&&d2.period?_pastCell('⚡ Puissance', (0.5*d2.hs*d2.hs*d2.period).toFixed(1)+' kW/m', 'var(--accent)'):'')
       +'</div>'
+      +oldFormatNote
       +slotsHtml
       +tideHtml
       +'</div>';
