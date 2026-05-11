@@ -444,16 +444,27 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <div style="position:relative;height:180px;width:100%;"><canvas id="c-power" style="display:block;height:180px;"></canvas></div>
   </div>
 
-  <!-- Conditions passées -->
+  <!-- Cache météo (passé + aujourd'hui + à venir) -->
   <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden;">
     <button onclick="togglePastConditions()" id="past-toggle-btn"
       style="width:100%;display:flex;align-items:center;justify-content:space-between;
              padding:12px 16px;background:rgba(255,255,255,.02);border:none;cursor:pointer;
              color:var(--muted);font-family:var(--font-b);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">
-      <span>📅 Conditions passées (cache)</span>
+      <span id="past-toggle-label">📦 Cache météo</span>
       <span id="past-toggle-arrow" style="transition:.2s;">▼</span>
     </button>
     <div id="past-conditions-panel" style="display:none;padding:14px 16px;border-top:1px solid var(--border);">
+      <div id="past-nc-unavail-note" style="display:none;margin-bottom:10px;padding:7px 10px;
+           background:rgba(232,160,87,.08);border-left:3px solid rgba(232,160,87,.4);border-radius:4px;
+           font-size:11px;color:rgba(232,160,87,.9);">
+        ⚠ meteo.nc indisponible — si les prévisions ont déjà été consultées aujourd'hui, les données NC sont peut-être en cache ci-dessous.
+      </div>
+      <!-- Raccourcis date -->
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+        <button onclick="_pastQuick(-1)" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">← Hier</button>
+        <button onclick="_pastQuick(0)"  style="background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.25);color:var(--accent);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;">Aujourd'hui</button>
+        <button onclick="_pastQuick(1)"  style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">Demain →</button>
+      </div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
         <input type="date" id="past-date-picker"
           style="background:var(--mid);border:1px solid var(--border);border-radius:8px;
@@ -2376,11 +2387,12 @@ async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir
     var info = dayMap[dateStr];
     var mi = info.main; if (mi === null || !sw1h[mi]) return;
 
-    // Créneaux horaires
+    // Créneaux horaires — max 1.5h d'écart pour éviter les lignes dupliquées
     var slots = [];
     SLOT_HOURS.forEach(function(sh) {
       var si = info.slots[sh] && info.slots[sh].idx;
-      if (si == null) return;
+      var sd = info.slots[sh] && info.slots[sh].diff;
+      if (si == null || sd == null || sd > 1.5) return;
       var hs2 = sw1h[si]; if (!hs2) return;
       var per2 = sw1t&&sw1t[si]!=null ? sw1t[si] : null;
       slots.push({
@@ -2536,6 +2548,25 @@ async function loadForecast(i) {
     try { omWind   = await fetch(omWindUrl).then(function(r){ return r.json(); });   } catch(e) {}
 
     var hasNC = !!(ncMarine && ncMarine.properties);
+
+    // Si NC indisponible → signaler dans le panel cache + pré-sélectionner aujourd'hui
+    (function() {
+      var note = document.getElementById('past-nc-unavail-note');
+      var lbl  = document.getElementById('past-toggle-label');
+      var picker = document.getElementById('past-date-picker');
+      if (!hasNC) {
+        if (note) note.style.display = 'block';
+        if (lbl)  lbl.textContent = '📦 Cache météo ⚠';
+        // Pré-sélectionner aujourd'hui si le picker est vide
+        if (picker && !picker.value) {
+          var now = new Date();
+          picker.value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+        }
+      } else {
+        if (note) note.style.display = 'none';
+        if (lbl)  lbl.textContent = '📦 Cache météo';
+      }
+    })();
 
     // ─── RENDER ───
     renderObs(obsData, s);
@@ -7044,6 +7075,15 @@ function loadBaroData() {
 
 // ─── MENU SCORE SURF ──────────────────────────────────────────────────────
 // ── Conditions passées ────────────────────────────────────────────────────────
+// Raccourci date : -1 = hier, 0 = aujourd'hui, +1 = demain
+function _pastQuick(offset) {
+  var d = new Date();
+  d.setDate(d.getDate() + offset);
+  var iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  var picker = document.getElementById('past-date-picker');
+  if (picker) { picker.value = iso; loadPastConditions(); }
+}
+
 function togglePastConditions() {
   var panel = document.getElementById('past-conditions-panel');
   var arrow = document.getElementById('past-toggle-arrow');
@@ -7052,12 +7092,11 @@ function togglePastConditions() {
   panel.style.display = open ? 'block' : 'none';
   if (arrow) arrow.textContent = open ? '▲' : '▼';
   if (open) {
-    // Pré-sélectionner hier par défaut
+    // Pré-sélectionner hier par défaut si rien d'autre n'a déjà été défini
     var picker = document.getElementById('past-date-picker');
     if (picker && !picker.value) {
       var d = new Date(); d.setDate(d.getDate()-1);
       picker.value = d.toISOString().split('T')[0];
-      picker.max = d.toISOString().split('T')[0]; // pas de future
     }
   }
 }
