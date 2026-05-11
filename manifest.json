@@ -1,13 +1,35 @@
 {
+  "id": "/surf-journal/",
   "name": "Coups de Surf NC",
   "short_name": "Surf NC",
   "description": "Journal de surf, prévisions et sorties en Nouvelle-Calédonie",
   "start_url": "/surf-journal/",
+  "scope": "/surf-journal/",
   "display": "standalone",
   "background_color": "#0a1628",
   "theme_color": "#4fa3c7",
   "orientation": "portrait-primary",
   "lang": "fr",
+  "shortcuts": [
+    {
+      "name": "Prévisions",
+      "short_name": "Prévisions",
+      "url": "/surf-journal/previsions.html",
+      "icons": [{ "src": "icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Sorties",
+      "short_name": "Sorties",
+      "url": "/surf-journal/sorties.html",
+      "icons": [{ "src": "icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Nav GPS",
+      "short_name": "Nav",
+      "url": "/surf-journal/thibsurf_nav/",
+      "icons": [{ "src": "thibsurf_nav/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
   "icons": [
     {
       "src": "icons/icon-72x72.png",
