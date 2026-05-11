@@ -2572,6 +2572,7 @@ async function loadForecast(i) {
     renderObs(obsData, s);
     
     if (ncTide && ncTide.properties && ncTide.properties.tide) {
+      _ncTideCache = ncTide; // disponible immédiatement pour _saveForecastDays (avant le Promise.all)
       var tideBase = BASE + 'tide?id=9881752';
       var todayNC = new Date();
       var extraDays = [];
