@@ -1719,9 +1719,13 @@ function openAddSession() {
         var hint = document.getElementById('autofill-hint');
         var _daysDiff = (new Date(today) - new Date(this.value)) / 86400000;
         if (_daysDiff <= 30) {
+          // Effacer les champs météo remplis précédemment pour ne pas garder des
+          // données d'une autre date (ex: worker d'aujourd'hui alors qu'on édite le 9)
+          _clearAutofillFields();
+          _autofillBusy = false; // forcer le déblocage si un autofill tourne encore
           _autoFillConditions(this.value);
         } else if (hint) {
-          hint.textContent = '';
+          _clearAutofillFields();
         }
       });
     }
@@ -1780,6 +1784,7 @@ function openAddSession() {
       if (sel) { sel.value = p; renderTideWidget(); }
     });
   }
+  _populateCustomSpots();
   document.getElementById('modal-add').classList.add('open');
   // Auto-fill conditions dès qu'un spot est sélectionné
   var spotSel = document.getElementById('f-spot');
@@ -1888,6 +1893,19 @@ async function _loadDailyCache(date, lat, lon) {
 }
 
 var _autofillBusy = false; // lock : un seul autofill à la fois
+
+// Vide les champs conditions remplis par l'autofill (appelé avant un refetch pour une nouvelle date)
+function _clearAutofillFields() {
+  ['f-hs','f-period','f-wind',
+   'f-swell-dir','f-swell-dir-card','f-swell-dir-deg',
+   'f-wind-dir','f-wind-dir-card','f-wind-dir-deg'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var hint = document.getElementById('autofill-hint');
+  if (hint) hint.textContent = '';
+  var stInfoEl = document.getElementById('autofill-station-info');
+  if (stInfoEl) stInfoEl.innerHTML = '';
+}
 
 async function _autoFillConditions(targetDate) {
   if (_autofillBusy) { console.log('[autofill] déjà en cours, ignoré'); return; }
@@ -2175,14 +2193,17 @@ async function _autoFillConditions(targetDate) {
     return;
   }
 
+  // Remplissage : toujours écraser si targetDate est fourni (changement de date),
+  // sinon n'écraser que si le champ est vide (premier chargement)
+  var _overwrite = !!targetDate;
   var hsEl = document.getElementById('f-hs');
-  if (hsEl && !hsEl.value && data.hs != null) hsEl.value = (+data.hs).toFixed(1);
+  if (hsEl && (_overwrite || !hsEl.value) && data.hs != null) hsEl.value = (+data.hs).toFixed(1);
 
   var perEl = document.getElementById('f-period');
-  if (perEl && !perEl.value && data.period != null) perEl.value = Math.round(data.period);
+  if (perEl && (_overwrite || !perEl.value) && data.period != null) perEl.value = Math.round(data.period);
 
   var wdEl = document.getElementById('f-wind');
-  if (wdEl && !wdEl.value && data.windKt != null) wdEl.value = Math.round(data.windKt);
+  if (wdEl && (_overwrite || !wdEl.value) && data.windKt != null) wdEl.value = Math.round(data.windKt);
 
   var _cardDegMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,
     S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
@@ -2381,6 +2402,7 @@ function editSession() {
     const move = b.getAttribute('data-move') || b.textContent.toLowerCase().replace(/[^a-zéàèê]/g,'');
     b.classList.toggle('active', selectedMoves.includes(move));
   });
+  _populateCustomSpots();
   document.getElementById('modal-add').classList.add('open');
 }
 
@@ -2743,15 +2765,17 @@ async function saveSession() {
   const btn = document.getElementById('btn-save-session');
   try {
     if (!sb) { showToast('Configure Supabase !', 'error'); return; }
-    if (!currentUser) { showToast('Non connecté — recharge la page', 'error'); return; }
+    if (!currentUser) { showToast('Non connecté — recharge la page 🔄', 'error'); return; }
     const sharedWith = document.getElementById('f-shared-with').value.split(',').map(s=>s.trim()).filter(Boolean);
     const dateVal = document.getElementById('f-date').value;
     if (!dateVal) { showToast('Date obligatoire', 'error'); return; }
+    const spotVal = getSpotValue();
+    if (!spotVal) { showToast('Sélectionne un spot', 'error'); document.getElementById('f-spot').focus(); return; }
     const payload = {
       user_id: currentUser.id,
       date: dateVal,
       boat_id: document.getElementById('f-boat-id')?(document.getElementById('f-boat-id').value||null):null,
-      spot: getSpotValue(),
+      spot: spotVal,
       distance_nm: document.getElementById('f-distance')?(parseFloat(document.getElementById('f-distance').value)||null):null,
       launch_point: document.getElementById('f-launch').value.trim(),
       context: document.getElementById('f-context').value,
@@ -4176,7 +4200,7 @@ function showSpotSourceSettings() {
   div.id = 'spot-source-dialog';
   div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;'
     + 'background:var(--deep);border:1px solid var(--accent);border-radius:12px;padding:18px;'
-    + 'width:min(380px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.7);font-size:13px;color:var(--text);';
+    + 'width:min(440px,96vw);box-shadow:0 12px 40px rgba(0,0,0,.7);font-size:13px;color:var(--text);';
 
   div.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
     + '<div style="font-weight:700;color:var(--accent);font-size:14px;">⚙ Sources — ' + spot + '</div>'
@@ -4369,6 +4393,24 @@ function setSpotValue(val) {
   }
   sel.value = val;
   document.getElementById('f-spot-custom').style.display = 'none';
+}
+
+// Synchronise le sélecteur f-spot avec les spots créés dans previsions.html (surf-spots-nc localStorage)
+function _populateCustomSpots() {
+  var sel = document.getElementById('f-spot');
+  if (!sel) return;
+  try {
+    var prevSpots = JSON.parse(localStorage.getItem('surf-spots-nc') || '[]');
+    var anchor = sel.querySelector('option[value="__autre__"]');
+    prevSpots.forEach(function(s) {
+      if (!s.name) return;
+      var exists = Array.from(sel.options).some(function(o){ return o.value === s.name; });
+      if (!exists) {
+        var opt = new Option(s.name, s.name);
+        sel.insertBefore(opt, anchor);
+      }
+    });
+  } catch(e) {}
 }
 
 // ══ SPOTS PAGE ══
