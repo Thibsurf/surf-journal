@@ -422,6 +422,50 @@ nav a.back:hover{color:var(--text);}
   background:none;border:none;color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;
   border-radius:6px;text-decoration:none;}
 #user-menu a:hover,#user-menu button:hover{background:rgba(255,255,255,.06);color:var(--accent);}
+
+/* ════════════════════════════════════════
+   CARD REDESIGN
+   ════════════════════════════════════════ */
+.sortie-card{border-left:3px solid var(--accent);padding-left:17px;}
+.sortie-card.type-camping{border-left-color:var(--purple);}
+.sortie-card.past{border-left-color:rgba(255,255,255,.1);}
+.sortie-card.full:not(.past){border-left-color:var(--warm);}
+.sortie-card.card-today{
+  border-left-color:var(--ok);
+  background:linear-gradient(to right,rgba(61,186,138,.04),var(--deep) 50%);}
+.sortie-card.card-tomorrow{border-left-color:rgba(232,160,87,.7);}
+
+/* Urgency ribbon for today */
+.sortie-urgency{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
+  padding:3px 9px;border-radius:999px;margin-bottom:8px;letter-spacing:.04em;}
+.urgency-today{background:rgba(61,186,138,.15);color:var(--ok);border:1px solid rgba(61,186,138,.3);}
+.urgency-tomorrow{background:rgba(232,160,87,.12);color:var(--warm);border:1px solid rgba(232,160,87,.3);}
+
+/* Places badge with progress bar */
+.places-bar{width:100%;height:3px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:6px;overflow:hidden;}
+.places-fill{height:100%;border-radius:2px;transition:width .4s ease;background:var(--ok);}
+.places-badge.warning .places-fill{background:var(--warm);}
+.places-badge.full .places-fill{background:var(--bad);}
+.places-restant{font-size:9px;display:block;margin-top:3px;opacity:.8;}
+
+/* Action buttons — split primary / secondary */
+.sortie-actions{flex-direction:column;gap:8px;margin-top:14px;}
+.actions-primary{display:flex;gap:8px;}
+.actions-secondary{display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.05);}
+.actions-primary .btn-sm{flex:1;justify-content:center;padding:10px 6px;font-size:12px;border-radius:9px;}
+.btn-in.active{box-shadow:0 2px 10px rgba(61,186,138,.3);}
+.btn-maybe.active{box-shadow:0 2px 10px rgba(232,160,87,.3);}
+.actions-secondary .btn-sm{padding:5px 9px;font-size:10px;}
+@media(max-width:480px){.actions-primary .btn-sm .btn-lbl{display:none;}}
+
+/* Meteo items — blocs visuels */
+.meteo-box{gap:8px;padding:10px 12px;}
+.meteo-box .m-item{background:rgba(255,255,255,.04);border-radius:8px;padding:6px 10px;
+  min-width:54px;text-align:center;}
+.meteo-box .m-item .v{font-size:14px;}
+.meteo-source{font-size:9px;color:var(--text-faint);margin-left:auto;align-self:center;
+  background:rgba(255,255,255,.04);padding:3px 7px;border-radius:5px;}
 </style>
 </head>
 <body>
@@ -1049,10 +1093,17 @@ function sortieCard(s) {
   const ownersNotInscrits = ownerIds.filter(function(uid) { return !inscriptions.some(function(i) { return i.user_id === uid; }); });
   const inCount = inscriptions.filter(i => i.status === 'in').length + ownersNotInscrits.length;
   const totalPlaces = s.places || 0;
-  const isPast = parseLocalDate(s.date_start) < new Date(new Date().setHours(0,0,0,0));
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today.getTime() + 86400000);
+  const d1 = parseLocalDate(s.date_start);
+  const isPast = d1 < today;
+  const isToday = d1.getTime() === today.getTime();
+  const isTomorrow = d1.getTime() === tomorrow.getTime();
   const isFull = inCount >= totalPlaces;
   const placesClass = isFull ? 'full' : inCount >= totalPlaces - 1 ? 'warning' : '';
   const authorName = profileCache[s.created_by] || 'Surfeur';
+  const pctFull = totalPlaces > 0 ? Math.min(100, Math.round(inCount / totalPlaces * 100)) : 0;
+  const restant = totalPlaces - inCount;
 
   const dateStr = formatSortieDate(s);
   const inscriptionsHtml = renderInscriptions(inscriptions, s);
@@ -1061,19 +1112,36 @@ function sortieCard(s) {
   const isCreator = currentUser && s.created_by === currentUser.id;
 
   const meteoId = 'meteo-' + s.id;
+  const cardClasses = ['sortie-card', 'type-' + (s.type || 'session'),
+    isPast ? 'past' : '', isFull && !isPast ? 'full' : '',
+    isToday ? 'card-today' : '', isTomorrow && !isPast ? 'card-tomorrow' : '']
+    .filter(Boolean).join(' ');
 
-  return '<div class="sortie-card ' + (isPast ? 'past' : '') + ' ' + (isFull && !isPast ? 'full' : '') + '" id="sortie-' + s.id + '">'
+  const urgencyBadge = isToday
+    ? '<div class="sortie-urgency urgency-today">🟢 Aujourd\'hui !</div>'
+    : isTomorrow && !isPast
+      ? '<div class="sortie-urgency urgency-tomorrow">🔔 Demain</div>'
+      : '';
+
+  return '<div class="' + cardClasses + '" id="sortie-' + s.id + '">'
     + '<div class="sortie-head">'
       + '<div class="sortie-title-block">'
+        + urgencyBadge
         + '<div class="sortie-type-badge ' + (s.type === 'camping' ? 'type-camping' : 'type-session') + '">'
         + (s.type === 'camping' ? '⛺ Camping ilôt' : '🏄 Session') + '</div>'
         + '<div class="sortie-spot">' + escapeHtml(s.spot || '—') + '</div>'
-        + '<div class="sortie-date">' + dateStr + '<span class="pipe">·</span>'
+        + '<div class="sortie-date">' + (isToday || isTomorrow ? dateStr.replace(/^[^·]*·\s*/,'') : dateStr)
+        + '<span class="pipe">·</span>'
         + '<span class="sortie-author">proposée par ' + escapeHtml(authorName) + '</span></div>'
       + '</div>'
       + '<div class="places-badge ' + placesClass + '">'
         + '<span class="n">' + inCount + '/' + totalPlaces + '</span>'
         + '<span class="lbl">place' + (totalPlaces > 1 ? 's' : '') + '</span>'
+        + '<div class="places-bar"><div class="places-fill" style="width:' + pctFull + '%"></div></div>'
+        + (!isPast ? (isFull
+            ? '<span class="places-restant" style="color:var(--bad);">Complet 🔴</span>'
+            : '<span class="places-restant">' + restant + ' libre' + (restant > 1 ? 's' : '') + '</span>')
+          : '')
       + '</div>'
     + '</div>'
 
@@ -1108,10 +1176,11 @@ function sortieCard(s) {
     + buildCommentsBox(s)
 
     + '<div class="sortie-actions">'
+      + '<div class="actions-primary">'
       + (currentUser && !isPast ? (
-        '<button class="btn-sm btn-in ' + (myStatus === 'in' ? 'active' : '') + '" onclick="openInscription(\'' + s.id + '\', \'in\')"' + ((isFull && myStatus !== 'in' && (!currentUser || (s.boat_owners || []).indexOf(currentUser.id) < 0)) ? ' disabled title="Sortie complète"' : '') + '>✓ Je viens</button>'
-        + '<button class="btn-sm btn-maybe ' + (myStatus === 'maybe' ? 'active' : '') + '" onclick="openInscription(\'' + s.id + '\', \'maybe\')">? Peut-être</button>'
-        + '<button class="btn-sm btn-out ' + (myStatus === 'out' ? 'active' : '') + '" onclick="updateStatus(\'' + s.id + '\', \'out\')">✗ Je ne peux pas</button>'
+        '<button class="btn-sm btn-in ' + (myStatus === 'in' ? 'active' : '') + '" onclick="openInscription(\'' + s.id + '\', \'in\')"' + ((isFull && myStatus !== 'in' && (!currentUser || (s.boat_owners || []).indexOf(currentUser.id) < 0)) ? ' disabled title="Sortie complète"' : '') + '>✓ <span class="btn-lbl">Je viens</span></button>'
+        + '<button class="btn-sm btn-maybe ' + (myStatus === 'maybe' ? 'active' : '') + '" onclick="openInscription(\'' + s.id + '\', \'maybe\')">? <span class="btn-lbl">Peut-être</span></button>'
+        + '<button class="btn-sm btn-out ' + (myStatus === 'out' ? 'active' : '') + '" onclick="updateStatus(\'' + s.id + '\', \'out\')">✗ <span class="btn-lbl">Pas dispo</span></button>'
       ) : '')
       + (isPast && currentUser && myStatus === 'in' ? (function() {
         var done = (s.feedbacks || []).some(function(f) { return f.user_id === currentUser.id; });
@@ -1119,13 +1188,16 @@ function sortieCard(s) {
           ? '<span class="feedback-done">✓ Retour envoyé</span>'
           : '<button class="feedback-btn" onclick="openFeedback(\'' + s.id + '\')">✍️ Retour de session</button>';
       })() : '')
-      + (currentUser ? '<button class="btn-sm" style="background:rgba(123,108,246,.1);border-color:rgba(123,108,246,.3);color:#a99ff8;" onclick="openQuickExpense(\'' + s.id + '\')">💰 Dépense</button>' : '')
-      + (currentUser ? '<button class="btn-sm" style="background:rgba(79,163,199,.08);border-color:rgba(79,163,199,.25);color:var(--accent);font-size:10px;" onclick="addExistingUser(\'' + s.id + '\')" title="Ajouter un membre avec compte">👥</button>' : '')
-      + (currentUser ? '<button class="btn-sm" style="background:rgba(79,163,199,.05);border-color:rgba(79,163,199,.15);color:var(--text-muted);font-size:10px;" onclick="addGuest(\'' + s.id + '\')" title="Ajouter un invité sans compte">👤+</button>' : '')
+      + '</div>'
+      + '<div class="actions-secondary">'
       + '<button class="btn-sm btn-share" onclick="openMeteogram(\'' + s.id + '\')">📊 Météo</button>'
       + '<button class="btn-sm btn-share" style="background:rgba(37,211,102,.08);border-color:rgba(37,211,102,.3);color:#3dba8a;" onclick="openShare(\'' + s.id + '\')">📤 Partager</button>'
+      + (currentUser ? '<button class="btn-sm" style="background:rgba(123,108,246,.1);border-color:rgba(123,108,246,.3);color:#a99ff8;" onclick="openQuickExpense(\'' + s.id + '\')">💰 Dépense</button>' : '')
+      + (currentUser ? '<button class="btn-sm" style="background:rgba(79,163,199,.06);border-color:rgba(79,163,199,.2);color:var(--accent);" onclick="addExistingUser(\'' + s.id + '\')" title="Ajouter membre">👥</button>' : '')
+      + (currentUser ? '<button class="btn-sm" style="background:rgba(255,255,255,.03);border-color:var(--border);color:var(--text-muted);" onclick="addGuest(\'' + s.id + '\')" title="Ajouter invité">👤+</button>' : '')
       + (isCreator ? '<button class="btn-sm" style="border-color:rgba(79,163,199,.3);color:var(--accent);background:rgba(79,163,199,.06);" onclick="openEditModal(\'' + s.id + '\')">✏️ Éditer</button>' : '')
       + (isCreator ? '<button class="btn-sm btn-more" onclick="deleteSortie(\'' + s.id + '\')">🗑</button>' : '')
+      + '</div>'
     + '</div>'
     + '</div>';
 }
@@ -1271,12 +1343,16 @@ async function loadMeteoForSortie(s) {
     const ws = wh.wind_speed_10m ? wh.wind_speed_10m[hourIdx] : null;
     const wd = wh.wind_direction_10m ? wh.wind_direction_10m[hourIdx] : null;
 
-    el.innerHTML = (hs ? '<div class="m-item"><span class="v">' + hs.toFixed(1) + 'm</span><span class="l">Houle</span></div>' : '')
-      + (per ? '<div class="m-item"><span class="v">' + Math.round(per) + 's</span><span class="l">Période</span></div>' : '')
-      + (sDir !== null ? '<div class="m-item"><span class="v">' + degCompass(sDir) + '</span><span class="l">Direction</span></div>' : '')
-      + (ws ? '<div class="m-item"><span class="v">' + Math.round(ws) + 'kt</span><span class="l">Vent</span></div>' : '')
-      + (wd !== null ? '<div class="m-item"><span class="v">' + degCompass(wd) + '</span><span class="l">Vent dir</span></div>' : '')
-      + '<a href="https://thibsurf.github.io/surf-journal/previsions.html" target="_blank" style="margin-left:auto;font-size:10px;color:var(--text-muted);text-decoration:none;">↗ Détails</a>';
+    var hsColor = hs == null ? '' : hs >= 1.5 ? 'color:#4fa3c7' : hs >= 0.8 ? 'color:#3dba8a' : 'color:var(--text-muted)';
+    var dirArrow = function(deg) {
+      var arrows = ['↑','↗','→','↘','↓','↙','←','↖'];
+      return arrows[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+    };
+    el.innerHTML = (hs ? '<div class="m-item"><span class="v" style="' + hsColor + '">🌊 ' + hs.toFixed(1) + 'm</span><span class="l">Houle' + (sDir !== null ? ' ' + dirArrow(sDir) : '') + '</span></div>' : '')
+      + (per ? '<div class="m-item"><span class="v">⏱ ' + Math.round(per) + 's</span><span class="l">Période</span></div>' : '')
+      + (ws ? '<div class="m-item"><span class="v' + (ws >= 20 ? '" style="color:var(--warm)' : '') + '">💨 ' + Math.round(ws) + 'kt</span><span class="l">Vent' + (wd !== null ? ' ' + dirArrow(wd) + ' ' + degCompass(wd) : '') + '</span></div>' : '')
+      + '<div class="meteo-source">GFS · prévision</div>'
+      + '<a href="https://thibsurf.github.io/surf-journal/previsions.html" target="_blank" style="font-size:10px;color:var(--text-muted);text-decoration:none;align-self:center;">↗ NC</a>';
   } catch(e) {
     el.innerHTML = '<span class="meteo-loading">⚠ Impossible de charger</span>';
   }
