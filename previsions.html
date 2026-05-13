@@ -7249,11 +7249,17 @@ async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
   function dirStr(deg){ return deg!=null ? compass[Math.round(((deg%360)+360)%360/22.5)%16] : '—'; }
   try {
     var dayStr = (function(s){ var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; })(date);
+    // Utiliser l'API archive pour les dates > 10 jours (forecast ne couvre pas assez loin dans le passé)
+    var today = new Date().toISOString().split('T')[0];
+    var daysAgo = Math.round((new Date(today) - new Date(date)) / 86400000);
+    var windApiBase = daysAgo > 10
+      ? 'https://archive-api.open-meteo.com/v1/archive'
+      : 'https://api.open-meteo.com/v1/forecast';
     var [marRes, wndRes] = await Promise.all([
       fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+spot.lat+'&longitude='+spot.lon
         +'&hourly=swell_wave_height,swell_wave_period,swell_wave_direction,wave_height'
         +'&start_date='+date+'&end_date='+date+'&timezone=Pacific%2FNoumea').then(function(r){return r.json();}),
-      fetch('https://api.open-meteo.com/v1/forecast?latitude='+spot.lat+'&longitude='+spot.lon
+      fetch(windApiBase+'?latitude='+spot.lat+'&longitude='+spot.lon
         +'&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn'
         +'&start_date='+date+'&end_date='+date+'&timezone=Pacific%2FNoumea').then(function(r){return r.json();})
     ]);
@@ -7293,7 +7299,7 @@ async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
 
     el.innerHTML = '<div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">'
       + header
-      +'<div style="font-size:9px;color:var(--muted);margin-bottom:8px;'+(slotsOnly?'padding-top:8px;border-top:1px solid rgba(255,255,255,.06);':'')+'">📊 Tableau horaire — GFS Open-Meteo (fallback)</div>'
+      +'<div style="font-size:9px;color:var(--muted);margin-bottom:8px;'+(slotsOnly?'padding-top:8px;border-top:1px solid rgba(255,255,255,.06);':'')+'">📊 Tableau horaire — 🌐 GFS Open-Meteo</div>'
       +'<div style="overflow-x:auto;">'
       +'<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:320px;">'
       +'<thead><tr style="color:var(--muted);font-size:9px;">'
@@ -7302,6 +7308,42 @@ async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
       +'<th style="padding:3px 4px;">Dir</th><th style="padding:3px 4px;">Vent (raf)</th>'
       +'<th style="padding:3px 4px;">⚡</th>'
       +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+
+    // Sauvegarder en cache GFS si pas déjà une entrée NC (pour ne pas refetch la prochaine fois)
+    if (!slotsOnly && _ensureSupabaseClient()) {
+      var gfsHours = [];
+      times.forEach(function(t, i) {
+        var h = parseInt(t.split('T')[1] || '0');
+        var hs = mh.swell_wave_height && mh.swell_wave_height[i];
+        if (!hs) return;
+        var per = mh.swell_wave_period && mh.swell_wave_period[i];
+        gfsHours.push({
+          h: h, hs: hs,
+          period:   per || null,
+          swellDir: (mh.swell_wave_direction && mh.swell_wave_direction[i]) || null,
+          windKt:   (wh.wind_speed_10m && wh.wind_speed_10m[i]) ? Math.round(wh.wind_speed_10m[i]) : null,
+          windGst:  (wh.wind_gusts_10m && wh.wind_gusts_10m[i]) ? Math.round(wh.wind_gusts_10m[i]) : null,
+          windDir:  (wh.wind_direction_10m && wh.wind_direction_10m[i]) || null,
+          pwr:      (hs && per) ? +(0.5*hs*hs*per).toFixed(1) : null
+        });
+      });
+      var cacheId = date+'_'+spot.lat.toFixed(3)+'_'+spot.lon.toFixed(3);
+      try {
+        var existing = await _tokenSbClient.from('meteo_cache').select('status').eq('id',cacheId).maybeSingle();
+        if (!existing.data || existing.data.status !== 'nc') {
+          // N'écraser que si pas de données NC déjà en cache
+          var mainGfs = gfsHours.find(function(r){ return Math.abs(r.h - 9) < 3; }) || gfsHours[0];
+          if (mainGfs) {
+            await _tokenSbClient.from('meteo_cache').upsert({
+              id: cacheId, spot_name: spot.marineName||spot.name, lat: spot.lat, lon: spot.lon,
+              data: { hs: mainGfs.hs, period: mainGfs.period, swellDir: mainGfs.swellDir,
+                      windKt: mainGfs.windKt, windDir: mainGfs.windDir, source: 'gfs', hours: gfsHours },
+              status: 'gfs', updated_at: new Date().toISOString()
+            });
+          }
+        }
+      } catch(e) { console.warn('[Cache GFS]', e.message); }
+    }
   } catch(e) {
     el.innerHTML = '<div style="font-size:11px;color:var(--bad);">Erreur GFS : '+e.message+'</div>';
   }
