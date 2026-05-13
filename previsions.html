@@ -1907,8 +1907,10 @@ function _isTokenValid() {
       // JWT standard avec exp
       return p.exp > Date.now() / 1000 + 30;
     } else if (p.iat) {
-      // meteo.nc : pas de exp, TTL estimé à 25min depuis iat
-      return (Date.now() / 1000 - p.iat) < 25 * 60;
+      // meteo.nc : pas de exp, TTL estimé à 55min depuis iat
+      // Si l'API a répondu avec succès récemment on considère le token valide
+      if (window._lastNcApiSuccess && (Date.now() - window._lastNcApiSuccess) < 30 * 60000) return true;
+      return (Date.now() / 1000 - p.iat) < 55 * 60;
     }
     // Pas d'info temporelle → considérer valide (on laisse rpcache décider)
     return true;
@@ -2549,6 +2551,7 @@ async function loadForecast(i) {
     try { omWind   = await fetch(omWindUrl).then(function(r){ return r.json(); });   } catch(e) {}
 
     var hasNC = !!(ncMarine && ncMarine.properties);
+    if (hasNC) window._lastNcApiSuccess = Date.now(); // token confirmé valide par l'API
 
     // Si NC indisponible → signaler dans le panel cache + pré-sélectionner aujourd'hui
     (function() {
@@ -7089,10 +7092,11 @@ function loadBaroData() {
 // ─── MENU SCORE SURF ──────────────────────────────────────────────────────
 // ── Conditions passées ────────────────────────────────────────────────────────
 // Raccourci date : -1 = hier, 0 = aujourd'hui, +1 = demain
+// Utilise l'heure NC (UTC+11) pour cohérence avec les clés du cache Supabase
 function _pastQuick(offset) {
-  var d = new Date();
-  d.setDate(d.getDate() + offset);
-  var iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  var ncNow = new Date(Date.now() + 11 * 3600000); // NC local en UTC
+  ncNow.setUTCDate(ncNow.getUTCDate() + offset);
+  var iso = ncNow.getUTCFullYear() + '-' + String(ncNow.getUTCMonth()+1).padStart(2,'0') + '-' + String(ncNow.getUTCDate()).padStart(2,'0');
   var picker = document.getElementById('past-date-picker');
   if (picker) { picker.value = iso; loadPastConditions(); }
 }
@@ -7105,11 +7109,11 @@ function togglePastConditions() {
   panel.style.display = open ? 'block' : 'none';
   if (arrow) arrow.textContent = open ? '▲' : '▼';
   if (open) {
-    // Pré-sélectionner hier par défaut si rien d'autre n'a déjà été défini
+    // Pré-sélectionner hier par défaut (heure NC UTC+11)
     var picker = document.getElementById('past-date-picker');
     if (picker && !picker.value) {
-      var d = new Date(); d.setDate(d.getDate()-1);
-      picker.value = d.toISOString().split('T')[0];
+      var ncYest = new Date(Date.now() - 86400000 + 11 * 3600000);
+      picker.value = ncYest.getUTCFullYear() + '-' + String(ncYest.getUTCMonth()+1).padStart(2,'0') + '-' + String(ncYest.getUTCDate()).padStart(2,'0');
     }
   }
 }
@@ -7142,10 +7146,8 @@ async function loadPastConditions() {
     if (error) throw error;
 
     if (!data || !data.data) {
-      var dayStr = (function(d){ var p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; })(date);
-      resEl.innerHTML = '<div style="font-size:12px;color:var(--muted);font-style:italic;">'
-        +'Aucune donnée en cache pour le '+dayStr+' à '+spot.name+'.<br>'
-        +'<span style="font-size:10px;">Consulte previsions.html le jour J (ou la veille) pour alimenter le cache.</span></div>';
+      // Pas de cache NC → fallback GFS historique (Open-Meteo supporte les dates passées)
+      await _loadGFSHistoricalPanel(resEl, spot, date);
       return;
     }
 
@@ -7209,12 +7211,8 @@ async function loadPastConditions() {
       slotsHtml += '</tbody></table></div></div>';
     }
 
-    // Note si format ancien (pas de créneaux horaires) — cache antérieur à la mise à jour
-    var oldFormatNote = (!d2.slots || !d2.slots.length)
-      ? '<div style="margin-top:6px;padding:5px 8px;background:rgba(232,160,87,.08);border-left:3px solid rgba(232,160,87,.3);border-radius:3px;font-size:10px;color:rgba(232,160,87,.8);">'
-        +'⚠ Données au format simplifié (version avant le 10/05/26) — '
-        +'relance les prévisions du spot dans previsions.html pour obtenir le tableau horaire complet.</div>'
-      : '';
+    // Si pas de créneaux horaires (ancien format cache) → on va charger GFS async
+    var oldFormatNote = ''; // supprimé — remplacé par fallback GFS ci-dessous
 
     resEl.innerHTML =
       '<div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">'
@@ -7233,14 +7231,86 @@ async function loadPastConditions() {
       +_pastCell('🧭 Dir. vent', dir(d2.windDir), 'var(--text)')
       +(d2.hs&&d2.period?_pastCell('⚡ Puissance', (0.5*d2.hs*d2.hs*d2.period).toFixed(1)+' kW/m', 'var(--accent)'):'')
       +'</div>'
-      +oldFormatNote
       +slotsHtml
       +tideHtml
       +'</div>';
+
+    // Si pas de créneaux horaires (cache ancien format), charger GFS en complément
+    if (!d2.slots || !d2.slots.length) {
+      var gfsSlotWrap = document.createElement('div');
+      gfsSlotWrap.style.marginTop = '8px';
+      resEl.appendChild(gfsSlotWrap);
+      _loadGFSHistoricalPanel(gfsSlotWrap, spot, date, true); // true = slotsOnly
+    }
   } catch(e) {
     resEl.innerHTML = '<div style="font-size:12px;color:var(--bad);">Erreur : '+escapeHtml(e.message)+'</div>';
   } finally {
     btn.disabled = false; btn.textContent = 'Charger';
+  }
+}
+
+// Chargement GFS historique pour le panel cache (fallback quand pas de données NC)
+async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
+  el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 0;">⏳ GFS historique…</div>';
+  var compass = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  function dirStr(deg){ return deg!=null ? compass[Math.round(((deg%360)+360)%360/22.5)%16] : '—'; }
+  try {
+    var dayStr = (function(s){ var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; })(date);
+    var [marRes, wndRes] = await Promise.all([
+      fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+spot.lat+'&longitude='+spot.lon
+        +'&hourly=swell_wave_height,swell_wave_period,swell_wave_direction,wave_height'
+        +'&start_date='+date+'&end_date='+date+'&timezone=Pacific%2FNoumea').then(function(r){return r.json();}),
+      fetch('https://api.open-meteo.com/v1/forecast?latitude='+spot.lat+'&longitude='+spot.lon
+        +'&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn'
+        +'&start_date='+date+'&end_date='+date+'&timezone=Pacific%2FNoumea').then(function(r){return r.json();})
+    ]);
+    var mh = marRes.hourly || {}, wh = wndRes.hourly || {};
+    var times = mh.time || [];
+    if (!times.length) { el.innerHTML = '<div style="font-size:11px;color:var(--muted);">GFS indisponible pour cette date.</div>'; return; }
+
+    var rows = '';
+    // Afficher toutes les heures 0-23
+    times.forEach(function(t, i) {
+      var h = parseInt(t.split('T')[1] || '0');
+      var hs = mh.swell_wave_height && mh.swell_wave_height[i];
+      var per = mh.swell_wave_period && mh.swell_wave_period[i];
+      var sDir = mh.swell_wave_direction && mh.swell_wave_direction[i];
+      var ws = wh.wind_speed_10m && wh.wind_speed_10m[i];
+      var wg = wh.wind_gusts_10m && wh.wind_gusts_10m[i];
+      var wd = wh.wind_direction_10m && wh.wind_direction_10m[i];
+      var pwr = (hs&&per) ? (0.5*hs*hs*per).toFixed(1) : null;
+      var isN = h < 6 || h >= 20;
+      var hsC = !hs?'var(--muted)':hs<0.5?'var(--muted)':hs<1.2?'#4fa3c7':hs<2?'#3dba8a':'#a99ff8';
+      var wC = !ws?'var(--muted)':ws<12?'#3dba8a':ws<20?'#e8a057':'#e05c5c';
+      rows += '<tr style="background:'+(isN?'rgba(0,0,0,.15)':'')+';">'
+        +'<td style="padding:3px 6px;font-weight:600;color:var(--accent);">'+String(h).padStart(2,'0')+'h</td>'
+        +'<td style="padding:3px 4px;color:'+hsC+';font-weight:600;text-align:center;">'+(hs!=null?hs+'m':'—')+'</td>'
+        +'<td style="padding:3px 4px;text-align:center;">'+(per!=null?Math.round(per)+'s':'—')+'</td>'
+        +'<td style="padding:3px 4px;color:var(--muted);text-align:center;">'+dirStr(sDir)+'</td>'
+        +'<td style="padding:3px 4px;color:'+wC+';text-align:center;">'+(ws!=null?Math.round(ws)+'kt'+(wg?' ('+Math.round(wg)+')':''):'—')+'</td>'
+        +'<td style="padding:3px 4px;color:var(--accent);text-align:center;font-weight:600;">'+(pwr||'—')+'</td>'
+        +'</tr>';
+    });
+
+    var header = slotsOnly ? '' :
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--text);">'+dayStr+' — '+spot.name+'</div>'
+      +'<span style="font-size:10px;font-weight:600;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:12px;padding:2px 9px;">🌐 GFS historique</span>'
+      +'</div>';
+
+    el.innerHTML = '<div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">'
+      + header
+      +'<div style="font-size:9px;color:var(--muted);margin-bottom:8px;'+(slotsOnly?'padding-top:8px;border-top:1px solid rgba(255,255,255,.06);':'')+'">📊 Tableau horaire — GFS Open-Meteo (fallback)</div>'
+      +'<div style="overflow-x:auto;">'
+      +'<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:320px;">'
+      +'<thead><tr style="color:var(--muted);font-size:9px;">'
+      +'<th style="text-align:left;padding:3px 6px;">Heure</th>'
+      +'<th style="padding:3px 4px;">Hs</th><th style="padding:3px 4px;">T</th>'
+      +'<th style="padding:3px 4px;">Dir</th><th style="padding:3px 4px;">Vent (raf)</th>'
+      +'<th style="padding:3px 4px;">⚡</th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--bad);">Erreur GFS : '+e.message+'</div>';
   }
 }
 
