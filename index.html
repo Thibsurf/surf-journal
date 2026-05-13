@@ -1930,6 +1930,17 @@ async function _autoFillConditions(targetDate) {
     if (savedCoords) {
       station = { name: spotVal, lat: savedCoords.lat, lon: savedCoords.lon };
     } else {
+      // Essayer les spots configurés dans previsions.html (surf-spots-nc localStorage)
+      var _prevSpotEarly = _findPrevSpot(spotVal);
+      if (_prevSpotEarly && _prevSpotEarly.lat && _prevSpotEarly.lon) {
+        station = {
+          name: _prevSpotEarly.marineName || _prevSpotEarly.name,
+          lat:  _prevSpotEarly.lat,
+          lon:  _prevSpotEarly.lon
+        };
+      }
+    }
+    if (!station) {
       // Spot inconnu → proposer les stations NC (pas de coords brutes)
       if (stInfoEl) {
         var _ncStations = [
@@ -2099,9 +2110,19 @@ async function _autoFillConditions(targetDate) {
           var wJson2 = await wRes2.json();
           var wRows = wJson2 && wJson2.properties && wJson2.properties.marine;
           if (wRows && wRows.length > 0) {
-            var nowMs = Date.now();
+            // Cibler la date de la session (pas l'heure actuelle) pour les sessions futures
+            // NC marine API retourne des timestamps UTC ; NC local = UTC+11
+            var _refMs;
+            if (targetDate && targetDate > today) {
+              var _sh = _getSessionHour();
+              // targetDate à _sh heures en NC (UTC+11) = UTC: targetDate 00:00Z + (_sh-11)h
+              var _parts = targetDate.split('-');
+              _refMs = Date.UTC(+_parts[0], +_parts[1]-1, +_parts[2]) + (_sh - 11) * 3600000;
+            } else {
+              _refMs = Date.now();
+            }
             var wBest = wRows.reduce(function(b, r) {
-              return Math.abs(new Date(r.time).getTime() - nowMs) < Math.abs(new Date(b.time).getTime() - nowMs) ? r : b;
+              return Math.abs(new Date(r.time).getTime() - _refMs) < Math.abs(new Date(b.time).getTime() - _refMs) ? r : b;
             }, wRows[0]);
             ncData = {
               hs:       wBest.primary_swell_height   != null ? wBest.primary_swell_height   : wBest.wave_height,
@@ -2131,9 +2152,13 @@ async function _autoFillConditions(targetDate) {
           var ncJson = await ncRes.json();
           var ncRows = ncJson && ncJson.properties && ncJson.properties.marine;
           if (ncRows && ncRows.length > 0) {
-            var nowMs2 = Date.now();
+            var _refMs2;
+            if (targetDate && targetDate > today) {
+              var _parts2 = targetDate.split('-');
+              _refMs2 = Date.UTC(+_parts2[0], +_parts2[1]-1, +_parts2[2]) + (_getSessionHour() - 11) * 3600000;
+            } else { _refMs2 = Date.now(); }
             var ncBest = ncRows.reduce(function(b, r) {
-              return Math.abs(new Date(r.time).getTime() - nowMs2) < Math.abs(new Date(b.time).getTime() - nowMs2) ? r : b;
+              return Math.abs(new Date(r.time).getTime() - _refMs2) < Math.abs(new Date(b.time).getTime() - _refMs2) ? r : b;
             }, ncRows[0]);
             ncData = {
               hs:       ncBest.primary_swell_height   != null ? ncBest.primary_swell_height   : ncBest.wave_height,
@@ -4259,8 +4284,9 @@ function showSpotSourceSettings() {
     + '<div style="font-size:9px;color:var(--text-faint);margin-bottom:12px;margin-top:-4px;">Défaut: '+ station.name +'</div>'
 
     // Label personnalisé
-    + '<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">Nom affiché (optionnel)</div>'
-    + '<input type="text" id="ssd-label" value="'+(cfg.label||station.name)+'" placeholder="ex: Passe de Dumbéa" '
+    + '<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">Nom affiché (optionnel)</div>'
+    + '<div style="font-size:9px;color:var(--text-faint);margin-bottom:5px;">Surnom court affiché à côté du spot — ex: "Dumbéa" au lieu de "Passe de Dumbéa". Laisse vide = nom officiel de la station.</div>'
+    + '<input type="text" id="ssd-label" value="'+(cfg.label||station.name)+'" placeholder="ex: Dumbéa, Ouano, Boulari…" '
     + 'style="width:100%;background:var(--glass);border:1px solid var(--border);border-radius:6px;'
     + 'color:var(--text);font-size:12px;padding:6px 8px;outline:none;margin-bottom:14px;">'
 
@@ -4349,14 +4375,19 @@ function handleSpotChange(sel) {
     linkDiv.style.display = 'block';
     var station = _SPOT_STATIONS[sel.value];
     var cfg = _getSpotSources ? _getSpotSources()[sel.value] : null;
+    // Si le spot n'est pas dans le mapping, chercher dans les spots previsions.html
+    var prevStation = (!station && !cfg) ? _findPrevSpot(sel.value) : null;
     var effectiveStation = (cfg && cfg.lat) ? {name: cfg.label || sel.value, lat: cfg.lat, lon: cfg.lon}
-                         : (station || _DEFAULT_STATION);
+                         : station ? station
+                         : prevStation ? {name: prevStation.marineName || prevStation.name, lat: prevStation.lat, lon: prevStation.lon}
+                         : _DEFAULT_STATION;
+    var isKnown = !!(station || cfg || prevStation);
     if (srcSpan) srcSpan.textContent = '· ' + effectiveStation.name;
     if (coordsInfo && coordsSpan) {
       coordsSpan.textContent = effectiveStation.lat + ', ' + effectiveStation.lon
-        + (station ? '' : ' (par défaut — cliquer ⚙ pour personnaliser)');
+        + (isKnown ? '' : ' (par défaut — cliquer ⚙ pour personnaliser)');
       coordsInfo.style.display = 'block';
-      coordsInfo.style.color = station ? 'var(--text-faint)' : 'rgba(232,160,87,.6)';
+      coordsInfo.style.color = isKnown ? 'var(--text-faint)' : 'rgba(232,160,87,.6)';
     }
   } else if (linkDiv) {
     linkDiv.style.display = 'none';

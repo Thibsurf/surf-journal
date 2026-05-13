@@ -2629,6 +2629,17 @@ async function loadForecast(i) {
   } catch (e) {
     if (e.message === 'NC_TOKEN_EXPIRED') {
       console.warn('[loadForecast] Token NC expiré, données Open-Meteo uniquement');
+      // Tenter quand même le rendu GFS si les données sont disponibles
+      try {
+        if (omMarine && omMarine.hourly && omMarine.hourly.time && omWind && omWind.hourly) {
+          renderForecast(null, null, omMarine, omWind, s);
+        } else {
+          var tw = document.getElementById('table-wrap');
+          if (tw) tw.innerHTML = '<div style="padding:1rem;color:var(--warm);font-size:12px;">⚠ Token NC expiré — renouvelle-le via l\'extension</div>';
+          var cc = document.getElementById('current-cond');
+          if (cc && cc.innerHTML.includes('spin')) cc.innerHTML = '<div style="padding:1rem;color:var(--warm);font-size:12px;">⚠ Données indisponibles — token NC expiré</div>';
+        }
+      } catch(e2) { console.error('[loadForecast] GFS render error:', e2); }
     } else {
       console.error('[loadForecast] Erreur:', e.message);
       var tableWrap = document.getElementById('table-wrap');
@@ -2791,7 +2802,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       });
     }
     var _wGstFromGFS = !gotNcGusts; // true seulement si 0 rafale NC disponible
-  } else if(omMarine&&omWind){
+  } else if(omMarine&&omMarine.hourly&&omMarine.hourly.time&&omWind&&omWind.hourly){
     var h=omMarine.hourly,wh=omWind.hourly;
     // OM timestamps = heure locale NC (grâce à &timezone=Pacific/Noumea)
     // Comparer directement avec now
