@@ -2330,28 +2330,32 @@ function updateHsToggleUI() {
 
 // Sauvegarde les conditions de TOUS les jours du forecast dans meteo_cache Supabase
 // Priorité NC > GFS : ne pas écraser une entrée NC avec du GFS
-// Sauvegarde PLUSIEURS créneaux par jour (6h/9h/12h/15h/18h heure locale NC) + marées
+// Sauvegarde TOUTES les heures disponibles par jour + marées
 async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir, source) {
   if (!_ensureSupabaseClient() || !dates || !dates.length) return;
   var sessionHour = spot.sessionHour || 7;
-  var SLOT_HOURS = [6, 9, 12, 15, 18]; // heures locales NC cibles
 
-  // 1. Grouper les indices par date : valeur principale + slots horaires
-  // dates[i].getUTCHours() = heure locale NC (le +11h a déjà été appliqué au push)
+  // 1. Grouper TOUS les indices par date (heure NC = getUTCHours après +11h)
   var dayMap = {};
   dates.forEach(function(dt, i) {
     if (!dt || sw1h[i] == null) return;
     var d = dt.getDate ? dt : new Date(dt);
     var dateStr = d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
     var h = d.getUTCHours();
-    if (!dayMap[dateStr]) dayMap[dateStr] = {main: null, mainDiff: Infinity, slots: {}};
+    if (!dayMap[dateStr]) dayMap[dateStr] = {main: null, mainDiff: Infinity, hours: []};
+    // Valeur principale = row la plus proche de l'heure de session
     var mainDiff = Math.abs(h - sessionHour);
     if (mainDiff < dayMap[dateStr].mainDiff) { dayMap[dateStr].main = i; dayMap[dateStr].mainDiff = mainDiff; }
-    SLOT_HOURS.forEach(function(sh) {
-      var slotDiff = Math.abs(h - sh);
-      if (!dayMap[dateStr].slots[sh] || slotDiff < dayMap[dateStr].slots[sh].diff) {
-        dayMap[dateStr].slots[sh] = {idx: i, diff: slotDiff};
-      }
+    // Toutes les heures du jour
+    dayMap[dateStr].hours.push({
+      h: h,
+      hs:       sw1h[i],
+      period:   sw1t && sw1t[i] != null   ? sw1t[i]              : null,
+      swellDir: sw1d && sw1d[i] != null   ? sw1d[i]              : null,
+      windKt:   wSpd && wSpd[i] != null   ? Math.round(wSpd[i])  : null,
+      windGst:  wGst && wGst[i] != null   ? Math.round(wGst[i])  : null,
+      windDir:  wDir && wDir[i] != null   ? wDir[i]              : null,
+      pwr:      (sw1h[i] && sw1t && sw1t[i]) ? +(0.5*sw1h[i]*sw1h[i]*sw1t[i]).toFixed(1) : null
     });
   });
 
@@ -2390,35 +2394,21 @@ async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir
     var info = dayMap[dateStr];
     var mi = info.main; if (mi === null || !sw1h[mi]) return;
 
-    // Créneaux horaires — max 1.5h d'écart pour éviter les lignes dupliquées
-    var slots = [];
-    SLOT_HOURS.forEach(function(sh) {
-      var si = info.slots[sh] && info.slots[sh].idx;
-      var sd = info.slots[sh] && info.slots[sh].diff;
-      if (si == null || sd == null || sd > 1.5) return;
-      var hs2 = sw1h[si]; if (!hs2) return;
-      var per2 = sw1t&&sw1t[si]!=null ? sw1t[si] : null;
-      slots.push({
-        h: sh, hs: hs2, period: per2,
-        swellDir: sw1d&&sw1d[si]!=null ? sw1d[si] : null,
-        windKt: wSpd&&wSpd[si]!=null ? Math.round(wSpd[si]) : null,
-        windGst: wGst&&wGst[si]!=null ? Math.round(wGst[si]) : null,
-        windDir: wDir&&wDir[si]!=null ? wDir[si] : null,
-        pwr: hs2&&per2 ? +(0.5*hs2*hs2*per2).toFixed(1) : null
-      });
-    });
+    // Trier et dédoublonner les heures (même heure possible en NC/GFS)
+    var hours = (info.hours || []).sort(function(a,b){return a.h - b.h;});
+    var seen = {}; hours = hours.filter(function(r){ if(seen[r.h]) return false; seen[r.h]=1; return true; });
 
     var tideDay = tideByDate[dateStr] || {};
     toWrite.push({
       id: id, spot_name: spot.marineName||spot.name, lat: spot.lat, lon: spot.lon,
       data: {
-        hs: sw1h[mi],
-        period: sw1t&&sw1t[mi]!=null ? sw1t[mi] : null,
-        swellDir: sw1d&&sw1d[mi]!=null ? sw1d[mi] : null,
-        windKt: wSpd&&wSpd[mi]!=null ? Math.round(wSpd[mi]) : null,
-        windDir: wDir&&wDir[mi]!=null ? wDir[mi] : null,
-        source: source,
-        slots: slots.length ? slots : null,
+        hs:       sw1h[mi],
+        period:   sw1t && sw1t[mi] != null ? sw1t[mi]             : null,
+        swellDir: sw1d && sw1d[mi] != null ? sw1d[mi]             : null,
+        windKt:   wSpd && wSpd[mi] != null ? Math.round(wSpd[mi]) : null,
+        windDir:  wDir && wDir[mi] != null ? wDir[mi]             : null,
+        source:   source,
+        hours:    hours.length ? hours : null,  // tableau horaire complet NC
         tideHighs: tideDay.highs && tideDay.highs.length ? tideDay.highs : null,
         tideLows:  tideDay.lows  && tideDay.lows.length  ? tideDay.lows  : null
       },
@@ -7182,27 +7172,30 @@ async function loadPastConditions() {
       tideHtml += '</div></div>';
     }
 
-    // ── Bloc multi-créneaux ─────────────────────────────────────────────────
+    // ── Tableau horaire NC (hours = nouveau format, slots = ancien) ─────────
+    var hoursData = d2.hours || d2.slots || [];
     var slotsHtml = '';
-    if (d2.slots && d2.slots.length > 1) {
+    if (hoursData.length > 0) {
+      var srcLabelRow = d2.hours ? '🛰 meteo.nc' : '📊 créneaux';
       slotsHtml = '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">'
-        +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">📊 Créneaux horaires</div>'
+        +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">'+srcLabelRow+' · Tableau horaire</div>'
         +'<div style="overflow-x:auto;">'
-        +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+        +'<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:320px;">'
         +'<thead><tr style="color:var(--muted);font-size:9px;">'
         +'<th style="text-align:left;padding:3px 6px;">Heure</th>'
-        +'<th style="padding:3px 4px;">Hs</th><th style="padding:3px 4px;">T</th>'
-        +'<th style="padding:3px 4px;">Dir</th><th style="padding:3px 4px;">Vent</th>'
+        +'<th style="padding:3px 4px;">Hs</th><th style="padding:3px 4px;">T (s)</th>'
+        +'<th style="padding:3px 4px;">Dir</th><th style="padding:3px 4px;">Vent (raf)</th>'
         +'<th style="padding:3px 4px;">⚡</th>'
         +'</tr></thead><tbody>';
-      d2.slots.forEach(function(s, si) {
+      hoursData.forEach(function(s, si) {
         var hsCol = !s.hs?'var(--muted)':s.hs<0.5?'var(--muted)':s.hs<1.2?'#4fa3c7':s.hs<2?'#3dba8a':'#a99ff8';
         var wCol = !s.windKt?'var(--muted)':s.windKt<12?'#3dba8a':s.windKt<20?'#e8a057':'#e05c5c';
-        var bg = si%2===0?'rgba(255,255,255,.015)':'transparent';
+        var isN = s.h < 6 || s.h >= 20;
+        var bg = isN ? 'rgba(0,0,0,.12)' : (si%2===0?'rgba(255,255,255,.015)':'transparent');
         slotsHtml += '<tr style="background:'+bg+';">'
           +'<td style="padding:3px 6px;font-weight:600;color:var(--accent);">'+String(s.h).padStart(2,'0')+'h</td>'
           +'<td style="padding:3px 4px;color:'+hsCol+';font-weight:600;text-align:center;">'+(s.hs!=null?s.hs+'m':'—')+'</td>'
-          +'<td style="padding:3px 4px;color:var(--text);text-align:center;">'+(s.period!=null?s.period+'s':'—')+'</td>'
+          +'<td style="padding:3px 4px;text-align:center;">'+(s.period!=null?Math.round(s.period)+'s':'—')+'</td>'
           +'<td style="padding:3px 4px;color:var(--muted);text-align:center;">'+(s.swellDir!=null?compass[Math.round(((s.swellDir%360)+360)%360/22.5)%16]:'—')+'</td>'
           +'<td style="padding:3px 4px;color:'+wCol+';text-align:center;">'+(s.windKt!=null?s.windKt+'kt'+(s.windGst?' ('+s.windGst+')'  :''):'—')+'</td>'
           +'<td style="padding:3px 4px;color:var(--accent);text-align:center;font-weight:600;">'+(s.pwr!=null?s.pwr:'—')+'</td>'
@@ -7235,8 +7228,8 @@ async function loadPastConditions() {
       +tideHtml
       +'</div>';
 
-    // Si pas de créneaux horaires (cache ancien format), charger GFS en complément
-    if (!d2.slots || !d2.slots.length) {
+    // GFS en complément seulement si aucune donnée horaire NC disponible
+    if (!hoursData.length) {
       var gfsSlotWrap = document.createElement('div');
       gfsSlotWrap.style.marginTop = '8px';
       resEl.appendChild(gfsSlotWrap);
