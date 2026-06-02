@@ -1670,6 +1670,19 @@ async function _pushTokenToWorker(token) {
   } catch(e) { console.warn('[NC] Worker /token push fail:', e.message); }
 }
 
+// Worker Cloudflare — source autonome (pas besoin d'extension, token géré côté serveur)
+async function _loadTokenFromWorker() {
+  try {
+    var r = await fetch(_NC_WORKER + '/token');
+    if (!r.ok) return null;
+    var d = await r.json();
+    return (d && d.ok && d.token) ? d.token : null;
+  } catch(e) {
+    console.warn('[NC] Worker /token load fail:', e.message);
+    return null;
+  }
+}
+
 // Lit les deux bases en parallèle, prend le token le plus récent
 async function _loadTokenFromSupabase() {
   if (!_ensureSupabaseClient()) return null;
@@ -1701,6 +1714,19 @@ async function _loadTokenFromSupabase() {
 
 var _ncToken = (function(){
   try { return localStorage.getItem('nc-token') || null; } catch(e){ return null; }
+})();
+
+// Bootstrap autonome : récupère un token depuis le worker si pas de token local valide
+(async function _bootstrapToken() {
+  if (_ncToken && _isTokenValid()) return;
+  var tok = await _loadTokenFromWorker();
+  if (tok && tok !== _ncToken) {
+    _ncToken = tok;
+    try { localStorage.setItem('nc-token', tok); localStorage.setItem('nc-token-date', new Date().toISOString()); } catch(e){}
+    _updateTokenBtn();
+    loadForecast(currentSpot);
+    console.log('[NC] Token worker bootstrap ✓');
+  }
 })();
 
 function setNcToken(t) {
@@ -1932,7 +1958,22 @@ setInterval(function() {
   _updateTokenBtn(); // toujours rafraîchir le badge (détecte l'expiration du token en cours)
 }, 5000);
 
-// 2. Polling Supabase : toutes les 2min si pas de token, toutes les 10min sinon
+// 2. Polling Worker : toutes les 12min — source autonome (priorité sur Supabase)
+(function _workerPoll() {
+  setTimeout(async function() {
+    var tok = await _loadTokenFromWorker();
+    if (tok && tok !== _ncToken) {
+      _ncToken = tok;
+      try { localStorage.setItem('nc-token', tok); localStorage.setItem('nc-token-date', new Date().toISOString()); } catch(e){}
+      _updateTokenBtn();
+      loadForecast(currentSpot);
+      console.log('[NC] Token worker mis à jour via polling ✓');
+    }
+    _workerPoll();
+  }, 12 * 60 * 1000);
+})();
+
+// 3. Polling Supabase : toutes les 2min si pas de token, toutes les 10min sinon
 (function _sbPoll() {
   setTimeout(async function() {
     var tok = await _loadTokenFromSupabase();
@@ -1948,7 +1989,7 @@ setInterval(function() {
   }, _ncToken ? 10 * 60 * 1000 : 2 * 60 * 1000);
 })();
 
-// 3. Écoute postMessage — deux formats (extension v1 et v2)
+// 4. Écoute postMessage — deux formats (extension v1 et v2)
 window.addEventListener('message', function(ev) {
   var d = ev.data;
   if (!d) return;
@@ -1961,7 +2002,7 @@ window.addEventListener('message', function(ev) {
   }
 });
 
-// 4. Écoute CustomEvent nc-token-updated (injecté par content_script de l'extension)
+// 5. Écoute CustomEvent nc-token-updated (injecté par content_script de l'extension)
 window.addEventListener('nc-token-updated', function(ev) {
   var tok = ev.detail && ev.detail.token;
   if (tok && tok.length > 20 && tok.indexOf('eyJ') === 0 && tok !== _ncToken) {
@@ -2497,13 +2538,33 @@ async function loadForecast(i) {
       + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility&wind_speed_unit=kn&forecast_days=7&timezone=GMT';
 
     // ─── FETCH ────────────────────────────────────────────────────────────────
-    // NOTE: Le worker Cloudflare donne 401 car rpcache.meteo.nc lie le token à l'IP client.
-    // Les appels se font donc DIRECTEMENT depuis le navigateur avec ncFetch (token Bearer local).
+    // Token non IP-bound (confirmé) — worker gère le token autonomement (Plan A).
+    // Marine/météo : direct navigateur avec token local (worker bootstrap ou extension).
+    // Marées/observations : via worker (autonome, pas besoin de token local).
     var ncMarine = null, ncForecast = null, ncTide = null;
     var omMarine = null, omWind = null, obsData = null;
 
-    if (_ncToken) { // Toujours tenter si on a un token — l'API dira 401 si vraiment expiré
-      // Données marine (houle + vent) — /forecast/marine
+    // Marées — via worker Cloudflare (source : rpcache.meteo.nc, token géré côté serveur)
+    try {
+      var tideRes = await fetch(_NC_WORKER + '/tide?id=' + (s.tideId || '9881752'));
+      if (tideRes.ok) ncTide = await tideRes.json();
+    } catch(e) { console.warn('[NC tide] FAIL:', e.message); }
+
+    // Observations — via worker Cloudflare (source : rpcache.meteo.nc, token géré côté serveur)
+    if (s.obsId) {
+      var obsSt = OBS_STATIONS.find(function(st) {
+        return st.spotId === s.obsId || st.id === s.obsId;
+      });
+      if (obsSt) {
+        try {
+          var obsRes = await fetch(_NC_WORKER + '/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id);
+          if (obsRes.ok) obsData = await obsRes.json();
+        } catch(e) { console.warn('[NC obs] FAIL:', e.message); }
+      }
+    }
+
+    if (_ncToken) { // Marine + météo standard — token local (bootstrap worker ou extension)
+      // Données marine (houle + vent) — /forecast/marine (source principale, Open-Meteo en fallback)
       try {
         ncMarine = await ncFetch(BASE + 'forecast/marine?lat=' + s.lat + '&lon=' + s.lon);
         if (ncMarine && ncMarine.properties) {
@@ -2515,25 +2576,8 @@ async function loadForecast(i) {
       try {
         ncForecast = await ncFetch(BASE + 'forecast?lat=' + s.lat + '&lon=' + s.lon);
       } catch(e) { if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC meteo] FAIL:', e.message); }
-
-      // Marées — appel direct navigateur
-      try {
-        ncTide = await ncFetch(BASE + 'tide?id=' + (s.tideId || '9881752'));
-      } catch(e) { if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC tide] FAIL:', e.message); }
-
-      // Observations — appel direct navigateur
-      if (s.obsId) {
-        var obsSt = OBS_STATIONS.find(function(st) {
-          return st.spotId === s.obsId || st.id === s.obsId;
-        });
-        if (obsSt) {
-          try {
-            obsData = await ncFetch(BASE + 'observation/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id);
-          } catch(e) { if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC obs] FAIL:', e.message); }
-        }
-      }
     } else {
-      console.info('[NC] Pas de token valide — fallback GFS uniquement');
+      console.info('[NC] Pas de token local — marine/météo via Open-Meteo uniquement');
     }
 
     // Open-Meteo (toujours, sans token)
