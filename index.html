@@ -977,7 +977,7 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
           <button type="button" id="tide-add-range" onclick="addTideRange()" style="background:rgba(79,163,199,0.15);border:1px solid rgba(79,163,199,0.3);color:var(--accent);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">+ Ajouter plage</button>
           <button type="button" id="tide-reset" onclick="resetTideRanges()" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">Effacer</button>
           </div>
-          <div id="tide-time-editor" style="display:none;margin-top:8px;background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.2);border-radius:6px;padding:8px;">
+          <div id="tide-range-times-wrap" style="display:none;margin-top:8px;background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.2);border-radius:6px;padding:8px;">
             <div style="font-size:10px;color:var(--accent);margin-bottom:6px;font-weight:500;">⏱ Affiner l'heure exacte</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" id="tide-time-inputs"></div>
           </div>
@@ -2567,7 +2567,7 @@ function renderTideWidget() {
   }).join('');
 
   // Éditeur d'heure précise par plage
-  var timeEditor = document.getElementById('tide-time-editor');
+  var timeEditor = document.getElementById('tide-range-times-wrap');
   var timeInputsEl = document.getElementById('tide-time-inputs');
   if (timeEditor && timeInputsEl) {
     if (tideRanges.length > 0) {
