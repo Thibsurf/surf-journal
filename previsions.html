@@ -3258,7 +3258,7 @@ function updateHsHover(i){
 // ─── SCORE SURF ──────────────────────────────────────────────────────────────
 // Paramètres de score (modifiables via menu)
 var _DEFAULT_SCORE = {
-  minHs: 0.4, maxHs: 4.0, minPeriod: 8,
+  minHs: 0.4, maxHs: 4.0, minPeriod: 8, minPwr: 1,
   swellDirIdeal: 120, windDirIdeal: 270,
   onshoreLimit: 45, offshoreMin: 135,
   windMalusKt: 18, gustMalusKt: 25
@@ -3318,16 +3318,19 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
     if(diffSwell <= 45) { score = Math.min(5, score + 1); details.push('Houle idéale '+compass(swDir)); }
     else if(diffSwell > 120) { score = Math.max(0, score - 1); details.push('Houle défav. '+compass(swDir)); }
   }
-  // Direction vent: bonus offshore, malus onshore (basé sur windDirIdeal)
-  if(wDir !== null && wDir !== undefined) {
+  // Direction vent: bonus/malus basé sur windDirIdeal (cap offshore du spot, réglage compas)
+  // windDirIdeal = vers où souffle le vent idéal (ex: 270 = offshore côte ouest)
+  // wDir (API) = provenance → convertir en destination avant comparaison
+  if(wDir != null) {
     var idealWind = SCORE_PARAMS.windDirIdeal || 270;
-    var diffWind = Math.abs(((wDir - idealWind + 180 + 360) % 360) - 180);
+    var wDirTo = (wDir + 180) % 360;
+    var diffWind = Math.abs(((wDirTo - idealWind + 180 + 360) % 360) - 180);
     if(diffWind <= 60) { details.push('Vent favorable '+compass(wDir)); }
     else if(diffWind > 120) { score = Math.max(0, score - 1); details.push('Vent défav. '+compass(wDir)); }
   }
 
-  // Effet du vent
-  if(ws && wDir !== null && swDir !== null) {
+  // Effet du vent (onshore/offshore relatif à la houle)
+  if(ws && wDir != null && swDir != null) {
     // Angle entre vent et direction de propagation de la houle
     // swDir = D'OÙ vient la houle, wDir = D'OÙ vient le vent
     // Vent onshore = vent va VERS la côte = dans le MÊME sens que la houle
@@ -7646,6 +7649,7 @@ function showSpotSettings(forceOpen) {
     var newScore = {
       minHs:     +document.getElementById('ss-minHs').value     || 0.4,
       minPeriod: +document.getElementById('ss-minPeriod').value || 8,
+      minPwr:    +document.getElementById('ss-minPwr').value,
       windMalusKt: +document.getElementById('ss-wind').value    || 18,
       gustMalusKt: +document.getElementById('ss-gust').value    || 25,
       swellDirIdeal: +document.getElementById('ss-swell').value    || 120,
@@ -7725,6 +7729,7 @@ function showScoreSettings() {
     +'<div style="font-size:10px;font-weight:700;color:#4fa3c7;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">🌊 Houle</div>'
     +sliderRow('Hs mini pour surfer (m)','minHs',p.minHs,0.1,1.5,0.1,' m')
     +sliderRow('Période mini (s)','minPeriod',p.minPeriod||8,4,16,1,' s')
+    +sliderRow('Puissance mini (W/m)','minPwr',(p.minPwr!=null?p.minPwr:1),0,10,0.5,' W/m')
 
     // Direction idéale de la houle (compas)
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">'
