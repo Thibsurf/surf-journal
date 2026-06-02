@@ -9214,21 +9214,21 @@ function ensoRender() {
   // Charger météo/UV dès le début (pas besoin de token)
   loadOpenMeteoMeteo();
 
-  // Boot token : localStorage → worker → Supabase
-  if (_ncToken && _ncToken.length > 20) {
-    // Token local présent → charger directement
+  // Boot token : localStorage (valide) → worker (autonome) → fallback GFS
+  if (_ncToken && _ncToken.length > 20 && _isTokenValid()) {
+    // Token local valide → charger directement
     loadForecast(currentSpot);
   } else {
-    // Pas de token local → essayer Supabase (sync cross-device), puis charger quand même (GFS fallback)
+    // Token absent ou expiré → worker d'abord (obtient un token frais en ~200ms-2s)
     var _bootDone = false;
     var _bootTimeout = setTimeout(function() {
       if (_bootDone) return; _bootDone = true;
+      console.info('[Boot] Timeout worker — chargement sans token meteo.nc');
       loadForecast(currentSpot);
-    }, 4000);
+    }, 5000);
 
-    _loadTokenFromSupabase().then(function(tok) {
-      if (_bootDone) return;
-      _bootDone = true;
+    _loadTokenFromWorker().then(function(tok) {
+      if (_bootDone) return; _bootDone = true;
       clearTimeout(_bootTimeout);
       if (tok && tok.length > 20) {
         _ncToken = tok;
