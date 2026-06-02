@@ -2561,7 +2561,10 @@ async function addLog(){
     created_at:createdAt
   };
   if(paidBy&&type!=='reimburse')payload.paid_by=paidBy;
-  if(type==='reimburse'&&paidBy)payload.paid_by=paidBy;
+  if(type==='reimburse'&&paidBy){
+    payload.paid_by=paidBy;
+    if(reimbTo) payload.note=(note?note+' · ':'')+`__REMB_TO:${reimbTo}__`;
+  }
   if(type==='expense'&&category)payload.category=category;
   if(type==='expense'&&isPersonal){
     payload.category='personal';
@@ -3212,7 +3215,7 @@ function renderCharts(){
   allLogs.forEach(l=>{if(!isShareable(l))return;const total=l.total_price;totalGlobal+=total;const payer=l.paid_by;if(payer&&knownIds.has(payer)){paid[payer]+=total;}else{if(payer&&!knownIds.has(payer))unknownPayerIds.add(payer);unattributed+=total;}const shares=computeShares(l);Object.entries(shares).forEach(([uid,amt])=>{if(owed[uid]!==undefined)owed[uid]+=amt;});});
   const fairShare=_members.length?totalGlobal/_members.length:0;
   const reimbursed={};_members.forEach(m=>{reimbursed[m.id]={};});
-  allLogs.forEach(l=>{if(!isReimburseLog(l)||!l.total_price)return;const from=l.paid_by;if(!from||!knownIds.has(from))return;const others=_members.filter(m=>m.id!==from);if(!others.length)return;const to=others[0].id;reimbursed[from][to]=(reimbursed[from][to]||0)+l.total_price;});
+  allLogs.forEach(l=>{if(!isReimburseLog(l)||!l.total_price)return;const from=l.paid_by;if(!from||!knownIds.has(from))return;const m=l.note&&l.note.match(/__REMB_TO:([^_]+)__/);const toId=m&&knownIds.has(m[1])?m[1]:(_members.filter(x=>x.id!==from)[0]||{}).id;if(!toId)return;reimbursed[from][toId]=(reimbursed[from][toId]||0)+l.total_price;});
   const balance={};
   _members.forEach(m=>{const meId=m.id;let rembOut=0,rembIn=0;_members.forEach(other=>{if(other.id===meId)return;rembOut+=(reimbursed[meId][other.id]||0);rembIn+=(reimbursed[other.id][meId]||0);});balance[meId]={paid:paid[meId],owed:owed[meId],fairShare,rembOut,rembIn,total:(paid[meId]-owed[meId])+(rembOut-rembIn)};});
   const totalReimbursed=Object.values(reimbursed).reduce((s,o)=>s+Object.values(o).reduce((ss,v)=>ss+v,0),0);
