@@ -1,0 +1,13 @@
+# Wrangler build artifacts
+.wrangler/
+worker_cloudflare/.wrangler/
+wrangler.jsonc
+
+# Tuiles SHOM locales (164 MB, générées par gdal2tiles — ne pas versionner)
+thibsurf_nav/tiles_shom/
+thibsurf_nav/tiles_shom_final/
+
+# Archives
+*.zip
+nc-token-extension*.zip
+nc-token-extension-v10.zip
