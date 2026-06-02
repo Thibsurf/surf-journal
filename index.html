@@ -2050,13 +2050,39 @@ async function _autoFillConditions(targetDate) {
     // depuis toutes les sources disponibles, puis appel DIRECT navigateur.
     // ─────────────────────────────────────────────────────────────────────
 
-    // ── Étape 1 : Obtenir le token NC (4 sources en cascade) ─────────────
+    // ── Étape 1 : Obtenir le token NC ─────────────────────────────────────
     var _ncToken = null;
 
-    // 1a. localStorage (le plus rapide, déjà disponible si extension a posté)
-    try { _ncToken = localStorage.getItem('nc-token'); } catch(e) {}
+    // helper validité JWT (iat TTL 22 min comme meteo.nc)
+    function _tokValid(t) {
+      if (!t || t.indexOf('eyJ') !== 0) return false;
+      try {
+        var p = JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+        if (p.exp) return p.exp > Date.now()/1000 + 30;
+        if (p.iat) return (Date.now()/1000 - p.iat) < 22*60;
+        return true;
+      } catch(e) { return false; }
+    }
 
-    // 1b. chrome.storage.local (extension Chrome — accessible même en file://)
+    // 1a. localStorage (si encore valide)
+    try { var _lt = localStorage.getItem('nc-token'); if (_tokValid(_lt)) _ncToken = _lt; } catch(e) {}
+
+    // 1b. Worker Cloudflare (autonome — source principale, toujours frais)
+    if (!_ncToken) {
+      try {
+        var tokR = await fetch(WORKER_URL + '/token');
+        if (tokR.ok) {
+          var tokD = await tokR.json();
+          if (tokD.token) {
+            _ncToken = tokD.token;
+            try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
+            console.log('[autofill] Token via worker ✅');
+          }
+        }
+      } catch(e) {}
+    }
+
+    // 1c. chrome.storage.local (extension Chrome — fallback)
     if (!_ncToken && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       _ncToken = await new Promise(function(resolve) {
         try {
@@ -2071,30 +2097,14 @@ async function _autoFillConditions(targetDate) {
       }
     }
 
-    // 1c. Supabase shared_tokens (mis à jour par previsions.html)
-    // C'est la source la plus fiable en production : même token que previ.
+    // 1d. Supabase shared_tokens (dernier recours)
     if (!_ncToken && sb) {
       try {
         var stRes = await sb.from('shared_tokens').select('token').eq('id', 'meteo-nc').maybeSingle();
         if (stRes.data && stRes.data.token) {
           _ncToken = stRes.data.token;
           try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
-          console.log('[autofill] Token via Supabase shared_tokens ✅');
-        }
-      } catch(e) {}
-    }
-
-    // 1d. Worker KV /token (dernier recours)
-    if (!_ncToken) {
-      try {
-        var tokR = await fetch(WORKER_URL + '/token');
-        if (tokR.ok) {
-          var tokD = await tokR.json();
-          if (tokD.token) {
-            _ncToken = tokD.token;
-            try { localStorage.setItem('nc-token', _ncToken); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
-            console.log('[autofill] Token via worker KV ✅');
-          }
+          console.log('[autofill] Token via Supabase ✅');
         }
       } catch(e) {}
     }

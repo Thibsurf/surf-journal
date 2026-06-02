@@ -3256,7 +3256,7 @@ function _isTokenValid(tok) {
 }
 
 async function _loadNcToken() {
-  // 1. localStorage (injecté par l'extension Chrome)
+  // 1. localStorage (injecté par l'extension Chrome, si encore valide)
   var local = null;
   try { local = localStorage.getItem('nc-token'); } catch(e) {}
   if (local && _isTokenValid(local)) {
@@ -3265,7 +3265,21 @@ async function _loadNcToken() {
     return local;
   }
 
-  // 2. Supabase shared_tokens (mis à jour par previsions.html)
+  // 2. Worker Cloudflare (autonome — source principale, toujours frais)
+  try {
+    var r = await fetch(WORKER_URL + '/token');
+    if (r.ok) {
+      var d = await r.json();
+      if (d && d.token && _isTokenValid(d.token)) {
+        _ncToken = d.token;
+        try { localStorage.setItem('nc-token', d.token); } catch(e) {}
+        _updateTokenBadge(true);
+        return d.token;
+      }
+    }
+  } catch(e) { console.warn('[sorties] Worker token fetch:', e.message); }
+
+  // 3. Supabase shared_tokens (fallback — peut avoir un token plus récent de previsions.html)
   if (sb) {
     try {
       var st = await sb.from('shared_tokens').select('token').eq('id','meteo-nc').maybeSingle();
@@ -3277,22 +3291,6 @@ async function _loadNcToken() {
       }
     } catch(e) {}
   }
-
-  // 3. Worker Cloudflare KV (dernier recours — peut retourner 410 si expiré)
-  try {
-    var r = await fetch(WORKER_URL + '/token');
-    if (r.status === 410) {
-      console.info('[sorties] Token KV expiré (410) — ouvre meteo.nc avec l\'extension');
-    } else if (r.ok) {
-      var d = await r.json();
-      if (d && d.token && _isTokenValid(d.token)) {
-        _ncToken = d.token;
-        try { localStorage.setItem('nc-token', d.token); } catch(e) {}
-        _updateTokenBadge(true);
-        return d.token;
-      }
-    }
-  } catch(e) { console.warn('[sorties] Worker token fetch:', e.message); }
 
   _ncToken = null;
   _updateTokenBadge(false);
