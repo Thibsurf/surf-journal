@@ -2004,6 +2004,7 @@ var _fcastData = {};
 var _ncFcastData = null; // données meteo.nc séparées (pour le toggle)
 var _omFcastData = null; // données Open-Meteo séparées pour le toggle
 var _currentHsSrc = 'nc'; // source active: 'nc' ou 'om'
+var _forecastCache = {};  // cache BSF : { spotName → { fc, _ts } }
 
 function setHsSrc(src, skipRedraw) {
   _currentHsSrc = src;
@@ -2622,6 +2623,9 @@ async function loadForecast(i) {
         renderTideEncart(merged, s);
         _ncTideCache = merged;
         if (mareeInited) renderTideCurve(tideDayOffset || 0);
+        // Mise à jour cache BSF avec marées complètes (multi-jours)
+        var _bsfFull = _buildFcObject(s, _fcastData, merged);
+        if (_bsfFull) _forecastCache[s.name] = _bsfFull;
       });
     } else {
       renderTideEncart(ncTide, s);
@@ -2933,10 +2937,198 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   // Météo meteo.nc
   renderMeteoStrip(ncForecast);
   renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst);
+
+  // Cache BSF (mise à jour quand les marées multi-jours arrivent aussi)
+  var _bsfFc = _buildFcObject(spot, _fcastData, _ncTideCache);
+  if (_bsfFc) _forecastCache[spot.name] = _bsfFc;
 }
 
 // Rafales : Open-Meteo (modèle GFS), labelisées "Open-Meteo" dans l'UI.
 
+// ════════════════════════════════════════════════════════════════════════
+//  BEST SESSION FINDER — Réutilise calcSurfScore() et compass()
+// ════════════════════════════════════════════════════════════════════════
+var BSF = {
+  SESSION_HOURS:   2,
+  MIN_RUN_HOURS:   2,
+  MIN_HOUR_SCORE:  3,
+  TOP_N:           3,
+  GAP_TOLERANCE:   1
+};
+
+function _sunTimes(dateMs, lat, lon) {
+  var d = new Date(dateMs);
+  var day = Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+            - Date.UTC(d.getUTCFullYear(), 0, 0)) / 86400000);
+  var rad = Math.PI / 180;
+  function calc(isSunrise) {
+    var lngHour = lon / 15;
+    var t = day + ((isSunrise ? 6 : 18) - lngHour) / 24;
+    var M = 0.9856 * t - 3.289;
+    var L = M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634;
+    L = (L + 360) % 360;
+    var RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+    RA = (RA + 360) % 360;
+    RA += (Math.floor(L / 90) * 90) - (Math.floor(RA / 90) * 90);
+    RA /= 15;
+    var sinDec = 0.39782 * Math.sin(L * rad);
+    var cosDec = Math.cos(Math.asin(sinDec));
+    var cosH = (Math.cos(90.833 * rad) - sinDec * Math.sin(lat * rad))
+             / (cosDec * Math.cos(lat * rad));
+    if (cosH > 1 || cosH < -1) return null;
+    var H = isSunrise ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad;
+    H /= 15;
+    var T = H + RA - 0.06571 * t - 6.622;
+    var UT = (T - lngHour + 24) % 24;
+    var base = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    return base + UT * 3600000;
+  }
+  return { sunrise: calc(true), sunset: calc(false) };
+}
+
+function _tideStateAt(t, tideSeries, tMin, tMax) {
+  if (!tideSeries || tideSeries.length < 2) return null;
+  function interp(ts) {
+    for (var i = 1; i < tideSeries.length; i++) {
+      if (tideSeries[i].ms >= ts) {
+        var a = tideSeries[i-1], b = tideSeries[i];
+        var f = (ts - a.ms) / (b.ms - a.ms || 1);
+        return a.height + (b.height - a.height) * f;
+      }
+    }
+    return tideSeries[tideSeries.length - 1].height;
+  }
+  var h = interp(t);
+  var span = (tMax - tMin) || 1;
+  return {
+    level01: Math.max(0, Math.min(1, (h - tMin) / span)),
+    phase: interp(t + 1800000) >= h ? 'rising' : 'falling'
+  };
+}
+
+function _tideAdj(spot, tide) {
+  if (!tide || !spot.tidePref) return 0;
+  var p = spot.tidePref, adj = 0;
+  if (p.state === 'mid')       adj += (tide.level01 > 0.35 && tide.level01 < 0.65) ? 0.5 : -0.3;
+  else if (p.state === 'low')  adj += (tide.level01 < 0.4) ? 0.5 : -0.3;
+  else if (p.state === 'high') adj += (tide.level01 > 0.6) ? 0.5 : -0.3;
+  if (p.phase && p.phase !== 'any') adj += (tide.phase === p.phase) ? 0.3 : -0.2;
+  return adj;
+}
+
+function findSessionsForSpot(spot, fc) {
+  loadScoreParams(spot);
+  var n = fc.dates.length, hours = [];
+  for (var i = 0; i < n; i++) {
+    var t = fc.dates[i];
+    var sun = _sunTimes(t, spot.lat, spot.lon);
+    var daylight = sun.sunrise == null ||
+                   (t >= sun.sunrise - 1800000 && t <= sun.sunset + 1800000);
+    var sc = calcSurfScore(fc.hs[i], fc.T[i], fc.swDir[i],
+                           fc.ws[i], fc.wg[i], fc.wDir[i], fc.pwr[i]);
+    var tide = _tideStateAt(t, fc.tideSeries, fc.tideMin, fc.tideMax);
+    var eff = Math.max(0, Math.min(5, sc.score + _tideAdj(spot, tide)));
+    hours.push({ i:i, t:t, daylight:daylight, base:sc, eff:eff, tide:tide,
+                 hs:fc.hs[i], T:fc.T[i], ws:fc.ws[i], wg:fc.wg[i], wDir:fc.wDir[i] });
+  }
+  var runs = [], cur = null, gap = 0;
+  for (var j = 0; j < hours.length; j++) {
+    var ok = hours[j].daylight && hours[j].eff >= BSF.MIN_HOUR_SCORE;
+    if (ok) { if (!cur) cur = []; cur.push(hours[j]); gap = 0; }
+    else if (cur) { gap++; if (gap > BSF.GAP_TOLERANCE) { runs.push(cur); cur = null; gap = 0; } }
+  }
+  if (cur) runs.push(cur);
+  var sessions = [];
+  runs.forEach(function(run) {
+    if (run.length < BSF.MIN_RUN_HOURS) return;
+    var L = Math.min(BSF.SESSION_HOURS, run.length), best = null;
+    for (var s = 0; s + L <= run.length; s++) {
+      var block = run.slice(s, s + L);
+      var mean = block.reduce(function(a, h) { return a + h.eff; }, 0) / block.length;
+      var peakH = block.reduce(function(a, h) { return h.eff > a.eff ? h : a; });
+      if (!best || mean > best.mean) best = { block:block, mean:mean, peak:peakH };
+    }
+    sessions.push({
+      spotName: spot.name, spotIdx: SPOTS.indexOf(spot),
+      startMs: best.block[0].t, endMs: best.block[best.block.length-1].t + 3600000,
+      mean: best.mean, peak: best.peak.eff, peakH: best.peak
+    });
+  });
+  return sessions;
+}
+
+function findBestSessions(spotsList, getForecast) {
+  var all = [];
+  spotsList.forEach(function(spot) {
+    var fc = getForecast(spot);
+    if (fc && fc.dates && fc.dates.length) all = all.concat(findSessionsForSpot(spot, fc));
+  });
+  all.sort(function(a, b) {
+    return (b.mean - a.mean) || (b.peak - a.peak) || (a.startMs - b.startMs);
+  });
+  return all.slice(0, BSF.TOP_N).map(_describeSession);
+}
+
+function _describeSession(s) {
+  var d = new Date(s.startMs + 11 * 3600000); // UTC+11 NC
+  var jours = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var mois  = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  var jour = jours[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + mois[d.getUTCMonth()];
+  var h1 = new Date(s.startMs + 11 * 3600000).getUTCHours();
+  var h2 = new Date(s.endMs   + 11 * 3600000).getUTCHours();
+  var p = s.peakH;
+  var limite = 'conditions stables';
+  if (p.ws > (SCORE_PARAMS.windMalusKt || 18)) limite = 'vent fort (' + Math.round(p.ws) + 'kt)';
+  else if (p.wg > (SCORE_PARAMS.gustMalusKt || 25)) limite = 'rafales';
+  else if (p.T && p.T < (SCORE_PARAMS.minPeriod || 8)) limite = 'période courte (' + p.T + 's)';
+  else if (p.tide && (p.tide.level01 < 0.2 || p.tide.level01 > 0.85)) limite = 'marée extrême';
+  return {
+    spot: s.spotName, spotIdx: s.spotIdx, startMs: s.startMs,
+    jour: jour, creneau: h1 + 'h–' + h2 + 'h',
+    taille: (p.hs != null ? p.hs.toFixed(1) + 'm' : '—'),
+    vent: (p.ws != null ? Math.round(p.ws) + 'kt ' + (typeof compass === 'function' ? compass(p.wDir) : '') : '—'),
+    maree: p.tide ? (Math.round(p.tide.level01 * 100) + '% ' + (p.tide.phase === 'rising' ? '↑' : '↓')) : '—',
+    score: Math.round(s.mean * 10) / 10,
+    note: limite
+  };
+}
+
+// ── Parsing heure marée (string NC naïve → ms UTC) ────────────────────────
+function parseTideEventMs(s) {
+  if (!s) return 0;
+  if (s.endsWith('Z') || s.match(/[+-]\d{2}:\d{2}$/)) return new Date(s).getTime();
+  return new Date(s + 'Z').getTime() - 11 * 3600000;
+}
+
+// ── Construit l'objet fc attendu par le finder depuis _fcastData + _ncTideCache ─
+function _buildFcObject(spot, fcast, tideCache) {
+  if (!fcast || !fcast.dates || !fcast.dates.length) return null;
+  var dateMs = fcast.dates.map(function(d) {
+    return d instanceof Date ? d.getTime() : (d || 0);
+  });
+  var tideSeries = null, tideMin = 0, tideMax = 2;
+  if (tideCache && tideCache.properties && tideCache.properties.tide) {
+    var td = tideCache.properties.tide;
+    var events = [];
+    (td.high_tide || []).forEach(function(e) {
+      var m = parseTideEventMs(e.time); if (m) events.push({ms:m, height:e.tidal_height||0});
+    });
+    (td.low_tide || []).forEach(function(e) {
+      var m = parseTideEventMs(e.time); if (m) events.push({ms:m, height:e.tidal_height||0});
+    });
+    events.sort(function(a,b){ return a.ms - b.ms; });
+    if (events.length) {
+      tideSeries = events;
+      tideMin = Math.min.apply(null, events.map(function(e){ return e.height; }));
+      tideMax = Math.max.apply(null, events.map(function(e){ return e.height; }));
+    }
+  }
+  return {
+    dates: dateMs, hs: fcast.sw1h||[], T: fcast.sw1t||[], swDir: fcast.sw1d||[],
+    ws: fcast.wSpd||[], wg: fcast.wGst||[], wDir: fcast.wDir||[], pwr: fcast.pwr||[],
+    tideSeries: tideSeries, tideMin: tideMin, tideMax: tideMax, _ts: Date.now()
+  };
+}
 
 // ─── HISTOGRAMME Hs EMPILÉ ─────────────────────────────────────────────
 function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
