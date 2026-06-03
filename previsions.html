@@ -261,6 +261,21 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 <div class="page active" id="tab-forecast">
 <div class="container">
 
+  <!-- ═══ BEST SESSION FINDER ═══ -->
+  <div id="bsf-wrap" style="margin-bottom:14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div class="section-label" style="margin-bottom:0;">🏄 Meilleurs créneaux — tous spots</div>
+      <button id="bsf-refresh" onclick="triggerBSF()"
+        title="Recalculer les meilleurs créneaux"
+        style="background:none;border:1px solid var(--border);color:var(--muted);
+        padding:2px 8px;border-radius:var(--rs);cursor:pointer;font-size:10px;
+        font-family:var(--font-b);">↻</button>
+    </div>
+    <div id="bsf-cards" style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="color:var(--faint);font-size:11px;padding:4px;">Chargement…</div>
+    </div>
+  </div>
+
   <!-- Spot tabs + bouton réglages spot -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
     <div class="section-label" style="margin-bottom:0;">📍 Spot</div>
@@ -3222,6 +3237,94 @@ function _buildFcObject(spot, fcast, tideCache) {
     ws: fcast.wSpd||[], wg: fcast.wGst||[], wDir: fcast.wDir||[], pwr: fcast.pwr||[],
     tideSeries: tideSeries, tideMin: tideMin, tideMax: tideMax, _ts: Date.now()
   };
+}
+
+// ── Rendu de l'encart BSF ───────────────────────────────────────────────────
+var _bsfRunning = false;
+
+function renderBestSessions(sessions) {
+  var wrap = document.getElementById('bsf-cards');
+  if (!wrap) return;
+  if (!sessions || !sessions.length) {
+    wrap.innerHTML = '<div style="color:var(--faint);font-size:11px;padding:4px;">Aucun créneau trouvé</div>';
+    return;
+  }
+  var cols = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
+  var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
+  wrap.innerHTML = sessions.map(function(s) {
+    var sc = Math.min(5, Math.max(0, Math.round(s.score)));
+    var col = cols[sc], lbl = labels[sc];
+    return '<div onclick="bsfSelectSpot(' + s.spotIdx + ',' + s.startMs + ')" '
+      + 'style="cursor:pointer;flex:1;min-width:160px;max-width:260px;'
+      + 'background:var(--deep);border:1px solid var(--border);border-radius:var(--r);'
+      + 'padding:10px 12px;transition:border-color .2s;" '
+      + 'onmouseover="this.style.borderColor=\'' + col + '\'" '
+      + 'onmouseout="this.style.borderColor=\'var(--border)\'">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">'
+      +   '<div style="font-size:11px;font-weight:600;color:var(--text);">' + s.spot + '</div>'
+      +   '<div style="background:' + col + '22;border:1px solid ' + col + '55;color:' + col + ';'
+      +     'border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap;">'
+      +     sc + ' ' + lbl
+      +   '</div>'
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--accent);font-weight:500;">' + s.jour + '</div>'
+      + '<div style="font-size:10px;color:var(--muted);">' + s.creneau + '</div>'
+      + '<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;">'
+      +   '<span style="font-size:10px;color:var(--text);">🌊 ' + s.taille + '</span>'
+      +   '<span style="font-size:10px;color:var(--muted);">💨 ' + s.vent + '</span>'
+      +   '<span style="font-size:10px;color:var(--muted);">🌊 ' + s.maree + '</span>'
+      + '</div>'
+      + (s.note !== 'conditions stables'
+          ? '<div style="font-size:9px;color:var(--faint);margin-top:4px;">⚠ ' + s.note + '</div>'
+          : '<div style="font-size:9px;color:var(--ok);margin-top:4px;">✓ ' + s.note + '</div>')
+      + '</div>';
+  }).join('');
+}
+
+// Clique sur une carte BSF → switch spot + scroll vers le bon créneau
+function bsfSelectSpot(spotIdx, startMs) {
+  if (spotIdx < 0 || spotIdx >= SPOTS.length) return;
+  // Sélectionne le spot
+  currentSpot = spotIdx;
+  document.querySelectorAll('.stab').forEach(function(b, j) { b.classList.toggle('active', j === spotIdx); });
+  saveActiveSpot();
+  loadScoreParams(SPOTS[spotIdx]);
+  var sp = SPOTS[spotIdx];
+  if (sp && sp.hsSrc) { _currentHsSrc = sp.hsSrc; updateHsToggleUI(); }
+  loadForecast(spotIdx);
+  // Scroll vers l'encart principal
+  var cond = document.getElementById('current-cond');
+  if (cond) setTimeout(function(){ cond.scrollIntoView({behavior:'smooth', block:'start'}); }, 200);
+}
+
+// Déclenche le calcul BSF sur tous les spots
+async function triggerBSF() {
+  if (_bsfRunning) return;
+  _bsfRunning = true;
+  var btn = document.getElementById('bsf-refresh');
+  var wrap = document.getElementById('bsf-cards');
+  if (btn) btn.style.opacity = '0.4';
+  if (wrap) wrap.innerHTML = '<div style="color:var(--faint);font-size:11px;padding:4px;" id="bsf-progress">0/' + SPOTS.length + ' spots analysés…</div>';
+
+  var activeSpotBackup = currentSpot;
+
+  try {
+    await loadAllForecasts(function(done, total) {
+      var el = document.getElementById('bsf-progress');
+      if (el) el.textContent = done + '/' + total + ' spots analysés…';
+    });
+    var sessions = findBestSessions(SPOTS, function(spot) {
+      return _forecastCache[spot.name] || null;
+    });
+    // SCORE_PARAMS safety : recharger les params du spot actif
+    loadScoreParams(SPOTS[activeSpotBackup]);
+    renderBestSessions(sessions);
+  } catch(e) {
+    if (wrap) wrap.innerHTML = '<div style="color:var(--bad);font-size:11px;padding:4px;">⚠ Erreur : ' + e.message + '</div>';
+    loadScoreParams(SPOTS[activeSpotBackup]);
+  }
+  if (btn) btn.style.opacity = '1';
+  _bsfRunning = false;
 }
 
 // ─── HISTOGRAMME Hs EMPILÉ ─────────────────────────────────────────────
@@ -9377,14 +9480,14 @@ function ensoRender() {
   // Boot token : localStorage (valide) → worker (autonome) → fallback GFS
   if (_ncToken && _ncToken.length > 20 && _isTokenValid()) {
     // Token local valide → charger directement
-    loadForecast(currentSpot);
+    loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
   } else {
     // Token absent ou expiré → worker d'abord (obtient un token frais en ~200ms-2s)
     var _bootDone = false;
     var _bootTimeout = setTimeout(function() {
       if (_bootDone) return; _bootDone = true;
       console.info('[Boot] Timeout worker — chargement sans token meteo.nc');
-      loadForecast(currentSpot);
+      loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
     }, 5000);
 
     _loadTokenFromWorker().then(function(tok) {
@@ -9395,11 +9498,11 @@ function ensoRender() {
         try { localStorage.setItem('nc-token', tok); localStorage.setItem('nc-token-date', new Date().toISOString()); } catch(e) {}
         _updateTokenBtn();
       }
-      loadForecast(currentSpot);
+      loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
     }).catch(function() {
       if (_bootDone) return; _bootDone = true;
       clearTimeout(_bootTimeout);
-      loadForecast(currentSpot);
+      loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
     });
   }
 })();
