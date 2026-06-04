@@ -278,8 +278,8 @@ table.ft .night td{background:rgba(0,0,0,.15);}
           font-family:var(--font-b);">↻</button>
       </div>
     </div>
-    <div id="bsf-cards" style="display:flex;gap:8px;flex-wrap:wrap;">
-      <div style="color:var(--faint);font-size:11px;padding:4px;">Chargement…</div>
+    <div id="bsf-cards">
+      <div style="color:var(--faint);font-size:11px;padding:8px;">Chargement…</div>
     </div>
   </div>
 
@@ -3213,44 +3213,78 @@ function _buildFcObject(spot, fcast, tideCache) {
 // ── Rendu de l'encart BSF ───────────────────────────────────────────────────
 var _bsfRunning = false;
 
+// Convertit level01 + phase en label lisible
+function _tideLabel(level01, phase) {
+  if (level01 == null) return '—';
+  var arr = phase === 'rising' ? '↑' : '↓';
+  if (level01 < 0.18) return 'BM';
+  if (level01 > 0.82) return 'PM';
+  if (level01 < 0.42) return 'Mi-marée ' + arr;
+  if (level01 > 0.58) return 'Mi-marée ' + arr;
+  return 'Pleine mi-marée ' + arr;
+}
+
 function renderBestSessions(sessions) {
   var wrap = document.getElementById('bsf-cards');
   if (!wrap) return;
   if (!sessions || !sessions.length) {
-    wrap.innerHTML = '<div style="color:var(--faint);font-size:11px;padding:4px;">Aucun créneau trouvé</div>';
+    wrap.innerHTML = '<div style="color:var(--faint);font-size:11px;padding:8px;">Aucun créneau trouvé</div>';
     return;
   }
-  var cols = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
+  var cols   = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
   var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
-  wrap.innerHTML = sessions.map(function(s) {
+
+  // Liste compacte dans un seul bloc
+  var rows = sessions.map(function(s, rank) {
     var sc = Math.min(5, Math.max(0, Math.round(s.score)));
     var col = cols[sc], lbl = labels[sc];
+    var dots = '';
+    for (var i = 0; i < 5; i++) dots += '<span style="color:' + (i < sc ? col : 'var(--border)') + ';font-size:10px;">●</span>';
+    var tideL = s.maree !== '—' ? _tideLabel(
+      parseFloat(s.maree) / 100,
+      s.maree.indexOf('↑') >= 0 ? 'rising' : 'falling'
+    ) : '—';
+    var isLast = rank === sessions.length - 1;
     return '<div onclick="bsfSelectSpot(' + s.spotIdx + ',' + s.startMs + ')" '
-      + 'style="cursor:pointer;flex:1;min-width:160px;max-width:260px;'
-      + 'background:var(--deep);border:1px solid var(--border);border-radius:var(--r);'
-      + 'padding:10px 12px;transition:border-color .2s;" '
-      + 'onmouseover="this.style.borderColor=\'' + col + '\'" '
-      + 'onmouseout="this.style.borderColor=\'var(--border)\'">'
-      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">'
-      +   '<div style="font-size:11px;font-weight:600;color:var(--text);">' + s.spot + '</div>'
-      +   '<div style="background:' + col + '22;border:1px solid ' + col + '55;color:' + col + ';'
-      +     'border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap;">'
-      +     sc + ' ' + lbl
+      + 'style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;'
+      + 'transition:background .15s;' + (isLast ? '' : 'border-bottom:1px solid var(--border);') + '" '
+      + 'onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" '
+      + 'onmouseout="this.style.background=\'transparent\'">'
+
+      // Rang + score (dots)
+      + '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:28px;">'
+      +   '<div style="font-size:9px;color:var(--faint);font-weight:600;">#' + (rank+1) + '</div>'
+      +   '<div>' + dots + '</div>'
+      + '</div>'
+
+      // Infos spot + horaire
+      + '<div style="flex:1;min-width:0;">'
+      +   '<div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;">'
+      +     '<span style="font-size:11px;font-weight:600;color:' + col + ';white-space:nowrap;">' + s.spot + '</span>'
+      +     '<span style="font-size:10px;color:var(--accent);">' + s.jour + '</span>'
+      +     '<span style="font-size:10px;color:var(--muted);">' + s.creneau + '</span>'
+      +   '</div>'
+      +   '<div style="display:flex;gap:10px;margin-top:3px;flex-wrap:wrap;">'
+      +     '<span style="font-size:10px;color:var(--text);">🌊 ' + s.taille + '</span>'
+      +     '<span style="font-size:10px;color:var(--muted);">💨 ' + s.vent + '</span>'
+      +     '<span style="font-size:10px;color:var(--muted);">〰 ' + tideL + '</span>'
+      +     (s.note !== 'conditions stables'
+              ? '<span style="font-size:9px;color:var(--faint);">⚠ ' + s.note + '</span>'
+              : '')
+      +     (s.calibrated ? '<span style="font-size:8px;color:var(--accent);opacity:.55;">🎯</span>' : '')
       +   '</div>'
       + '</div>'
-      + '<div style="font-size:10px;color:var(--accent);font-weight:500;">' + s.jour + '</div>'
-      + '<div style="font-size:10px;color:var(--muted);">' + s.creneau + '</div>'
-      + '<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;">'
-      +   '<span style="font-size:10px;color:var(--text);">🌊 ' + s.taille + '</span>'
-      +   '<span style="font-size:10px;color:var(--muted);">💨 ' + s.vent + '</span>'
-      +   '<span style="font-size:10px;color:var(--muted);">🌊 ' + s.maree + '</span>'
+
+      // Badge score compact
+      + '<div style="background:' + col + '18;border:1px solid ' + col + '44;color:' + col + ';'
+      +   'border-radius:8px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;">'
+      +   lbl
       + '</div>'
-      + (s.note !== 'conditions stables'
-          ? '<div style="font-size:9px;color:var(--faint);margin-top:4px;">⚠ ' + s.note + '</div>'
-          : '<div style="font-size:9px;color:var(--ok);margin-top:4px;">✓ ' + s.note + '</div>')
-      + (s.calibrated ? '<div style="font-size:8px;color:var(--accent);opacity:.6;margin-top:2px;">🎯 calibré journal</div>' : '')
       + '</div>';
   }).join('');
+
+  wrap.innerHTML = '<div style="background:var(--deep);border:1px solid var(--border);'
+    + 'border-radius:var(--r);overflow:hidden;">' + rows + '</div>';
 }
 
 // Clique sur une carte BSF → switch spot + scroll vers le bon créneau
@@ -3574,7 +3608,7 @@ var _DEFAULT_SCORE = {
   minHs: 0.4, maxHs: 4.0, minPeriod: 8, minPwr: 1,
   swellDirIdeal: 120, windDirIdeal: 270,
   onshoreLimit: 45, offshoreMin: 135,
-  windMalusKt: 18, gustMalusKt: 25
+  windMalusKt: 22, gustMalusKt: 30  // NC : alizé 18-20kt normal → seuils relevés
 };
 var SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE);
 
