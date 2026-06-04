@@ -2971,34 +2971,22 @@ var BSF = {
   GAP_TOLERANCE:   1
 };
 
-function _sunTimes(dateMs, lat, lon) {
+function _sunHoursLocal(dateMs, lat, lon, tz) {
   var d = new Date(dateMs);
-  var day = Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-            - Date.UTC(d.getUTCFullYear(), 0, 0)) / 86400000);
+  var N = Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+        - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000) + 1;
   var rad = Math.PI / 180;
-  function calc(isSunrise) {
-    var lngHour = lon / 15;
-    var t = day + ((isSunrise ? 6 : 18) - lngHour) / 24;
-    var M = 0.9856 * t - 3.289;
-    var L = M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634;
-    L = (L + 360) % 360;
-    var RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
-    RA = (RA + 360) % 360;
-    RA += (Math.floor(L / 90) * 90) - (Math.floor(RA / 90) * 90);
-    RA /= 15;
-    var sinDec = 0.39782 * Math.sin(L * rad);
-    var cosDec = Math.cos(Math.asin(sinDec));
-    var cosH = (Math.cos(90.833 * rad) - sinDec * Math.sin(lat * rad))
-             / (cosDec * Math.cos(lat * rad));
-    if (cosH > 1 || cosH < -1) return null;
-    var H = isSunrise ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad;
-    H /= 15;
-    var T = H + RA - 0.06571 * t - 6.622;
-    var UT = (T - lngHour + 24) % 24;
-    var base = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-    return base + UT * 3600000;
-  }
-  return { sunrise: calc(true), sunset: calc(false) };
+  var decl = -23.44 * Math.cos(rad * (360 / 365) * (N + 10));
+  var cosH = (Math.cos(90.833 * rad) - Math.sin(lat * rad) * Math.sin(decl * rad))
+           / (Math.cos(lat * rad) * Math.cos(decl * rad));
+  if (cosH > 1)  return null;
+  if (cosH < -1) return { rise: 0, set: 24 };
+  var H = Math.acos(cosH) / rad;
+  var dayLen = 2 * H / 15;
+  var B = rad * (360 / 365) * (N - 81);
+  var EoT = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  var noon = 12 - (lon - 15 * tz) / 15 - EoT / 60;
+  return { rise: noon - dayLen / 2, set: noon + dayLen / 2 };
 }
 
 function _tideStateAt(t, tideSeries, tMin, tMax) {
@@ -3036,9 +3024,9 @@ function findSessionsForSpot(spot, fc) {
   var n = fc.dates.length, hours = [];
   for (var i = 0; i < n; i++) {
     var t = fc.dates[i];
-    var sun = _sunTimes(t, spot.lat, spot.lon);
-    var daylight = sun.sunrise == null ||
-                   (t >= sun.sunrise - 1800000 && t <= sun.sunset + 1800000);
+    var _dd = new Date(t), _hNC = _dd.getUTCHours() + _dd.getUTCMinutes() / 60;
+    var _sun = _sunHoursLocal(t, spot.lat, spot.lon, 11);
+    var daylight = !_sun || (_hNC >= _sun.rise - 0.5 && _hNC <= _sun.set + 0.5);
     var sc = calcSurfScore(fc.hs[i], fc.T[i], fc.swDir[i],
                            fc.ws[i], fc.wg[i], fc.wDir[i], fc.pwr[i]);
     var tide = _tideStateAt(t, fc.tideSeries, fc.tideMin, fc.tideMax);
@@ -3179,12 +3167,12 @@ function findBestSessions(spotsList, getForecast) {
 }
 
 function _describeSession(s) {
-  var d = new Date(s.startMs + 11 * 3600000); // UTC+11 NC
+  var d = new Date(s.startMs);
   var jours = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   var mois  = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
   var jour = jours[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + mois[d.getUTCMonth()];
-  var h1 = new Date(s.startMs + 11 * 3600000).getUTCHours();
-  var h2 = new Date(s.endMs   + 11 * 3600000).getUTCHours();
+  var h1 = new Date(s.startMs).getUTCHours();
+  var h2 = new Date(s.endMs).getUTCHours();
   var p = s.peakH;
   var limite = 'conditions stables';
   if (p.ws > (SCORE_PARAMS.windMalusKt || 18)) limite = 'vent fort (' + Math.round(p.ws) + 'kt)';
