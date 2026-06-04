@@ -2966,7 +2966,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 var BSF = {
   SESSION_HOURS:   2,
   MIN_RUN_HOURS:   2,
-  MIN_HOUR_SCORE:  3,
+  MIN_HOUR_SCORE:  2,   // 2 = "Passable" (3 était trop strict sans données rafales)
   TOP_N:           3,
   GAP_TOLERANCE:   1
 };
@@ -3065,72 +3065,44 @@ function findSessionsForSpot(spot, fc) {
 var _BSF_CACHE_TTL = 30 * 60 * 1000; // 30 min
 
 async function _fetchSpotFcRaw(spot) {
-  // Utiliser le cache si frais
+  // Cache frais → pas de réseau
   var cached = _forecastCache[spot.name];
   if (cached && cached._ts && (Date.now() - cached._ts) < _BSF_CACHE_TTL) return cached;
 
-  var omMarineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + spot.lat + '&longitude=' + spot.lon
-    + '&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period'
-    + ',wind_wave_height,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period'
-    + '&forecast_days=7&timezone=GMT';
-  var omWindUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + spot.lat + '&longitude=' + spot.lon
-    + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&forecast_days=7&timezone=GMT';
-
-  var [ncRaw, omMarine, omWind, ncTideRaw] = await Promise.all([
+  // Deux appels worker uniquement — pas d'Open-Meteo (CORS/rate-limit en multi-spots)
+  var [ncRaw, ncTideRaw] = await Promise.all([
     fetch(_NC_WORKER + '/forecast?lat=' + spot.lat + '&lon=' + spot.lon)
       .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
-    fetch(omMarineUrl).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
-    fetch(omWindUrl  ).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
     fetch(_NC_WORKER + '/tide?id=' + (spot.tideId || '9881852'))
       .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
   ]);
 
-  // Construire _fcastData-like depuis les données brutes (même logique que renderForecast)
   var dateMs=[], hs=[], T=[], swDir=[], ws=[], wg=[], wDir=[], pwr=[];
   var now = new Date();
-  var rows = ncRaw && ncRaw.properties && (ncRaw.properties.marine || ncRaw.properties.hourly || ncRaw.properties.forecast);
-  if (rows && rows.length) {
-    var cutoff = now.getTime() - 6 * 3600000;
-    rows = rows.filter(function(d){ return new Date(d.time).getTime() >= cutoff; });
-    rows.forEach(function(d) {
-      var dt = new Date(new Date(d.time).getTime() + 11 * 3600000);
-      dateMs.push(dt.getTime());
-      var p1h = d.primary_swell_height, p1t = d.primary_swell_period, p1d = d.primary_swell_direction;
-      var tot = d.wave_height;
-      hs.push(p1h != null ? p1h : tot);
-      T.push(p1t); swDir.push(p1d);
-      ws.push(d.wind_speed_kt); wg.push(null); wDir.push(d.wind_direction);
-      pwr.push((p1h && p1t) ? +(0.5 * p1h * p1h * p1t).toFixed(2) : (tot && p1t) ? +(0.5 * tot * tot * p1t).toFixed(2) : null);
-    });
-    // Rafales Open-Meteo en fallback
-    if (omWind && omWind.hourly) {
-      rows.forEach(function(d, i) {
-        if (wg[i] != null) return;
-        var tms = new Date(d.time).getTime();
-        var idx = omWind.hourly.time.findIndex(function(ot){ return Math.abs(new Date(ot).getTime() - tms) < 5400000; });
-        if (idx >= 0) wg[i] = Math.round(omWind.hourly.wind_gusts_10m[idx] || 0);
-      });
-    }
-  } else if (omMarine && omMarine.hourly && omWind && omWind.hourly) {
-    var h = omMarine.hourly, wh = omWind.hourly;
-    var ni = h.time.findIndex(function(t){ return new Date(t + 'Z').getTime() + 11 * 3600000 >= now.getTime() - 3600000; });
-    if (ni < 0) ni = 0;
-    for (var i = ni; i < h.time.length; i += 3) {
-      var odt = new Date(h.time[i] + 'Z');
-      var dt2 = new Date(odt.getTime() + 11 * 3600000);
-      if ((dt2 - now) / 864e5 > 7) break;
-      dateMs.push(dt2.getTime());
-      hs.push(h.swell_wave_height[i]); T.push(h.swell_wave_period[i]);
-      swDir.push(h.swell_wave_direction[i]);
-      ws.push(wh.wind_speed_10m[i]); wg.push(wh.wind_gusts_10m[i]); wDir.push(wh.wind_direction_10m[i]);
-      var hs2 = h.swell_wave_height[i], T2 = h.swell_wave_period[i];
-      pwr.push((hs2 && T2) ? +(0.5 * hs2 * hs2 * T2).toFixed(2) : null);
-    }
-  }
+  var rows = ncRaw && ncRaw.properties &&
+    (ncRaw.properties.marine || ncRaw.properties.hourly || ncRaw.properties.forecast);
+  if (!rows || !rows.length) return null;
+
+  var cutoff = now.getTime() - 6 * 3600000;
+  rows = rows.filter(function(d){ return new Date(d.time).getTime() >= cutoff; });
+  rows.forEach(function(d) {
+    var dt = new Date(new Date(d.time).getTime() + 11 * 3600000);
+    dateMs.push(dt.getTime());
+    var p1h = d.primary_swell_height, p1t = d.primary_swell_period;
+    var tot = d.wave_height;
+    hs.push(p1h != null ? p1h : tot);
+    T.push(p1t);
+    swDir.push(d.primary_swell_direction);
+    ws.push(d.wind_speed_kt);
+    wg.push(null); // gusts non fournis par forecast/marine
+    wDir.push(d.wind_direction);
+    pwr.push((p1h && p1t) ? +(0.5*p1h*p1h*p1t).toFixed(2)
+           : (tot && p1t)  ? +(0.5*tot*tot*p1t).toFixed(2) : null);
+  });
   if (!dateMs.length) return null;
 
   var fc = _buildFcObject(spot,
-    { dates: dateMs.map(function(ms){ var d=new Date(ms); return d; }),
+    { dates: dateMs.map(function(ms){ return new Date(ms); }),
       sw1h:hs, sw1t:T, sw1d:swDir, wSpd:ws, wGst:wg, wDir:wDir, pwr:pwr },
     ncTideRaw);
   if (fc) _forecastCache[spot.name] = fc;
@@ -3139,7 +3111,7 @@ async function _fetchSpotFcRaw(spot) {
 
 // ── Charge TOUS les spots avec concurrence limitée ───────────────────────────
 async function loadAllForecasts(onProgress) {
-  var POOL = 3, total = SPOTS.length, done = 0;
+  var POOL = 5, total = SPOTS.length, done = 0; // 5 OK : 2 appels/spot, worker seul
   var queue = SPOTS.slice();
   async function worker() {
     while (queue.length) {
