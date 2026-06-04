@@ -265,11 +265,18 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <div id="bsf-wrap" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <div class="section-label" style="margin-bottom:0;">🏄 Meilleurs créneaux — tous spots</div>
-      <button id="bsf-refresh" onclick="triggerBSF()"
-        title="Recalculer les meilleurs créneaux"
-        style="background:none;border:1px solid var(--border);color:var(--muted);
-        padding:2px 8px;border-radius:var(--rs);cursor:pointer;font-size:10px;
-        font-family:var(--font-b);">↻</button>
+      <div style="display:flex;gap:6px;">
+        <button id="bsf-calibrate" onclick="calibrateFromJournal()"
+          title="Calibrer minPwr par spot depuis les sessions du journal (P25 de puissance observée)"
+          style="background:none;border:1px solid var(--border);color:var(--muted);
+          padding:2px 8px;border-radius:var(--rs);cursor:pointer;font-size:10px;
+          font-family:var(--font-b);">🎯 Calibrer</button>
+        <button id="bsf-refresh" onclick="triggerBSF()"
+          title="Recalculer les meilleurs créneaux"
+          style="background:none;border:1px solid var(--border);color:var(--muted);
+          padding:2px 8px;border-radius:var(--rs);cursor:pointer;font-size:10px;
+          font-family:var(--font-b);">↻</button>
+      </div>
     </div>
     <div id="bsf-cards" style="display:flex;gap:8px;flex-wrap:wrap;">
       <div style="color:var(--faint);font-size:11px;padding:4px;">Chargement…</div>
@@ -3151,6 +3158,9 @@ function _describeSession(s) {
   else if (p.wg > (SCORE_PARAMS.gustMalusKt || 25)) limite = 'rafales';
   else if (p.T && p.T < (SCORE_PARAMS.minPeriod || 8)) limite = 'période courte (' + p.T + 's)';
   else if (p.tide && (p.tide.level01 < 0.2 || p.tide.level01 > 0.85)) limite = 'marée extrême';
+  var spotObj = SPOTS[s.spotIdx];
+  var isCalibrated = !!(spotObj && spotObj.scoreParams && spotObj.scoreParams.minPwr != null
+                        && spotObj.scoreParams.minPwr !== _DEFAULT_SCORE.minPwr);
   return {
     spot: s.spotName, spotIdx: s.spotIdx, startMs: s.startMs,
     jour: jour, creneau: h1 + 'h–' + h2 + 'h',
@@ -3158,7 +3168,8 @@ function _describeSession(s) {
     vent: (p.ws != null ? Math.round(p.ws) + 'kt ' + (typeof compass === 'function' ? compass(p.wDir) : '') : '—'),
     maree: p.tide ? (Math.round(p.tide.level01 * 100) + '% ' + (p.tide.phase === 'rising' ? '↑' : '↓')) : '—',
     score: Math.round(s.mean * 10) / 10,
-    note: limite
+    note: limite,
+    calibrated: isCalibrated
   };
 }
 
@@ -3237,6 +3248,7 @@ function renderBestSessions(sessions) {
       + (s.note !== 'conditions stables'
           ? '<div style="font-size:9px;color:var(--faint);margin-top:4px;">⚠ ' + s.note + '</div>'
           : '<div style="font-size:9px;color:var(--ok);margin-top:4px;">✓ ' + s.note + '</div>')
+      + (s.calibrated ? '<div style="font-size:8px;color:var(--accent);opacity:.6;margin-top:2px;">🎯 calibré journal</div>' : '')
       + '</div>';
   }).join('');
 }
@@ -3255,6 +3267,78 @@ function bsfSelectSpot(spotIdx, startMs) {
   // Scroll vers l'encart principal
   var cond = document.getElementById('current-cond');
   if (cond) setTimeout(function(){ cond.scrollIntoView({behavior:'smooth', block:'start'}); }, 200);
+}
+
+// ── Calibration automatique de minPwr depuis les sessions du journal ──────────
+// Une seule requête Supabase → groupe par mots-clés spot → P25 puissance observée
+async function calibrateFromJournal() {
+  _ensureSupabaseClient();
+  if (!_tokenSbClient) {
+    showToast('⚠ Supabase non disponible — ouvre le journal d\'abord');
+    return;
+  }
+  var btn = document.getElementById('bsf-calibrate');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+
+  try {
+    var res = await _tokenSbClient
+      .from('sessions')
+      .select('hs, period, spot')
+      .not('hs',     'is', null)
+      .not('period', 'is', null)
+      .gt('hs', 0).gt('period', 0)
+      .limit(3000);
+
+    if (res.error || !res.data || !res.data.length) {
+      showToast('⚠ Aucune session dans le journal — surfe d\'abord !');
+      return;
+    }
+    var allSessions = res.data;
+    var calibrated = 0, skipped = 0;
+
+    SPOTS.forEach(function(spot) {
+      // Mêmes mots-clés que _loadSpotPwrRef
+      var keywords = (spot.surfSpots && spot.surfSpots.length)
+        ? spot.surfSpots
+        : [(spot.sessionSpot) ? spot.sessionSpot : _spotKeyword(spot.name)];
+
+      var matching = allSessions.filter(function(s) {
+        var sl = (s.spot || '').toLowerCase();
+        return keywords.some(function(kw) { return sl.includes(kw.toLowerCase()); });
+      });
+
+      if (matching.length < 3) { skipped++; return; } // pas assez de données
+
+      var pows = matching
+        .map(function(s) { return 0.5 * s.hs * s.hs * s.period; })
+        .filter(function(p) { return p > 0; })
+        .sort(function(a, b) { return a - b; });
+      if (!pows.length) { skipped++; return; }
+
+      var p25 = pows[Math.floor(pows.length * 0.25)];
+      var newMinPwr = Math.max(0.3, +(p25 * 0.75).toFixed(1));
+
+      if (!spot.scoreParams) spot.scoreParams = Object.assign({}, _DEFAULT_SCORE);
+      spot.scoreParams.minPwr = newMinPwr;
+      calibrated++;
+    });
+
+    if (calibrated > 0) {
+      saveSpots();
+      loadScoreParams(SPOTS[currentSpot]);
+      var msg = '🎯 ' + calibrated + ' spot(s) calibré(s)';
+      if (skipped > 0) msg += ' · ' + skipped + ' sans données (configure les mots-clés dans ⚙)';
+      showToast(msg);
+      // Relancer BSF avec les nouveaux seuils
+      triggerBSF();
+    } else {
+      showToast('⚠ Aucun spot avec ≥3 sessions — configure les mots-clés spot dans ⚙ Réglages spot');
+    }
+  } catch(e) {
+    showToast('⚠ Erreur calibration : ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🎯 Calibrer'; }
+  }
 }
 
 // Déclenche le calcul BSF sur tous les spots
