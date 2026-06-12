@@ -111,6 +111,10 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   animation:sp .7s linear infinite;display:inline-block;}
 @keyframes sp{to{transform:rotate(360deg);}}
 .loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:2.5rem;color:var(--muted);font-size:12px;}
+/* Skeleton loaders (BONUS 3) — shimmer pendant le fetch initial */
+.skel{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.11) 37%,rgba(255,255,255,.04) 63%);
+  background-size:400% 100%;border-radius:8px;animation:skelShimmer 1.2s ease-in-out infinite;}
+@keyframes skelShimmer{0%{background-position:100% 50%;}100%{background-position:0 50%;}}
 
 /* Animations risque */
 @keyframes sharkSwim{from{transform:translateX(-5px) scaleX(1);}50%{transform:translateX(5px) scaleX(1);}to{transform:translateX(-5px) scaleX(1);}}
@@ -1746,6 +1750,11 @@ var _ncToken = (function(){
 // Transparence source des données (BONUS 1) — mis à jour dans le flux réel de loadForecast.
 var _dataSource = null;                          // 'direct' | 'worker' | 'openmeteo'
 var _tokenSource = _ncToken ? 'local' : null;    // d'où vient le token courant
+var _fallbackDisplayed = false;                  // (BONUS 3) Open-Meteo affiché en attendant le token
+
+// Skeletons shimmer (BONUS 3) — blocs gris animés pendant le fetch
+function _skel(h, mb){ return '<div class="skel" style="height:' + h + ';' + (mb ? 'margin-bottom:' + mb + ';' : '') + '"></div>'; }
+function _skelBlock(n, h){ var out = ''; for (var i = 0; i < n; i++) out += _skel(h || '14px', '8px'); return out; }
 
 // Bootstrap token déplacé dans le boot multi-sources en bas du fichier (worker ∥ Supabase).
 
@@ -2692,17 +2701,18 @@ async function loadForecast(i) {
     return;
   }
 
-  // UI loading
+  // UI loading — skeletons shimmer (BONUS 3) au lieu de spinners/page figée
+  var _t0 = performance.now(); var _houleLogged = false;
   document.getElementById('current-cond').innerHTML =
-    '<div class="loading"><div class="spin"></div> ' + s.name + '…</div>';
+    '<div style="padding:6px 2px;">' + _skel('22px','10px') + _skel('46px','10px') + _skel('14px') + '</div>';
   document.getElementById('table-wrap').innerHTML =
-    '<div class="loading"><div class="spin"></div></div>';
-  
+    '<div style="padding:6px 2px;">' + _skelBlock(6, '18px') + '</div>';
+
   const ow = document.getElementById('obs-wrap');
-  if (ow) ow.innerHTML = '<div class="loading"><div class="spin"></div></div>';
-  
+  if (ow) ow.innerHTML = '<div style="padding:6px 2px;">' + _skelBlock(3, '16px') + '</div>';
+
   const tideEncWrap = document.getElementById('tide-enc-wrap');
-  if (tideEncWrap) tideEncWrap.innerHTML = '<div class="loading"><div class="spin"></div></div>';
+  if (tideEncWrap) tideEncWrap.innerHTML = '<div style="padding:6px 2px;">' + _skel('40px','10px') + _skel('14px') + '</div>';
 
   try {
     // ─── LABELS & LIENS ───
@@ -2756,52 +2766,48 @@ async function loadForecast(i) {
     var omWindUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + s.lat + '&longitude=' + s.lon
       + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility&wind_speed_unit=kn&forecast_days=7&timezone=GMT';
 
-    // ─── FETCH ────────────────────────────────────────────────────────────────
-    // Token non IP-bound (confirmé) — worker gère le token autonomement (Plan A).
-    // Marine/météo : direct navigateur avec token local (worker bootstrap ou Supabase).
-    // Marées/observations : ncGet (worker d'abord, fallback direct rpcache si worker injoignable).
+    // ─── FETCH (parallèle + rendu progressif — BONUS 3) ──────────────────────
+    // Token non IP-bound : marine/météo en direct rpcache (ncFetch) ; marées/obs via ncGet
+    // (worker d'abord, fallback direct rpcache). Tout est lancé EN PARALLÈLE et chaque bloc
+    // s'affiche dès que SA donnée arrive — plus d'attente séquentielle cumulée.
     var ncMarine = null, ncForecast = null, ncTide = null;
     var omMarine = null, omWind = null, obsData = null;
 
-    // Marées — worker d'abord, fallback direct rpcache (mobile : workers.dev filtré)
-    try {
-      ncTide = await ncGet('/tide?id=' + (s.tideId || '9881752'),
-                           'tide?id=' + (s.tideId || '9881752'));
-    } catch(e) { console.warn('[NC tide] FAIL:', e.message); }
+    var obsSt = s.obsId
+      ? OBS_STATIONS.find(function(st){ return st.spotId === s.obsId || st.id === s.obsId; })
+      : null;
 
-    // Observations — via worker Cloudflare (source : rpcache.meteo.nc, token géré côté serveur)
-    if (s.obsId) {
-      var obsSt = OBS_STATIONS.find(function(st) {
-        return st.spotId === s.obsId || st.id === s.obsId;
-      });
-      if (obsSt) {
-        try {
-          obsData = await ncGet(
-            '/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id,
-            'observation/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id);
-        } catch(e) { console.warn('[NC obs] FAIL:', e.message); }
-      }
-    }
+    var _pTide = ncGet('/tide?id=' + (s.tideId || '9881752'), 'tide?id=' + (s.tideId || '9881752'))
+      .catch(function(e){ console.warn('[NC tide] FAIL:', e && e.message); return null; });
+    var _pObs = obsSt
+      ? ncGet('/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id,
+              'observation/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id)
+          .catch(function(e){ console.warn('[NC obs] FAIL:', e && e.message); return null; })
+      : Promise.resolve(null);
+    var _pMarine = _ncToken
+      ? ncFetch(BASE + 'forecast/marine?lat=' + s.lat + '&lon=' + s.lon)
+          .catch(function(e){ if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC marine] FAIL:', e.message); return null; })
+      : Promise.resolve(null);
+    var _pForecast = _ncToken
+      ? ncFetch(BASE + 'forecast?lat=' + s.lat + '&lon=' + s.lon)
+          .catch(function(e){ if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC meteo] FAIL:', e.message); return null; })
+      : Promise.resolve(null);
+    if (!_ncToken) console.info('[NC] Pas de token local — marine/météo via Open-Meteo uniquement');
+    var _pOmMarine = fetch(omMarineUrl).then(function(r){ return r.json(); }).catch(function(){ return null; });
+    var _pOmWind   = fetch(omWindUrl).then(function(r){ return r.json(); }).catch(function(){ return null; });
 
-    if (_ncToken) { // Marine + météo standard — token local (bootstrap worker ou extension)
-      // Données marine (houle + vent) — /forecast/marine (source principale, Open-Meteo en fallback)
-      try {
-        ncMarine = await ncFetch(BASE + 'forecast/marine?lat=' + s.lat + '&lon=' + s.lon);
-        if (ncMarine && ncMarine.properties) {
-        }
-      } catch(e) { if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC marine] FAIL:', e.message); }
+    // Rendu progressif : observations + encart marée de base dès qu'ils arrivent
+    _pObs.then(function(d){ obsData = d; try { renderObs(obsData, s); } catch(_){} });
+    _pTide.then(function(d){ if (d) { ncTide = d; try { renderTideEncart(d, s); } catch(_){} } });
 
-      // Données météo (T°, icônes, pluie) — /forecast distinct pour renderMeteoStrip
-      try {
-        ncForecast = await ncFetch(BASE + 'forecast?lat=' + s.lat + '&lon=' + s.lon);
-      } catch(e) { if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC meteo] FAIL:', e.message); }
-    } else {
-      console.info('[NC] Pas de token local — marine/météo via Open-Meteo uniquement');
-    }
-
-    // Open-Meteo (toujours, sans token)
-    try { omMarine = await fetch(omMarineUrl).then(function(r){ return r.json(); }); } catch(e) {}
-    try { omWind   = await fetch(omWindUrl).then(function(r){ return r.json(); });   } catch(e) {}
+    // Attendre toutes les données (allSettled ne rejette jamais → outer catch préservé pour le rendu)
+    var _all = await Promise.allSettled([_pTide, _pObs, _pMarine, _pForecast, _pOmMarine, _pOmWind]);
+    ncTide     = _all[0].value || null;
+    obsData    = _all[1].value || null;
+    ncMarine   = _all[2].value || null;
+    ncForecast = _all[3].value || null;
+    omMarine   = _all[4].value || null;
+    omWind     = _all[5].value || null;
 
     var hasNC = !!(ncMarine && ncMarine.properties);
     if (hasNC) window._lastNcApiSuccess = Date.now(); // token confirmé valide par l'API
@@ -2810,6 +2816,8 @@ async function loadForecast(i) {
     _dataSource = hasNC ? 'direct' : ((omMarine && omMarine.hourly) ? 'openmeteo' : null);
     _updateSourceBadge();
     _logNetSummary();
+    // Toast de bascule (BONUS 3) : token arrivé après le fallback Open-Meteo → vraies données NC
+    if (hasNC && _fallbackDisplayed) { _fallbackDisplayed = false; try { showToast('Données meteo.nc chargées ✓'); } catch(_){} }
 
     // Si NC indisponible → signaler dans le panel cache + pré-sélectionner aujourd'hui
     (function() {
@@ -2877,6 +2885,8 @@ async function loadForecast(i) {
     }
     
     renderForecast(ncMarine, ncForecast, omMarine, omWind, s);
+    if (!_houleLogged) { _houleLogged = true;
+      console.info('[perf] loadForecast → houle ' + Math.round(performance.now() - _t0) + 'ms (source=' + (_dataSource || '?') + ')'); }
     updateRoseSatBg(s.lat, s.lon);
     
     var srcEl = document.getElementById('tbl-source');
@@ -9786,6 +9796,7 @@ function ensoRender() {
     var _fallbackTimer = setTimeout(function() {
       if (_gotToken) return;
       console.info('[Boot] Token pas encore dispo — affichage Open-Meteo en attendant');
+      _fallbackDisplayed = true; // (BONUS 3) pour le toast de bascule quand le token NC arrivera
       loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
     }, 4000);
 
