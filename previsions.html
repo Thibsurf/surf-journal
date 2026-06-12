@@ -1694,7 +1694,10 @@ async function _pushTokenToWorker(token) {
 // Worker Cloudflare — source autonome (pas besoin d'extension, token géré côté serveur)
 async function _loadTokenFromWorker() {
   try {
-    var r = await fetch(_NC_WORKER + '/token');
+    var ctrl = new AbortController();
+    var t = setTimeout(function(){ ctrl.abort(); }, 4000);
+    var r = await fetch(_NC_WORKER + '/token', { signal: ctrl.signal });
+    clearTimeout(t);
     if (!r.ok) return null;
     var d = await r.json();
     return (d && d.ok && d.token) ? d.token : null;
@@ -1720,10 +1723,9 @@ async function _loadTokenFromSupabase() {
     const updatedAt = new Date(res.data.updated_at);
     const ageMs = Date.now() - updatedAt.getTime();
 
-    // Ignore si trop vieux (>2h — le token expire avant)
-    if (ageMs > 2 * 3600 * 1000) return null;
-
-    const ageH = Math.round(ageMs / 3600000);
+    // Le cron du worker upsert un token < 5 min ; au-delà de 30 min c'est probablement
+    // expiré. On le retourne quand même : c'est _isTokenValid() (lecture du JWT) qui tranche.
+    if (ageMs > 30 * 60 * 1000) return null;
 
     return res.data.token;
 
@@ -1737,17 +1739,7 @@ var _ncToken = (function(){
   try { return localStorage.getItem('nc-token') || null; } catch(e){ return null; }
 })();
 
-// Bootstrap autonome : récupère un token depuis le worker si pas de token local valide
-(async function _bootstrapToken() {
-  if (_ncToken && _isTokenValid()) return;
-  var tok = await _loadTokenFromWorker();
-  if (tok && tok !== _ncToken) {
-    _ncToken = tok;
-    try { localStorage.setItem('nc-token', tok); localStorage.setItem('nc-token-date', new Date().toISOString()); } catch(e){}
-    _updateTokenBtn();
-    loadForecast(currentSpot);
-  }
-})();
+// Bootstrap token déplacé dans le boot multi-sources en bas du fichier (worker ∥ Supabase).
 
 function setNcToken(t) {
   _ncToken = t.trim();
@@ -1786,6 +1778,21 @@ function _updateTokenBtn() {
     btn.style.color = 'var(--warm)'; btn.style.borderColor = 'var(--warm)'; btn.textContent = '🔑 ?';
     btn.title = 'Aucun token — cliquer pour en obtenir un';
   }
+}
+
+// Adopte un token candidat APRÈS validation JWT (lecture exp/iat via _isTokenValid).
+// Retourne true si adopté. Partagé par le boot multi-sources et le panneau 🔑.
+function _adoptToken(tok, source) {
+  if (!tok || tok.length < 30 || tok.indexOf('eyJ') !== 0) return false;
+  var prev = _ncToken; _ncToken = tok;
+  if (!_isTokenValid()) { _ncToken = prev; return false; } // candidat refusé → on garde l'ancien
+  try {
+    localStorage.setItem('nc-token', tok);
+    localStorage.setItem('nc-token-date', new Date().toISOString());
+  } catch(e){}
+  console.info('[Token] Adopté via ' + source);
+  _updateTokenBtn();
+  return true;
 }
 
 // ─── PANEL TOKEN meteo.nc — statut + refresh manuel ────────────────────────
@@ -1835,7 +1842,12 @@ function showNcTokenPrompt() {
     + '<div style="font-size:9px;color:var(--faint);margin-top:2px;">Renouvelé automatiquement via le cloud</div>'
     + '</div></div>'
 
-    // Bouton principal — forcer refresh depuis le worker
+    // Mini-diagnostic : statut par source (rempli en asynchrone après ouverture)
+    + '<div id="nc-tok-diag" style="font-size:9px;color:var(--faint);line-height:1.7;'
+    + 'background:rgba(255,255,255,.04);border-radius:8px;padding:7px 10px;margin-bottom:10px;">'
+    + 'Diagnostic des sources… ⏳</div>'
+
+    // Bouton principal — forcer refresh (worker puis Supabase)
     + '<button id="nc-tok-worker" style="width:100%;background:rgba(79,163,199,.12);'
     + 'border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:8px;padding:9px;'
     + 'cursor:pointer;font-size:11px;font-weight:600;margin-bottom:10px;">↻ Actualiser le token maintenant</button>'
@@ -1859,30 +1871,60 @@ function showNcTokenPrompt() {
 
   document.body.appendChild(div);
 
+  // Mini-diagnostic : teste Worker, Supabase, rpcache direct en parallèle
+  (async function() {
+    function row(lbl, st) { // st: true=ok, false=ko, null=non testé
+      var icon = st === true ? '🟢' : st === false ? '🔴' : '⚪';
+      return icon + ' ' + lbl;
+    }
+    var wOk = false, sOk = false, dOk = null;
+    var pW = (async function(){ try {
+      var c = new AbortController(); var tt = setTimeout(function(){ c.abort(); }, 3000);
+      var r = await fetch(_NC_WORKER + '/debug', { signal: c.signal }); clearTimeout(tt); wOk = r.ok;
+    } catch(e){ wOk = false; } })();
+    var pS = (async function(){ try { sOk = !!(await _loadTokenFromSupabase()); } catch(e){ sOk = false; } })();
+    var pD = (async function(){ if (!(_ncToken && _isTokenValid())) { dOk = null; return; }
+      try { var r = await fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881752',
+        { headers: { 'Authorization': 'Bearer ' + _ncToken }, credentials: 'omit' }); dOk = r.ok; }
+      catch(e){ dOk = false; } })();
+    await Promise.all([pW, pS, pD]);
+    var el = document.getElementById('nc-tok-diag'); if (!el) return; // panneau fermé entre-temps
+    el.innerHTML = row('Worker (cloud)', wOk) + '<br>' + row('Supabase (token)', sOk)
+      + '<br>' + row('rpcache direct', dOk)
+      + (dOk === null ? ' <span style="opacity:.6">(pas de token)</span>' : '');
+  })();
+
   document.getElementById('nc-tok-close').onclick = function() { div.remove(); };
 
+  // Actualiser : worker PUIS Supabase — n'affiche l'échec que si les deux échouent
   document.getElementById('nc-tok-worker').onclick = async function() {
     var btn = this;
-    btn.disabled = true; btn.textContent = '⏳ Chargement…';
+    btn.disabled = true; btn.textContent = '⏳ Chargement…'; btn.style.color = '';
+    var workerNetErr = false, got = false;
+    // 1. Worker
     try {
-      var r = await fetch(_NC_WORKER + '/token');
-      if (r.ok) {
-        var d = await r.json();
-        if (d && d.token) {
-          setNcToken(d.token); div.remove();
-          showToast('Token actualisé ✓');
-        } else {
-          btn.textContent = '⚠ Pas de token disponible';
-          btn.style.color = 'var(--bad)';
-          setTimeout(function() { btn.disabled=false; btn.textContent='↻ Actualiser le token maintenant'; btn.style.color=''; }, 3000);
-        }
+      var c = new AbortController(); var tt = setTimeout(function(){ c.abort(); }, 4000);
+      var r = await fetch(_NC_WORKER + '/token', { signal: c.signal }); clearTimeout(tt);
+      if (r.ok) { var d = await r.json(); if (d && d.token && _adoptToken(d.token, 'worker')) got = true; }
+    } catch(e) { workerNetErr = true; } // TypeError/abort = worker injoignable (workers.dev filtré ?)
+    // 2. Supabase si le worker n'a rien donné
+    if (!got) {
+      try { var st = await _loadTokenFromSupabase(); if (st && _adoptToken(st, 'supabase')) got = true; } catch(e) {}
+    }
+    if (got) {
+      if (leafletMap && _obsMarkersLayer) addObsMarkersToMap(leafletMap);
+      setTimeout(function(){ loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); }); }, 100);
+      if (workerNetErr) {
+        // worker KO mais Supabase a sauvé la mise → on informe sans fermer brutalement
+        btn.textContent = '⚠ Worker injoignable (workers.dev filtré ?) — token via Supabase ✓';
+        btn.style.color = 'var(--warm)'; btn.style.whiteSpace = 'normal';
+        showToast('Token récupéré via Supabase ✓');
+        setTimeout(function(){ if (document.getElementById('nc-token-banner')) div.remove(); }, 2500);
       } else {
-        btn.textContent = '⚠ Worker inaccessible (' + r.status + ')';
-        btn.style.color = 'var(--bad)';
-        setTimeout(function() { btn.disabled=false; btn.textContent='↻ Actualiser le token maintenant'; btn.style.color=''; }, 3000);
+        showToast('Token actualisé ✓'); div.remove();
       }
-    } catch(e) {
-      btn.textContent = '⚠ Erreur réseau';
+    } else {
+      btn.textContent = workerNetErr ? '⚠ Worker + Supabase injoignables' : '⚠ Pas de token disponible';
       btn.style.color = 'var(--bad)';
       setTimeout(function() { btn.disabled=false; btn.textContent='↻ Actualiser le token maintenant'; btn.style.color=''; }, 3000);
     }
@@ -1934,6 +1976,31 @@ function ncFetch(url) {
       try { return JSON.parse(txt); } catch(e) { throw new Error('JSON invalide sur ' + url); }
     });
   });
+}
+
+// ── Helper réseau données : worker d'abord (cache partagé), fallback direct rpcache ──
+// Sur mobile, *.workers.dev est souvent filtré par le DNS → on bascule en direct rpcache.
+// _workerDead mémoïse l'échec pour ne pas repayer le timeout de 3 s à chaque appel.
+// Retourne du JSON ou null (jamais de throw) — les sites d'appel testent juste le résultat.
+var _workerDead = false;
+async function ncGet(workerPath, directPath) {
+  if (!_workerDead) {
+    try {
+      var ctrl = new AbortController();
+      var t = setTimeout(function(){ ctrl.abort(); }, 3000);
+      var r = await fetch(_NC_WORKER + workerPath, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (r.ok) return await r.json();
+    } catch(e) {
+      _workerDead = true;
+      console.warn('[NC] Worker injoignable — bascule en direct rpcache');
+    }
+  }
+  if (directPath && _ncToken && _isTokenValid()) {
+    try { return await ncFetch('https://rpcache.meteo.nc/internet2018client/2.0/' + directPath); }
+    catch(e) {}
+  }
+  return null;
 }
 
 // Vérifier si le token JWT est encore valide (pas expiré)
@@ -2545,15 +2612,15 @@ async function loadForecast(i) {
 
     // ─── FETCH ────────────────────────────────────────────────────────────────
     // Token non IP-bound (confirmé) — worker gère le token autonomement (Plan A).
-    // Marine/météo : direct navigateur avec token local (worker bootstrap ou extension).
-    // Marées/observations : via worker (autonome, pas besoin de token local).
+    // Marine/météo : direct navigateur avec token local (worker bootstrap ou Supabase).
+    // Marées/observations : ncGet (worker d'abord, fallback direct rpcache si worker injoignable).
     var ncMarine = null, ncForecast = null, ncTide = null;
     var omMarine = null, omWind = null, obsData = null;
 
-    // Marées — via worker Cloudflare (source : rpcache.meteo.nc, token géré côté serveur)
+    // Marées — worker d'abord, fallback direct rpcache (mobile : workers.dev filtré)
     try {
-      var tideRes = await fetch(_NC_WORKER + '/tide?id=' + (s.tideId || '9881752'));
-      if (tideRes.ok) ncTide = await tideRes.json();
+      ncTide = await ncGet('/tide?id=' + (s.tideId || '9881752'),
+                           'tide?id=' + (s.tideId || '9881752'));
     } catch(e) { console.warn('[NC tide] FAIL:', e.message); }
 
     // Observations — via worker Cloudflare (source : rpcache.meteo.nc, token géré côté serveur)
@@ -2563,8 +2630,9 @@ async function loadForecast(i) {
       });
       if (obsSt) {
         try {
-          var obsRes = await fetch(_NC_WORKER + '/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id);
-          if (obsRes.ok) obsData = await obsRes.json();
+          obsData = await ncGet(
+            '/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id,
+            'observation/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id);
         } catch(e) { console.warn('[NC obs] FAIL:', e.message); }
       }
     }
@@ -3076,12 +3144,13 @@ async function _fetchSpotFcRaw(spot) {
   var cached = _forecastCache[spot.name];
   if (cached && cached._ts && (Date.now() - cached._ts) < _BSF_CACHE_TTL) return cached;
 
-  // Deux appels worker uniquement — pas d'Open-Meteo (CORS/rate-limit en multi-spots)
+  // Worker d'abord, fallback direct rpcache (mobile : workers.dev filtré) — pas d'Open-Meteo
+  // (CORS/rate-limit en multi-spots). Note : /forecast worker proxie vers forecast/marine.
   var [ncRaw, ncTideRaw] = await Promise.all([
-    fetch(_NC_WORKER + '/forecast?lat=' + spot.lat + '&lon=' + spot.lon)
-      .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
-    fetch(_NC_WORKER + '/tide?id=' + (spot.tideId || '9881852'))
-      .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
+    ncGet('/forecast?lat=' + spot.lat + '&lon=' + spot.lon,
+          'forecast/marine?lat=' + spot.lat + '&lon=' + spot.lon),
+    ncGet('/tide?id=' + (spot.tideId || '9881852'),
+          'tide?id=' + (spot.tideId || '9881852'))
   ]);
 
   var dateMs=[], hs=[], T=[], swDir=[], ws=[], wg=[], wDir=[], pwr=[];
@@ -9555,33 +9624,28 @@ function ensoRender() {
   // Charger météo/UV dès le début (pas besoin de token)
   loadOpenMeteoMeteo();
 
-  // Boot token : localStorage (valide) → worker (autonome) → fallback GFS
+  // Boot token : localStorage (valide) → {worker ∥ Supabase en parallèle} → fallback Open-Meteo
+  // Le premier token VALIDE gagne (validation JWT dans _adoptToken). Un token arrivant après
+  // l'affichage du fallback est quand même adopté + rechargement des vraies données NC.
   if (_ncToken && _ncToken.length > 20 && _isTokenValid()) {
-    // Token local valide → charger directement
     loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
   } else {
-    // Token absent ou expiré → worker d'abord (obtient un token frais en ~200ms-2s)
-    var _bootDone = false;
-    var _bootTimeout = setTimeout(function() {
-      if (_bootDone) return; _bootDone = true;
-      console.info('[Boot] Timeout worker — chargement sans token meteo.nc');
+    var _gotToken = false;
+    var _fallbackTimer = setTimeout(function() {
+      if (_gotToken) return;
+      console.info('[Boot] Token pas encore dispo — affichage Open-Meteo en attendant');
       loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
-    }, 5000);
+    }, 4000);
 
-    _loadTokenFromWorker().then(function(tok) {
-      if (_bootDone) return; _bootDone = true;
-      clearTimeout(_bootTimeout);
-      if (tok && tok.length > 20) {
-        _ncToken = tok;
-        try { localStorage.setItem('nc-token', tok); localStorage.setItem('nc-token-date', new Date().toISOString()); } catch(e) {}
-        _updateTokenBtn();
-      }
+    var _onToken = function(tok, source) {
+      if (_gotToken || !_adoptToken(tok, source)) return;
+      _gotToken = true; clearTimeout(_fallbackTimer);
+      // même si le fallback Open-Meteo est déjà affiché, on recharge avec les vraies données NC
       loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
-    }).catch(function() {
-      if (_bootDone) return; _bootDone = true;
-      clearTimeout(_bootTimeout);
-      loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
-    });
+    };
+
+    _loadTokenFromWorker().then(function(t){ _onToken(t, 'worker'); }).catch(function(){});
+    _loadTokenFromSupabase().then(function(t){ _onToken(t, 'supabase'); }).catch(function(){});
   }
 })();
 </script>
