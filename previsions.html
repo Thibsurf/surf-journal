@@ -44,6 +44,7 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
 .nav-tab:hover{color:var(--text);background:var(--glass);}
 .nav-tab.active{color:var(--accent);}
 #last-update{font-size:11px;color:var(--faint);}
+#data-source-badge .ds-txt{margin-left:4px;}
 
 /* HAMBURGER MOBILE */
 .nav-hamburger{display:none;background:none;border:1px solid var(--border);color:var(--muted);
@@ -62,6 +63,11 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
   .nav-tabs-group a{padding:10px 12px;font-size:13px;}
   #last-update{display:none;}
   .logo{font-size:.95rem;}
+  /* Bandeau compact mobile : moins de padding/gap, badge en pastille seule, logo court */
+  nav{padding:0 .7rem;gap:.5rem;}
+  .logo-suffix{display:none;}
+  #data-source-badge .ds-txt{display:none;}
+  #data-source-badge{padding:2px 6px;}
 }
 
 /* LAYOUT */
@@ -242,7 +248,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <a href="https://thibsurf.github.io/surf-journal/" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Retour au journal">← Journal</a>
   <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Sorties">🏄 Sorties</a>
   <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" style="color:#e8c44a;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;padding:3px 8px;border:1px solid rgba(232,196,74,.35);border-radius:12px;background:rgba(232,196,74,.08);" title="Gestion carburant bateau">⛽ Fuel</a>
-  <div class="logo">Surf <span>NC</span> — Prévisions</div>
+  <div class="logo">Surf <span>NC</span><span class="logo-suffix"> — Prévisions</span></div>
   <div class="nav-tabs-group" id="nav-tabs-group">
     <button class="nav-tab active" onclick="showTab('forecast',this);closeNavMenu()">📊 Prévisions</button>
     <button class="nav-tab" onclick="showTab('map',this);closeNavMenu()">🗺️ Carte spots</button>
@@ -1818,13 +1824,14 @@ function _adoptToken(tok, source) {
 function _updateSourceBadge() {
   var el = document.getElementById('data-source-badge'); if (!el) return;
   var map = {
-    direct:    { t: '🟢 meteo.nc direct',      c: 'var(--ok)' },
-    worker:    { t: '🔵 meteo.nc via worker',  c: 'var(--accent)' },
-    openmeteo: { t: '🟠 Open-Meteo (fallback)', c: 'var(--warm)' }
+    direct:    { dot: '🟢', txt: 'meteo.nc direct',      c: 'var(--ok)' },
+    worker:    { dot: '🔵', txt: 'meteo.nc via worker',  c: 'var(--accent)' },
+    openmeteo: { dot: '🟠', txt: 'Open-Meteo (fallback)', c: 'var(--warm)' }
   };
   var m = map[_dataSource];
   if (!m) { el.style.display = 'none'; return; }
-  el.textContent = m.t;
+  // pastille seule sur mobile (.ds-txt masqué en CSS), texte complet sur desktop
+  el.innerHTML = '<span class="ds-dot">' + m.dot + '</span><span class="ds-txt">' + m.txt + '</span>';
   el.style.color = m.c;
   el.style.borderColor = m.c;
   el.style.display = '';
