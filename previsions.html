@@ -248,6 +248,10 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <button class="nav-tab" onclick="showTab('enso',this);closeNavMenu()">📈 ENSO</button>
   </div>
   <span id="last-update" style="font-size:11px;color:var(--faint);"></span>
+  <span id="data-source-badge" onclick="showNetDiagPanel()"
+    title="Source des données — toucher pour le diagnostic réseau"
+    style="display:none;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;cursor:pointer;
+    border:1px solid var(--border);white-space:nowrap;"></span>
   <button onclick="showNcTokenPrompt()" id="token-btn"
     title="Token meteo.nc"
     style="background:none;border:1px solid var(--border);color:var(--faint);
@@ -1739,6 +1743,10 @@ var _ncToken = (function(){
   try { return localStorage.getItem('nc-token') || null; } catch(e){ return null; }
 })();
 
+// Transparence source des données (BONUS 1) — mis à jour dans le flux réel de loadForecast.
+var _dataSource = null;                          // 'direct' | 'worker' | 'openmeteo'
+var _tokenSource = _ncToken ? 'local' : null;    // d'où vient le token courant
+
 // Bootstrap token déplacé dans le boot multi-sources en bas du fichier (worker ∥ Supabase).
 
 function setNcToken(t) {
@@ -1790,9 +1798,147 @@ function _adoptToken(tok, source) {
     localStorage.setItem('nc-token', tok);
     localStorage.setItem('nc-token-date', new Date().toISOString());
   } catch(e){}
+  _tokenSource = source;
   console.info('[Token] Adopté via ' + source);
   _updateTokenBtn();
   return true;
+}
+
+// ─── BONUS 1 : badge source + diagnostic réseau ───────────────────────────────
+// Badge discret reflétant la source RÉELLE de la houle affichée (pas devinée).
+function _updateSourceBadge() {
+  var el = document.getElementById('data-source-badge'); if (!el) return;
+  var map = {
+    direct:    { t: '🟢 meteo.nc direct',      c: 'var(--ok)' },
+    worker:    { t: '🔵 meteo.nc via worker',  c: 'var(--accent)' },
+    openmeteo: { t: '🟠 Open-Meteo (fallback)', c: 'var(--warm)' }
+  };
+  var m = map[_dataSource];
+  if (!m) { el.style.display = 'none'; return; }
+  el.textContent = m.t;
+  el.style.color = m.c;
+  el.style.borderColor = m.c;
+  el.style.display = '';
+}
+
+// Libellé d'âge/expiration du token courant (lecture JWT).
+function _tokenAgeLabel() {
+  if (!_ncToken) return 'aucun';
+  try {
+    var p = JSON.parse(atob(_ncToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    if (p.exp) { var mn = Math.round((p.exp - Date.now()/1000)/60); return mn > 0 ? 'expire dans ' + mn + 'min' : 'expiré'; }
+    if (p.iat) { return 'âge ' + Math.round((Date.now()/1000 - p.iat)/60) + 'min'; }
+  } catch(e){}
+  return '?';
+}
+
+// Résumé console une fois par chargement — état passif (zéro requête supplémentaire).
+function _logNetSummary() {
+  console.info('[NC] source=' + (_dataSource || '?')
+    + ' token=' + (_tokenSource || (_ncToken ? 'local' : 'none'))
+    + ' age=' + _tokenAgeLabel()
+    + ' worker=' + (_workerDead ? 'down' : 'up'));
+}
+
+// Exécute fn() en mesurant la latence ; renvoie { ok, ms, detail }.
+async function _timedProbe(fn) {
+  var t0 = performance.now();
+  try { var r = await fn(); return { ok: !!r, ms: Math.round(performance.now() - t0), detail: '' }; }
+  catch(e) { return { ok: false, ms: Math.round(performance.now() - t0), detail: (e && e.message ? e.message : '').slice(0,40) }; }
+}
+
+function _copyToClipboard(text, btn) {
+  function done(){ if (btn) { var o = btn.textContent; btn.textContent = '✓ Copié'; setTimeout(function(){ btn.textContent = o; }, 1500); } }
+  function fallback(){ try {
+    var ta = document.createElement('textarea'); ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done();
+  } catch(e){ if (btn) btn.textContent = '⚠ Échec copie'; } }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(fallback);
+  else fallback();
+}
+
+function _ndBuildReport(results, tokSrc, tokAge) {
+  function line(k, lbl){ var r = results[k];
+    if (!r) return lbl + ': (en cours)';
+    if (r.skip) return lbl + ': ⚪ ' + (r.note || 'n/a');
+    return lbl + ': ' + (r.ok ? '🟢 OK' : '🔴 KO') + ' ' + r.ms + 'ms' + (r.detail ? ' (' + r.detail + ')' : '');
+  }
+  return '=== Diagnostic réseau Surf NC ===\n'
+    + new Date().toISOString() + '\n'
+    + 'Source données: ' + (_dataSource || '—') + '\n'
+    + 'Token: ' + tokSrc + ' · ' + tokAge + '\n'
+    + line('worker', 'Worker /debug') + '\n'
+    + line('supabase', 'Supabase shared_tokens') + '\n'
+    + line('rpcache', 'rpcache.meteo.nc') + '\n'
+    + line('openmeteo', 'Open-Meteo') + '\n'
+    + 'UA: ' + navigator.userAgent;
+}
+
+// Panneau diagnostic réseau : teste chaque source en live avec latence ms.
+function showNetDiagPanel() {
+  var existing = document.getElementById('nc-netdiag-banner');
+  if (existing) { existing.remove(); return; }
+
+  var div = document.createElement('div');
+  div.id = 'nc-netdiag-banner';
+  div.style.cssText = 'position:fixed;top:58px;right:12px;z-index:9998;'
+    + 'background:var(--deep);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;'
+    + 'width:min(300px,90vw);box-shadow:0 8px 32px rgba(0,0,0,.6);font-size:12px;color:var(--text);';
+
+  var tokSrc = _tokenSource || (_ncToken ? 'local' : '—');
+  var tokAge = _tokenAgeLabel();
+
+  function rowHtml(key, label){
+    return '<div id="nd-' + key + '" style="display:flex;justify-content:space-between;gap:8px;">'
+      + '<span>⏳ ' + label + '</span><span style="color:var(--faint);">…</span></div>';
+  }
+
+  div.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    + '<span style="font-weight:700;color:var(--accent);font-size:13px;">🔌 Diagnostic réseau</span>'
+    + '<button id="nd-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;">×</button>'
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--faint);margin-bottom:10px;line-height:1.6;">'
+    + 'Source houle : <b style="color:var(--text);">' + (_dataSource || '—') + '</b><br>'
+    + 'Token : ' + tokSrc + ' · ' + tokAge + '</div>'
+    + '<div style="font-size:11px;line-height:2.1;background:rgba(255,255,255,.04);border-radius:8px;padding:8px 10px;margin-bottom:10px;">'
+    + rowHtml('worker', 'Worker /debug') + rowHtml('supabase', 'Supabase')
+    + rowHtml('rpcache', 'rpcache.meteo.nc') + rowHtml('openmeteo', 'Open-Meteo')
+    + '</div>'
+    + '<button id="nd-copy" style="width:100%;background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.35);'
+    + 'color:var(--accent);border-radius:8px;padding:9px;cursor:pointer;font-size:11px;font-weight:600;">📋 Copier le rapport</button>';
+
+  document.body.appendChild(div);
+  document.getElementById('nd-close').onclick = function(){ div.remove(); };
+
+  var results = {};
+  function setRow(key, label, res) {
+    var el = document.getElementById('nd-' + key); if (!el) return;
+    var icon = res.skip ? '⚪' : res.ok ? '🟢' : '🔴';
+    var right = res.skip ? (res.note || 'n/a') : (res.ms + 'ms');
+    var col = res.ok ? 'var(--ok)' : res.skip ? 'var(--faint)' : 'var(--bad)';
+    el.innerHTML = '<span>' + icon + ' ' + label + '</span><span style="color:' + col + ';">' + right + '</span>';
+    results[key] = res;
+  }
+
+  var pW = _timedProbe(function(){ var c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
+    return fetch(_NC_WORKER + '/debug', { signal: c.signal }).then(function(r){ return r.ok; }); });
+  var pS = _timedProbe(function(){ var sb = _ensureSupabaseClient(); if (!sb) throw new Error('client supabase indispo');
+    return sb.from('shared_tokens').select('updated_at').eq('id', 'meteo-nc').maybeSingle().then(function(r){ return !r.error && !!r.data; }); });
+  var pR = (_ncToken && _isTokenValid())
+    ? _timedProbe(function(){ return fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881752',
+        { headers: { 'Authorization': 'Bearer ' + _ncToken }, credentials: 'omit' }).then(function(r){ return r.ok; }); })
+    : Promise.resolve({ skip: true, note: 'pas de token' });
+  var pO = _timedProbe(function(){ return fetch('https://api.open-meteo.com/v1/forecast?latitude=-22.27&longitude=166.44&current=wind_speed_10m')
+        .then(function(r){ return r.ok; }); });
+
+  pW.then(function(r){ setRow('worker', 'Worker /debug', r); });
+  pS.then(function(r){ setRow('supabase', 'Supabase', r); });
+  pR.then(function(r){ setRow('rpcache', 'rpcache.meteo.nc', r); });
+  pO.then(function(r){ setRow('openmeteo', 'Open-Meteo', r); });
+
+  document.getElementById('nd-copy').onclick = function(){ _copyToClipboard(_ndBuildReport(results, tokSrc, tokAge), this); };
 }
 
 // ─── PANEL TOKEN meteo.nc — statut + refresh manuel ────────────────────────
@@ -2660,6 +2806,11 @@ async function loadForecast(i) {
     var hasNC = !!(ncMarine && ncMarine.properties);
     if (hasNC) window._lastNcApiSuccess = Date.now(); // token confirmé valide par l'API
 
+    // Source réelle de la houle affichée (BONUS 1) — marine = ncFetch direct rpcache.
+    _dataSource = hasNC ? 'direct' : ((omMarine && omMarine.hourly) ? 'openmeteo' : null);
+    _updateSourceBadge();
+    _logNetSummary();
+
     // Si NC indisponible → signaler dans le panel cache + pré-sélectionner aujourd'hui
     (function() {
       var note = document.getElementById('past-nc-unavail-note');
@@ -2746,6 +2897,7 @@ async function loadForecast(i) {
       try {
         if (omMarine && omMarine.hourly && omMarine.hourly.time && omWind && omWind.hourly) {
           renderForecast(null, null, omMarine, omWind, s);
+          _dataSource = 'openmeteo'; _updateSourceBadge(); _logNetSummary();
         } else {
           var tw = document.getElementById('table-wrap');
           if (tw) tw.innerHTML = '<div style="padding:1rem;color:var(--warm);font-size:12px;">⚠ Token NC expiré — renouvelle-le via l\'extension</div>';
