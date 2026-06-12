@@ -102,6 +102,28 @@ function tokenInfo(token) {
   }
 }
 
+// Upsert le token courant dans Supabase shared_tokens — lu par previsions.html en
+// fallback quand *.workers.dev est injoignable (DNS mobile filtré). Le cron (5 min)
+// garantit ainsi un token < 5 min dans Supabase sans aucune action du PC.
+async function pushTokenToSupabase(env, token) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY || !token) return;
+  try {
+    const r = await fetch(env.SUPABASE_URL + "/rest/v1/shared_tokens?on_conflict=id", {
+      method: "POST",
+      headers: {
+        apikey: env.SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + env.SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ id: "meteo-nc", token, updated_at: new Date().toISOString() }),
+    });
+    console.log("[Supabase] upsert token:", r.status);
+  } catch (e) {
+    console.error("[Supabase] push fail:", e.message);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -145,6 +167,7 @@ export default {
         if (!body.token) return json({ ok: false, error: "missing token" }, 400);
         const trimmed = body.token.trim();
         await env.KV_BINDING.put("jwt", trimmed, { expirationTtl: 3600 });
+        await pushTokenToSupabase(env, trimmed); // propage le token de l'extension vers Supabase
         console.log("[Worker] Token externe stocké (extension), longueur:", trimmed.length);
         return json({ ok: true, stored: true });
       }
@@ -236,6 +259,7 @@ export default {
           ? "expire dans " + info.expiresIn + "min"
           : "âge " + info.ageMin + "min"
       );
+      await pushTokenToSupabase(env, token); // garde Supabase < 5 min frais pour le fallback mobile
 
       // ── Plan B (inactif — décommenter si Plan A bloqué par Cloudflare) ────
       // const puppeteer = (await import("@cloudflare/puppeteer")).default;

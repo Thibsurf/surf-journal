@@ -1,0 +1,18 @@
+name = "meteo-proxy-worker"
+main = "worker.js"
+compatibility_date = "2026-04-22"
+account_id = "25169cde3e97e1301c5ef85374d8cad2"
+
+[[kv_namespaces]]
+binding = "KV_BINDING"
+id = "e9372c7921294e63ab6af2cc72654770"
+
+[vars]
+# URL Supabase (publique). La clé anon est un secret : wrangler secret put SUPABASE_ANON_KEY
+SUPABASE_URL = "https://tiiptlozingmgzcnexpu.supabase.co"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[observability]
+enabled = true
