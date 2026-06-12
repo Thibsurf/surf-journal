@@ -959,6 +959,8 @@ nav a.back:hover{color:var(--text);}
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Token meteo.nc partagé (mêmes globals que previsions.html) -->
+<script src="assets/nc-token.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════
 // CONFIG (même Supabase que le journal principal)
@@ -3241,55 +3243,24 @@ function closeAllMenus() {
 // TOKEN meteo.nc — depuis localStorage (extension) puis Worker
 // Plus de Supabase shared_tokens
 // ════════════════════════════════════════════════════════════════
-var WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
-var _ncToken = null;
-var _ncTokenDate = null;
-
-function _isTokenValid(tok) {
-  if (!tok || tok.length < 20 || tok.indexOf('eyJ') !== 0) return false;
-  try {
-    var p = JSON.parse(atob(tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-    if (p.exp) return p.exp > Date.now()/1000 + 30;
-    if (p.iat) return (Date.now()/1000 - p.iat) < 24*60;
-    return true;
-  } catch(e) { return false; }
-}
+// Token meteo.nc géré par assets/nc-token.js (globals partagés : _ncToken, _isTokenValid,
+// _loadTokenFromWorker, _loadTokenFromSupabase, ncFetch…). _loadNcToken orchestre + badge.
 
 async function _loadNcToken() {
   // 1. localStorage (injecté par l'extension Chrome, si encore valide)
-  var local = null;
-  try { local = localStorage.getItem('nc-token'); } catch(e) {}
-  if (local && _isTokenValid(local)) {
-    _ncToken = local;
-    _updateTokenBadge(true);
-    return local;
-  }
-
-  // 2. Worker Cloudflare (autonome — source principale, toujours frais)
   try {
-    var r = await fetch(WORKER_URL + '/token');
-    if (r.ok) {
-      var d = await r.json();
-      if (d && d.token && _isTokenValid(d.token)) {
-        _ncToken = d.token;
-        try { localStorage.setItem('nc-token', d.token); } catch(e) {}
-        _updateTokenBadge(true);
-        return d.token;
-      }
-    }
-  } catch(e) { console.warn('[sorties] Worker token fetch:', e.message); }
+    var local = localStorage.getItem('nc-token');
+    if (local && _isTokenValid(local)) { _ncToken = local; _updateTokenBadge(true); return local; }
+  } catch(e) {}
 
-  // 3. Supabase shared_tokens (fallback — peut avoir un token plus récent de previsions.html)
-  if (sb) {
-    try {
-      var st = await sb.from('shared_tokens').select('token').eq('id','meteo-nc').maybeSingle();
-      if (st.data && st.data.token && _isTokenValid(st.data.token)) {
-        _ncToken = st.data.token;
-        try { localStorage.setItem('nc-token', st.data.token); } catch(e) {}
-        _updateTokenBadge(true);
-        return st.data.token;
-      }
-    } catch(e) {}
+  // 2. Worker Cloudflare (autonome) puis 3. Supabase shared_tokens (fallback) — via le module
+  var t = await _loadTokenFromWorker();
+  if (!(t && _isTokenValid(t))) t = await _loadTokenFromSupabase();
+  if (t && _isTokenValid(t)) {
+    _ncToken = t;
+    try { localStorage.setItem('nc-token', t); } catch(e) {}
+    _updateTokenBadge(true);
+    return t;
   }
 
   _ncToken = null;

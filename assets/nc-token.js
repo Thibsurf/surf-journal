@@ -143,10 +143,12 @@ function ncFetch(url) {
 }
 
 // ─── Validité du JWT (lecture exp/iat sans vérif de signature) ────────────────
-function _isTokenValid() {
-  if (!_ncToken || _ncToken.length < 20) return false;
+// tok optionnel : valide un candidat précis (utilisé par sorties.html) ; sinon le token courant.
+function _isTokenValid(tok) {
+  tok = tok || _ncToken;
+  if (!tok || tok.length < 20) return false;
   try {
-    var p = JSON.parse(atob(_ncToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    var p = JSON.parse(atob(tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
     if (p.exp) {
       return p.exp > Date.now() / 1000 + 30;
     } else if (p.iat) {
@@ -170,7 +172,7 @@ function _nctFire() {
 window.NCToken = {
   get:              function(){ return _ncToken; },
   set:              function(t){ _ncToken = t; _nctFire(); },     // setter brut (la page gère persistance/effets)
-  isValid:          function(){ return _isTokenValid(); },
+  isValid:          function(tok){ return _isTokenValid(tok); },
   fetch:            function(url){ return ncFetch(url); },
   ncGet:            function(wp, dp){ return ncGet(wp, dp); },
   loadFromWorker:   function(){ return _loadTokenFromWorker(); },
