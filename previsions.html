@@ -1317,6 +1317,8 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 </div>
 
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Token meteo.nc partagé (classique, doit charger avant le script principal) -->
+<script src="assets/nc-token.js"></script>
 <script>
 
 // SPOTS
@@ -1673,85 +1675,9 @@ function _ensureSupabaseClient() {
   return _tokenSbClient;
 }
 
-async function _pushTokenToSupabase(token) {
-  if (!_ensureSupabaseClient() || !token || token.length < 30) return;
-
-  var payload = {
-    id: 'meteo-nc',
-    token: token,
-    updated_at: new Date().toISOString()
-  };
-
-  try {
-    await _tokenSbClient.from('shared_tokens').upsert(payload);
-  } catch (e) {
-    console.warn('[NC Token] push failed:', e && e.message);
-  }
-}
-
-// Worker Cloudflare — pour stocker le token et le partager entre appareils
-var _NC_WORKER = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
-
-async function _pushTokenToWorker(token) {
-  if (!token || token.length < 30) return;
-  try {
-    var r = await fetch(_NC_WORKER + '/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token })
-    });
-    var d = await r.json();
-    if (!d || !d.ok) console.warn('[NC] Worker /token rejected:', d);
-  } catch(e) { console.warn('[NC] Worker /token push fail:', e.message); }
-}
-
-// Worker Cloudflare — source autonome (pas besoin d'extension, token géré côté serveur)
-async function _loadTokenFromWorker() {
-  try {
-    var ctrl = new AbortController();
-    var t = setTimeout(function(){ ctrl.abort(); }, 4000);
-    var r = await fetch(_NC_WORKER + '/token', { signal: ctrl.signal });
-    clearTimeout(t);
-    if (!r.ok) return null;
-    var d = await r.json();
-    return (d && d.ok && d.token) ? d.token : null;
-  } catch(e) {
-    console.warn('[NC] Worker /token load fail:', e.message);
-    return null;
-  }
-}
-
-// Lit les deux bases en parallèle, prend le token le plus récent
-async function _loadTokenFromSupabase() {
-  if (!_ensureSupabaseClient()) return null;
-
-  try {
-    const res = await _tokenSbClient
-      .from('shared_tokens')
-      .select('token, updated_at')
-      .eq('id', 'meteo-nc')
-      .maybeSingle();
-
-    if (!res || res.error || !res.data || !res.data.token) return null;
-
-    const updatedAt = new Date(res.data.updated_at);
-    const ageMs = Date.now() - updatedAt.getTime();
-
-    // Le cron du worker upsert un token < 5 min ; au-delà de 30 min c'est probablement
-    // expiré. On le retourne quand même : c'est _isTokenValid() (lecture du JWT) qui tranche.
-    if (ageMs > 30 * 60 * 1000) return null;
-
-    return res.data.token;
-
-  } catch (e) {
-    console.warn('[NC Token] load failed:', e && e.message);
-    return null;
-  }
-}
-
-var _ncToken = (function(){
-  try { return localStorage.getItem('nc-token') || null; } catch(e){ return null; }
-})();
+// _pushTokenToSupabase, _NC_WORKER, _pushTokenToWorker, _loadTokenFromWorker,
+// _loadTokenFromSupabase, _ncToken → déplacés dans assets/nc-token.js (globals partagés).
+// (_ensureSupabaseClient / _tokenSbClient restent ici : utilisés aussi par sessions/cache/spots.)
 
 // Transparence source des données (BONUS 1) — mis à jour dans le flux réel de loadForecast.
 var _dataSource = null;                          // 'direct' | 'worker' | 'openmeteo'
@@ -2109,80 +2035,7 @@ function showNcTokenPrompt() {
   };
 }
 
-function ncFetch(url) {
-  // Confirmé: token Bearer seul suffit (HTTP 200 vérifié via test_api.html)
-  // credentials:'omit' obligatoire sinon CORS bloqué (pas d'Allow-Credentials côté serveur)
-  return fetch(url, {
-    headers: { 'Authorization': 'Bearer ' + _ncToken },
-    credentials: 'omit'
-  }).then(function(r){
-    if(r.status === 401 || r.status === 403) {
-      console.warn('[NC] Token expiré (' + r.status + ') — ouverture panneau renouvellement');
-      _ncToken = null; // invalider immédiatement
-      try { localStorage.removeItem('nc-token'); } catch(e) {}
-      if(!document.getElementById('nc-token-banner')) showNcTokenPrompt();
-        var tb=document.getElementById('token-btn');
-        if(tb){tb.style.color='var(--bad)';tb.style.borderColor='var(--bad)';
-          tb.textContent='🔑 !';}
-      throw new Error('NC_TOKEN_EXPIRED');
-    }
-    if(r.status === 400) {
-      // ID invalide pour ce endpoint — retourner null plutôt que planter
-      console.warn('[NC] 400 sur', url.split('?')[0], '— id probablement invalide pour ce endpoint');
-      return null;
-    }
-    if(r.status === 204 || r.status === 205) return null;
-    if(!r.ok) throw new Error('HTTP ' + r.status + ' sur ' + url);
-    return r.text().then(function(txt) {
-      if (!txt || !txt.trim()) return null;
-      try { return JSON.parse(txt); } catch(e) { throw new Error('JSON invalide sur ' + url); }
-    });
-  });
-}
-
-// ── Helper réseau données : worker d'abord (cache partagé), fallback direct rpcache ──
-// Sur mobile, *.workers.dev est souvent filtré par le DNS → on bascule en direct rpcache.
-// _workerDead mémoïse l'échec pour ne pas repayer le timeout de 3 s à chaque appel.
-// Retourne du JSON ou null (jamais de throw) — les sites d'appel testent juste le résultat.
-var _workerDead = false;
-async function ncGet(workerPath, directPath) {
-  if (!_workerDead) {
-    try {
-      var ctrl = new AbortController();
-      var t = setTimeout(function(){ ctrl.abort(); }, 3000);
-      var r = await fetch(_NC_WORKER + workerPath, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (r.ok) return await r.json();
-    } catch(e) {
-      _workerDead = true;
-      console.warn('[NC] Worker injoignable — bascule en direct rpcache');
-    }
-  }
-  if (directPath && _ncToken && _isTokenValid()) {
-    try { return await ncFetch('https://rpcache.meteo.nc/internet2018client/2.0/' + directPath); }
-    catch(e) {}
-  }
-  return null;
-}
-
-// Vérifier si le token JWT est encore valide (pas expiré)
-function _isTokenValid() {
-  if (!_ncToken || _ncToken.length < 20) return false;
-  try {
-    var p = JSON.parse(atob(_ncToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-    if (p.exp) {
-      // JWT standard avec exp
-      return p.exp > Date.now() / 1000 + 30;
-    } else if (p.iat) {
-      // meteo.nc : pas de exp, TTL estimé à 55min depuis iat
-      // Si l'API a répondu avec succès récemment on considère le token valide
-      if (window._lastNcApiSuccess && (Date.now() - window._lastNcApiSuccess) < 30 * 60000) return true;
-      return (Date.now() / 1000 - p.iat) < 55 * 60;
-    }
-    // Pas d'info temporelle → considérer valide (on laisse rpcache décider)
-    return true;
-  } catch(e) { return false; }
-}
+// ncFetch, ncGet, _workerDead, _isTokenValid → déplacés dans assets/nc-token.js (globals partagés).
 
 
 // ─── Sync locale (5s) + Supabase (8min) + écoute messages ─────────────────
