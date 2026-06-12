@@ -1345,7 +1345,7 @@ var OBS_STATIONS = [
   // Source officielle : Drupal JSON meteo.nc/fr/observations
   // insee = id API (vérifié sur Koumac, Koné, Bourake, Pouébo, Yaté)
   // ── Grand Sud / Nouméa ───────────────────────────────────────────────────
-  { name:'Phare Amédée',        id:'98818003', spotId:'9881836',  lat:-22.4783, lon:166.480,  meteoUrl:'https://meteo.nc/fr/observations/phare-amedee-noumea' },
+  { name:'Phare Amédée',        id:'98818002', spotId:'9881836',  lat:-22.4783, lon:166.480,  meteoUrl:'https://meteo.nc/fr/observations/phare-amedee-noumea' }, // id 98818003 = capteur sans vent ; 98818002 = relevé vent réel
   { name:'Nouméa',              id:'98818001', spotId:'98818001', lat:-22.276,  lon:166.350,  meteoUrl:'https://meteo.nc/fr/observations/noumea' },
   { name:'Yaté',                id:'98832002', spotId:'98832002', lat:-22.1565, lon:167.100, dlat:-22.156, dlon:166.940,  meteoUrl:'https://meteo.nc/fr/observations/yate' }, // API: lon=167.1 (lagon); dlat/dlon = position carte
   { name:'Montagne des Sources',id:'98832004', spotId:'98832004', lat:-22.1438, lon:166.610,  meteoUrl:'https://meteo.nc/fr/observations/montagne-des-sources-yate' },
@@ -2773,17 +2773,10 @@ async function loadForecast(i) {
     var ncMarine = null, ncForecast = null, ncTide = null;
     var omMarine = null, omWind = null, obsData = null;
 
-    var obsSt = s.obsId
-      ? OBS_STATIONS.find(function(st){ return st.spotId === s.obsId || st.id === s.obsId; })
-      : null;
-
     var _pTide = ncGet('/tide?id=' + (s.tideId || '9881752'), 'tide?id=' + (s.tideId || '9881752'))
       .catch(function(e){ console.warn('[NC tide] FAIL:', e && e.message); return null; });
-    var _pObs = obsSt
-      ? ncGet('/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id,
-              'observation/history?lat=' + obsSt.lat + '&lon=' + obsSt.lon + '&id=' + obsSt.id)
-          .catch(function(e){ console.warn('[NC obs] FAIL:', e && e.message); return null; })
-      : Promise.resolve(null);
+    // Vent observé : station assignée + fallback auto vers la plus proche qui rapporte du vent
+    var _pObs = _loadObsWind(s).catch(function(){ return { data:null, station:null, fallback:false }; });
     var _pMarine = _ncToken
       ? ncFetch(BASE + 'forecast/marine?lat=' + s.lat + '&lon=' + s.lon)
           .catch(function(e){ if (e.message !== 'NC_TOKEN_EXPIRED') console.warn('[NC marine] FAIL:', e.message); return null; })
@@ -2797,13 +2790,14 @@ async function loadForecast(i) {
     var _pOmWind   = fetch(omWindUrl).then(function(r){ return r.json(); }).catch(function(){ return null; });
 
     // Rendu progressif : observations + encart marée de base dès qu'ils arrivent
-    _pObs.then(function(d){ obsData = d; try { renderObs(obsData, s); } catch(_){} });
+    _pObs.then(function(o){ obsData = o && o.data; try { renderObs(obsData, s, o); } catch(_){} });
     _pTide.then(function(d){ if (d) { ncTide = d; try { renderTideEncart(d, s); } catch(_){} } });
 
     // Attendre toutes les données (allSettled ne rejette jamais → outer catch préservé pour le rendu)
     var _all = await Promise.allSettled([_pTide, _pObs, _pMarine, _pForecast, _pOmMarine, _pOmWind]);
     ncTide     = _all[0].value || null;
-    obsData    = _all[1].value || null;
+    var _obsRes = _all[1].value || null;
+    obsData    = _obsRes ? _obsRes.data : null;
     ncMarine   = _all[2].value || null;
     ncForecast = _all[3].value || null;
     omMarine   = _all[4].value || null;
@@ -2839,7 +2833,7 @@ async function loadForecast(i) {
     })();
 
     // ─── RENDER ───
-    renderObs(obsData, s);
+    renderObs(obsData, s, _obsRes);
     
     if (ncTide && ncTide.properties && ncTide.properties.tide) {
       _ncTideCache = ncTide; // disponible immédiatement pour _saveForecastDays (avant le Promise.all)
@@ -2934,8 +2928,48 @@ function _getNcRows(nc) {
 }
 
 // ─── OBSERVATIONS EN DIRECT ────────────────────────────────────────────
-function renderObs(data, spot) {
+// Vrai si la réponse obs contient au moins un relevé de vent non-null.
+function _obsHasWind(data) {
+  var h = data && ((data.properties && data.properties.history) || data.history || (Array.isArray(data) ? data : null));
+  if (!h) return false;
+  for (var i = h.length - 1; i >= 0; i--) { if (h[i] && h[i].wind_speed != null) return true; }
+  return false;
+}
+
+// Charge le vent observé : station assignée d'abord, sinon fallback vers la station la plus
+// proche qui rapporte du vent (certaines stations n'ont qu'un capteur T°/précip).
+// Résout toujours { data, station, fallback } (jamais de rejet).
+async function _loadObsWind(spot) {
+  var primary = spot.obsId
+    ? OBS_STATIONS.find(function(st){ return st.spotId === spot.obsId || st.id === spot.obsId; })
+    : null;
+  var byDist = OBS_STATIONS.slice().sort(function(a, b) {
+    return (Math.pow(a.lat - spot.lat, 2) + Math.pow(a.lon - spot.lon, 2))
+         - (Math.pow(b.lat - spot.lat, 2) + Math.pow(b.lon - spot.lon, 2));
+  });
+  var ordered = primary ? [primary].concat(byDist.filter(function(s){ return s !== primary; })) : byDist;
+  var firstData = null, firstStation = primary || ordered[0] || null;
+  for (var k = 0; k < Math.min(5, ordered.length); k++) {
+    var st = ordered[k];
+    var d = await ncGet('/history?lat=' + st.lat + '&lon=' + st.lon + '&id=' + st.id,
+                        'observation/history?lat=' + st.lat + '&lon=' + st.lon + '&id=' + st.id)
+              .catch(function(){ return null; });
+    if (k === 0) { firstData = d; firstStation = st; }
+    if (_obsHasWind(d)) return { data: d, station: st, fallback: !!(primary && st !== primary) || (!primary && k > 0) };
+  }
+  // Aucune station proche avec du vent → renvoyer la primaire (au moins T°), sans fallback
+  return { data: firstData, station: firstStation, fallback: false };
+}
+
+function renderObs(data, spot, used) {
   var el=document.getElementById('obs-wrap'); if(!el) return;
+  // Refléter la station réellement utilisée (utile quand fallback vers une station proche)
+  if (used && used.station) {
+    var _onm = document.getElementById('obs-name');
+    if (_onm) _onm.textContent = used.station.name + (used.fallback ? ' ≈' : '');
+    var _olk = document.getElementById('obs-link');
+    if (_olk && used.station.meteoUrl) _olk.href = used.station.meteoUrl;
+  }
   // Format API meteo.nc: data.properties.history[]
   // wind_speed en m/s (pas en kt)
   var h = null;
@@ -2973,7 +3007,9 @@ function renderObs(data, spot) {
     +'<div><div style="font-size:1.5rem;font-weight:700;color:'+windCol(wsKt)+';font-family:var(--font-d);line-height:1;">'+(wsKt||'—')+' <span style="font-size:11px;color:var(--muted);">kt</span></div>'
     +'<div style="font-size:10px;color:var(--muted);">Rafales '+(wgKt||'—')+' kt</div></div>'
     +(t!==null?'<div style="margin-left:auto;text-align:right;"><div style="font-size:1.2rem;font-weight:600;font-family:var(--font-d);">'+t.toFixed(1)+'°</div><div style="font-size:9px;color:var(--faint);">air · '+hStr+'</div></div>':'')
-    +'</div><div style="font-size:9px;color:var(--faint);margin-top:3px;">'+(spot.obsName||spot.name)+'</div>';
+    +'</div><div style="font-size:9px;color:var(--faint);margin-top:3px;">'
+      +((used&&used.station)?used.station.name:(spot.obsName||spot.name))
+      +((used&&used.fallback)?' · ≈ station proche (vent)':'')+'</div>';
 }
 
 // ─── ENCART MARÉES meteo.nc ────────────────────────────────────────────
