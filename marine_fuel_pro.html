@@ -276,6 +276,9 @@ select option{background:var(--s2)}
   <!-- ══ TAB: LOGS ══ -->
   <div class="tab-content active" id="tab-log">
 
+    <!-- Hero solde (2.1) — première chose visible -->
+    <div id="balanceHero"></div>
+
     <!-- Sélecteur bateau -->
     <div class="card">
       <div class="card-head">
@@ -2069,6 +2072,7 @@ async function loadLogs(){
   allLogs=data||[];
   _bidons=FuelCore.rebuildBidonsFromLogs(allLogs); // bidons event-sourcés → état partagé (1.1)
   computeFOB();
+  renderBalanceHero(); // 2.1 : solde en tête
   renderLogs();
   if(document.getElementById('tab-bidons')?.classList.contains('active'))renderBidons();
   renderBidonLogs();
@@ -3265,6 +3269,57 @@ async function assignPayer(logId,uid){
   await loadLogs();
   if(document.getElementById('tab-charts')?.classList.contains('active'))renderCharts();
   openUnattributedFix(); // rafraîchir la liste (se ferme quand tout est attribué via le ✓)
+}
+
+// ── 2.1 : Hero solde (1ère personne) en tête de l'onglet Logs ──
+function renderBalanceHero(){
+  const el=document.getElementById('balanceHero'); if(!el)return;
+  if(!_members.length||!allLogs.length){el.innerHTML='';return;}
+  const bal=FuelCore.computeBalances(allLogs,_members);
+  const meId=user&&user.id;
+  const iOwe=bal.transfers.find(t=>t.fromId===meId);
+  const owedToMe=bal.transfers.find(t=>t.toId===meId);
+  let big,col,action='';
+  if(iOwe){ col='#f43f5e';
+    big=`💸 Tu dois <b>${fmt(iOwe.amt)} XPF</b> à ${iOwe.to}`;
+    action=`<button class="btn btn-primary btn-full" style="margin-top:10px" onclick="quickReimburse('${iOwe.toId}',${iOwe.amt})">✓ J'ai remboursé ${iOwe.to}</button>`;
+  }else if(owedToMe){ col='#10b981';
+    big=`💰 ${owedToMe.from} te doit <b>${fmt(owedToMe.amt)} XPF</b>`;
+  }else if(meId&&_members.some(m=>m.id===meId)){ col='var(--a)'; big=`✓ Comptes à l'équilibre`; }
+  else{ // utilisateur hors membres : montrer le 1er transfert global
+    const t=bal.transfers[0];
+    col=t?'var(--a2)':'var(--a)';
+    big=t?`${t.from} doit <b>${fmt(t.amt)} XPF</b> à ${t.to}`:`✓ Comptes à l'équilibre`;
+  }
+  const detail=bal.rows.map(r=>{
+    const c=r.total>500?'#10b981':r.total<-500?'#f43f5e':'var(--muted2)';
+    return `<div style="display:flex;justify-content:space-between;font-size:.74rem;padding:3px 0;border-bottom:1px solid var(--s3)">
+      <span>${r.label}${r.id===meId?' (moi)':''}</span>
+      <span style="font-family:var(--mono)">payé ${fmt(Math.round(r.paid))} · dû ${fmt(Math.round(r.owed))} · <b style="color:${c}">${r.total>=0?'+':''}${fmt(Math.round(r.total))}</b></span></div>`;
+  }).join('');
+  el.innerHTML=`<div class="card" style="border-color:${col};border-width:1.5px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div style="font-size:1.1rem;line-height:1.4;color:${col};font-weight:500">${big}</div>
+      <button class="btn btn-ghost btn-xs" onclick="openBalanceInfoModal()" title="Comment c'est calculé">?</button>
+    </div>
+    ${action}
+    ${bal.unattributed>0?`<div onclick="openUnattributedFix()" style="cursor:pointer;margin-top:8px;font-size:.7rem;color:var(--warn)">⚠️ ${bal.unattributedLogs.length} dépense(s) (${fmt(Math.round(bal.unattributed))} XPF) sans payeur — corriger →</div>`:''}
+    <details style="margin-top:10px"><summary style="font-size:.7rem;color:var(--muted);cursor:pointer;user-select:none">Détail payé / dû / net par membre</summary><div style="margin-top:6px">${detail}</div></details>
+  </div>`;
+}
+async function quickReimburse(toId,amt){
+  if(!boat)return;
+  const toM=_members.find(m=>m.id===toId);
+  if(!confirm(`Enregistrer ton remboursement de ${fmt(amt)} XPF à ${toM?toM.label:'?'} ?`))return;
+  const base={boat_id:boat.id,user_id:user.id,type:'reimburse',total_price:amt,paid_by:user.id,note:'Remboursement',created_at:new Date().toISOString()};
+  let {error}=await sb.from('boat_fuel_logs').insert(Object.assign({reimburse_to:toId},base));
+  if(error&&/(reimburse_to|column|schema|cache)/i.test(error.message||'')){
+    const r2=await sb.from('boat_fuel_logs').insert(Object.assign({note:`Remboursement · __REMB_TO:${toId}__`},base));
+    error=r2.error;
+  }
+  if(error)return toast('Erreur: '+error.message,'err');
+  toast('Remboursement enregistré ✅');
+  loadLogs();
 }
 
 // ══ GRAPHES ═══════════════════════════════════════════════════════════════════
