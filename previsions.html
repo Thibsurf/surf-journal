@@ -1185,7 +1185,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       </div>
       <!-- Infos marée dynamiques liées à la date -->
       <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
-        <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">🌊 Marnage du jour</div>
+        <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span>🌊 Marnage du jour</span><span id="marnage-day" style="font-size:9px;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500;"></span></div>
         <div id="tide-marnage-wrap" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <!-- Jauge marnage SVG animée -->
           <svg id="marnage-svg" viewBox="0 0 48 48" style="width:44px;height:44px;flex-shrink:0;">
@@ -1202,7 +1202,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         </div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
-        <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">🎣 Activité de pêche</div>
+        <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span>🎣 Activité de pêche</span><span id="fishing-day" style="font-size:9px;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500;"></span></div>
         <div id="fishing-score"></div>
       </div>
     </div>
@@ -6562,12 +6562,17 @@ function renderTideCurve(offset) {
 }
 
 // ─── SCORE PECHE ─────────────────────────────────────────────────────────
-function drawFishingScore(){
+// Helpers jour affiché (1.4) — partagés par score pêche / marnage
+function _isMareeToday(y,m,d){ if(!(y&&m&&d))return true; var n=new Date(); return y===n.getFullYear()&&m===n.getMonth()+1&&d===n.getDate(); }
+function _mareeDayShort(y,m,d){ return new Date(y,m-1,d).toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }
+
+function drawFishingScore(year,month,day){
   var el=document.getElementById('fishing-score'); if(!el) return;
-  var now=new Date();
+  var isToday = _isMareeToday(year,month,day);
+  var refDate = (year&&month&&day) ? new Date(Date.UTC(year,month-1,day,12,0,0)) : new Date();
   var knownNew=new Date('2000-01-06T18:14:00Z');
   var synodic=29.53058867;
-  var diff=(now-knownNew)/864e5;
+  var diff=(refDate-knownNew)/864e5;
   var phase=((diff%synodic)+synodic)%synodic;
   // Théorie solunaire : activité MAX aux deux syzygies (NL et PL = vives-eaux), MIN aux quartiers
   var distNL = Math.min(phase, synodic - phase);            // 0 à la nouvelle lune
@@ -6575,11 +6580,12 @@ function drawFishingScore(){
   var distSyzygy = Math.min(distNL, distPL);                // 0..synodic/4 (max aux quartiers)
   var moonScore = Math.max(0, 1 - distSyzygy / (synodic/4)); // 1 aux syzygies, 0 aux quartiers
 
-  // Chercher la prochaine PM/BM dans les 2h
+  // Proximité d'une PM/BM (bonus "étale proche") — seulement pour AUJOURD'HUI
+  // (un jour futur s'évaluera sur la journée via la timeline solunaire — cf 2.2)
   var tideScore=0;
-  if(_ncTideCache&&_ncTideCache.properties&&_ncTideCache.properties.tide){
+  if(isToday && _ncTideCache&&_ncTideCache.properties&&_ncTideCache.properties.tide){
     var allTide=(_ncTideCache.properties.tide.high_tide||[]).concat(_ncTideCache.properties.tide.low_tide||[]);
-    var nowMs=now.getTime();
+    var nowMs=Date.now();
     allTide.forEach(function(e){
       var dist=Math.abs(new Date(e.time).getTime()-nowMs)/60000;
       tideScore=Math.max(tideScore,Math.max(0,1-dist/120));
@@ -6603,27 +6609,30 @@ function drawFishingScore(){
     +'<div style="font-size:10px;color:'+col+';font-weight:600;">'+labels[total]+'</div>'
     +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité de pêche maximale (théorie solunaire). Quartiers = mortes-eaux, activité minimale." style="font-size:9px;color:var(--faint);margin-top:1px;cursor:help;">Marée: '+(tideScore*100|0)+'% · Lune: '+(moonScore*100|0)+'% <span style="opacity:.6">ⓘ</span></div>';
 
-  // Mettre à jour le marnage dynamique
-  drawTideMarnage();
+  // Badge jour + marnage dynamique (suivent le jour affiché)
+  var fday=document.getElementById('fishing-day');
+  if(fday) fday.textContent = isToday ? "Aujourd'hui" : _mareeDayShort(year,month,day);
+  drawTideMarnage(year,month,day);
 }
 
 // ─── MARNAGE DYNAMIQUE ────────────────────────────────────────────────────────
-function drawTideMarnage() {
+function drawTideMarnage(year,month,day) {
   var arcEl = document.getElementById('marnage-arc');
   var coefEl = document.getElementById('marnage-coef');
   var infoEl = document.getElementById('marnage-info');
   var nextEl = document.getElementById('next-tide-info');
   if(!arcEl || !infoEl) return;
 
-  var now = new Date();
-  var nowMs = now.getTime();
+  var isToday = _isMareeToday(year,month,day);
+  var refDate = (year&&month&&day) ? new Date(year,month-1,day) : new Date();
+  var nowMs = Date.now();
 
-  // Calculer marnage depuis les données NC (PM - BM du jour)
+  // Calculer marnage depuis les données NC (PM - BM du JOUR AFFICHÉ)
   var pmH = null, bmH = null, allEvts = [];
   if(_ncTideCache && _ncTideCache.properties && _ncTideCache.properties.tide){
     var tideData = _ncTideCache.properties.tide;
-    var todayStart = new Date(); todayStart.setHours(0,0,0,0);
-    var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+    var todayStart = new Date(refDate); todayStart.setHours(0,0,0,0);
+    var todayEnd = new Date(refDate); todayEnd.setHours(23,59,59,999);
     (tideData.high_tide||[]).forEach(function(e){
       var ms = new Date(e.time).getTime();
       allEvts.push({ms:ms, h:e.h||e.tidal_height, type:'PM', coef:e.tidal_coefficient||null});
@@ -6640,8 +6649,7 @@ function drawTideMarnage() {
   // Fallback harmoniques si pas de données NC
   var usingFallback = (pmH === null);
   if(usingFallback) {
-    var now2 = new Date();
-    var pts = tidePointsForDate(now2.getFullYear(), now2.getMonth()+1, now2.getDate());
+    var pts = tidePointsForDate(refDate.getFullYear(), refDate.getMonth()+1, refDate.getDate());
     var extr = findTideExtrema(pts);
     extr.forEach(function(e){ if(e.type==='pm') pmH=Math.max(pmH||0,e.h); else bmH=Math.min(bmH!==null?bmH:99,e.h); });
   }
@@ -6669,9 +6677,13 @@ function drawTideMarnage() {
     +(coef?'<br><span style="color:var(--faint);font-size:9px;">Coeff. estimé ~'+coef+'</span>':'')
     +(usingFallback?'<br><span style="color:var(--faint);font-size:9px;">harmoniques (fallback)</span>':'');
 
-  // Prochaine marée (PM/BM suivante)
-  if(nextEl && allEvts.length) {
-    var next = allEvts.find(function(e){ return e.ms > nowMs; });
+  // Badge jour affiché (lève l'ambiguïté Aujourd'hui / autre date)
+  var mday=document.getElementById('marnage-day');
+  if(mday) mday.textContent = isToday ? "Aujourd'hui" : _mareeDayShort(year,month,day);
+
+  // Prochaine marée (PM/BM suivante) — seulement pour AUJOURD'HUI
+  if(nextEl) {
+    var next = (isToday && allEvts.length) ? allEvts.find(function(e){ return e.ms > nowMs; }) : null;
     if(next) {
       var dt = new Date(next.ms + 11*3600000); // UTC+11
       var hStr = String(dt.getUTCHours()).padStart(2,'0')+'h'+String(dt.getUTCMinutes()).padStart(2,'0');
@@ -7449,7 +7461,7 @@ function drawMoon(year, month, day) {
       + '<br><span style="color:var(--faint);">Cycle : </span><b style="color:var(--text);">'+(phase).toFixed(1)+'j</b>'
       + '</div>';
   }
-  drawFishingScore();
+  drawFishingScore(year, month, day);
 }
 
 // ─── INIT MARÉE ───────────────────────────────────────────────────────────
