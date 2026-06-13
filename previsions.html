@@ -6569,8 +6569,11 @@ function drawFishingScore(){
   var synodic=29.53058867;
   var diff=(now-knownNew)/864e5;
   var phase=((diff%synodic)+synodic)%synodic;
-  var nearFull=Math.min(phase,synodic-phase)/(synodic/2);
-  var moonScore=Math.max(0,1-nearFull*2);
+  // Théorie solunaire : activité MAX aux deux syzygies (NL et PL = vives-eaux), MIN aux quartiers
+  var distNL = Math.min(phase, synodic - phase);            // 0 à la nouvelle lune
+  var distPL = Math.abs(phase - synodic/2);                 // 0 à la pleine lune
+  var distSyzygy = Math.min(distNL, distPL);                // 0..synodic/4 (max aux quartiers)
+  var moonScore = Math.max(0, 1 - distSyzygy / (synodic/4)); // 1 aux syzygies, 0 aux quartiers
 
   // Chercher la prochaine PM/BM dans les 2h
   var tideScore=0;
@@ -6598,7 +6601,7 @@ function drawFishingScore(){
   for(var fi=0;fi<5;fi++) fishHTML += fishSVG(fi<total);
   el.innerHTML='<div style="display:flex;gap:2px;align-items:center;margin-bottom:3px;">'+fishHTML+'</div>'
     +'<div style="font-size:10px;color:'+col+';font-weight:600;">'+labels[total]+'</div>'
-    +'<div style="font-size:9px;color:var(--faint);margin-top:1px;">Marée: '+(tideScore*100|0)+'% · Lune: '+(moonScore*100|0)+'%</div>';
+    +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité de pêche maximale (théorie solunaire). Quartiers = mortes-eaux, activité minimale." style="font-size:9px;color:var(--faint);margin-top:1px;cursor:help;">Marée: '+(tideScore*100|0)+'% · Lune: '+(moonScore*100|0)+'% <span style="opacity:.6">ⓘ</span></div>';
 
   // Mettre à jour le marnage dynamique
   drawTideMarnage();
