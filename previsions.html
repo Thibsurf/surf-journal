@@ -7200,8 +7200,8 @@ async function _fetchCycloneBulletin() {
       var icon = hasCyc ? '🌀' : noCyc ? '✅' : '⚠️';
       var label = hasCyc ? 'Phénomène actif !' : noCyc ? 'Aucun phénomène' : 'À surveiller';
       var detail = '';
-      if (prev7j && !noCyc) detail = '<div style="font-size:8.5px;color:var(--muted);margin-top:3px;line-height:1.4;">'+prev7j.slice(0,180)+'</div>';
-      else if (noCyc && prev7j) detail = '<div style="font-size:8.5px;color:var(--faint);margin-top:3px;line-height:1.4;">'+prev7j.slice(0,160)+'</div>';
+      if (prev7j && !noCyc) detail = '<div style="font-size:8.5px;color:var(--muted);margin-top:3px;line-height:1.4;">'+escapeHtml(prev7j.slice(0,180))+'</div>';
+      else if (noCyc && prev7j) detail = '<div style="font-size:8.5px;color:var(--faint);margin-top:3px;line-height:1.4;">'+escapeHtml(prev7j.slice(0,160))+'</div>';
       el.innerHTML = '<div style="display:flex;align-items:flex-start;gap:5px;">'
         +'<span style="font-size:13px;">'+icon+'</span>'
         +'<div style="flex:1;">'
@@ -7356,11 +7356,11 @@ async function _fetchNavBMS() {
           +'border-radius:7px;padding:9px 11px;margin-bottom:7px;">'
           +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
           +'<span style="background:#e05c5c;color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;">⚠️ BMS '+b.label+'</span>'
-          +(b.numDate?'<span style="font-size:8px;color:var(--faint);">'+b.numDate+'</span>':'')
+          +(b.numDate?'<span style="font-size:8px;color:var(--faint);">'+escapeHtml(b.numDate)+'</span>':'')
           +'</div>'
-          +(b.nature?'<div style="font-size:9px;font-weight:700;color:#e8a057;margin-bottom:4px;line-height:1.4;">'+b.nature+'</div>':'')
+          +(b.nature?'<div style="font-size:9px;font-weight:700;color:#e8a057;margin-bottom:4px;line-height:1.4;">'+escapeHtml(b.nature)+'</div>':'')
           +(b.zones&&b.zones.length?'<div style="font-size:8.5px;color:var(--text);line-height:1.6;max-height:90px;overflow-y:auto;border-top:1px solid rgba(255,255,255,.08);padding-top:4px;">'
-            +b.zones.map(function(z){return '<div style="margin-bottom:2px;">'+z+'</div>';}).join('')+'</div>':'')
+            +b.zones.map(function(z){return '<div style="margin-bottom:2px;">'+escapeHtml(z)+'</div>';}).join('')+'</div>':'')
           +'<a href="'+b.url+'" target="_blank" style="font-size:8px;color:#e05c5c;text-decoration:none;display:inline-block;margin-top:5px;">Bulletin complet →</a>'
           +'</div>';
       } else {
@@ -7370,7 +7370,7 @@ async function _fetchNavBMS() {
           +'padding:1px 7px;font-size:9px;font-weight:700;color:#3dba8a;">✅ '+b.label+' — pas de BMS</span>'
           +'<a href="'+b.url+'" target="_blank" style="font-size:8px;color:var(--faint);text-decoration:none;">→</a>'
           +'</div>'
-          +(b.sit?'<div style="font-size:9px;color:var(--muted);line-height:1.5;">'+b.sit.slice(0,180)+'</div>':'')
+          +(b.sit?'<div style="font-size:9px;color:var(--muted);line-height:1.5;">'+escapeHtml(b.sit.slice(0,180))+'</div>':'')
           +'</div>';
       }
     }
