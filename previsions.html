@@ -6814,8 +6814,8 @@ function drawTideMarnage(year,month,day) {
 
   // Coefficient : VRAI coef SHOM (tidal_coefficient) s'il est fourni par meteo.nc ;
   // sinon un INDICE estimé depuis le marnage (clairement libellé — PAS un coef officiel).
-  var realCoef = null;
-  allEvts.forEach(function(e){ if(e.coef!=null && e.ms>=todayStart && e.ms<=todayEnd) realCoef = Math.max(realCoef||0, Math.round(e.coef)); });
+  var realCoef = null; // coef SHOM réel seulement si > 0 (les données NC renvoient souvent 0 = absent)
+  allEvts.forEach(function(e){ if(e.coef!=null && e.coef>0 && e.ms>=todayStart && e.ms<=todayEnd) realCoef = Math.max(realCoef||0, Math.round(e.coef)); });
   var estIndex = marnage ? Math.max(20, Math.min(120, Math.round(20 + (marnage/1.6)*100))) : null;
   var coef = (realCoef!=null) ? realCoef : estIndex; // valeur de l'anneau
   var coefIsReal = (realCoef!=null);
