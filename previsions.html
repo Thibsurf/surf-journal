@@ -1177,7 +1177,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 
     <!-- LUNE + PECHE -->
     <div class="card" style="padding:16px;">
-      <div class="section-label" style="margin-bottom:10px;">Phase lunaire</div>
+      <div class="section-label" style="margin-bottom:10px;">🌙 Lune &amp; Pêche</div>
       <!-- Canvas + infos côte à côte -->
       <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;">
         <div style="flex-shrink:0;">
@@ -1187,7 +1187,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <div id="moon-info" style="flex:1;font-size:11px;line-height:1.4;padding-top:2px;"></div>
       </div>
       <!-- Infos marée dynamiques liées à la date -->
-      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
+      <div style="padding-top:8px;margin-top:8px;">
         <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span>🌊 Marnage du jour</span><span id="marnage-day" style="font-size:9px;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500;"></span></div>
         <div id="tide-marnage-wrap" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <!-- Jauge marnage SVG animée -->
@@ -1204,7 +1204,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
           </div>
         </div>
       </div>
-      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
+      <div style="padding-top:8px;margin-top:8px;">
         <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span>🎣 Activité de pêche</span><span id="fishing-day" style="font-size:9px;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500;"></span></div>
         <div id="fishing-score"></div>
         <!-- Timeline solunaire du jour (2.2) -->
@@ -1246,14 +1246,14 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     </div>
   </div><!-- fin grid 2 col -->
 
-  <!-- ORBITE dans son propre cadre pleine largeur -->
-  <div class="card" style="margin-bottom:12px;padding:16px;">
-    <div class="section-label" style="margin-bottom:8px;">🌍 Système Soleil · Terre · Lune</div>
-    <div style="display:flex;justify-content:center;">
+  <!-- ORBITE — pédagogique, repliée par défaut (2.3) -->
+  <details class="card" style="margin-bottom:12px;padding:16px;">
+    <summary style="cursor:pointer;font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">🌍 Comprendre les marées (Soleil · Terre · Lune)</summary>
+    <div style="display:flex;justify-content:center;margin-top:12px;">
       <canvas id="orbit-canvas" width="500" height="320" style="width:100%;max-width:500px;"></canvas>
     </div>
     <div style="font-size:9px;color:var(--faint);text-align:center;margin-top:6px;">Schéma pédagogique · Orbite quasi-circulaire · Sens antihoraire (vue pôle Nord)</div>
-  </div>
+  </details>
 
   <div style="display:none;"><!-- dummy --></div>
 
@@ -6806,9 +6806,13 @@ function drawTideMarnage(year,month,day) {
 
   var marnage = (pmH!==null && bmH!==null) ? +(pmH-bmH).toFixed(2) : null;
 
-  // Coefficient estimé depuis le marnage (Nouméa: marnage max ~1.6m = coef 120, min ~0.3m = coef 20)
-  var coef = marnage ? Math.round(20 + (marnage/1.6)*100) : null;
-  if(coef) coef = Math.max(20, Math.min(120, coef));
+  // Coefficient : VRAI coef SHOM (tidal_coefficient) s'il est fourni par meteo.nc ;
+  // sinon un INDICE estimé depuis le marnage (clairement libellé — PAS un coef officiel).
+  var realCoef = null;
+  allEvts.forEach(function(e){ if(e.coef!=null && e.ms>=todayStart && e.ms<=todayEnd) realCoef = Math.max(realCoef||0, Math.round(e.coef)); });
+  var estIndex = marnage ? Math.max(20, Math.min(120, Math.round(20 + (marnage/1.6)*100))) : null;
+  var coef = (realCoef!=null) ? realCoef : estIndex; // valeur de l'anneau
+  var coefIsReal = (realCoef!=null);
 
   // Jauge circulaire arc (0-120)
   var circumf = 2*Math.PI*20; // r=20 → ~125.7
@@ -6819,12 +6823,13 @@ function drawTideMarnage(year,month,day) {
   arcEl.setAttribute('stroke', arcCol);
   if(coefEl) coefEl.textContent = coef ? coef : '—';
 
-  // Info marnage
-  var marnLbl = !marnage?'—':marnage<0.5?'Morte-eau':marnage<0.8?'Faibles':marnage<1.1?'Moyennes':'Vives-eaux';
+  // Info marnage : le MARNAGE EN MÈTRES en grand (donnée réelle), libellé vives/mortes-eaux,
+  // puis le nombre de l'anneau nommé honnêtement (coef SHOM vs indice estimé).
+  var marnLbl = !marnage?'—':marnage<0.5?'Mortes-eaux':marnage<0.8?'Faibles':marnage<1.1?'Moyennes':'Vives-eaux';
   if(infoEl) infoEl.innerHTML =
-    (marnage?'Marnage <b style="color:'+arcCol+';">'+(marnage.toFixed(2))+'m</b>  ':'')
+    (marnage?'<b style="font-size:16px;font-family:var(--font-d);color:'+arcCol+';">'+marnage.toFixed(2)+' m</b> ':'')
     +'<span style="color:'+arcCol+';">'+marnLbl+'</span>'
-    +(coef?'<br><span style="color:var(--faint);font-size:9px;">Coeff. estimé ~'+coef+'</span>':'')
+    +(coef?'<br><span style="color:var(--faint);font-size:9px;">'+(coefIsReal?('Coef SHOM '+coef):('Indice estimé ~'+coef+' · pas un coef SHOM'))+'</span>':'')
     +(usingFallback?'<br><span style="color:var(--faint);font-size:9px;">harmoniques (fallback)</span>':'');
 
   // Badge jour affiché (lève l'ambiguïté Aujourd'hui / autre date)
