@@ -1207,6 +1207,10 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
         <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span>🎣 Activité de pêche</span><span id="fishing-day" style="font-size:9px;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500;"></span></div>
         <div id="fishing-score"></div>
+        <!-- Timeline solunaire du jour (2.2) -->
+        <canvas id="solunar-timeline" style="width:100%;height:46px;display:block;margin-top:8px;border-radius:6px;background:rgba(0,0,0,.15);"></canvas>
+        <div id="solunar-legend" style="font-size:9px;color:var(--faint);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;"></div>
+        <div id="solunar-best" style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.6;"></div>
       </div>
     </div>
 
@@ -6569,6 +6573,133 @@ function renderTideCurve(offset) {
 function _isMareeToday(y,m,d){ if(!(y&&m&&d))return true; var n=new Date(); return y===n.getFullYear()&&m===n.getMonth()+1&&d===n.getDate(); }
 function _mareeDayShort(y,m,d){ return new Date(y,m-1,d).toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }
 
+// ─── ÉPHÉMÉRIDE LUNAIRE (2.2) — algo Schlyter, ~2', vérifié rise≈coucher soleil à la PL ───
+var _NC_LAT = -22.27, _NC_LON = 166.45; // Nouméa
+function _revDeg(x){ return ((x%360)+360)%360; }
+// Position équatoriale géocentrique de la Lune. jd_d = jours depuis 2000-01-01 00h UT.
+function _moonRaDec(jd_d){
+  var RAD=Math.PI/180;
+  var N=_revDeg(125.1228-0.0529538083*jd_d), i=5.1454, w=_revDeg(318.0634+0.1643573223*jd_d);
+  var a=60.2666, e=0.054900, M=_revDeg(115.3654+13.0649929509*jd_d);
+  var E=M+(180/Math.PI)*e*Math.sin(M*RAD)*(1+e*Math.cos(M*RAD));
+  for(var k=0;k<5;k++){ E=E-(E-(180/Math.PI)*e*Math.sin(E*RAD)-M)/(1-e*Math.cos(E*RAD)); }
+  var xv=a*(Math.cos(E*RAD)-e), yv=a*Math.sqrt(1-e*e)*Math.sin(E*RAD);
+  var v=_revDeg(Math.atan2(yv,xv)/RAD), r=Math.sqrt(xv*xv+yv*yv);
+  var xh=r*(Math.cos(N*RAD)*Math.cos((v+w)*RAD)-Math.sin(N*RAD)*Math.sin((v+w)*RAD)*Math.cos(i*RAD));
+  var yh=r*(Math.sin(N*RAD)*Math.cos((v+w)*RAD)+Math.cos(N*RAD)*Math.sin((v+w)*RAD)*Math.cos(i*RAD));
+  var zh=r*(Math.sin((v+w)*RAD)*Math.sin(i*RAD));
+  var lon=_revDeg(Math.atan2(yh,xh)/RAD), lat=Math.atan2(zh,Math.sqrt(xh*xh+yh*yh))/RAD;
+  var Ms=_revDeg(356.0470+0.9856002585*jd_d), ws=282.9404+4.70935e-5*jd_d;
+  var Ls=_revDeg(ws+Ms), Lm=_revDeg(N+w+M), D=_revDeg(Lm-Ls), F=_revDeg(Lm-N);
+  lon+= -1.274*Math.sin((M-2*D)*RAD)+0.658*Math.sin(2*D*RAD)-0.186*Math.sin(Ms*RAD)
+        -0.059*Math.sin((2*M-2*D)*RAD)-0.057*Math.sin((M-2*D+Ms)*RAD)+0.053*Math.sin((M+2*D)*RAD)
+        +0.046*Math.sin((2*D-Ms)*RAD)+0.041*Math.sin((M-Ms)*RAD)-0.035*Math.sin(D*RAD)
+        -0.031*Math.sin((M+Ms)*RAD)-0.015*Math.sin((2*F-2*D)*RAD)+0.011*Math.sin((M-4*D)*RAD);
+  lat+= -0.173*Math.sin((F-2*D)*RAD)-0.055*Math.sin((M-F-2*D)*RAD)-0.046*Math.sin((M+F-2*D)*RAD)
+        +0.033*Math.sin((F+2*D)*RAD)+0.017*Math.sin((2*M+F)*RAD);
+  var ecl=23.4393-3.563e-7*jd_d;
+  var xe=Math.cos(lon*RAD)*Math.cos(lat*RAD);
+  var ye=Math.sin(lon*RAD)*Math.cos(lat*RAD)*Math.cos(ecl*RAD)-Math.sin(lat*RAD)*Math.sin(ecl*RAD);
+  var ze=Math.sin(lon*RAD)*Math.cos(lat*RAD)*Math.sin(ecl*RAD)+Math.sin(lat*RAD)*Math.cos(ecl*RAD);
+  return { ra:_revDeg(Math.atan2(ye,xe)/RAD), dec:Math.atan2(ze,Math.sqrt(xe*xe+ye*ye))/RAD, Ls:Ls };
+}
+function _moonAltDeg(dateUTC){
+  var RAD=Math.PI/180;
+  var jd_d=(dateUTC.getTime()/86400000)+(2440587.5-2451543.5);
+  var md=_moonRaDec(jd_d);
+  var ut=dateUTC.getUTCHours()+dateUTC.getUTCMinutes()/60+dateUTC.getUTCSeconds()/3600;
+  var LST=_revDeg(_revDeg(md.Ls+180)+ut*15+_NC_LON);
+  var HA=_revDeg(LST-md.ra); if(HA>180)HA-=360;
+  return Math.asin(Math.sin(_NC_LAT*RAD)*Math.sin(md.dec*RAD)+Math.cos(_NC_LAT*RAD)*Math.cos(md.dec*RAD)*Math.cos(HA*RAD))/RAD;
+}
+// Lever/coucher/transit (sup. et inf.) de la Lune pour un jour NC local (UTC+11), en minutes 0..1440
+function _moonEvents(y,m,d){
+  var h0=0.125, prev=null, rise=null, set=null, maxA=-99, maxT=null, minA=99, minT=null;
+  for(var min=0;min<=1440;min+=5){
+    var utc=new Date(Date.UTC(y,m-1,d,0,0,0)-11*3600000+min*60000);
+    var a=_moonAltDeg(utc);
+    if(a>maxA){maxA=a;maxT=min;} if(a<minA){minA=a;minT=min;}
+    if(prev!==null){ if(prev<h0&&a>=h0)rise=min; if(prev>=h0&&a<h0)set=min; }
+    prev=a;
+  }
+  return { rise:rise, set:set, transit:maxT, transitAlt:maxA, lower:minT };
+}
+// Synthèse solunaire du jour : périodes majeures/mineures, marées, soleil, meilleurs créneaux, score
+function _solunarDay(y,m,d,moonScore){
+  var isToday=_isMareeToday(y,m,d);
+  var ev=_moonEvents(y,m,d);
+  function band(c,half){ if(c==null)return null; return [Math.max(0,c-half), Math.min(1440,c+half)]; }
+  var major=[]; [ev.transit,ev.lower].forEach(function(c){ var b=band(c,60); if(b)major.push(b); });
+  var minor=[]; [ev.rise,ev.set].forEach(function(c){ var b=band(c,30); if(b)minor.push(b); });
+  // Marées du jour (NC local) depuis le cache
+  var tides=[];
+  if(_ncTideCache&&_ncTideCache.properties&&_ncTideCache.properties.tide){
+    var dayStartUTC=Date.UTC(y,m-1,d,0,0,0)-11*3600000;
+    var addT=function(arr,type){ (arr||[]).forEach(function(e){
+      var t=e.time; var ms=(t&&!t.endsWith('Z')&&!t.match(/[+-]\d{2}:\d{2}$/))?new Date(t+'Z').getTime()-11*3600000:new Date(t).getTime();
+      if(ms>=dayStartUTC&&ms<dayStartUTC+86400000) tides.push({min:Math.round((ms-dayStartUTC)/60000),type:type,h:e.tidal_height});
+    }); };
+    addT(_ncTideCache.properties.tide.high_tide,'pm'); addT(_ncTideCache.properties.tide.low_tide,'bm');
+  }
+  var sun=calcSunTimes(y,m,d); var sr=(sun&&sun.sunrise)?parseHM(sun.sunrise):null, ss=(sun&&sun.sunset)?parseHM(sun.sunset):null;
+  // Classement des créneaux
+  var periods=[];
+  major.forEach(function(b){ periods.push({b:b,kind:'majeure',w:2}); });
+  minor.forEach(function(b){ periods.push({b:b,kind:'mineure',w:1}); });
+  periods.forEach(function(p){
+    var mid=(p.b[0]+p.b[1])/2; p.mid=mid; p.score=p.w;
+    p.tide=tides.filter(function(t){ return Math.abs(t.min-mid)<=60; })[0]||null;
+    if(p.tide)p.score+=1;
+    p.dawn=(sr!=null&&Math.abs(mid-sr)<=45); p.dusk=(ss!=null&&Math.abs(mid-ss)<=45);
+    if(p.dawn||p.dusk)p.score+=0.7;
+  });
+  periods.sort(function(a,b){ return b.score-a.score; });
+  var tideOverlap=periods.some(function(p){ return p.kind==='majeure'&&p.tide; })?1:0;
+  var dawnDuskAny=periods.some(function(p){ return p.dawn||p.dusk; })?1:0;
+  var ms2=(moonScore!=null)?moonScore:0;
+  var dayScore=Math.max(0,Math.min(1, ms2*0.6 + tideOverlap*0.25 + dawnDuskAny*0.15));
+  return { isToday:isToday, major:major, minor:minor, tides:tides, sunrise:sr, sunset:ss, periods:periods, dayScore:dayScore, ev:ev };
+}
+function _hmMin(min){ return String(Math.floor(min/60)).padStart(2,'0')+'h'+String(Math.round(min)%60).padStart(2,'0'); }
+// Bande horaire 00h→24h du jour (DPR) : majeures/mineures + PM/BM + aube/crépuscule + maintenant
+function drawSolunarTimeline(y,m,d,solun){
+  var cv=document.getElementById('solunar-timeline'); if(!cv) return;
+  var dpr=Math.min(window.devicePixelRatio||1,3);
+  var cssW=cv.clientWidth||cv.offsetWidth||320, cssH=46;
+  cv.width=cssW*dpr; cv.height=cssH*dpr; cv.style.height=cssH+'px';
+  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  var W=cssW,H=cssH; g.clearRect(0,0,W,H);
+  var X=function(min){ return min/1440*W; };
+  g.fillStyle='rgba(255,255,255,0.03)'; g.fillRect(0,0,W,H);
+  // nuit (avant lever / après coucher soleil) + bandes aube/crépuscule
+  if(solun.sunrise!=null&&solun.sunset!=null){
+    g.fillStyle='rgba(20,40,80,0.30)';
+    g.fillRect(0,0,X(solun.sunrise),H); g.fillRect(X(solun.sunset),0,W-X(solun.sunset),H);
+    g.fillStyle='rgba(232,160,87,0.22)';
+    g.fillRect(X(solun.sunrise)-3,0,6,H); g.fillRect(X(solun.sunset)-3,0,6,H);
+  }
+  // mineures (lever/coucher lune)
+  g.fillStyle='rgba(79,163,199,0.22)';
+  solun.minor.forEach(function(p){ g.fillRect(X(p[0]),0,Math.max(2,X(p[1])-X(p[0])),H); });
+  // majeures (transits) — fort
+  g.fillStyle='rgba(61,186,138,0.40)';
+  solun.major.forEach(function(p){ g.fillRect(X(p[0]),0,Math.max(2,X(p[1])-X(p[0])),H); });
+  // graduations heures
+  [0,6,12,18,24].forEach(function(h){ var xx=X(h*60);
+    if(h>0&&h<24){ g.strokeStyle='rgba(255,255,255,0.08)'; g.lineWidth=1; g.beginPath(); g.moveTo(xx,10); g.lineTo(xx,H); g.stroke(); }
+    g.fillStyle='rgba(255,255,255,0.40)'; g.font='8px DM Mono,monospace'; g.textAlign='center';
+    g.fillText(h+'h', Math.min(W-7,Math.max(7,xx)), 8);
+  });
+  // PM/BM
+  solun.tides.forEach(function(t){ var c=t.type==='pm'?'#4fa3c7':'#e05c5c';
+    g.strokeStyle=c; g.lineWidth=1.5; g.beginPath(); g.moveTo(X(t.min),11); g.lineTo(X(t.min),H); g.stroke();
+    g.fillStyle=c; g.font='8px DM Mono,monospace'; g.textAlign='center'; g.fillText(t.type==='pm'?'▲':'▼', X(t.min), H-2);
+  });
+  // maintenant
+  if(solun.isToday){ var nm=new Date().getHours()*60+new Date().getMinutes();
+    g.strokeStyle='#fde068'; g.lineWidth=1.5; g.beginPath(); g.moveTo(X(nm),0); g.lineTo(X(nm),H); g.stroke(); }
+}
+
 function drawFishingScore(year,month,day){
   var el=document.getElementById('fishing-score'); if(!el) return;
   var isToday = _isMareeToday(year,month,day);
@@ -6594,7 +6725,9 @@ function drawFishingScore(year,month,day){
       tideScore=Math.max(tideScore,Math.max(0,1-dist/120));
     });
   }
-  var total=Math.round((tideScore*0.5+moonScore*0.5)*5);
+  // Synthèse du jour (2.2) : solunaire + chevauchement marée + aube/crépuscule
+  var solun=_solunarDay(year,month,day,moonScore);
+  var total=Math.max(0,Math.min(5,Math.round(solun.dayScore*5)));
   // Poissons SVG animés pour le score pêche
   var labels=['Nulle','Faible','Moyenne','Bonne','Tres bonne','Excellente'];
   var col = total>=4?'#3dba8a':total>=3?'#4fa3c7':total>=2?'#e8a057':'#7a94aa';
@@ -6610,11 +6743,25 @@ function drawFishingScore(year,month,day){
   for(var fi=0;fi<5;fi++) fishHTML += fishSVG(fi<total);
   el.innerHTML='<div style="display:flex;gap:2px;align-items:center;margin-bottom:3px;">'+fishHTML+'</div>'
     +'<div style="font-size:10px;color:'+col+';font-weight:600;">'+labels[total]+'</div>'
-    +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité de pêche maximale (théorie solunaire). Quartiers = mortes-eaux, activité minimale." style="font-size:9px;color:var(--faint);margin-top:1px;cursor:help;">Marée: '+(tideScore*100|0)+'% · Lune: '+(moonScore*100|0)+'% <span style="opacity:.6">ⓘ</span></div>';
+    +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité maximale (théorie solunaire). Périodes majeures = transits lunaires (lune au plus haut/plus bas) ; mineures = lever/coucher de lune." style="font-size:10px;color:var(--faint);margin-top:1px;cursor:help;">Lune solunaire '+(moonScore*100|0)+'% · synthèse jour '+Math.round(solun.dayScore*100)+'% <span style="opacity:.6">ⓘ</span></div>';
 
-  // Badge jour + marnage dynamique (suivent le jour affiché)
+  // Badge jour
   var fday=document.getElementById('fishing-day');
   if(fday) fday.textContent = isToday ? "Aujourd'hui" : _mareeDayShort(year,month,day);
+
+  // Timeline solunaire + meilleurs créneaux + légende (2.2)
+  drawSolunarTimeline(year,month,day,solun);
+  var bestEl=document.getElementById('solunar-best');
+  if(bestEl){
+    var bw=solun.periods.filter(function(p){return p.score>=2;}).slice(0,3).map(function(p){
+      var parts=[p.kind]; if(p.tide)parts.push(p.tide.type.toUpperCase()); if(p.dawn)parts.push('aube'); if(p.dusk)parts.push('crépuscule');
+      return '<b style="color:var(--text);">'+_hmMin(p.b[0])+'–'+_hmMin(p.b[1])+'</b> · '+parts.join(' + ');
+    }).join('<br>');
+    bestEl.innerHTML = bw ? ('🎯 Meilleurs créneaux :<br>'+bw) : 'Aucun créneau marquant ce jour.';
+  }
+  var legEl=document.getElementById('solunar-legend');
+  if(legEl) legEl.innerHTML='<span style="color:#3dba8a;">▮ majeure</span> <span style="color:#4fa3c7;">▮ mineure</span> <span style="color:#4fa3c7;">▲ PM</span> <span style="color:#e05c5c;">▼ BM</span> <span style="color:#e8a057;">▮ aube/crép.</span>';
+
   drawTideMarnage(year,month,day);
 }
 
