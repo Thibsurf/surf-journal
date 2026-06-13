@@ -16,6 +16,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Cœur pur testable : soldes, bidons event-sourcés, FOB (voir test_fuel.html) -->
+<script src="assets/fuel-core.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 
 <style>
@@ -1991,66 +1993,16 @@ async function loadLogs(){
 }
 
 // ── FOB — méthode aviatique chaîne comptable ──────────────────────────────────
+let _fobInfo=null; // dernier résultat FOB (pour le diagnostic : ancrage, overfill)
 function computeFOB(){
   estimatedLevel=null;
   if(!boat?.tank_l){document.getElementById('gaugeWrap').style.display='none';return;}
   const tank=boat.tank_l;
 
-  const sorted=[...allLogs].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-
-  // Trouver le dernier "anchor point" :
-  //  • correction explicite (mesure dipstick) = ancre forte
-  //  • refuel avec full_tank coché ET volume >= 50% tank = ancre (sinon flag douteux)
-  let anchorIdx=-1,anchorLevel=null;
-  for(let i=sorted.length-1;i>=0;i--){
-    const l=sorted[i];
-    if(l.type==='correct'){
-      anchorIdx=i; anchorLevel=l.liters; break;
-    }
-    if(l.type==='refuel'&&l.full_tank&&(l.liters||0)>=tank*0.5){
-      // Plein ras coché + volume crédible → on peut ancrer au tank max
-      anchorIdx=i; anchorLevel=tank; break;
-    }
-  }
-
-  // Si pas d'anchor → chercher premier ravitaillement (ancrage faible)
-  if(anchorIdx<0){
-    for(let i=0;i<sorted.length;i++){
-      if(sorted[i].type==='refuel'){
-        anchorIdx=i;
-        anchorLevel=Math.min(sorted[i].liters||0,tank);
-        break;
-      }
-    }
-  }
-
-  let level=null,logsSinceAnchor=0,confidence=0;
-
-  if(anchorIdx>=0){
-    level=anchorLevel;
-    // Chaîne comptable depuis l'anchor
-    for(let i=anchorIdx+1;i<sorted.length;i++){
-      const l=sorted[i];
-      if(l.type==='refuel')     level=Math.min(level+(l.liters||0),tank);
-      else if(l.type==='cruise')level=Math.max(level-(l.liters||0),0);
-      else if(l.type==='correct'){level=l.liters;logsSinceAnchor=0;continue;}
-      // Verser bidon dans réservoir
-      else if(l.type==='pour')  level=Math.min(level+(l.liters||0),tank);
-      logsSinceAnchor++;
-    }
-    // Confiance FOB (inspiré aviation fuel state)
-    const anchorLog=sorted[anchorIdx];
-    const isExact=anchorLog.type==='correct'||anchorLog.full_tank;
-    if(logsSinceAnchor===0&&isExact)        confidence=5;
-    else if(logsSinceAnchor<=2&&isExact)    confidence=4;
-    else if(logsSinceAnchor<=2)             confidence=4;
-    else if(logsSinceAnchor<=5)             confidence=3;
-    else if(logsSinceAnchor<=10)            confidence=2;
-    else                                     confidence=1;
-  } else {
-    confidence=0;
-  }
-
+  // Calcul pur, testé (fuel-core) — FIX 1.5 : un plein ras ancre TOUJOURS au tank
+  const fob=FuelCore.computeFOB(allLogs, tank);
+  _fobInfo=fob;
+  const level=fob.level, confidence=fob.confidence, logsSinceAnchor=fob.logsSinceAnchor;
   estimatedLevel=level;
 
   // Incertitude croissante (2% par log depuis anchor, max 35%)
@@ -3202,39 +3154,19 @@ function renderCharts(){
   const measured=cruises.filter(l=>l.distance_nm&&l.liters);
   const measuredWithLoad=measured.filter(l=>l.weight_kg||l.pax);
 
-  // ── Balance (always computed on allLogs, not filtered) ──
-  function getLogSplit(l){if(l.split&&typeof l.split==='object')return l.split;if(l.note&&l.note.includes('SPLIT:')){try{const m=l.note.match(/SPLIT:(\{.*?\})(?:\s|$)/);if(m)return JSON.parse(m[1]);}catch(e){}}return null;}
-  function isReimburseLog(l){return l.type==='reimburse'||(l.note&&l.note.includes('__REMB__'));}
-  function isShareable(l){if(isReimburseLog(l))return false;if(!l.total_price||l.total_price<=0)return false;return l.type==='refuel'||l.type==='bidon_fill'||l.type==='cruise'||l.type==='expense';}
-  function computeShares(l){const total=l.total_price;const split=getLogSplit(l);if(split&&split.shares){const out={};_members.forEach(m=>{out[m.id]=split.shares[m.id]||0;});return out;}const out={};_members.forEach(m=>{out[m.id]=total/_members.length;});return out;}
-  const knownIds=new Set(_members.map(m=>m.id));
-  const unknownPayerIds=new Set();
-  let totalGlobal=0,unattributed=0;
-  const paid={},owed={};
-  _members.forEach(m=>{paid[m.id]=0;owed[m.id]=0;});
-  allLogs.forEach(l=>{if(!isShareable(l))return;const total=l.total_price;totalGlobal+=total;const payer=l.paid_by;if(payer&&knownIds.has(payer)){paid[payer]+=total;}else{if(payer&&!knownIds.has(payer))unknownPayerIds.add(payer);unattributed+=total;}const shares=computeShares(l);Object.entries(shares).forEach(([uid,amt])=>{if(owed[uid]!==undefined)owed[uid]+=amt;});});
-  const fairShare=_members.length?totalGlobal/_members.length:0;
-  const reimbursed={};_members.forEach(m=>{reimbursed[m.id]={};});
-  allLogs.forEach(l=>{if(!isReimburseLog(l)||!l.total_price)return;const from=l.paid_by;if(!from||!knownIds.has(from))return;const m=l.note&&l.note.match(/__REMB_TO:([^_]+)__/);const toId=m&&knownIds.has(m[1])?m[1]:(_members.filter(x=>x.id!==from)[0]||{}).id;if(!toId)return;reimbursed[from][toId]=(reimbursed[from][toId]||0)+l.total_price;});
-  const balance={};
-  _members.forEach(m=>{const meId=m.id;let rembOut=0,rembIn=0;_members.forEach(other=>{if(other.id===meId)return;rembOut+=(reimbursed[meId][other.id]||0);rembIn+=(reimbursed[other.id][meId]||0);});balance[meId]={paid:paid[meId],owed:owed[meId],fairShare,rembOut,rembIn,total:(paid[meId]-owed[meId])+(rembOut-rembIn)};});
-  const totalReimbursed=Object.values(reimbursed).reduce((s,o)=>s+Object.values(o).reduce((ss,v)=>ss+v,0),0);
+  // ── Balance (toujours sur allLogs, pas filtré) — cœur PUR testé : fuel-core ──
+  // (split/remb lus colonne d'abord + note legacy en fallback ; détecte unattributed,
+  //  payeur inconnu et remb ambigu — voir test_fuel.html)
+  const _bal=FuelCore.computeBalances(allLogs,_members);
+  const balance=_bal.balance;
+  const rows=_bal.rows;                       // {m,id,label,paid,owed,fairShare,rembOut,rembIn,total}
+  const transfers=_bal.transfers;             // {fromId,from,toId,to,amt}
+  const unattributed=_bal.unattributed;
+  const unknownPayerIds=new Set(_bal.unknownPayerIds);
+  const totalGlobal=_bal.totals.totalGlobal;
+  const fairShare=_bal.totals.fairShare;
   const totalBoatExpense=totalGlobal;
-
-  // ── Balance transfers ──
-  const rows=_members.map(m=>({m,...balance[m.id]}));
-  const debtors=rows.filter(r=>r.total<-1).sort((a,b)=>a.total-b.total);
-  const creditors=rows.filter(r=>r.total>1).sort((a,b)=>b.total-a.total);
-  const transfers=[];
-  const debCopy=debtors.map(r=>({...r,rem:-r.total}));
-  const credCopy=creditors.map(r=>({...r,rem:r.total}));
-  let di=0,ci=0;
-  while(di<debCopy.length&&ci<credCopy.length){
-    const amt=Math.min(debCopy[di].rem,credCopy[ci].rem);
-    if(amt>1)transfers.push({from:debCopy[di].m.label,to:credCopy[ci].m.label,amt:Math.round(amt)});
-    debCopy[di].rem-=amt;credCopy[ci].rem-=amt;
-    if(debCopy[di].rem<1)di++;if(credCopy[ci].rem<1)ci++;
-  }
+  let totalReimbursed=0; rows.forEach(r=>{totalReimbursed+=r.rembOut;});
 
   // ── Bidon display ──
   const totalBidonFilled=allLogs.filter(l=>l.type==='bidon_fill').reduce((s,l)=>s+(l.liters||0),0);
