@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tests fuel-core — Cool Breeze</title>
+<style>
+  body{font-family:DM Mono,ui-monospace,monospace;background:#0a1424;color:#e7eef7;margin:0;padding:18px;font-size:13px;line-height:1.5}
+  h1{font-size:16px;margin:0 0 12px}
+  .row{padding:6px 10px;border-radius:8px;margin-bottom:5px;border:1px solid rgba(255,255,255,.06)}
+  .pass{background:rgba(16,185,129,.10);border-color:rgba(16,185,129,.3)}
+  .fail{background:rgba(244,63,94,.12);border-color:rgba(244,63,94,.4)}
+  .ico{font-weight:700;margin-right:6px}
+  .detail{color:#8aa;font-size:11px}
+  #summary{font-size:15px;font-weight:700;margin:10px 0;padding:8px 12px;border-radius:8px}
+</style></head>
+<body>
+<h1>🧪 Tests fuel-core (PHASE 1) — page locale, non déployée</h1>
+<div id="summary">…</div>
+<div id="results"></div>
+
+<!-- NON déployé : test_fuel.html est exclu du build (cf .wranglerignore / à ne pas linker) -->
+<script src="assets/fuel-core.js"></script>
+<script>
+// ── Suite de tests pure (réutilisable en navigateur ET via node) ──────────────
+function runFuelTests(){
+  var F = (typeof window!=='undefined'?window:globalThis).FuelCore;
+  var R = [];
+  function ok(name, cond, detail){ R.push({name:name, pass:!!cond, detail:detail||''}); }
+  function approx(a,b,eps){ return Math.abs(a-b) <= (eps==null?0.5:eps); }
+
+  var A='aaaaaaaa', B='bbbbbbbb', C='cccccccc';
+  var m2=[{id:A,label:'Thib'},{id:B,label:'Lucas'}];
+  var m3=[{id:A,label:'Thib'},{id:B,label:'Lucas'},{id:C,label:'Max'}];
+
+  // ── 1.6 : somme des soldes = 0 (mix split colonne + split note + remb colonne + remb note legacy) ──
+  var logsBal=[
+    {type:'refuel',  total_price:10000, paid_by:A, created_at:'2026-06-01T00:00:00Z'},                                   // 5000/5000
+    {type:'expense', total_price:4000,  paid_by:B, split:{shares:{}}, created_at:'2026-06-02T00:00:00Z'},                // col split (rempli ci-dessous)
+    {type:'refuel',  total_price:6000,  paid_by:B, note:'plein SPLIT:{"shares":{"'+A+'":4000,"'+B+'":2000}}', created_at:'2026-06-03T00:00:00Z'}, // note split
+    {type:'reimburse',total_price:2000, paid_by:A, reimburse_to:B, created_at:'2026-06-04T00:00:00Z'},                   // remb colonne
+    {type:'expense', total_price:1000,  paid_by:B, note:'remb __REMB__ __REMB_TO:'+A+'__', created_at:'2026-06-05T00:00:00Z'} // remb note legacy
+  ];
+  logsBal[1].split.shares[A]=1000; logsBal[1].split.shares[B]=3000;
+  var bal=F.computeBalances(logsBal, m2);
+  var sum=bal.rows.reduce(function(s,r){return s+r.total;},0);
+  ok('Somme des soldes = 0 (mix colonnes+notes)', approx(sum,0), 'somme='+sum.toFixed(2)+' | '+bal.rows.map(function(r){return r.label+':'+Math.round(r.total);}).join(' '));
+  ok('Aucune dépense non attribuée dans le fixture propre', bal.unattributed===0, 'unattributed='+bal.unattributed);
+
+  // split colonne et split note donnent bien des parts asymétriques
+  ok('Split colonne respecté (owed Lucas inclut 3000)', bal.balance[B].owed>=3000, 'owed B='+bal.balance[B].owed.toFixed(0));
+
+  // ── 1.3 : dépenses sans payeur détectées + comptées en unattributed ──
+  var logsUn=[
+    {type:'expense', total_price:5000, paid_by:null, created_at:'2026-06-01T00:00:00Z'},
+    {type:'expense', total_price:2000, paid_by:'zzzz-inconnu', created_at:'2026-06-02T00:00:00Z'},
+    {type:'refuel',  total_price:3000, paid_by:A, created_at:'2026-06-03T00:00:00Z'}
+  ];
+  var balUn=F.computeBalances(logsUn, m2);
+  ok('Dépense sans payeur → unattributed', balUn.unattributed===7000, 'unattributed='+balUn.unattributed);
+  ok('Logs sans payeur listés (2)', balUn.unattributedLogs.length===2, 'n='+balUn.unattributedLogs.length);
+  ok('Payeur inconnu détecté', balUn.unknownPayerIds.indexOf('zzzz-inconnu')!==-1, balUn.unknownPayerIds.join(','));
+
+  // ── 1.4 : remboursement 3+ membres sans destinataire = ambigu ──
+  var logsAmb=[ {type:'reimburse', total_price:1000, paid_by:A, created_at:'2026-06-01T00:00:00Z'} ]; // pas de reimburse_to
+  var balAmb=F.computeBalances(logsAmb, m3);
+  ok('Remb sans destinataire à 3 membres → ambigu', balAmb.ambiguousReimb.length===1, 'ambigus='+balAmb.ambiguousReimb.length);
+  var balAmb2=F.computeBalances(logsAmb, m2);
+  ok('Remb sans destinataire à 2 membres → PAS ambigu (fallback exact)', balAmb2.ambiguousReimb.length===0, 'ambigus='+balAmb2.ambiguousReimb.length);
+
+  // ── 1.1 : bidons event-sourcés, état indépendant de l'ordre de chargement ──
+  var bidonLogs=[
+    {type:'bidon_fill',  bidon_id:'b1', bidon_cap:20, liters:20, created_at:'2026-06-01T00:00:00Z'}, // b1 → 20
+    {type:'bidon_fill',  bidon_id:'b2', bidon_cap:10, liters:5,  created_at:'2026-06-02T00:00:00Z'}, // b2 → 5
+    {type:'pour',        bidon_id:'b1',              liters:8,  created_at:'2026-06-03T00:00:00Z'},  // b1 → 12
+    {type:'bidon_fill',  bidon_id:'b1',              liters:5,  created_at:'2026-06-04T00:00:00Z'},  // b1 → 17
+    {type:'correct_bidon',bidon_id:'b2',            liters:3,  created_at:'2026-06-05T00:00:00Z'},   // b2 → 3
+    {type:'bidon_fill',  bidon_id:'b3', bidon_cap:20, liters:25, created_at:'2026-06-06T00:00:00Z'}, // clamp cap → 20
+    {type:'pour',        bidon_id:'b3',              liters:30, created_at:'2026-06-07T00:00:00Z'}   // clamp 0
+  ];
+  function levels(arr){ var o={}; F.rebuildBidonsFromLogs(arr).forEach(function(b){o[b.id]=b.level;}); return o; }
+  var lv1=levels(bidonLogs);
+  var lv2=levels(bidonLogs.slice().reverse());
+  var shuffled=bidonLogs.slice().sort(function(){return Math.random()-0.5;});
+  var lv3=levels(shuffled);
+  ok('Bidons : niveaux attendus (b1=17,b2=3,b3=0)', lv1.b1===17&&lv1.b2===3&&lv1.b3===0, JSON.stringify(lv1));
+  ok('Bidons : ordre inversé → même état', JSON.stringify(lv1)===JSON.stringify(lv2), JSON.stringify(lv2));
+  ok('Bidons : ordre aléatoire → même état', JSON.stringify(lv1)===JSON.stringify(lv3), JSON.stringify(lv3));
+  ok('Bidons : clamp cap (fill 25 sur cap 20 → 20)', lv1.b3===0, 'b3 final=0 (rempli 20 puis vidé)');
+  var capOnly=F.rebuildBidonsFromLogs([{type:'bidon_fill',bidon_id:'bx',bidon_cap:15,liters:99,created_at:'2026-06-01T00:00:00Z'}]);
+  ok('Bidons : fill > cap clampé à cap', capOnly[0].level===15, 'level='+capOnly[0].level);
+  ok('Bidons : log legacy sans bidon_id ignoré par le rebuild', F.rebuildBidonsFromLogs([{type:'bidon_fill',liters:10,created_at:'2026-06-01T00:00:00Z'}]).length===0, 'ok');
+
+  // ── 1.2 : migration legacy idempotente ──
+  var legacy=[
+    {type:'refuel', total_price:6000, paid_by:A, note:'plein SPLIT:{"shares":{"'+A+'":4000,"'+B+'":2000}}'},
+    {type:'expense',total_price:1000, paid_by:B, note:'remb __REMB__ __REMB_TO:'+A+'__'},
+    {type:'expense',total_price:500,  paid_by:B, note:'courses __REMB__'}  // 2 membres → résolu vers A
+  ];
+  // 1er passage : applique
+  var migrated=legacy.map(function(l){
+    var r=F.migrateLegacyLog(l, m2);
+    if(!r) return Object.assign({},l);
+    return Object.assign({},l,{split:r.split,reimburse_to:r.reimburse_to,note:r.note});
+  });
+  ok('Migration : split extrait en colonne', migrated[0].split&&migrated[0].split.shares[A]===4000, JSON.stringify(migrated[0].split));
+  ok('Migration : reimburse_to extrait (__REMB_TO:)', migrated[1].reimburse_to===A, 'remb_to='+migrated[1].reimburse_to);
+  ok('Migration : remb 2 membres sans destinataire → résolu', migrated[2].reimburse_to===A, 'remb_to='+migrated[2].reimburse_to);
+  ok('Migration : note nettoyée (plus de marqueurs)', migrated.every(function(l){return !/SPLIT:|__REMB__|__REMB_TO:/.test(l.note||'');}), migrated.map(function(l){return '"'+l.note+'"';}).join(' '));
+  ok('Migration : remboursements toujours détectés après nettoyage', F.isReimburseLog(migrated[1])&&F.isReimburseLog(migrated[2]), 'ok');
+  // 2e passage : idempotent (rien ne change)
+  var secondPass=migrated.map(function(l){var r=F.migrateLegacyLog(l,m2);return r&&r.changed;});
+  ok('Migration idempotente (2e passage ne change rien)', secondPass.every(function(c){return !c;}), 'changed='+JSON.stringify(secondPass));
+  // soldes identiques avant/après migration
+  var balLegacy=F.computeBalances(legacy, m2);
+  var balMigr=F.computeBalances(migrated, m2);
+  var sameBal=m2.every(function(mm){return approx(balLegacy.balance[mm.id].total, balMigr.balance[mm.id].total);});
+  ok('Migration : soldes inchangés (legacy == migré)', sameBal, 'legacy '+balLegacy.rows.map(function(r){return Math.round(r.total);}).join('/')+' vs migré '+balMigr.rows.map(function(r){return Math.round(r.total);}).join('/'));
+
+  // ── 1.5 : plein ras ancre toujours, quel que soit le volume ──
+  var fobSmall=F.computeFOB([{type:'refuel',full_tank:true,liters:10,created_at:'2026-06-01T00:00:00Z'}], 200);
+  ok('FOB : plein ras (10L) ancre à tank=200', fobSmall.level===200, 'level='+fobSmall.level+' conf='+fobSmall.confidence);
+  ok('FOB : plein ras → confiance max (5)', fobSmall.confidence===5, 'conf='+fobSmall.confidence);
+  var fobOver=F.computeFOB([{type:'refuel',full_tank:true,liters:250,created_at:'2026-06-01T00:00:00Z'}], 200);
+  ok('FOB : liters>tank → flag overfill, level=tank', fobOver.overfillFlag===true&&fobOver.level===200, 'flag='+fobOver.overfillFlag+' level='+fobOver.level);
+  var fobChain=F.computeFOB([
+    {type:'refuel',full_tank:true,liters:30,created_at:'2026-06-01T00:00:00Z'}, // ancre 200
+    {type:'cruise',liters:40,created_at:'2026-06-02T00:00:00Z'},                // 160
+    {type:'pour',liters:20,created_at:'2026-06-03T00:00:00Z'}                   // 180
+  ], 200);
+  ok('FOB : chaîne comptable (200-40+20=180)', fobChain.level===180, 'level='+fobChain.level);
+
+  return R;
+}
+
+// ── Rendu (navigateur uniquement) ──────────────────────────────────────────────
+if (typeof document !== 'undefined') {
+  function render(){
+    var R=runFuelTests();
+    var pass=R.filter(function(r){return r.pass;}).length;
+    var el=document.getElementById('results');
+    el.innerHTML=R.map(function(r){
+      return '<div class="row '+(r.pass?'pass':'fail')+'"><span class="ico">'+(r.pass?'✅':'❌')+'</span>'+r.name+
+        (r.detail?'<div class="detail">'+r.detail+'</div>':'')+'</div>';
+    }).join('');
+    var sm=document.getElementById('summary');
+    sm.textContent=pass+' / '+R.length+' tests OK';
+    sm.style.background=pass===R.length?'rgba(16,185,129,.15)':'rgba(244,63,94,.15)';
+    R.forEach(function(r){ console.log((r.pass?'PASS':'FAIL')+' — '+r.name+(r.detail?'  ['+r.detail+']':'')); });
+  }
+  if(window.FuelCore) render();
+  else window.addEventListener('load', render);
+}
+</script>
+</body></html>
