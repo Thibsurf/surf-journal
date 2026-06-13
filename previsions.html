@@ -1084,7 +1084,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <div id="uv-label" style="font-size:11px;font-weight:500;padding-bottom:3px;"></div>
       </div>
       <div style="height:6px;border-radius:3px;position:relative;background:linear-gradient(to right,#3dba8a,#a8d44a 25%,#e8a057 50%,#e05c5c 75%,#a855f7);">
-        <div id="uv-cursor" style="position:absolute;top:0;width:3px;height:100%;background:rgba(255,255,255,0.9);left:0%;box-shadow:0 0 4px rgba(0,0,0,.8);transition:left .5s;"></div>
+        <div id="uv-cursor" style="position:absolute;top:0;width:3px;height:100%;background:rgba(255,255,255,0.9);left:0%;box-shadow:0 0 4px rgba(0,0,0,.8);transition:left .6s ease;"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--faint);margin-top:3px;"><span>1</span><span>3</span><span>6</span><span>8</span><span>11+</span></div>
       <!-- Prévision UV 7 jours -->
@@ -1099,7 +1099,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
           <svg viewBox="0 0 24 72" style="width:22px;height:66px;">
             <rect x="8" y="4" width="8" height="46" rx="4" fill="rgba(255,255,255,0.06)" stroke="rgba(79,163,199,0.4)" stroke-width="1"/>
             <clipPath id="clip-water"><rect x="8" y="4" width="8" height="46" rx="4"/></clipPath>
-            <rect id="sst-mercury" x="8" y="50" width="8" height="0" fill="#4fa3c7" clip-path="url(#clip-water)"/>
+            <rect id="sst-mercury" x="8" y="50" width="8" height="0" fill="#4fa3c7" clip-path="url(#clip-water)" style="transition:y .6s ease,height .6s ease,fill .6s ease;"/>
             <circle cx="12" cy="57" r="6" fill="#4fa3c7" opacity="0.9"/>
             <circle cx="12" cy="57" r="3.5" fill="rgba(255,255,255,0.3)"/>
           </svg>
@@ -1115,7 +1115,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
           <svg viewBox="0 0 24 72" style="width:22px;height:66px;">
             <rect x="8" y="4" width="8" height="46" rx="4" fill="rgba(255,255,255,0.06)" stroke="rgba(232,160,87,0.4)" stroke-width="1"/>
             <clipPath id="clip-air"><rect x="8" y="4" width="8" height="46" rx="4"/></clipPath>
-            <rect id="air-mercury" x="8" y="50" width="8" height="0" fill="#e8a057" clip-path="url(#clip-air)"/>
+            <rect id="air-mercury" x="8" y="50" width="8" height="0" fill="#e8a057" clip-path="url(#clip-air)" style="transition:y .6s ease,height .6s ease,fill .6s ease;"/>
             <circle cx="12" cy="57" r="6" fill="#e8a057" opacity="0.9"/>
             <circle cx="12" cy="57" r="3.5" fill="rgba(255,255,255,0.3)"/>
           </svg>
@@ -1195,7 +1195,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
             <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
             <circle id="marnage-arc" cx="24" cy="24" r="20" fill="none" stroke="#4fa3c7" stroke-width="4"
               stroke-dasharray="0 126" stroke-linecap="round" stroke-dashoffset="31.5"
-              style="transition:stroke-dasharray 1s ease,stroke .5s;"/>
+              style="transition:stroke-dasharray .6s ease,stroke .6s ease;"/>
             <text id="marnage-coef" x="24" y="28" text-anchor="middle" font-size="10" font-weight="700" fill="#e8eef4" font-family="DM Sans">—</text>
           </svg>
           <div style="flex:1;min-width:0;">
