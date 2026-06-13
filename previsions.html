@@ -1184,7 +1184,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
           <canvas id="moon-canvas" width="110" height="110" style="display:block;border-radius:50%;"></canvas>
           <div id="moon-date-lbl" style="font-size:10px;color:var(--faint);text-align:center;margin-top:4px;"></div>
         </div>
-        <div id="moon-info" style="flex:1;font-size:10px;line-height:1.8;padding-top:4px;"></div>
+        <div id="moon-info" style="flex:1;font-size:11px;line-height:1.4;padding-top:2px;"></div>
       </div>
       <!-- Infos marée dynamiques liées à la date -->
       <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px;">
@@ -7273,6 +7273,15 @@ function drawMoon(year, month, day) {
 
   var cx = W/2, cy = H/2, R = W/2 - 4;
 
+  // ── 0. Halo lumineux derrière le disque (intensité ∝ illumination) ────────
+  var haloA = 0.05 + illum * 0.32; // discret à la NL, présent à la PL
+  var halo = ctx.createRadialGradient(cx, cy, R*0.85, cx, cy, R*1.3);
+  halo.addColorStop(0,    'rgba(150,180,230,'+haloA.toFixed(3)+')');
+  halo.addColorStop(0.5,  'rgba(120,150,210,'+(haloA*0.5).toFixed(3)+')');
+  halo.addColorStop(1,    'rgba(120,150,210,0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(cx, cy, R*1.3, 0, 2*Math.PI); ctx.fill();
+
   // ── 1. Fond étoilé ────────────────────────────────────────────────────
   ctx.fillStyle = '#070d1a';
   ctx.beginPath(); ctx.arc(cx, cy, R+4, 0, 2*Math.PI); ctx.fill();
@@ -7412,6 +7421,15 @@ function drawMoon(year, month, day) {
     ox.fillStyle='rgba(255,248,230,0.12)'; ox.fill();
   });
 
+  // ── 5b. Lumière cendrée (earthshine) : teinte bleu-gris la part sombre si illum<25% ──
+  if (illum < 0.25) {
+    var esA = (0.25 - illum) * 0.55; // ~0.14 à la nouvelle lune, 0 à 25%
+    ox.globalCompositeOperation = 'destination-over'; // derrière la part éclairée → ne touche que le sombre
+    ox.fillStyle = 'rgba(120,140,175,'+esA.toFixed(3)+')';
+    ox.beginPath(); ox.arc(cx, cy, R, 0, 2*Math.PI); ox.fill();
+    ox.globalCompositeOperation = 'source-over';
+  }
+
   // ── 6. Vignette bord (limbe sombre) ──────────────────────────────────────
   var limb = ox.createRadialGradient(cx, cy, R*0.72, cx, cy, R);
   limb.addColorStop(0,   'rgba(0,0,0,0)');
@@ -7426,42 +7444,40 @@ function drawMoon(year, month, day) {
   ctx.drawImage(oc, 0, 0, LOG, LOG); // oc physique (LOG*dpr) → LOG logique = net
   ctx.restore();
 
-    // ── 7. Anneau extérieur brillant ──────────────────────────────────────
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2*Math.PI);
-  ctx.strokeStyle = 'rgba(180,190,210,0.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+  // ── 7. Anneau d'illumination (longueur = % éclairé — même langage que la jauge marnage) ──
+  var ringR = R + 2.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, 2*Math.PI);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 2.5; ctx.stroke();
+  var ringCol = illum > 0.85 ? '#fde068' : illum > 0.5 ? '#e8dfc8' : illum > 0.2 ? '#a0bcd4' : '#6d86a0';
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, -Math.PI/2, -Math.PI/2 + Math.max(0.015, illum) * 2*Math.PI, false);
+  ctx.strokeStyle = ringCol; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.lineCap = 'butt';
 
   // ── 8. Info texte — à droite du canvas ─────────────────────────────────
+  // Sous le canvas : âge + illumination (2.1)
   var moonDateEl = document.getElementById('moon-date-lbl');
   if (moonDateEl) {
-    var moonDate = (year&&month&&day) ? new Date(Date.UTC(year,month-1,day)) : new Date();
-    moonDateEl.textContent = moonDate.toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
+    moonDateEl.textContent = 'Âge : J+' + Math.round(phase) + ' · Illumination ' + Math.round(illum*100) + '%';
   }
   var info = document.getElementById('moon-info');
   if (info) {
-    var nfStr = nextFull.toLocaleDateString('fr-FR', {day:'numeric', month:'long'});
-    var nnStr = nextNew.toLocaleDateString('fr-FR',  {day:'numeric', month:'long'});
+    var nfStr = nextFull.toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+    var nnStr = nextNew.toLocaleDateString('fr-FR',  {day:'numeric', month:'short'});
     var daysToFull = Math.round((nextFull - now) / 864e5);
     var daysToNew  = Math.round((nextNew  - now) / 864e5);
     var illumPct   = Math.round(illum * 100);
-    var barCol = illum > 0.85 ? '#fde068' : illum > 0.5 ? '#e8dfc8' : illum > 0.2 ? '#a0bcd4' : '#4d6680';
-    var barW = 80, barFill = Math.round(illum * barW);
     // Émojis miroir pour l'hémisphère SUD (le croissant est inversé G↔D vs le nord)
     var phaseEmoji = ['🌑','🌘','🌗','🌖','🌕','🌔','🌓','🌒'][phaseIdx];
+    function _moonRow(l,v){ return '<div style="display:flex;justify-content:space-between;gap:8px;padding:2.5px 0;border-bottom:1px solid rgba(255,255,255,.05);">'
+      + '<span style="color:var(--faint);">'+l+'</span><span style="color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;">'+v+'</span></div>'; }
     info.innerHTML =
-      '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:5px;">'
-      + phaseEmoji + ' ' + phaseName + '</div>'
-      + '<div style="margin-bottom:6px;">'
-      + '<div style="font-size:8px;color:var(--faint);margin-bottom:2px;">Illumination</div>'
-      + '<div style="display:flex;align-items:center;gap:5px;">'
-      + '<svg width="'+barW+'" height="5"><rect width="'+barW+'" height="5" fill="rgba(255,255,255,0.08)" rx="2.5"/>'
-      + '<rect width="'+barFill+'" height="5" fill="'+barCol+'" rx="2.5"/></svg>'
-      + '<span style="font-size:10px;color:'+barCol+';font-weight:600;">'+illumPct+'%</span>'
-      + '</div></div>'
-      + '<div style="font-size:9px;color:var(--muted);line-height:2;">'
-      + (illum < 0.5
-        ? '<span style="color:var(--faint);">Pleine lune</span><br><b style="color:var(--text);">'+nfStr+'</b> <span style="color:var(--faint);">(J+'+daysToFull+')</span>'
-        : '<span style="color:var(--faint);">Nouvelle lune</span><br><b style="color:var(--text);">'+nnStr+'</b> <span style="color:var(--faint);">(J+'+daysToNew+')</span>')
-      + '<br><span style="color:var(--faint);">Cycle : </span><b style="color:var(--text);">'+(phase).toFixed(1)+'j</b>'
+      '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:7px;">'+phaseEmoji+' '+phaseName+'</div>'
+      + '<div style="font-size:11px;line-height:1.35;">'
+      + _moonRow('Illumination', illumPct+'%')
+      + _moonRow('🌕 Pleine lune', nfStr+' · J+'+daysToFull)
+      + _moonRow('🌑 Nouvelle lune', nnStr+' · J+'+daysToNew)
       + '</div>';
   }
   drawFishingScore(year, month, day);
