@@ -7243,8 +7243,14 @@ function drawMoon(year, month, day) {
 
   var canvas = document.getElementById('moon-canvas');
   if (!canvas) return;
-  var W = canvas.width, H = canvas.height;
+  // Rendu net : résolution physique = DPR, coordonnées de dessin LOGIQUES (110)
+  var dpr = Math.min(window.devicePixelRatio || 1, 3);
+  var LOG = 110;
+  canvas.width = LOG*dpr; canvas.height = LOG*dpr;
+  canvas.style.width = '110px'; canvas.style.height = '110px';
   var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // dessiner en coords logiques 0..110
+  var W = LOG, H = LOG;                    // LOGIQUE (ne PAS lire canvas.width ici)
   ctx.clearRect(0, 0, W, H);
 
   var cx = W/2, cy = H/2, R = W/2 - 4;
@@ -7305,10 +7311,11 @@ function drawMoon(year, month, day) {
   lightGrad.addColorStop(0.8,  '#b8ac8a');
   lightGrad.addColorStop(1,    '#8c8070');
 
-  // Offscreen canvas pour dessiner la lune proprement
+  // Offscreen canvas pour dessiner la lune proprement (même résolution physique DPR)
   var oc = document.createElement('canvas');
-  oc.width = W; oc.height = H;
+  oc.width = LOG*dpr; oc.height = LOG*dpr;
   var ox = oc.getContext('2d');
+  ox.scale(dpr, dpr); // dessiner en coords logiques comme le ctx principal
 
   // Étape A : demi-disque éclairé (SUD : GAUCHE si croissante, DROIT si décroissante)
   ox.beginPath();
@@ -7398,7 +7405,7 @@ function drawMoon(year, month, day) {
   // ── Composer sur le canvas principal (clipper dans le disque) ─────────────
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2*Math.PI); ctx.clip();
-  ctx.drawImage(oc, 0, 0);
+  ctx.drawImage(oc, 0, 0, LOG, LOG); // oc physique (LOG*dpr) → LOG logique = net
   ctx.restore();
 
     // ── 7. Anneau extérieur brillant ──────────────────────────────────────
