@@ -346,7 +346,11 @@ select option{background:var(--s2)}
     <div class="card">
       <div class="card-head">
         <div class="card-title">📋 Historique</div>
-        <button class="btn btn-ghost btn-sm" onclick="openBoatEditModal()">⚙️ Bateau</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="exportXlsx()" title="Exporter en Excel (.xlsx)">⬇ Excel</button>
+          <button class="btn btn-ghost btn-sm" onclick="shareBalance()" title="Partager le solde (WhatsApp…)">📤</button>
+          <button class="btn btn-ghost btn-sm" onclick="openBoatEditModal()" title="Réglages bateau">⚙️</button>
+        </div>
       </div>
       <div style="margin-bottom:10px">
         <input type="text" id="logSearch" placeholder="🔍 Rechercher dans les logs…" oninput="filterLogs()" style="width:100%;padding:9px 14px;font-size:.83rem">
@@ -3320,6 +3324,57 @@ async function quickReimburse(toId,amt){
   if(error)return toast('Erreur: '+error.message,'err');
   toast('Remboursement enregistré ✅');
   loadLogs();
+}
+
+// ── 2.4 : export Excel (.xlsx via SheetJS, chargé à la demande) + partage solde ──
+function _loadSheetJS(){
+  return new Promise((res,rej)=>{
+    if(window.XLSX)return res();
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('SheetJS'));
+    document.head.appendChild(s);
+  });
+}
+async function exportXlsx(){
+  if(!boat||!allLogs.length)return toast('Rien à exporter','err');
+  toast('Génération Excel…');
+  try{ await _loadSheetJS(); }catch(e){ return toast('Impossible de charger SheetJS (réseau)','err'); }
+  const lbl=id=>{const m=_members.find(x=>x.id===id);return m?m.label:(id?String(id).slice(0,8):'');};
+  // Feuille 1 — tous les logs
+  const head1=['Date','Type','Litres','Distance (nm)','Prix/L','Total XPF','Payé par','Répartition','Note'];
+  const rows1=[...allLogs].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(l=>{
+    const sp=FuelCore.getLogSplit(l);
+    const spStr=sp&&sp.shares?Object.keys(sp.shares).map(id=>lbl(id)+':'+Math.round(sp.shares[id])).join(' / '):'';
+    return [new Date(l.created_at).toLocaleString('fr-FR'),l.type,l.liters??'',l.distance_nm??'',l.price??'',l.total_price??'',lbl(l.paid_by),spStr,(l.note||'')];
+  });
+  // Feuille 2 — soldes avec colonnes de calcul visibles (NET = formule Excel)
+  const bal=FuelCore.computeBalances(allLogs,_members);
+  const head2=['Membre','Payé (A)','Dû (B)','Remb. sortant (C)','Remb. entrant (D)','NET = A-B+C-D'];
+  const rows2=bal.rows.map(r=>[r.label,Math.round(r.paid),Math.round(r.owed),Math.round(r.rembOut),Math.round(r.rembIn),null]);
+  const aoa2=[head2,...rows2,[],['Total partagé',Math.round(bal.totals.totalGlobal)],['Transferts à régler :']];
+  bal.transfers.forEach(t=>aoa2.push([t.from+' → '+t.to,Math.round(t.amt)]));
+  const ws1=XLSX.utils.aoa_to_sheet([head1,...rows1]);
+  const ws2=XLSX.utils.aoa_to_sheet(aoa2);
+  // NET en VRAIE formule Excel (Lucas peut modifier une valeur et tout se recalcule)
+  rows2.forEach((r,i)=>{ const row=i+2; ws2['F'+row]={t:'n',f:`B${row}-C${row}+D${row}-E${row}`}; });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws1,'Logs');
+  XLSX.utils.book_append_sheet(wb,ws2,'Soldes');
+  XLSX.writeFile(wb,'CoolBreeze_'+String(boat.name||'bateau').replace(/[^a-z0-9]/gi,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('Excel exporté ✅');
+}
+async function shareBalance(){
+  if(!_members.length||!allLogs.length)return toast('Rien à partager','err');
+  const bal=FuelCore.computeBalances(allLogs,_members);
+  const d=new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+  const lines=[(boat.name||'Bateau')+' — solde au '+d+' :'];
+  if(!bal.transfers.length)lines.push('✓ Comptes à l\'équilibre');
+  else bal.transfers.forEach(t=>lines.push('• '+t.from+' → '+t.to+' : '+fmt(t.amt)+' XPF'));
+  lines.push('Total dépensé partagé : '+fmt(Math.round(bal.totals.totalGlobal))+' XPF');
+  const msg=lines.join('\n');
+  if(navigator.share){ try{ await navigator.share({text:msg}); return; }catch(e){ if(e&&e.name==='AbortError')return; } }
+  try{ await navigator.clipboard.writeText(msg); toast('Solde copié ✅'); }catch(e){ alert(msg); }
 }
 
 // ══ GRAPHES ═══════════════════════════════════════════════════════════════════
