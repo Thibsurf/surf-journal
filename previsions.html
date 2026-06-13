@@ -5182,42 +5182,45 @@ function renderObsHistoryChart(s, h) {
   });
 
   // ── Stats bar ─────────────────────────────────────────────────────────────
+  // FIX audit : utiliser la dernière LIGNE mappée (rows) — `last` (recent[]) est un enregistrement
+  // brut (wind_speed/relative_humidity/P_sea…), pas les champs courts ws/wd/rh/P… → valeurs "—".
+  var lastRow = rows.length ? rows[rows.length-1] : {};
   var statCards = [];
   if (param === 'wind' && hasWind) {
     var wsArr = rows.map(function(r){return r.ws;}).filter(function(v){return v!=null;});
     var wgArr = rows.map(function(r){return r.wg;}).filter(function(v){return v!=null;});
     var avg = wsArr.length ? Math.round(wsArr.reduce(function(a,b){return a+b},0)/wsArr.length*10)/10 : null;
     var CPTS=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
-    var cpt = last && last.wd != null ? CPTS[Math.round(last.wd/22.5)%16] : null;
+    var cpt = lastRow.wd != null ? CPTS[Math.round(lastRow.wd/22.5)%16] : null;
     statCards = [
       { lbl:'Moy.', val: avg!=null?avg+' kt':'—', col:'#4fa3c7' },
       { lbl:'Rafale max', val: wgArr.length?Math.round(Math.max.apply(null,wgArr))+' kt':'—', col:'#e05c5c' },
-      { lbl:'Maintenant', val: last&&last.ws!=null?+(last.ws*1.944).toFixed(0)+' kt':'—', col:'#3dba8a' },
-      { lbl:'Direction', val: cpt&&last&&last.wd!=null?cpt+' '+Math.round(last.wd)+'°':'—', col:'var(--muted)' }
+      { lbl:'Maintenant', val: lastRow.ws!=null?Math.round(lastRow.ws)+' kt':'—', col:'#3dba8a' }, // ws déjà en kt
+      { lbl:'Direction', val: cpt&&lastRow.wd!=null?cpt+' '+Math.round(lastRow.wd)+'°':'—', col:'var(--muted)' }
     ];
   } else if (param === 'temp' && hasTemp) {
     var tArr = rows.map(function(r){return r.T;}).filter(function(v){return v!=null;});
     statCards = [
-      { lbl:'Actuelle', val: last&&last.T!=null?last.T.toFixed(1)+'°C':'—', col:'#e8874a' },
+      { lbl:'Actuelle', val: lastRow.T!=null?lastRow.T.toFixed(1)+'°C':'—', col:'#e8874a' },
       { lbl:'Min 48h',  val: tArr.length?Math.min.apply(null,tArr).toFixed(1)+'°':'—', col:'#4fa3c7' },
       { lbl:'Max 48h',  val: tArr.length?Math.max.apply(null,tArr).toFixed(1)+'°':'—', col:'#e05c5c' },
-      { lbl:'Humidité', val: last&&last.rh!=null?last.rh+'%':'—', col:'#7aafd4' }
+      { lbl:'Humidité', val: lastRow.rh!=null?lastRow.rh+'%':'—', col:'#7aafd4' }
     ];
   } else if (param === 'pres' && hasPres) {
     var pArr = rows.map(function(r){return r.P;}).filter(function(v){return v!=null;});
-    var tend = last&&last.Pt!=null?(last.Pt>0.5?'↗ Hausse':last.Pt<-0.5?'↘ Baisse':'→ Stable'):'—';
+    var tend = lastRow.Pt!=null?(lastRow.Pt>0.5?'↗ Hausse':lastRow.Pt<-0.5?'↘ Baisse':'→ Stable'):'—';
     statCards = [
-      { lbl:'Actuelle', val: last&&last.P!=null?last.P.toFixed(0)+' hPa':'—', col:'var(--accent)' },
+      { lbl:'Actuelle', val: lastRow.P!=null?lastRow.P.toFixed(0)+' hPa':'—', col:'var(--accent)' },
       { lbl:'Min 48h',  val: pArr.length?Math.min.apply(null,pArr).toFixed(0)+' hPa':'—', col:'#e8874a' },
       { lbl:'Max 48h',  val: pArr.length?Math.max.apply(null,pArr).toFixed(0)+' hPa':'—', col:'#3dba8a' },
-      { lbl:'Tendance', val: tend, col: last&&last.Pt!=null?(last.Pt>0.5?'#3dba8a':last.Pt<-0.5?'#e05c5c':'var(--muted)'):'var(--muted)' }
+      { lbl:'Tendance', val: tend, col: lastRow.Pt!=null?(lastRow.Pt>0.5?'#3dba8a':lastRow.Pt<-0.5?'#e05c5c':'var(--muted)'):'var(--muted)' }
     ];
   } else if (param === 'rain' && hasRain) {
     var tot48 = rows.reduce(function(acc,r){return acc+(r.r1||0);},0);
     statCards = [
-      { lbl:'Dernière h', val: last&&last.r1!=null?last.r1.toFixed(1)+' mm':'—', col:'#4fa3c7' },
-      { lbl:'3h',  val: last&&last.r3!=null?last.r3.toFixed(1)+' mm':'—', col:'#4fa3c7' },
-      { lbl:'24h', val: last&&last.r24!=null?last.r24.toFixed(1)+' mm':'—', col:'var(--accent)' },
+      { lbl:'Dernière h', val: lastRow.r1!=null?lastRow.r1.toFixed(1)+' mm':'—', col:'#4fa3c7' },
+      { lbl:'3h',  val: lastRow.r3!=null?lastRow.r3.toFixed(1)+' mm':'—', col:'#4fa3c7' },
+      { lbl:'24h', val: lastRow.r24!=null?lastRow.r24.toFixed(1)+' mm':'—', col:'var(--accent)' },
       { lbl:'Cumul 48h', val: tot48.toFixed(1)+' mm', col:'#7aafd4' }
     ];
   }
