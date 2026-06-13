@@ -367,9 +367,15 @@ select option{background:var(--s2)}
 
   <!-- ══ TAB: AJOUTER ══ -->
   <div class="tab-content" id="tab-add">
+    <!-- Saisie rapide (2.2) : le cas courant en 10 s -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn btn-primary" style="flex:1;display:flex;flex-direction:column;gap:2px;padding:14px 6px;font-size:.82rem" onclick="openQuick('plein')"><span style="font-size:1.3rem">⛽</span>Plein</button>
+      <button class="btn btn-primary" style="flex:1;display:flex;flex-direction:column;gap:2px;padding:14px 6px;font-size:.82rem" onclick="openQuick('sortie')"><span style="font-size:1.3rem">🧭</span>Sortie</button>
+      <button class="btn btn-primary" style="flex:1;display:flex;flex-direction:column;gap:2px;padding:14px 6px;font-size:.82rem" onclick="openQuick('remb')"><span style="font-size:1.3rem">💸</span>Rembourser</button>
+    </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title">➕ Nouveau log</div>
+        <div class="card-title">➕ Nouveau log <span style="font-size:.66rem;color:var(--muted);font-weight:400">(détaillé)</span></div>
       </div>
       <div class="grid2">
         <div class="field full">
@@ -784,6 +790,17 @@ select option{background:var(--s2)}
     <div class="modal-actions">
       <button class="btn btn-primary btn-full" onclick="modal('unattributedModal',false)">Fermer</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL: SAISIE RAPIDE (2.2) -->
+<div class="modal-overlay" id="quickModal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 id="quickTitle" style="margin:0">Saisie rapide</h3>
+      <button class="btn btn-ghost btn-xs" onclick="modal('quickModal',false)">✕</button>
+    </div>
+    <div id="quickBody"></div>
   </div>
 </div>
 
@@ -3423,6 +3440,76 @@ async function shareBalance(){
   const msg=lines.join('\n');
   if(navigator.share){ try{ await navigator.share({text:msg}); return; }catch(e){ if(e&&e.name==='AbortError')return; } }
   try{ await navigator.clipboard.writeText(msg); toast('Solde copié ✅'); }catch(e){ alert(msg); }
+}
+
+// ── 2.2 : saisie rapide (Plein / Sortie / Rembourser) en 10 s ──
+function openQuick(kind){
+  if(!boat)return toast('Sélectionne un bateau','err');
+  const b=document.getElementById('quickBody'); if(!b)return;
+  const today=new Date(); today.setMinutes(today.getMinutes()-today.getTimezoneOffset());
+  const dnow=today.toISOString().slice(0,16);
+  const price=getFuelPrice(new Date().toISOString());
+  if(kind==='plein'){
+    document.getElementById('quickTitle').textContent='⛽ Plein rapide';
+    b.innerHTML=`
+      <div class="field"><label>Litres</label><input id="q-l" type="number" step="0.1" inputmode="decimal" placeholder="ex: 60"></div>
+      <div class="field"><label>Total payé (XPF)</label><input id="q-t" type="number" step="1" inputmode="numeric" placeholder="ex: 9500"></div>
+      <div class="field"><label>Date</label><input id="q-d" type="datetime-local" value="${dnow}"></div>
+      <div style="font-size:.66rem;color:var(--muted);margin:6px 0 10px">Payé par moi · partagé 50/50 · plein ras (ancre la jauge)${price?(' · repère '+price+' XPF/L'):''}</div>
+      <button class="btn btn-primary btn-full" onclick="saveQuickPlein()">✓ Enregistrer</button>
+      <a href="javascript:;" onclick="modal('quickModal',false);goAddTab()" style="display:block;text-align:center;margin-top:10px;font-size:.72rem;color:var(--muted)">+ d'options (formulaire complet)</a>`;
+  }else if(kind==='sortie'){
+    document.getElementById('quickTitle').textContent='🧭 Sortie rapide';
+    b.innerHTML=`
+      <div class="field"><label>Distance (nm)</label><input id="q-nm" type="number" step="0.1" inputmode="decimal" placeholder="ex: 24"></div>
+      <div class="field"><label>Litres consommés (optionnel)</label><input id="q-l" type="number" step="0.1" inputmode="decimal" placeholder="ex: 35"></div>
+      <div class="field"><label>Date</label><input id="q-d" type="datetime-local" value="${dnow}"></div>
+      <button class="btn btn-primary btn-full" onclick="saveQuickSortie()">✓ Enregistrer</button>
+      <a href="javascript:;" onclick="modal('quickModal',false);goAddTab()" style="display:block;text-align:center;margin-top:10px;font-size:.72rem;color:var(--muted)">+ d'options</a>`;
+  }else{
+    document.getElementById('quickTitle').textContent='💸 Rembourser';
+    const bal=FuelCore.computeBalances(allLogs,_members);
+    const meId=user&&user.id;
+    const iOwe=bal.transfers.find(t=>t.fromId===meId)||bal.transfers[0];
+    if(!_members.length){ b.innerHTML='<div class="empty">Aucun membre</div>'; }
+    else{
+      const opts=_members.filter(m=>m.id!==meId).map(m=>`<option value="${m.id}" ${iOwe&&m.id===iOwe.toId?'selected':''}>${m.label}</option>`).join('');
+      b.innerHTML=`
+        ${iOwe?`<div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">Solde : tu dois <b>${fmt(iOwe.amt)} XPF</b> à ${iOwe.to}</div>`:''}
+        <div class="field"><label>À</label><select id="q-to">${opts}</select></div>
+        <div class="field"><label>Montant (XPF)</label><input id="q-amt" type="number" step="1" inputmode="numeric" value="${iOwe?iOwe.amt:''}"></div>
+        <button class="btn btn-primary btn-full" onclick="saveQuickRemb()">✓ Enregistrer le remboursement</button>`;
+    }
+  }
+  modal('quickModal',true);
+}
+async function saveQuickPlein(){
+  const l=parseFloat(document.getElementById('q-l').value)||0;
+  const t=parseFloat(document.getElementById('q-t').value)||0;
+  const d=document.getElementById('q-d').value;
+  if(l<=0)return toast('Litres invalides','err');
+  const created=d?new Date(d).toISOString():new Date().toISOString();
+  const price=(t&&l)?Math.round(t/l*10)/10:getFuelPrice(created);
+  const {error}=await sb.from('boat_fuel_logs').insert({boat_id:boat.id,user_id:user.id,type:'refuel',liters:l,price,total_price:t||null,full_tank:true,paid_by:user.id,note:'Plein (saisie rapide)',created_at:created});
+  if(error)return toast('Erreur: '+error.message,'err');
+  modal('quickModal',false);toast('Plein enregistré ✅');loadLogs();
+}
+async function saveQuickSortie(){
+  const nm=parseFloat(document.getElementById('q-nm').value)||0;
+  const l=parseFloat(document.getElementById('q-l').value)||null;
+  const d=document.getElementById('q-d').value;
+  if(nm<=0&&!l)return toast('Distance ou litres requis','err');
+  const created=d?new Date(d).toISOString():new Date().toISOString();
+  const {error}=await sb.from('boat_fuel_logs').insert({boat_id:boat.id,user_id:user.id,type:'cruise',distance_nm:nm||null,liters:l,note:'Sortie (saisie rapide)',created_at:created});
+  if(error)return toast('Erreur: '+error.message,'err');
+  modal('quickModal',false);toast('Sortie enregistrée ✅');loadLogs();
+}
+async function saveQuickRemb(){
+  const to=document.getElementById('q-to').value;
+  const amt=parseFloat(document.getElementById('q-amt').value)||0;
+  if(!to||amt<=0)return toast('Destinataire et montant requis','err');
+  modal('quickModal',false);
+  await quickReimburse(to,amt);
 }
 
 // ══ GRAPHES ═══════════════════════════════════════════════════════════════════
