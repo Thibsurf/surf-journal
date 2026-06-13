@@ -747,6 +747,21 @@ select option{background:var(--s2)}
   </div>
 </div>
 
+<!-- MODAL: MIGRATION BIDONS LOCAL → CLOUD (1.1) -->
+<div class="modal-overlay" id="bidonMigrateModal">
+  <div class="modal">
+    <h3>☁️ Synchroniser tes bidons</h3>
+    <p style="font-size:.74rem;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Tes bidons étaient stockés <b>sur cet appareil uniquement</b>. On les envoie dans le cloud
+      pour que les deux coproprios voient le même stock. À faire une seule fois.</p>
+    <div id="bidonMigrateRecap" style="font-size:.72rem;font-family:var(--mono);background:rgba(255,255,255,.04);border:1px solid var(--s3);border-radius:8px;padding:10px;margin-bottom:12px;line-height:1.7"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="skipBidonMigration()" style="flex:1">Plus tard</button>
+      <button class="btn btn-primary" id="bidonMigrateBtn" onclick="confirmBidonMigration()" style="flex:2">✓ Synchroniser</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ÉDITER BATEAU -->
 <div class="modal-overlay" id="boatEditModal">
   <div class="modal">
@@ -975,7 +990,8 @@ const sb=window.supabase.createClient(SB_URL,SB_KEY,{
 });
 
 let user=null, boat=null, allLogs=[], estimatedLevel=null, chartInstances={};
-let _bidons=[]; // stockage local des bidons (localStorage)
+let _bidons=[];        // état DÉRIVÉ des logs Supabase (rebuildBidonsFromLogs) — plus de localStorage (1.1)
+let _bidonsLegacy=[];  // ancien stock localStorage, lu une fois pour proposer la migration cloud
 let _chartsDirty=false; // true si bidons/logs ont changé pendant que l'onglet graphes n'était pas visible
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1022,8 +1038,9 @@ document.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('cancelDel').addEventListener('click',()=>modal('delModal',false));
   document.getElementById('confirmDel').addEventListener('click',doDelete);
 
-  // Bidons depuis localStorage
-  try{_bidons=JSON.parse(localStorage.getItem('marine-bidons')||'[]');}catch(e){}
+  // Bidons : plus de chargement localStorage (event sourcing Supabase, 1.1).
+  // On lit l'ancien stock UNE fois pour proposer la migration cloud (maybeOfferBidonMigration).
+  try{_bidonsLegacy=JSON.parse(localStorage.getItem('marine-bidons')||'[]');}catch(e){_bidonsLegacy=[];}
 
   const {data}=await sb.auth.getSession();
   if(data.session){user=data.session.user;showApp();loadBoats();}
@@ -1982,8 +1999,12 @@ async function loadLogs(){
     .order('created_at',{ascending:false});
   if(error){toast('Erreur logs: '+error.message,'err');return;}
   allLogs=data||[];
+  _bidons=FuelCore.rebuildBidonsFromLogs(allLogs); // bidons event-sourcés → état partagé (1.1)
   computeFOB();
   renderLogs();
+  if(document.getElementById('tab-bidons')?.classList.contains('active'))renderBidons();
+  renderBidonLogs();
+  maybeOfferBidonMigration();
   updateBoatChips();
   updateBidonSourceSelect();
   updateFillBidonSelect();
@@ -2513,9 +2534,11 @@ async function addLog(){
     created_at:createdAt
   };
   if(paidBy&&type!=='reimburse')payload.paid_by=paidBy;
-  if(type==='reimburse'&&paidBy){
-    payload.paid_by=paidBy;
-    if(reimbTo) payload.note=(note?note+' · ':'')+`__REMB_TO:${reimbTo}__`;
+  if(type==='reimburse'){
+    // 1.4 : destinataire obligatoire (sauf à 1 membre) → soldes non ambigus
+    if(_members.length>1&&!reimbTo)return toast('Choisis « Remboursé à » pour ce remboursement','err');
+    if(paidBy)payload.paid_by=paidBy;
+    if(reimbTo)payload.reimburse_to=reimbTo;   // colonne dédiée (1.2) — plus de marqueur dans la note
   }
   if(type==='expense'&&category)payload.category=category;
   if(type==='expense'&&isPersonal){
@@ -2525,81 +2548,61 @@ async function addLog(){
   const splitPayload=buildSplitPayload(total,paidBy);
   if(splitPayload)payload.split=splitPayload;
 
+  // bidon_fill : attacher l'identité bidon AVANT l'insert (event sourcing, 1.1)
+  let _bidonWarn=null;
+  if(type==='bidon_fill'&&liters>0){
+    const tgt=document.getElementById('fuelBidonTarget')?.value||'new';
+    if(tgt==='new'){
+      const cap=parseFloat(document.getElementById('fuelBidonNewCap')?.value)||20;
+      payload.bidon_id=_newBidonId(); payload.bidon_cap=cap; payload.liters=Math.min(liters,cap);
+      if(liters>cap)_bidonWarn=`⚠️ ${liters}L > capacité ${cap}L — bidon créé avec ${payload.liters}L`;
+    }else{
+      const tb=_bidons[parseInt(tgt)];
+      if(tb){ payload.bidon_id=tb.id; payload.bidon_cap=tb.cap;
+        const space=tb.cap-tb.level, actual=Math.min(liters,space); payload.liters=actual;
+        if(liters>space+0.5)_bidonWarn=`⚠️ Bidon n'avait que ${space.toFixed(1)}L de place — ${actual.toFixed(1)}L ajoutés`;
+      }
+    }
+  }
+
   document.getElementById('save-txt').innerHTML='<span class="spin"></span>';
   let {error}=await sb.from('boat_fuel_logs').insert(payload);
-  if(error&&splitPayload&&/split/i.test(error.message||'')){
-    delete payload.split;
-    payload.note=(payload.note?payload.note+' · ':'')+'SPLIT:'+JSON.stringify(splitPayload);
+  // Filet de sécurité si les colonnes (split/reimburse_to/bidon_*) n'existent pas encore (avant SQL) :
+  if(error&&/(split|reimburse_to|bidon_id|bidon_cap|column|schema|cache)/i.test(error.message||'')){
+    if(payload.split){payload.note=(payload.note?payload.note+' · ':'')+'SPLIT:'+JSON.stringify(splitPayload);delete payload.split;}
+    if(payload.reimburse_to){payload.note=(payload.note?payload.note+' · ':'')+`__REMB_TO:${payload.reimburse_to}__`;delete payload.reimburse_to;}
+    delete payload.bidon_id; delete payload.bidon_cap;
     const r2=await sb.from('boat_fuel_logs').insert(payload);
     error=r2.error;
   }
   document.getElementById('save-txt').textContent='Enregistrer';
   if(error)return toast('Erreur: '+error.message,'err');
 
-  // Si bidon_fill, mettre à jour le stock de bidons local
-  if(type==='bidon_fill'&&liters>0){
-    const tgt=document.getElementById('fuelBidonTarget')?.value||'new';
-    if(tgt==='new'){
-      // Capacité choisie par l'utilisateur (par défaut 20L)
-      const cap=parseFloat(document.getElementById('fuelBidonNewCap')?.value)||20;
-      // Plafonner les litres à la capacité
-      const fillL=Math.min(liters,cap);
-      _bidons.push({
-        id:'b'+Date.now(),cap,level:fillL,
-        price:price,note:note||'Plein bidon',
-        added:createdAt
-      });
-      saveBidons();
-      addBidonLog(_bidons.length-1,+fillL,_bidons[_bidons.length-1],'Création bidon '+cap+'L');
-      if(liters>cap){
-        toast(`⚠️ ${liters}L > capacité ${cap}L — bidon créé avec ${fillL}L`,'err');
-      }
-    }else{
-      const idx=parseInt(tgt);
-      if(!isNaN(idx)&&_bidons[idx]){
-        const space=_bidons[idx].cap-_bidons[idx].level;
-        const actual=Math.min(liters,space);
-        _bidons[idx].level=Math.min(_bidons[idx].cap,_bidons[idx].level+liters);
-        saveBidons();
-        addBidonLog(idx,+actual,_bidons[idx],note||'Remplissage');
-        if(liters>space+0.5){
-          toast(`⚠️ Bidon n'avait que ${space.toFixed(1)}L de place — ${actual.toFixed(1)}L ajoutés`,'err');
-        }
-      }
-    }
-  }
+  if(_bidonWarn)toast(_bidonWarn,'err');
 
-  // ── Bidon simultané lors d'un plein réservoir
+  // ── Bidon simultané lors d'un plein réservoir (event sourcing, 1.1) ──
   if(type==='refuel'&&document.getElementById('refuelAlsoBidon')?.checked){
     const bidonL=parseFloat(document.getElementById('refuelBidonL').value)||0;
-    const bidonTotalEl=document.getElementById('refuelBidonTotal');
-    const bidonTotal=parseFloat(bidonTotalEl?.value)||null;
+    const bidonTotal=parseFloat(document.getElementById('refuelBidonTotal')?.value)||null;
     const bidonTgt=document.getElementById('refuelBidonTarget')?.value||'new';
     if(bidonL>0){
-      // Log bidon_fill en base
       const bidonPayload={
         boat_id:boat.id,user_id:user.id,type:'bidon_fill',
         liters:bidonL,price:price,total_price:bidonTotal,
         note:note?'Bidon (même facture) · '+note:'Bidon (même facture)',
-        paid_by:paidBy||null,full_tank:false,
-        created_at:createdAt
+        paid_by:paidBy||null,full_tank:false,created_at:createdAt
       };
-      await sb.from('boat_fuel_logs').insert(bidonPayload);
-      // Mise à jour stock local
       if(bidonTgt==='new'){
         const cap=parseFloat(document.getElementById('refuelBidonNewCap')?.value)||20;
-        const fillL=Math.min(bidonL,cap);
-        _bidons.push({id:'b'+Date.now(),cap,level:fillL,price,note:'Bidon (plein simultané)',added:createdAt});
-        saveBidons();
-        addBidonLog(_bidons.length-1,fillL,_bidons[_bidons.length-1],'Création bidon (plein réservoir)');
+        bidonPayload.bidon_id=_newBidonId(); bidonPayload.bidon_cap=cap; bidonPayload.liters=Math.min(bidonL,cap);
       }else{
-        const idx=parseInt(bidonTgt);
-        if(!isNaN(idx)&&_bidons[idx]){
-          const actual=Math.min(bidonL,_bidons[idx].cap-_bidons[idx].level);
-          _bidons[idx].level=Math.min(_bidons[idx].cap,_bidons[idx].level+bidonL);
-          saveBidons();
-          addBidonLog(idx,actual,_bidons[idx],'Plein simultané réservoir');
-        }
+        const tb=_bidons[parseInt(bidonTgt)];
+        if(tb){ bidonPayload.bidon_id=tb.id; bidonPayload.bidon_cap=tb.cap; bidonPayload.liters=Math.min(bidonL,tb.cap-tb.level); }
+      }
+      let br=await sb.from('boat_fuel_logs').insert(bidonPayload);
+      if(br.error&&/(bidon_id|bidon_cap|column|schema|cache)/i.test(br.error.message||'')){
+        delete bidonPayload.bidon_id; delete bidonPayload.bidon_cap;
+        await sb.from('boat_fuel_logs').insert(bidonPayload);
       }
     }
   }
@@ -2852,18 +2855,63 @@ async function doDelete(){
 }
 
 // ══ BIDONS ═══════════════════════════════════════════════════════════════════
+// État bidons DÉRIVÉ des logs (1.1) — saveBidons ne persiste plus rien, ne fait que rafraîchir l'UI.
 function saveBidons(){
-  localStorage.setItem('marine-bidons',JSON.stringify(_bidons));
-  // Rafraîchir le sélecteur bidon dans le formulaire si on est sur l'onglet Ajouter
   if(document.getElementById('tab-add')?.classList.contains('active')){
     const logType=document.getElementById('logType')?.value;
     if(logType==='bidon_fill')refreshBidonTargetSelect();
   }
-  // Rafraîchir les logs (jauge bidon inline) si tab-log visible
   if(document.getElementById('tab-log')?.classList.contains('active'))renderLogs();
-  // Invalider les graphes (le stock bidon change) → ils se rafraîchiront au prochain clic
   _chartsDirty=true;
   if(document.getElementById('tab-charts')?.classList.contains('active'))renderCharts();
+}
+
+// ── Mutations bidons → logs Supabase (bidon_id) puis rebuild via loadLogs (1.1) ──
+function _newBidonId(){return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+async function _insertBidonLog(fields){
+  if(!boat){toast('Pas de bateau sélectionné','err');return false;}
+  const payload=Object.assign({boat_id:boat.id,user_id:user.id,created_at:new Date().toISOString()},fields);
+  const {error}=await sb.from('boat_fuel_logs').insert(payload);
+  if(error){toast('Erreur bidon: '+error.message,'err');return false;}
+  return true;
+}
+
+// ── Migration bidons localStorage → cloud (one-shot, 1.1.4) ──
+function maybeOfferBidonMigration(){
+  try{
+    if(localStorage.getItem('marine-bidons-migrated')==='1')return;
+    if(!_bidonsLegacy||!_bidonsLegacy.length)return;
+    // Des bidons cloud existent déjà (un log porte un bidon_id) → marquer fait, ne pas reproposer
+    if(allLogs.some(l=>l.bidon_id)){localStorage.setItem('marine-bidons-migrated','1');return;}
+    if(document.getElementById('bidonMigrateModal')?.classList.contains('show'))return;
+    const recap=_bidonsLegacy.map(b=>`• ${b.note||(b.cap+'L')} : ${(+b.level||0).toFixed(1)} / ${b.cap} L`).join('<br>');
+    const el=document.getElementById('bidonMigrateRecap'); if(el)el.innerHTML=recap;
+    modal('bidonMigrateModal',true);
+  }catch(e){}
+}
+async function confirmBidonMigration(){
+  const btn=document.getElementById('bidonMigrateBtn');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
+  let okAll=true;
+  for(const b of _bidonsLegacy){
+    const cap=+b.cap||20;
+    const lvl=Math.max(0,Math.min(cap,+b.level||0));
+    const ok=await _insertBidonLog({type:'bidon_fill',bidon_id:_newBidonId(),bidon_cap:cap,liters:lvl,
+      price:b.price||null,total_price:(b.price&&lvl?Math.round(b.price*lvl):null),
+      note:(b.note?b.note+' ':'')+'(migré depuis appareil local)',created_at:b.added||new Date().toISOString()});
+    if(!ok){okAll=false;break;}
+  }
+  if(btn){btn.disabled=false;btn.textContent='✓ Synchroniser';}
+  if(okAll){
+    localStorage.setItem('marine-bidons-migrated','1');
+    modal('bidonMigrateModal',false);
+    toast('Bidons synchronisés vers le cloud ✅');
+    loadLogs();
+  }
+}
+function skipBidonMigration(){
+  localStorage.setItem('marine-bidons-migrated','1');
+  modal('bidonMigrateModal',false);
 }
 
 function renderBidons(){
@@ -2932,7 +2980,7 @@ function updateFillBidonSelect(){
     :'<option value="">Aucun bidon</option>';
 }
 
-function fillBidon(){
+async function fillBidon(){
   const idx=parseInt(document.getElementById('bidon-fill-src').value);
   const l=parseFloat(document.getElementById('bidon-fill-l').value)||0;
   const price=parseFloat(document.getElementById('bidon-fill-price').value)||null;
@@ -2942,12 +2990,12 @@ function fillBidon(){
   const space=b.cap-b.level;
   if(l>space+0.5)return toast(`Max ${space.toFixed(1)}L disponible dans ce bidon`,'err');
   const actualL=Math.min(l,space);
-  addBidonLog(idx,+actualL,b,note+(price?' @ '+price+' XPF/L':''));
-  _bidons[idx].level=Math.min(b.cap,b.level+actualL);
-  saveBidons();
+  const ok=await _insertBidonLog({type:'bidon_fill',bidon_id:b.id,bidon_cap:b.cap,liters:actualL,
+    price,total_price:(price?Math.round(price*actualL):null),note:note+(price?' @ '+price+' XPF/L':'')});
+  if(!ok)return;
   ['bidon-fill-l','bidon-fill-price','bidon-fill-note'].forEach(id=>document.getElementById(id).value='');
-  renderBidons();
   toast(`Bidon rempli +${actualL.toFixed(1)}L ✅`);
+  loadLogs();
 }
 
 // Rendu inline (tab-log)
@@ -2971,24 +3019,27 @@ function renderBidonsInline(){
   }
 }
 
-function saveBidon(){
+async function saveBidon(){
   const cap=parseFloat(document.getElementById('bidon-cap').value)||20;
   const rawLevel=document.getElementById('bidon-level').value;
-  const level=rawLevel!==''?parseFloat(rawLevel):cap;
+  const level=Math.max(0,Math.min(cap,rawLevel!==''?parseFloat(rawLevel):cap));
   const price=parseFloat(document.getElementById('bidon-price').value)||null;
   const note=document.getElementById('bidon-note').value.trim()||null;
   const dateStr=document.getElementById('bidon-date').value;
   const added=dateStr?new Date(dateStr).toISOString():new Date().toISOString();
-  _bidons.push({id:'b'+Date.now(),cap,level,price,note,added});
-  saveBidons();
+  // Création = bidon_fill avec un bidon_id neuf + capacité (event sourcing, 1.1)
+  const ok=await _insertBidonLog({type:'bidon_fill',bidon_id:_newBidonId(),bidon_cap:cap,liters:level,
+    price,total_price:(price&&level?Math.round(price*level):null),note:note||('Bidon '+cap+'L'),created_at:added});
+  if(!ok)return;
   modal('bidonModal',false);
   ['bidon-level','bidon-price','bidon-note'].forEach(id=>document.getElementById(id).value='');
-  renderBidons();
   toast('Bidon ajouté ✅');
+  loadLogs();
 }
 
-function editBidonLevel(idx){
-  const b=_bidons[idx];
+// Ajustement manuel = log correct_bidon event-sourcé (1.1/1.5) ; suppression = retrait des logs du bidon.
+async function editBidonLevel(idx){
+  const b=_bidons[idx]; if(!b)return;
   const choice=prompt(`Bidon ${b.cap}L — Niveau: ${b.level.toFixed(1)}L\n\nQue voulez-vous faire ?\n  1 = Corriger le niveau\n  2 = Changer la capacité\n  3 = Modifier la note\n  4 = Supprimer ce bidon\n\nTapez 1, 2, 3 ou 4 :`);
   if(!choice)return;
   if(choice==='1'){
@@ -2996,27 +3047,25 @@ function editBidonLevel(idx){
     if(newL===null)return;
     const v=parseFloat(newL);
     if(isNaN(v)||v<0||v>b.cap)return toast('Valeur invalide (0-'+b.cap+'L)','err');
-    const diff=v-b.level;
-    addBidonLog(idx,diff,b,'Correction niveau');
-    _bidons[idx].level=v;
+    // note=libellé actuel pour le préserver (rebuild écrit la note du correct_bidon)
+    if(!await _insertBidonLog({type:'correct_bidon',bidon_id:b.id,bidon_cap:b.cap,liters:v,note:b.note||('Bidon '+b.cap+'L')}))return;
   }else if(choice==='2'){
     const newCap=prompt('Nouvelle capacité (L) :',b.cap);
     if(newCap===null)return;
     const v=parseFloat(newCap);
     if(isNaN(v)||v<=0)return toast('Valeur invalide','err');
-    _bidons[idx].cap=v;
-    if(_bidons[idx].level>v)_bidons[idx].level=v;
+    if(!await _insertBidonLog({type:'correct_bidon',bidon_id:b.id,bidon_cap:v,liters:Math.min(b.level,v),note:b.note||('Bidon '+v+'L')}))return;
   }else if(choice==='3'){
     const newNote=prompt('Note :',b.note||'');
     if(newNote===null)return;
-    _bidons[idx].note=newNote;
+    if(!await _insertBidonLog({type:'correct_bidon',bidon_id:b.id,bidon_cap:b.cap,liters:b.level,note:newNote||('Bidon '+b.cap+'L')}))return;
   }else if(choice==='4'){
-    if(!confirm('Supprimer ce bidon '+b.cap+'L ?'))return;
-    _bidons.splice(idx,1);
+    if(!confirm('Supprimer ce bidon '+b.cap+'L ?\n\n(retire le bidon ET ses mouvements/coûts associés)'))return;
+    const {error}=await sb.from('boat_fuel_logs').delete().eq('boat_id',boat.id).eq('bidon_id',b.id);
+    if(error)return toast('Erreur: '+error.message,'err');
   }else{return;}
-  saveBidons();
-  renderBidons();
   toast('Bidon mis à jour');
+  loadLogs();
 }
 
 let _bidonLogs=[];
@@ -3033,23 +3082,29 @@ function addBidonLog(bidonIdx,deltaL,bidon,note){
   renderBidonLogs();
 }
 
+// Mouvements bidons DÉRIVÉS des logs Supabase (partagés, 1.1) — suppression via le log lui-même.
 function renderBidonLogs(){
-  const el=document.getElementById('bidon-log-list');
-  if(!_bidonLogs.length){el.innerHTML='<div class="empty"><span class="eico">🛢</span>Aucun mouvement</div>';return;}
-  el.innerHTML=_bidonLogs.slice(0,30).map((l,i)=>{
-    const col=l.deltaL>0?'var(--green)':l.deltaL<0?'var(--red)':'var(--muted)';
-    const sign=l.deltaL>0?'+':'';
+  const el=document.getElementById('bidon-log-list'); if(!el)return;
+  const movements=allLogs.filter(l=>l.bidon_id&&(l.type==='bidon_fill'||l.type==='pour'||l.type==='correct_bidon'))
+    .slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  if(!movements.length){el.innerHTML='<div class="empty"><span class="eico">🛢</span>Aucun mouvement</div>';return;}
+  el.innerHTML=movements.slice(0,40).map(l=>{
+    const isPour=l.type==='pour', isCorr=l.type==='correct_bidon';
+    const col=isPour?'var(--red)':isCorr?'var(--warn)':'var(--green)';
+    const main=isCorr?('= '+(l.liters!=null?(+l.liters).toFixed(1):'?')+' L')
+                     :((isPour?'-':'+')+(+(l.liters||0)).toFixed(1)+' L');
+    const label=isPour?'→ réservoir':isCorr?'ajustement niveau':'remplissage';
+    const safeNote=(l.note||'').replace(/</g,'&lt;');
     return `<div class="log-item">
-      <span class="log-badge b-bidon">🛢 ${l.cap}L</span>
+      <span class="log-badge b-bidon">🛢 ${l.bidon_cap||'?'}L</span>
       <div class="log-body">
-        <div class="log-main" style="color:${col}">${sign}${l.deltaL.toFixed(1)} L</div>
-        <div class="log-sub">${l.note||''}</div>
+        <div class="log-main" style="color:${col}">${main}</div>
+        <div class="log-sub">${label}${safeNote?' · '+safeNote:''}</div>
       </div>
       <div class="log-meta">
-        <div class="log-date">${fmtDate(l.date)}</div>
+        <div class="log-date">${fmtDate(l.created_at)}</div>
         <div class="log-actions">
-          <button class="btn btn-warn-soft btn-xs" onclick="editBidonLog(${i})">✏️</button>
-          <button class="btn btn-danger-soft btn-xs" onclick="deleteBidonLog(${i})">🗑️</button>
+          <button class="btn btn-danger-soft btn-xs" onclick="openDel('${l.id}')">🗑️</button>
         </div>
       </div>
     </div>`;
@@ -3097,23 +3152,16 @@ async function pourBidon(){
   const l=parseFloat(document.getElementById('bidon-pour-l').value)||0;
   if(isNaN(idx)||l<=0)return toast('Valeur invalide','err');
   const b=_bidons[idx];
+  if(!b)return toast('Bidon introuvable','err');
   if(l>b.level)return toast(`Impossible: bidon contient seulement ${b.level.toFixed(1)}L`,'err');
 
-  // Log dans Supabase (type 'pour' = versement bidon→réservoir)
-  const {error}=await sb.from('boat_fuel_logs').insert({
-    boat_id:boat.id,user_id:user.id,type:'pour',liters:l,
-    note:`Versé bidon ${b.cap}L dans réservoir`
-  });
-  if(error)return toast('Erreur: '+error.message,'err');
-
-  // Mettre à jour bidon local
-  addBidonLog(idx,-l,b,`Versé dans réservoir ${boat.name}`);
-  _bidons[idx].level=Math.max(0,b.level-l);
-  saveBidons();
+  // Log Supabase 'pour' avec bidon_id (event sourcing, 1.1) → rebuild via loadLogs
+  const ok=await _insertBidonLog({type:'pour',bidon_id:b.id,bidon_cap:b.cap,liters:l,
+    note:`Versé bidon ${b.cap}L dans réservoir`});
+  if(!ok)return;
   document.getElementById('bidon-pour-l').value='';
-  renderBidons();
-  loadLogs();
   toast(`${l}L versé dans le réservoir ✅`);
+  loadLogs();
 }
 
 // ══ GRAPHES ═══════════════════════════════════════════════════════════════════
