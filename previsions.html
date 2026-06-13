@@ -7282,27 +7282,22 @@ function drawMoon(year, month, day) {
   ctx.restore();
 
   // ── 3. Zone éclairée — méthode propre par composition ────────────────────
-  // Principe correct :
+  // HÉMISPHÈRE SUD (Nouméa) — convention INVERSE du nord :
+  //   • lune croissante (NL→PL, p<0.5) : côté éclairé à GAUCHE
+  //   • lune décroissante (PL→NL, p>0.5) : côté éclairé à DROITE
+  //   (au nord c'est l'inverse ; l'observateur austral voit le disque « tête en bas »)
+  //
   //   phase normalisée p ∈ [0,1) : 0=NL, 0.25=PQ, 0.5=PL, 0.75=DQ
-  //   En hémisphère SUD, l'éclairage est à DROITE pendant la phase croissante
-  //
   //   Terminateur = ellipse verticale de petit axe Tx = R * cos(p * 2π)
-  //     p=0   → Tx=R  (terminateur = disque entier = NL, rien d'éclairé)
-  //     p=0.25→ Tx=0  (terminateur absent = demi-disque exact = PQ)
-  //     p=0.5 → Tx=-R (terminateur = disque entier = PL, tout éclairé)
-  //     p=0.75→ Tx=0  (demi-disque DQ, côté gauche)
-  //
-  //   Pour p ∈ [0, 0.5] (croissant) : on part du demi-disque droit (côté éclairé HS)
-  //     Si p < 0.25 : on retire l'ellipse de droite (terminateur du côté éclairé)
-  //     Si p > 0.25 : on ajoute l'ellipse de gauche (terminateur du côté sombre)
-  //   Pour p ∈ [0.5, 1] (décroissant) : demi-disque gauche, symétrique
+  //   On part du demi-disque éclairé (GAUCHE si croissant, DROIT si décroissant)
+  //   puis on retire (croissant fin) ou ajoute (gibbeuse) l'ellipse terminateur centrée.
 
   var p  = phase / synodic;           // 0..1
   var Tx = R * Math.cos(p * 2 * Math.PI); // terminateur x-radius signé
-  var isW = p < 0.5;                  // croissant
+  var isW = p < 0.5;                  // croissante
 
-  // Gradient lumière lunaire réaliste
-  var lx = isW ? cx + R*0.1 : cx - R*0.1;
+  // Gradient lumière lunaire réaliste — centre du côté éclairé (GAUCHE si croissante au sud)
+  var lx = isW ? cx - R*0.1 : cx + R*0.1;
   var lightGrad = ctx.createRadialGradient(lx, cy - R*0.05, R*0.02, cx, cy, R);
   lightGrad.addColorStop(0,    '#faf6ee');
   lightGrad.addColorStop(0.25, '#ede3cc');
@@ -7315,12 +7310,12 @@ function drawMoon(year, month, day) {
   oc.width = W; oc.height = H;
   var ox = oc.getContext('2d');
 
-  // Étape A : demi-disque éclairé
+  // Étape A : demi-disque éclairé (SUD : GAUCHE si croissante, DROIT si décroissante)
   ox.beginPath();
   if (isW) {
-    ox.arc(cx, cy, R, -Math.PI/2, Math.PI/2, false); // demi-droit
+    ox.arc(cx, cy, R, Math.PI/2, -Math.PI/2, false); // demi-GAUCHE (croissante, sud)
   } else {
-    ox.arc(cx, cy, R, Math.PI/2, -Math.PI/2, false); // demi-gauche
+    ox.arc(cx, cy, R, -Math.PI/2, Math.PI/2, false); // demi-DROIT (décroissante, sud)
   }
   ox.closePath();
   ox.fillStyle = lightGrad;
@@ -7358,12 +7353,13 @@ function drawMoon(year, month, day) {
 
   // ── 4. Texture : mers lunaires (maria) sur le canvas offscreen ───────────
   ox.globalCompositeOperation = 'multiply';
+  // Coords vue du SUD : (x,y) → (−x,−y) (disque tourné de 180° par rapport au nord)
   var maria = [
-    {x:0.06, y:-0.16, rx:0.20, ry:0.13},  // Mare Tranquillitatis
-    {x:-0.22,y:-0.04, rx:0.14, ry:0.09},  // Mare Serenitatis
-    {x:0.16, y:0.22,  rx:0.11, ry:0.07},  // Mare Fecunditatis
-    {x:-0.03,y:0.28,  rx:0.17, ry:0.10},  // Oceanus Procellarum
-    {x:0.28, y:-0.08, rx:0.08, ry:0.06},  // Mare Crisium
+    {x:-0.06, y:0.16,  rx:0.20, ry:0.13},  // Mare Tranquillitatis
+    {x:0.22,  y:0.04,  rx:0.14, ry:0.09},  // Mare Serenitatis
+    {x:-0.16, y:-0.22, rx:0.11, ry:0.07},  // Mare Fecunditatis
+    {x:0.03,  y:-0.28, rx:0.17, ry:0.10},  // Oceanus Procellarum
+    {x:-0.28, y:0.08,  rx:0.08, ry:0.06},  // Mare Crisium
   ];
   maria.forEach(function(m) {
     var mx = cx + m.x*R, my = cy + m.y*R;
@@ -7379,9 +7375,9 @@ function drawMoon(year, month, day) {
   ox.globalCompositeOperation = 'source-over';
 
   // ── 5. Cratères subtils ───────────────────────────────────────────────────
-  var craters = [
-    {x:0.15,y:-0.25,r:0.07},{x:0.3,y:0.28,r:0.055},{x:0.0,y:-0.06,r:0.10},
-    {x:-0.28,y:0.08,r:0.045},{x:0.33,y:-0.1,r:0.035},{x:-0.14,y:0.22,r:0.045},
+  var craters = [  // vue du SUD : (x,y) → (−x,−y)
+    {x:-0.15,y:0.25,r:0.07},{x:-0.3,y:-0.28,r:0.055},{x:0.0,y:0.06,r:0.10},
+    {x:0.28,y:-0.08,r:0.045},{x:-0.33,y:0.1,r:0.035},{x:0.14,y:-0.22,r:0.045},
   ];
   craters.forEach(function(c) {
     var px=cx+c.x*R, py=cy+c.y*R, pr=c.r*R;
@@ -7424,7 +7420,8 @@ function drawMoon(year, month, day) {
     var illumPct   = Math.round(illum * 100);
     var barCol = illum > 0.85 ? '#fde068' : illum > 0.5 ? '#e8dfc8' : illum > 0.2 ? '#a0bcd4' : '#4d6680';
     var barW = 80, barFill = Math.round(illum * barW);
-    var phaseEmoji = ['🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘'][phaseIdx];
+    // Émojis miroir pour l'hémisphère SUD (le croissant est inversé G↔D vs le nord)
+    var phaseEmoji = ['🌑','🌘','🌗','🌖','🌕','🌔','🌓','🌒'][phaseIdx];
     info.innerHTML =
       '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:5px;">'
       + phaseEmoji + ' ' + phaseName + '</div>'
