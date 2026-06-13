@@ -246,6 +246,10 @@ select option{background:var(--s2)}
     <div class="fld"><label>Email</label><input id="em" type="email" placeholder="vous@mail.com"></div>
     <div class="fld"><label>Mot de passe</label><input id="pw" type="password" placeholder="••••••••"></div>
     <button class="btn btn-primary btn-full" id="loginBtn"><span id="login-txt">Se connecter</span></button>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-ghost btn-full" onclick="sendMagicLink()" style="font-size:.76rem">✉️ Lien magique</button>
+      <button class="btn btn-ghost btn-full" onclick="resetPassword()" style="font-size:.76rem">Mot de passe oublié</button>
+    </div>
   </div>
 </div>
 
@@ -1077,6 +1081,10 @@ document.addEventListener('DOMContentLoaded',async()=>{
 
   const {data}=await sb.auth.getSession();
   if(data.session){user=data.session.user;showApp();loadBoats();}
+  // 2.3 : capter la session créée au retour d'un lien magique / reset (detectSessionInUrl)
+  sb.auth.onAuthStateChange((event,session)=>{
+    if(session&&session.user&&!user){ user=session.user; showApp(); loadBoats(); }
+  });
 });
 
 async function doLogin(){
@@ -1084,11 +1092,30 @@ async function doLogin(){
   const pw=document.getElementById('pw').value;
   const errEl=document.getElementById('auth-err');
   document.getElementById('login-txt').innerHTML='<span class="spin"></span>';
-  errEl.textContent='';
+  errEl.style.color='';errEl.textContent='';
   const {error,data}=await sb.auth.signInWithPassword({email:em,password:pw});
   document.getElementById('login-txt').textContent='Se connecter';
   if(error){errEl.textContent=error.message;return;}
   user=data.user;showApp();loadBoats();
+}
+// 2.3 : connexion sans mot de passe (lien magique) + reset
+async function sendMagicLink(){
+  const em=document.getElementById('em').value.trim();
+  const errEl=document.getElementById('auth-err');
+  if(!em){errEl.style.color='';errEl.textContent='Entre ton email d\'abord';return;}
+  errEl.style.color='';errEl.textContent='';
+  const {error}=await sb.auth.signInWithOtp({email:em,options:{emailRedirectTo:location.href.split('#')[0]}});
+  if(error){errEl.textContent=error.message;return;}
+  errEl.style.color='var(--green)';errEl.textContent='📧 Lien envoyé à '+em+' — ouvre-le sur cet appareil.';
+}
+async function resetPassword(){
+  const em=document.getElementById('em').value.trim();
+  const errEl=document.getElementById('auth-err');
+  if(!em){errEl.style.color='';errEl.textContent='Entre ton email d\'abord';return;}
+  errEl.style.color='';errEl.textContent='';
+  const {error}=await sb.auth.resetPasswordForEmail(em,{redirectTo:location.href.split('#')[0]});
+  if(error){errEl.textContent=error.message;return;}
+  errEl.style.color='var(--green)';errEl.textContent='📧 Email de réinitialisation envoyé à '+em+'.';
 }
 
 function showApp(){
