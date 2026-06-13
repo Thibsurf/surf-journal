@@ -159,6 +159,8 @@
         b2.level = Math.max(0, b2.level - (l.liters || 0));
       } else if (l.type === 'correct_bidon') {
         var b3 = ensure(id, cap, l.note, l.created_at);
+        if (cap) b3.cap = cap;                                 // ajustement capacité
+        if (l.note != null && l.note !== '') b3.note = l.note; // renommage (libellé passé explicitement)
         b3.level = Math.max(0, Math.min(b3.cap, (l.liters != null ? l.liters : b3.level)));
       }
     });
