@@ -888,6 +888,18 @@ select option{background:var(--s2)}
       <div id="diagOutput" style="margin-top:10px;font-size:.66rem;font-family:var(--mono);max-height:340px;overflow-y:auto;line-height:1.6"></div>
     </div>
 
+    <!-- Migration anciennes données (1.2) — visible seulement si des marqueurs existent -->
+    <div id="legacyMigrateSection" style="display:none;margin-bottom:18px;padding:12px;background:rgba(167,139,250,.07);border:1px solid rgba(167,139,250,.3);border-radius:10px">
+      <h4 style="margin:0 0 8px;font-size:.9rem;color:var(--purple)">🧹 Migrer les anciennes données</h4>
+      <p style="font-size:.72rem;color:var(--muted2);line-height:1.5;margin-bottom:8px">
+        D'anciens logs encodent la répartition / les remboursements dans la <b>note</b>
+        (<code>SPLIT:</code>, <code>__REMB__</code>). On les déplace vers de vraies colonnes
+        (<code>split</code>, <code>reimburse_to</code>) et on nettoie les notes. Aperçu d'abord.
+      </p>
+      <button class="btn btn-warn-soft btn-full" onclick="previewLegacyMigration()">👁 Prévisualiser la migration</button>
+      <div id="legacyMigratePreview" style="margin-top:10px;font-size:.68rem;font-family:var(--mono);max-height:300px;overflow-y:auto;line-height:1.6"></div>
+    </div>
+
     <div style="margin-bottom:18px;padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
       <h4 style="margin:0 0 8px;font-size:.9rem">⛽ Recalculer prix & litres essence</h4>
       <p style="font-size:.72rem;color:var(--muted2);line-height:1.5;margin-bottom:8px">
@@ -1743,6 +1755,48 @@ function openToolsModal(){
     const sel=document.getElementById(id);
     if(sel)sel.innerHTML='<option value="">—</option>'+_members.map(m=>`<option value="${m.id}">${m.label} (${m.id.slice(0,8)})</option>`).join('');
   });
+  // Section migration legacy : visible seulement si des marqueurs existent encore (1.2)
+  const hasLegacy=allLogs.some(l=>l.note&&/SPLIT:|__REMB__|__REMB_TO:/.test(l.note));
+  const sec=document.getElementById('legacyMigrateSection');
+  if(sec)sec.style.display=hasLegacy?'block':'none';
+  const lmp=document.getElementById('legacyMigratePreview');if(lmp)lmp.innerHTML='';
+}
+
+// ── Migration legacy note → colonnes (1.2), aperçu puis exécution, idempotent ──
+let _legacyMigrationPlan=null;
+function previewLegacyMigration(){
+  const plan=[];
+  allLogs.forEach(l=>{ const r=FuelCore.migrateLegacyLog(l,_members); if(r&&r.changed)plan.push({l,r}); });
+  _legacyMigrationPlan=plan;
+  const el=document.getElementById('legacyMigratePreview'); if(!el)return;
+  if(!plan.length){el.innerHTML='<div style="color:var(--green)">✓ Rien à migrer.</div>';return;}
+  const ambig=plan.filter(p=>p.r.ambiguous).length;
+  el.innerHTML='<div style="margin-bottom:8px;color:var(--warn)"><b>'+plan.length+'</b> log(s) à migrer'
+    +(ambig?(' · <span style="color:var(--red)">'+ambig+' remb. ambigu(s) — à préciser ensuite</span>'):'')+'</div>'
+    +plan.slice(0,40).map(p=>{
+      const tags=[];
+      if(p.r.split)tags.push('split→colonne');
+      if(p.r.reimburse_to)tags.push('remb→'+((_members.find(m=>m.id===p.r.reimburse_to)||{}).label||'?'));
+      if(!tags.length)tags.push('note nettoyée');
+      return '<div style="padding:4px 0;border-bottom:1px solid var(--s3)">'+fmtDateShort(p.l.created_at)+' · '+p.l.type
+        +(p.l.total_price?' · '+fmt(Math.round(p.l.total_price))+'XPF':'')+' — '+tags.join(', ')
+        +'<br><span style="color:var(--muted)">note → "'+(p.r.note||'').replace(/</g,'&lt;')+'"</span></div>';
+    }).join('')
+    +'<button class="btn btn-primary btn-full" style="margin-top:10px" onclick="executeLegacyMigration()">✓ Migrer ces '+plan.length+' log(s)</button>';
+}
+async function executeLegacyMigration(){
+  if(!_legacyMigrationPlan||!_legacyMigrationPlan.length)return;
+  let ok=0,fail=0;
+  for(const item of _legacyMigrationPlan){
+    const upd={note:item.r.note};
+    if(item.r.split)upd.split=item.r.split;
+    if(item.r.reimburse_to)upd.reimburse_to=item.r.reimburse_to;
+    const {error}=await sb.from('boat_fuel_logs').update(upd).eq('id',item.l.id);
+    if(error){fail++;}else{ok++;}
+  }
+  toast(ok+' log(s) migré(s)'+(fail?(' · '+fail+' échec(s) — colonnes créées ?'):'')+' ✅');
+  await loadLogs();
+  previewLegacyMigration(); // ré-aperçu → doit montrer « Rien à migrer » (idempotent)
 }
 
 // ── Diagnostic comptes ───────────────────────────────────────────────────────
