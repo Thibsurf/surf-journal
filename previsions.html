@@ -75,6 +75,9 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
 .container{max-width:1100px;margin:0 auto;padding:1.5rem;position:relative;z-index:1;}
 .section-label{font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;
   margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+/* Onglet Marée : planchers de lisibilité (1.5) — labels section 11px, grille dédiée 1 col mobile */
+#tab-maree .section-label{font-size:11px;}
+@media(max-width:720px){ #tab-maree .g2{grid-template-columns:1fr;} }
 .card{background:var(--deep);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem;}
 .glass{background:var(--glass);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem;}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
@@ -1073,7 +1076,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 
   <!-- Row 1: UV + infos rapides -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+  <div class="g2" style="margin-bottom:12px;">
     <div class="card" style="padding:14px;">
       <div class="section-label" style="margin-bottom:8px;">Indice UV · Open-Meteo</div>
       <div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:8px;">
@@ -1092,7 +1095,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <div style="display:flex;gap:14px;align-items:flex-start;">
         <!-- Thermomètre eau -->
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-          <div style="font-size:8px;color:var(--muted);">🌊 Eau</div>
+          <div style="font-size:10px;color:var(--muted);">🌊 Eau</div>
           <svg viewBox="0 0 24 72" style="width:22px;height:66px;">
             <rect x="8" y="4" width="8" height="46" rx="4" fill="rgba(255,255,255,0.06)" stroke="rgba(79,163,199,0.4)" stroke-width="1"/>
             <clipPath id="clip-water"><rect x="8" y="4" width="8" height="46" rx="4"/></clipPath>
@@ -1108,7 +1111,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         </div>
         <!-- Thermomètre air -->
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-          <div style="font-size:8px;color:var(--muted);">🌡 Air</div>
+          <div style="font-size:10px;color:var(--muted);">🌡 Air</div>
           <svg viewBox="0 0 24 72" style="width:22px;height:66px;">
             <rect x="8" y="4" width="8" height="46" rx="4" fill="rgba(255,255,255,0.06)" stroke="rgba(232,160,87,0.4)" stroke-width="1"/>
             <clipPath id="clip-air"><rect x="8" y="4" width="8" height="46" rx="4"/></clipPath>
@@ -1152,7 +1155,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 
   <!-- Indicateurs risques NC -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+  <div class="g2" style="margin-bottom:12px;">
     <!-- Risque requin -->
     <div class="card" style="padding:12px 14px;">
       <div class="section-label" style="margin-bottom:8px;">🦈 Risque requin — eaux turbides</div>
@@ -1170,7 +1173,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 
   <!-- Row 2: Lune + peche | Crepuscules + soleil -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+  <div class="g2" style="margin-bottom:12px;">
 
     <!-- LUNE + PECHE -->
     <div class="card" style="padding:16px;">
@@ -1179,7 +1182,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;">
         <div style="flex-shrink:0;">
           <canvas id="moon-canvas" width="110" height="110" style="display:block;border-radius:50%;"></canvas>
-          <div id="moon-date-lbl" style="font-size:8px;color:var(--faint);text-align:center;margin-top:4px;"></div>
+          <div id="moon-date-lbl" style="font-size:10px;color:var(--faint);text-align:center;margin-top:4px;"></div>
         </div>
         <div id="moon-info" style="flex:1;font-size:10px;line-height:1.8;padding-top:4px;"></div>
       </div>
@@ -1219,19 +1222,19 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <!-- Heures dorée / bleue -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
         <div style="background:rgba(232,160,87,.08);border:1px solid rgba(232,160,87,.2);border-radius:8px;padding:7px 8px;">
-          <div style="font-size:9px;color:var(--warm);font-weight:600;margin-bottom:3px;">🌅 Heure dorée matin</div>
+          <div style="font-size:10px;color:var(--warm);font-weight:600;margin-bottom:3px;">🌅 Heure dorée matin</div>
           <div id="golden-morning" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
         </div>
         <div style="background:rgba(123,108,246,.08);border:1px solid rgba(123,108,246,.2);border-radius:8px;padding:7px 8px;">
-          <div style="font-size:9px;color:#a78bfa;font-weight:600;margin-bottom:3px;">🌆 Heure dorée soir</div>
+          <div style="font-size:10px;color:#a78bfa;font-weight:600;margin-bottom:3px;">🌆 Heure dorée soir</div>
           <div id="golden-evening" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
         </div>
         <div style="background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.2);border-radius:8px;padding:7px 8px;">
-          <div style="font-size:9px;color:var(--accent);font-weight:600;margin-bottom:3px;">🌃 Heure bleue matin</div>
+          <div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:3px;">🌃 Heure bleue matin</div>
           <div id="blue-morning" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
         </div>
         <div style="background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.2);border-radius:8px;padding:7px 8px;">
-          <div style="font-size:9px;color:var(--accent);font-weight:600;margin-bottom:3px;">🌉 Heure bleue soir</div>
+          <div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:3px;">🌉 Heure bleue soir</div>
           <div id="blue-evening" style="font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;">—</div>
         </div>
       </div>
