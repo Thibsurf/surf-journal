@@ -6641,7 +6641,9 @@ function _solunarDay(y,m,d,moonScore){
     }); };
     addT(_ncTideCache.properties.tide.high_tide,'pm'); addT(_ncTideCache.properties.tide.low_tide,'bm');
   }
-  var sun=calcSunTimes(y,m,d); var sr=(sun&&sun.sunrise)?parseHM(sun.sunrise):null, ss=(sun&&sun.sunset)?parseHM(sun.sunset):null;
+  // parseHM est local à une autre fonction → parser ici le format "HHhMM" de calcSunTimes
+  function _hmToMin(s){ if(!s)return null; var p=String(s).split('h'); return (+p[0])*60+(+(p[1]||0)); }
+  var sun=calcSunTimes(y,m,d); var sr=(sun&&sun.sunrise)?_hmToMin(sun.sunrise):null, ss=(sun&&sun.sunset)?_hmToMin(sun.sunset):null;
   // Classement des créneaux
   var periods=[];
   major.forEach(function(b){ periods.push({b:b,kind:'majeure',w:2}); });
@@ -6726,8 +6728,10 @@ function drawFishingScore(year,month,day){
     });
   }
   // Synthèse du jour (2.2) : solunaire + chevauchement marée + aube/crépuscule
-  var solun=_solunarDay(year,month,day,moonScore);
-  var total=Math.max(0,Math.min(5,Math.round(solun.dayScore*5)));
+  // Garde-fou : un échec ici ne doit JAMAIS empêcher le rendu de la courbe de marée.
+  var solun=null; try{ solun=_solunarDay(year,month,day,moonScore); }catch(e){ console.warn('[solunar] échec → score lune seul:', e&&e.message); }
+  var dayScoreVal = solun ? solun.dayScore : moonScore;
+  var total=Math.max(0,Math.min(5,Math.round(dayScoreVal*5)));
   // Poissons SVG animés pour le score pêche
   var labels=['Nulle','Faible','Moyenne','Bonne','Tres bonne','Excellente'];
   var col = total>=4?'#3dba8a':total>=3?'#4fa3c7':total>=2?'#e8a057':'#7a94aa';
@@ -6743,22 +6747,24 @@ function drawFishingScore(year,month,day){
   for(var fi=0;fi<5;fi++) fishHTML += fishSVG(fi<total);
   el.innerHTML='<div style="display:flex;gap:2px;align-items:center;margin-bottom:3px;">'+fishHTML+'</div>'
     +'<div style="font-size:10px;color:'+col+';font-weight:600;">'+labels[total]+'</div>'
-    +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité maximale (théorie solunaire). Périodes majeures = transits lunaires (lune au plus haut/plus bas) ; mineures = lever/coucher de lune." style="font-size:10px;color:var(--faint);margin-top:1px;cursor:help;">Lune solunaire '+(moonScore*100|0)+'% · synthèse jour '+Math.round(solun.dayScore*100)+'% <span style="opacity:.6">ⓘ</span></div>';
+    +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité maximale (théorie solunaire). Périodes majeures = transits lunaires (lune au plus haut/plus bas) ; mineures = lever/coucher de lune." style="font-size:10px;color:var(--faint);margin-top:1px;cursor:help;">Lune solunaire '+(moonScore*100|0)+'% · synthèse jour '+Math.round(dayScoreVal*100)+'% <span style="opacity:.6">ⓘ</span></div>';
 
   // Badge jour
   var fday=document.getElementById('fishing-day');
   if(fday) fday.textContent = isToday ? "Aujourd'hui" : _mareeDayShort(year,month,day);
 
-  // Timeline solunaire + meilleurs créneaux + légende (2.2)
-  drawSolunarTimeline(year,month,day,solun);
-  var bestEl=document.getElementById('solunar-best');
-  if(bestEl){
-    var bw=solun.periods.filter(function(p){return p.score>=2;}).slice(0,3).map(function(p){
-      var parts=[p.kind]; if(p.tide)parts.push(p.tide.type.toUpperCase()); if(p.dawn)parts.push('aube'); if(p.dusk)parts.push('crépuscule');
-      return '<b style="color:var(--text);">'+_hmMin(p.b[0])+'–'+_hmMin(p.b[1])+'</b> · '+parts.join(' + ');
-    }).join('<br>');
-    bestEl.innerHTML = bw ? ('🎯 Meilleurs créneaux :<br>'+bw) : 'Aucun créneau marquant ce jour.';
-  }
+  // Timeline solunaire + meilleurs créneaux + légende (2.2) — isolés (n'affectent pas la marée)
+  if(solun) try {
+    drawSolunarTimeline(year,month,day,solun);
+    var bestEl=document.getElementById('solunar-best');
+    if(bestEl){
+      var bw=solun.periods.filter(function(p){return p.score>=2;}).slice(0,3).map(function(p){
+        var parts=[p.kind]; if(p.tide)parts.push(p.tide.type.toUpperCase()); if(p.dawn)parts.push('aube'); if(p.dusk)parts.push('crépuscule');
+        return '<b style="color:var(--text);">'+_hmMin(p.b[0])+'–'+_hmMin(p.b[1])+'</b> · '+parts.join(' + ');
+      }).join('<br>');
+      bestEl.innerHTML = bw ? ('🎯 Meilleurs créneaux :<br>'+bw) : 'Aucun créneau marquant ce jour.';
+    }
+  } catch(e){ console.warn('[solunar timeline]', e&&e.message); }
   var legEl=document.getElementById('solunar-legend');
   if(legEl) legEl.innerHTML='<span style="color:#3dba8a;">▮ majeure</span> <span style="color:#4fa3c7;">▮ mineure</span> <span style="color:#4fa3c7;">▲ PM</span> <span style="color:#e05c5c;">▼ BM</span> <span style="color:#e8a057;">▮ aube/crép.</span>';
 
