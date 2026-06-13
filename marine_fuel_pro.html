@@ -2137,6 +2137,13 @@ function computeFOB(){
   });
   document.getElementById('conf-lbl').textContent='Confiance: '+(confLabels[confidence]||'—');
   document.getElementById('conf-lbl').style.color=confCols[confidence]||'var(--muted)';
+  // 2.5 : d'où vient le niveau (explique la confiance d'un coup d'œil)
+  if(_fobInfo&&_fobInfo.anchorDate){
+    const a=_fobInfo.anchorLog;
+    const kind=a&&a.type==='correct'?'mesure réelle':(a&&a.full_tank?'plein ras':'1er plein');
+    document.getElementById('conf-lbl').textContent+=' · basé sur '+kind+' du '+fmtDateShort(_fobInfo.anchorDate);
+    if(_fobInfo.overfillFlag)document.getElementById('conf-lbl').textContent+=' ⚠ litres > capacité ?';
+  }
 
   // ── Autonomie ────────────────────────────────────────────────────────────────
   const resPct=15;
@@ -2171,10 +2178,24 @@ function computeFOB(){
 }
 
 // ── Rendu logs ────────────────────────────────────────────────────────────────
+function setLogFilter(f){window._logFilter=f;renderLogs();}
+function goAddTab(){const t=document.querySelector('.tab[data-tab="add"]');if(t)t.click();}
 function renderLogs(){
-  const el=document.getElementById('logList');
-  if(!allLogs.length){el.innerHTML='<div class="empty"><span class="eico">🌊</span>Aucun log pour ce bateau</div>';return;}
-  el.innerHTML=allLogs.map(l=>{
+  const el=document.getElementById('logList'); if(!el)return;
+  if(!allLogs.length){el.innerHTML='<div class="empty"><span class="eico">🌊</span>Aucun log — <a href="javascript:;" onclick="goAddTab()" style="color:var(--a)">ajoute ton premier plein ⛽</a></div>';return;}
+  // 2.5 : total du mois en cours (dépenses partagées) + chips de filtre
+  const _now=new Date(), _ym=_now.getFullYear()+'-'+_now.getMonth();
+  const _monthTotal=allLogs.filter(l=>FuelCore.isShareable(l)&&((new Date(l.created_at)).getFullYear()+'-'+(new Date(l.created_at)).getMonth())===_ym).reduce((s,l)=>s+(l.total_price||0),0);
+  const _f=window._logFilter||'all';
+  const _chips=[['all','Tout'],['refuel','⛽ Pleins'],['cruise','🧭 Sorties'],['expense','💰 Dépenses'],['reimburse','💸 Remb']];
+  const _chipsHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+_chips.map(c=>'<button onclick="setLogFilter(\''+c[0]+'\')" class="btn btn-xs '+(_f===c[0]?'btn-primary':'btn-ghost')+'">'+c[1]+'</button>').join('')+'</div>'+(_monthTotal?('<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">Ce mois-ci : <b style="color:var(--a2);font-family:var(--mono)">'+fmt(Math.round(_monthTotal))+' XPF</b> partagés</div>'):'');
+  let _logs=allLogs;
+  if(_f==='refuel')_logs=allLogs.filter(l=>l.type==='refuel'||l.type==='bidon_fill'||l.type==='pour');
+  else if(_f==='cruise')_logs=allLogs.filter(l=>l.type==='cruise'||l.type==='nav');
+  else if(_f==='expense')_logs=allLogs.filter(l=>l.type==='expense'&&!FuelCore.isReimburseLog(l));
+  else if(_f==='reimburse')_logs=allLogs.filter(l=>FuelCore.isReimburseLog(l));
+  if(!_logs.length){el.innerHTML=_chipsHtml+'<div class="empty">Aucun log pour ce filtre</div>';return;}
+  el.innerHTML=_chipsHtml+_logs.map(l=>{
     const type=l.type||'cruise';
     const isCruise=type==='cruise', isRefuel=type==='refuel';
     const isCorrect=type==='correct', isPour=type==='pour', isNav=type==='nav';
