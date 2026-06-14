@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v10';
+const CACHE_NAME = 'surf-nc-v11';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   '/surf-journal/manifest.json',
   '/surf-journal/pwa.css',
   '/surf-journal/assets/nc-token.js',
+  '/surf-journal/assets/app-cache.js',
   '/surf-journal/favicon.ico',
   '/surf-journal/favicon.png'
 ];
@@ -51,6 +52,14 @@ self.addEventListener('fetch', event => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() =>
+        // Hors-ligne : on sert la version cachée. Pour une navigation (HTML) jamais
+        // précachée, repli sur previsions.html → jamais d'écran blanc dans la PWA.
+        caches.match(event.request).then(cached => {
+          if (cached) return cached;
+          if (event.request.mode === 'navigation') return caches.match('/surf-journal/previsions.html');
+          return Response.error();
+        })
+      )
   );
 });

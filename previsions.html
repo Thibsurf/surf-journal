@@ -278,6 +278,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 <div class="page active" id="tab-forecast">
 <div class="container">
 
+  <!-- Bandeau hors-ligne (affiché uniquement quand on rend depuis le cache) -->
+  <div id="offline-banner" style="display:none;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;line-height:1.5;"></div>
+
   <!-- ═══ BEST SESSION FINDER ═══ -->
   <div id="bsf-wrap" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
@@ -1329,6 +1332,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- Token meteo.nc partagé (classique, doit charger avant le script principal) -->
 <script src="assets/nc-token.js"></script>
+<script src="assets/app-cache.js"></script>
 <script>
 
 // SPOTS
@@ -1690,9 +1694,10 @@ function _ensureSupabaseClient() {
 // (_ensureSupabaseClient / _tokenSbClient restent ici : utilisés aussi par sessions/cache/spots.)
 
 // Transparence source des données (BONUS 1) — mis à jour dans le flux réel de loadForecast.
-var _dataSource = null;                          // 'direct' | 'worker' | 'openmeteo'
+var _dataSource = null;                          // 'direct' | 'worker' | 'openmeteo' | 'offline'
 var _tokenSource = _ncToken ? 'local' : null;    // d'où vient le token courant
 var _fallbackDisplayed = false;                  // (BONUS 3) Open-Meteo affiché en attendant le token
+var _offlineData = null;                          // PROMPT 3 : {ts} si rendu depuis le cache hors-ligne
 
 // Skeletons shimmer (BONUS 3) — blocs gris animés pendant le fetch
 function _skel(h, mb){ return '<div class="skel" style="height:' + h + ';' + (mb ? 'margin-bottom:' + mb + ';' : '') + '"></div>'; }
@@ -1762,7 +1767,8 @@ function _updateSourceBadge() {
   var map = {
     direct:    { dot: '🟢', txt: 'meteo.nc direct',      c: 'var(--ok)' },
     worker:    { dot: '🔵', txt: 'meteo.nc via worker',  c: 'var(--accent)' },
-    openmeteo: { dot: '🟠', txt: 'Open-Meteo (fallback)', c: 'var(--warm)' }
+    openmeteo: { dot: '🟠', txt: 'Open-Meteo (fallback)', c: 'var(--warm)' },
+    offline:   { dot: '📴', txt: 'Hors-ligne (cache)',   c: 'var(--warm)' }
   };
   var m = map[_dataSource];
   if (!m) { el.style.display = 'none'; return; }
@@ -1771,6 +1777,36 @@ function _updateSourceBadge() {
   el.style.color = m.c;
   el.style.borderColor = m.c;
   el.style.display = '';
+}
+
+// PROMPT 3 — bandeau hors-ligne daté. `off` = { ts } quand on rend depuis le cache, sinon null.
+// Ne jamais faire passer du cache pour du temps réel : date + âge + péremption explicites.
+function _updateOfflineBanner(off) {
+  var el = document.getElementById('offline-banner');
+  if (!el) return;
+  if (!off || !off.ts) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  var ageH = (Date.now() - off.ts) / 3600000;
+  var d = new Date(off.ts);
+  var dStr = d.toLocaleDateString('fr-FR', { weekday:'short', day:'numeric', month:'short' })
+           + ' à ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+  var ageStr = ageH < 1 ? 'il y a ' + Math.max(1, Math.round(ageH * 60)) + ' min'
+             : ageH < 48 ? 'il y a ' + Math.round(ageH) + ' h'
+             : 'il y a ' + Math.round(ageH / 24) + ' j';
+  var perime = ageH > 24; // seuil houle ; le vent (12 h) est mentionné dans le détail
+  var col = perime ? '#e05c5c' : '#e8a057';
+  el.style.background = perime ? 'rgba(224,92,92,.10)' : 'rgba(232,160,87,.12)';
+  el.style.border     = '1px solid ' + (perime ? 'rgba(224,92,92,.5)' : 'rgba(232,160,87,.5)');
+  el.style.color      = col;
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+    + '<span style="font-size:16px;line-height:1;">📴</span>'
+    + '<span><b>Mode hors-ligne</b> — dernières données du ' + escapeHtml(dStr)
+    +   ' <span style="color:var(--faint);">(' + ageStr + ')</span></span>'
+    + '</div>'
+    + (perime
+        ? '<div style="margin-top:5px;font-size:10.5px;color:#e05c5c;">⚠ Données potentiellement périmées (houle &gt; 24 h, vent &gt; 12 h) — à confirmer dès que le réseau revient.</div>'
+        : '<div style="margin-top:3px;font-size:10px;color:var(--faint);">Ce ne sont pas des données temps réel — reconnecte-toi pour rafraîchir.</div>');
+  el.style.display = 'block';
 }
 
 // Libellé d'âge/expiration du token courant (lecture JWT).
@@ -2673,12 +2709,43 @@ async function loadForecast(i) {
     omMarine   = _all[4].value || null;
     omWind     = _all[5].value || null;
 
-    var hasNC = !!(ncMarine && ncMarine.properties);
-    if (hasNC) window._lastNcApiSuccess = Date.now(); // token confirmé valide par l'API
+    // ─── PROMPT 3 : cache applicatif hors-ligne ──────────────────────────────
+    // Houle « live » = NC marine OU Open-Meteo. Présente → on mémorise le dernier
+    // état complet connu. Absente (hors-ligne) → on rejoue le dernier cache + bandeau.
+    _offlineData = null;
+    var _AC = window.AppCache;
+    var _spotKey = 'fc:' + (s.name || ('spot' + i));
+    var _liveHoule = !!(ncMarine && ncMarine.properties) || !!(omMarine && omMarine.hourly);
+    if (_AC) {
+      if (_liveHoule) {
+        _AC.put(_spotKey, { ncMarine:ncMarine, ncForecast:ncForecast, omMarine:omMarine,
+                            omWind:omWind, ncTide:ncTide, obs:_obsRes });
+      } else {
+        try {
+          var _rec = await _AC.get(_spotKey);
+          if (_rec && _rec.data) {
+            var _c = _rec.data;
+            ncMarine   = ncMarine   || _c.ncMarine;
+            ncForecast = ncForecast || _c.ncForecast;
+            omMarine   = omMarine   || _c.omMarine;
+            omWind     = omWind     || _c.omWind;
+            ncTide     = ncTide     || _c.ncTide;
+            if (!_obsRes && _c.obs) { _obsRes = _c.obs; obsData = _obsRes ? _obsRes.data : null; }
+            if (ncMarine || omMarine || ncTide) _offlineData = { ts: _rec.ts };
+          }
+        } catch (_) {}
+      }
+    }
 
-    // Source réelle de la houle affichée (BONUS 1) — marine = ncFetch direct rpcache.
-    _dataSource = hasNC ? 'direct' : ((omMarine && omMarine.hourly) ? 'openmeteo' : null);
+    var hasNC = !!(ncMarine && ncMarine.properties);
+    if (hasNC && !_offlineData) window._lastNcApiSuccess = Date.now(); // token confirmé par l'API (pas le cache)
+
+    // Source réelle de la houle affichée (BONUS 1) — hors-ligne prime sur le reste.
+    _dataSource = _offlineData ? 'offline'
+                : hasNC ? 'direct'
+                : ((omMarine && omMarine.hourly) ? 'openmeteo' : null);
     _updateSourceBadge();
+    _updateOfflineBanner(_offlineData);
     _logNetSummary();
     // Toast de bascule (BONUS 3) : token arrivé après le fallback Open-Meteo → vraies données NC
     if (hasNC && _fallbackDisplayed) { _fallbackDisplayed = false; try { showToast('Données meteo.nc chargées ✓'); } catch(_){} }
@@ -2759,10 +2826,17 @@ async function loadForecast(i) {
       srcEl.style.color = hasNC ? 'var(--faint)' : 'var(--warm)';
     }
     
-    document.getElementById('last-update').textContent = 'Màj ' + new Date().toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    }) + ' · ' + s.name + (ncMarine && ncMarine.properties ? ' · meteo.nc' : '');
+    var _luEl = document.getElementById('last-update');
+    if (_luEl) {
+      if (_offlineData) {
+        var _od = new Date(_offlineData.ts);
+        _luEl.textContent = '📴 Cache du ' + _od.toLocaleDateString('fr-FR', { day:'numeric', month:'short' })
+          + ' ' + _od.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) + ' · ' + s.name;
+      } else {
+        _luEl.textContent = 'Màj ' + new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })
+          + ' · ' + s.name + (ncMarine && ncMarine.properties ? ' · meteo.nc' : '');
+      }
+    }
 
   } catch (e) {
     if (e.message === 'NC_TOKEN_EXPIRED') {
