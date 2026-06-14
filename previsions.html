@@ -359,6 +359,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       </div>
     </div>
 
+    <!-- Bandeau BMS actif (masqué par défaut, aucun bruit si pas d'alerte) -->
+    <div id="nav-bms-banner" style="display:none;margin-bottom:10px;"></div>
+
     <!-- Jauges compactes : vent + mer + visibilité -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
 
@@ -7230,22 +7233,154 @@ async function _fetchCycloneBulletin() {
 // Sources JS meteo.nc :
 //   mf_bms_domtom : report?domain=BMRCOTE-09&report_type=marine&report_subtype=BMR_cote_fr
 //   mf_bmr_domtom : report?domain=BMRLARGE-09 (non-BMS) / BMSLARGE-09&report_subtype=BMS_large_fr
+// ── BMS : source UNIQUE de vérité (bandeau Navigation + carte cyclone Marée) ──
+// getActiveBMS() factorise le fetch + parsing, met en cache 15 min, et renvoie
+// un objet riche (active + niveau + détail par domaine) ou null (pas de token /
+// échec total). Le bandeau Navigation lit .active ; la carte Marée lit .lagon/.large.
+var _BMS_CACHE = null;
+var _BMS_TTL   = 15 * 60 * 1000; // 15 min
+
+// Parse un bulletin (BMR ou BMS) d'un domaine en objet exploitable.
+function _bmsParse(data, label, url) {
+  if (!data) return { label:label, url:url, active:false, sit:'', updateLabel:'' };
+
+  // Extraire métadonnées
+  var titre   = data.report_title || ('BMS '+label);
+  var updateT = data.update_time  || '';
+  if (updateT && !isNaN(+updateT)) {
+    try {
+      var dd = new Date(+updateT * 1000);
+      updateT = 'N°'+(data.report_number||'')
+        +' · '+dd.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})
+        +' à '+dd.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    } catch(e){}
+  }
+
+  // Extraire les paragraphes de texte depuis le tableau {text:"..."}
+  var paragraphs = [];
+  function extractTexts(obj) {
+    if (!obj) return;
+    if (Array.isArray(obj)) {
+      obj.forEach(function(item) {
+        if (item && typeof item.text === 'string' && item.text.trim().length > 2) {
+          paragraphs.push(item.text.trim());
+        } else if (item && typeof item === 'object') {
+          extractTexts(item);
+        }
+      });
+    } else if (typeof obj === 'object') {
+      Object.keys(obj).forEach(function(k) {
+        var v = obj[k];
+        if (Array.isArray(v)) extractTexts(v);
+        else if (k === 'text' && typeof v === 'string' && v.trim().length > 2) {
+          paragraphs.push(v.trim());
+        }
+      });
+    }
+  }
+  extractTexts(data);
+
+  var fullText = paragraphs.join('\n');
+
+  // Détecter BMS actif
+  var noBMS  = /pas de BMS|aucun BMS/i.test(fullText.slice(0,300));
+  var hasBMS = /Avis de|Grand frais|Vent fort|Coup de vent|25-30 kt|30-35 kt/i.test(fullText);
+  var isBMSType = /^BMS/i.test(data.report_subtype||'') || /^BMS/i.test(titre);
+
+  var active = !noBMS && (hasBMS || (isBMSType && paragraphs.length > 1));
+
+  if (!active) {
+    // Bulletin normal — situation générale
+    var sit = paragraphs.filter(function(p){
+      return /anticycl|alizé|talweg|situation|hPa/i.test(p) && p.length < 250;
+    })[0] || paragraphs.slice(0,2).join(' ').slice(0,200);
+    return { label:label, url:url, active:false, sit:sit, updateLabel:updateT };
+  }
+
+  // Parser BMS actif
+  var numLine = paragraphs.find(function(p){return /num[eé]ro\s*\d|[eé]mis le|rédigé le/i.test(p);}) || '';
+  var annule  = paragraphs.find(function(p){return /annule et remplace/i.test(p);}) || '';
+  var nature  = paragraphs.find(function(p){return /^Avis de/i.test(p);}) || '';
+  var zones   = paragraphs.filter(function(p){
+    return p !== numLine && p !== annule && p !== nature
+      && /^Sur (les|le|l')|kt[\s,]|mer agitée|fraîchiss|Loyauté|lagon Est|lagon Sud|lagon Ouest/i.test(p);
+  }).slice(0,8);
+
+  return { label:label, url:url, active:true, titre:titre,
+           numDate:(numLine+(annule?' · '+annule:'') ).slice(0,140),
+           nature:nature, zones:zones, updateLabel:updateT };
+}
+
+// Sévérité d'un BMS d'après sa nature : rouge (danger) ou orange (vigilance, défaut).
+function _bmsSeverity(nature) {
+  if (/coup de vent|temp[êe]te|gros temps|ouragan|cyclon|3[05]-[34][05]\s*kt|4[05]\s*kt/i.test(nature||'')) return 'red';
+  return 'orange'; // avis de vent fort / grand frais / défaut
+}
+
+async function getActiveBMS(force) {
+  if (!force && _BMS_CACHE && (Date.now() - _BMS_CACHE.ts) < _BMS_TTL) return _BMS_CACHE.data;
+  // Pas de token : pas de bruit (le détail reste dans l'onglet Marée). Cache un null court.
+  if (!_ncToken) { _BMS_CACHE = { ts:Date.now(), data:null }; return null; }
+
+  var BASE = 'https://rpcache.meteo.nc/internet2018client/2.0/';
+  // BMR = bulletins normaux (toujours 200) ; BMS = avis spécifiques (204 si pas d'alerte).
+  var EP_BMR_LAGON = BASE + 'report?domain=BMRCOTE-09&report_type=marine&report_subtype=BMR_cote_fr';
+  var EP_BMR_LARGE = BASE + 'report?domain=BMRLARGE-09&report_type=marine&report_subtype=BMR_large_fr';
+  var EP_BMS_LAGON = BASE + 'report?domain=BMSCOTE-09&report_type=marine&report_subtype=BMS_cote_fr';
+  var EP_BMS_LARGE = BASE + 'report?domain=BMSLARGE-09&report_type=marine&report_subtype=BMS_large_fr';
+
+  try {
+    var r = await Promise.all([
+      ncFetch(EP_BMR_LAGON).catch(function(e){ console.warn('[BMR lagon]',e); return null; }),
+      ncFetch(EP_BMR_LARGE).catch(function(e){ console.warn('[BMR large]',e); return null; }),
+      ncFetch(EP_BMS_LAGON).catch(function(){ return null; }),
+      ncFetch(EP_BMS_LARGE).catch(function(){ return null; }),
+    ]);
+    var dataLagon = r[0], dataLarge = r[1], dataBmsL = r[2], dataBmsG = r[3];
+
+    // Si BMS actif (réponse non-null), il prime sur le BMR
+    if (dataBmsL && dataBmsL.text_bloc_item) dataLagon = dataBmsL;
+    if (dataBmsG && dataBmsG.text_bloc_item) dataLarge = dataBmsG;
+
+    var lagon = _bmsParse(dataLagon, 'Lagon', 'https://meteo.nc/fr/marine/lagon');
+    var large = _bmsParse(dataLarge, 'Large', 'https://meteo.nc/fr/marine/large');
+
+    var niveau = (lagon.active && large.active) ? 'both'
+               : lagon.active ? 'cote'
+               : large.active ? 'large' : null;
+
+    // BMS « primaire » pour le bandeau : le plus sévère des actifs.
+    var primary;
+    if (lagon.active && large.active) {
+      primary = (_bmsSeverity(large.nature)==='red' && _bmsSeverity(lagon.nature)!=='red') ? large : lagon;
+    } else {
+      primary = lagon.active ? lagon : (large.active ? large : null);
+    }
+
+    var data = {
+      active: !!(lagon.active || large.active),
+      niveau: niveau,
+      nature: primary ? primary.nature : '',
+      titre:  primary ? primary.titre  : '',
+      updateLabel: primary ? (primary.updateLabel || primary.numDate || '') : '',
+      url:    primary ? primary.url : 'https://meteo.nc/fr/marine/lagon',
+      severity: primary ? _bmsSeverity(primary.nature) : 'orange',
+      lagon: lagon, large: large
+    };
+    _BMS_CACHE = { ts:Date.now(), data:data };
+    return data;
+  } catch(e) {
+    console.warn('[getActiveBMS]', e);
+    return null; // ne pas cacher une erreur transitoire
+  }
+}
+
 async function _fetchNavBMS() {
   var el = document.getElementById('nav-bms'); if(!el) return;
   el.innerHTML = '<span style="font-size:9px;color:var(--muted);">⏳ BMS…</span>';
 
-  var BASE = 'https://rpcache.meteo.nc/internet2018client/2.0/';
-
-  // Endpoints BMS confirmés depuis les JS meteo.nc
-  // BMR = bulletins normaux (toujours 200), contiennent aussi l'info BMS si actif
-  var EP_BMR_LAGON = BASE + 'report?domain=BMRCOTE-09&report_type=marine&report_subtype=BMR_cote_fr';
-  var EP_BMR_LARGE = BASE + 'report?domain=BMRLARGE-09&report_type=marine&report_subtype=BMR_large_fr';
-  // BMS spécifiques (204 No Content quand pas d'alerte, utilisés en complément)
-  var EP_BMS_LAGON = BASE + 'report?domain=BMSCOTE-09&report_type=marine&report_subtype=BMS_cote_fr';
-  var EP_BMS_LARGE = BASE + 'report?domain=BMSLARGE-09&report_type=marine&report_subtype=BMS_large_fr';
-
   if (!_ncToken) {
-    // Pas de token → liens directs avec avertissement
+    // Pas de token → liens directs avec avertissement (onglet Marée uniquement)
     el.innerHTML = '<div style="background:rgba(232,160,87,0.08);border:1px solid rgba(232,160,87,.3);'
       +'border-radius:6px;padding:7px 9px;">'
       +'<div style="font-size:9px;font-weight:700;color:#e8a057;margin-bottom:3px;">⚠️ Token requis pour les BMS</div>'
@@ -7260,98 +7395,18 @@ async function _fetchNavBMS() {
     return;
   }
 
+  var bms = await getActiveBMS();
+  if (!bms) {
+    el.innerHTML='<div style="display:flex;gap:5px;flex-wrap:wrap;">'
+      +'<a href="https://meteo.nc/fr/marine/lagon" target="_blank" style="font-size:9px;color:var(--accent);border:1px solid rgba(79,163,199,.3);padding:2px 8px;border-radius:4px;text-decoration:none;">BMS Lagon →</a>'
+      +'<a href="https://meteo.nc/fr/marine/large" target="_blank" style="font-size:9px;color:var(--accent);border:1px solid rgba(79,163,199,.3);padding:2px 8px;border-radius:4px;text-decoration:none;">BMS Large →</a>'
+      +'</div>';
+    return;
+  }
+
   try {
-    // Fetch BMR (bulletins normaux, toujours disponibles) + BMS actifs en parallèle
-    var [dataLagon, dataLarge, dataBmsL, dataBmsG] = await Promise.all([
-      ncFetch(EP_BMR_LAGON).catch(function(e){ console.warn('[BMR lagon]',e); return null; }),
-      ncFetch(EP_BMR_LARGE).catch(function(e){ console.warn('[BMR large]',e); return null; }),
-      ncFetch(EP_BMS_LAGON).catch(function(){ return null; }),
-      ncFetch(EP_BMS_LARGE).catch(function(){ return null; }),
-    ]);
-
-    // Si BMS actif (réponse non-null), il prime sur le BMR
-    if (dataBmsL && dataBmsL.text_bloc_item) dataLagon = dataBmsL;
-    if (dataBmsG && dataBmsG.text_bloc_item) dataLarge = dataBmsG;
-
-    // Structure JSON rpcache confirmée par screenshot :
-    // { report_type, report_subtype, domain_id, report_title, update_time,
-    //   ...puis un tableau d'objets {text:"..."} contenant les paragraphes du bulletin }
-    // Le contenu est soit dans data.content (array), data.paragraphs, data.blocks,
-    // ou directement les valeurs du JSON qui sont des arrays [{text:"..."}]
-    function parseBMS(data, label, url) {
-      if (!data) return { label:label, url:url, active:false, sit:'' };
-
-      // Extraire métadonnées
-      var titre   = data.report_title || ('BMS '+label);
-      var updateT = data.update_time  || '';
-      if (updateT && !isNaN(+updateT)) {
-        try {
-          var dd = new Date(+updateT * 1000);
-          updateT = 'N°'+(data.report_number||'')
-            +' · '+dd.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})
-            +' à '+dd.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-        } catch(e){}
-      }
-
-      // Extraire les paragraphes de texte depuis le tableau {text:"..."}
-      // Chercher le tableau dans toutes les clés
-      var paragraphs = [];
-      function extractTexts(obj) {
-        if (!obj) return;
-        if (Array.isArray(obj)) {
-          obj.forEach(function(item) {
-            if (item && typeof item.text === 'string' && item.text.trim().length > 2) {
-              paragraphs.push(item.text.trim());
-            } else if (item && typeof item === 'object') {
-              extractTexts(item);
-            }
-          });
-        } else if (typeof obj === 'object') {
-          Object.keys(obj).forEach(function(k) {
-            var v = obj[k];
-            if (Array.isArray(v)) extractTexts(v);
-            else if (k === 'text' && typeof v === 'string' && v.trim().length > 2) {
-              paragraphs.push(v.trim());
-            }
-          });
-        }
-      }
-      extractTexts(data);
-
-      var fullText = paragraphs.join('\n');
-
-      // Détecter BMS actif
-      var noBMS  = /pas de BMS|aucun BMS/i.test(fullText.slice(0,300));
-      var hasBMS = /Avis de|Grand frais|Vent fort|Coup de vent|25-30 kt|30-35 kt/i.test(fullText);
-      var isBMSType = /^BMS/i.test(data.report_subtype||'') || /^BMS/i.test(titre);
-
-      var active = !noBMS && (hasBMS || (isBMSType && paragraphs.length > 1));
-
-      if (!active) {
-        // Bulletin normal — situation générale
-        var sit = paragraphs.filter(function(p){
-          return /anticycl|alizé|talweg|situation|hPa/i.test(p) && p.length < 250;
-        })[0] || paragraphs.slice(0,2).join(' ').slice(0,200);
-        return { label:label, url:url, active:false, sit:sit };
-      }
-
-      // Parser BMS actif
-      var numLine = paragraphs.find(function(p){return /num[eé]ro\s*\d|[eé]mis le|rédigé le/i.test(p);}) || '';
-      var annule  = paragraphs.find(function(p){return /annule et remplace/i.test(p);}) || '';
-      var nature  = paragraphs.find(function(p){return /^Avis de/i.test(p);}) || '';
-      // bloc_title identifie les sections
-      var zones   = paragraphs.filter(function(p){
-        return p !== numLine && p !== annule && p !== nature
-          && /^Sur (les|le|l')|kt[\s,]|mer agitée|fraîchiss|Loyauté|lagon Est|lagon Sud|lagon Ouest/i.test(p);
-      }).slice(0,8);
-
-      return { label:label, url:url, active:true, titre:titre,
-               numDate:(numLine+(annule?' · '+annule:'') ).slice(0,140),
-               nature:nature, zones:zones };
-    }
-
-    var bmsL = parseBMS(dataLagon, 'Lagon', 'https://meteo.nc/fr/marine/lagon');
-    var bmsG = parseBMS(dataLarge, 'Large', 'https://meteo.nc/fr/marine/large');
+    var bmsL = bms.lagon;
+    var bmsG = bms.large;
 
     function renderItem(b) {
       if (b.active) {
@@ -8691,6 +8746,52 @@ function updateNavIndicator(wSpd, wGst, wDir, totH, swDir, visM) {
   set('nav-vis', '<span style="color:'+vl.col+';">'+vl.txt+'</span>');
   bar('nav-vis-bar', visPct, visBarCol);
   set('nav-vis-lbl', vl.sub || (visM == null ? 'GFS · données' : ''));
+
+  // Bandeau BMS marine (asynchrone, masqué si aucune alerte / pas de token)
+  updateNavBMSBanner();
+}
+
+// ⚓ Bandeau BMS dans l'encart Navigation — affiché UNIQUEMENT si un BMS est actif.
+// Pas de token / pas d'alerte / erreur → conteneur masqué (aucun bruit sur mobile).
+async function updateNavBMSBanner() {
+  var box = document.getElementById('nav-bms-banner');
+  if (!box) return;
+  var bms;
+  try { bms = await getActiveBMS(); } catch(e){ bms = null; }
+  if (!bms || !bms.active) { box.style.display = 'none'; box.innerHTML = ''; return; }
+
+  var red = bms.severity === 'red';
+  var col = red ? '#e05c5c' : '#e8a057';
+  var bg  = red ? 'rgba(224,92,92,0.10)' : 'rgba(232,160,87,0.10)';
+  var bd  = red ? 'rgba(224,92,92,.45)'  : 'rgba(232,160,87,.45)';
+  var zone = bms.niveau === 'both' ? 'Lagon & Large'
+           : bms.niveau === 'large' ? 'Large' : 'Lagon';
+  var nature = bms.nature ? bms.nature.replace(/^Avis de\s*/i,'') : 'avis marine';
+
+  box.innerHTML =
+    '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:8px;padding:8px 11px;">'
+    + '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">'
+    +   '<span style="font-size:15px;line-height:1;">⚠️</span>'
+    +   '<span style="font-size:11px;font-weight:700;color:'+col+';">BMS '+escapeHtml(zone)+' actif</span>'
+    +   '<span style="font-size:10px;color:var(--text);">— '+escapeHtml(nature)+'</span>'
+    + '</div>'
+    + (bms.updateLabel
+        ? '<div style="font-size:8.5px;color:var(--faint);margin-top:3px;">'+escapeHtml(bms.updateLabel)+'</div>'
+        : '')
+    + '<button type="button" onclick="openNavBMSDetail()" '
+    +   'style="margin-top:6px;background:none;border:1px solid '+bd+';color:'+col+';font-size:9px;'
+    +   'padding:3px 10px;border-radius:5px;cursor:pointer;">détails →</button>'
+    + '</div>';
+  box.style.display = 'block';
+}
+
+// Lien « détails » du bandeau → ouvre l'onglet Marée et défile vers la carte BMS.
+function openNavBMSDetail() {
+  showTab('maree');
+  setTimeout(function(){
+    var c = document.getElementById('nav-bms');
+    if (c) c.scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 250);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
