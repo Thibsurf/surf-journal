@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v11';
+const CACHE_NAME = 'surf-nc-v12';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -9,6 +9,7 @@ const ASSETS = [
   '/surf-journal/pwa.css',
   '/surf-journal/assets/nc-token.js',
   '/surf-journal/assets/app-cache.js',
+  '/surf-journal/assets/share-card.js',
   '/surf-journal/favicon.ico',
   '/surf-journal/favicon.png'
 ];

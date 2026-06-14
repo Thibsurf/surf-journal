@@ -259,6 +259,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <button class="nav-tab" onclick="showTab('synop',this);closeNavMenu()">🗺 Isofronts</button>
     <button class="nav-tab" onclick="showTab('maree',this);closeNavMenu()">🌊 Marée &amp; Pêche</button>
     <button class="nav-tab" onclick="showTab('enso',this);closeNavMenu()">📈 ENSO</button>
+    <button class="nav-tab" onclick="showTab('forecast');shareSpotCard();closeNavMenu()" title="Partager le spot actif (image WhatsApp)">📤 Partager</button>
   </div>
   <span id="last-update" style="font-size:11px;color:var(--faint);"></span>
   <span id="data-source-badge" onclick="showNetDiagPanel()"
@@ -306,13 +307,22 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <!-- Spot tabs + bouton réglages spot -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
     <div class="section-label" style="margin-bottom:0;">📍 Spot</div>
-    <button onclick="showSpotSettings()" id="spot-settings-btn"
-      title="Réglages du spot actif (port, source houle, score...)"
-      style="background:none;border:1px solid var(--border);color:var(--muted);
-      padding:2px 8px;border-radius:var(--rs);cursor:pointer;font-size:10px;
-      font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
-      ⚙ Réglages spot
-    </button>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button onclick="shareSpotCard()" id="share-spot-btn"
+        title="Générer une image résumé du spot à partager (WhatsApp…)"
+        style="background:rgba(79,163,199,.12);border:1px solid var(--accent);color:var(--accent);
+        padding:4px 10px;border-radius:var(--rs);cursor:pointer;font-size:11px;
+        font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
+        📤 Partager
+      </button>
+      <button onclick="showSpotSettings()" id="spot-settings-btn"
+        title="Réglages du spot actif (port, source houle, score...)"
+        style="background:none;border:1px solid var(--border);color:var(--muted);
+        padding:4px 10px;border-radius:var(--rs);cursor:pointer;font-size:11px;
+        font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
+        ⚙ Réglages spot
+      </button>
+    </div>
   </div>
   <div class="spot-tabs" id="spot-tabs"></div>
 
@@ -1333,6 +1343,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 <!-- Token meteo.nc partagé (classique, doit charger avant le script principal) -->
 <script src="assets/nc-token.js"></script>
 <script src="assets/app-cache.js"></script>
+<script src="assets/share-card.js"></script>
 <script>
 
 // SPOTS
@@ -3964,6 +3975,61 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p){
        dots+' '+scTxt,
        surf.details.map(function(d){return '<span style="opacity:.75;">'+d+'</span>';}).join(' &middot; '),
        scCol);
+
+  // PROMPT 4 — mémorise les conditions courantes pour le partage (carte PNG WhatsApp).
+  window._shareCtx = {
+    spotName: (SPOTS[currentSpot] && SPOTS[currentSpot].name) || '',
+    ts: Date.now(),
+    hs:hs, T:T, dir:dir, hs2:hs2, tot:tot, ws:ws, wg:wg, wd:wd, p:p,
+    score: surf.score, scoreLabel: surf.label,
+    onshoreLimit: (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.onshoreLimit : 45),
+    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135)
+  };
+}
+
+// PROMPT 4 — génère et partage la carte résumé du spot (PNG 1080² + texte WhatsApp).
+async function shareSpotCard() {
+  if (!window.ShareCard) { try { showToast('Module partage indisponible'); } catch(_){} return; }
+  var sctx = window._shareCtx;
+  if (!sctx || !sctx.spotName) { try { showToast('Données pas encore prêtes'); } catch(_){} return; }
+
+  var btn = document.getElementById('share-spot-btn');
+  var old = btn ? btn.innerHTML : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ génération…'; }
+
+  try {
+    // Données complémentaires : marée (cache NC) + BMS (source unifiée du PROMPT 2).
+    var tide = null; try { tide = ShareCard.nextTides(_ncTideCache); } catch(_){}
+    var bms = null;  try { bms = await getActiveBMS(); } catch(_){}
+    var data = Object.assign({}, sctx, { tide: tide, bms: bms });
+
+    var summary = ShareCard.buildSummary(data);
+    var canvas = document.createElement('canvas');
+    ShareCard.draw(canvas, data);
+
+    var blob = await new Promise(function(res){ canvas.toBlob(res, 'image/png', 0.95); });
+    if (!blob) throw new Error('toBlob null');
+    var slug = (sctx.spotName||'spot').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    var file = new File([blob], 'surf-'+slug+'.png', { type:'image/png' });
+
+    // Partage natif si supporté (mobile), sinon téléchargement + copie du résumé texte.
+    if (navigator.canShare && navigator.canShare({ files:[file] })) {
+      await navigator.share({ files:[file], text: summary.textLine });
+    } else {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href = url; a.download = file.name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      try { _copyToClipboard(summary.textLine); } catch(_){}
+      try { showToast('Image téléchargée + résumé copié 📋'); } catch(_){}
+    }
+  } catch(e) {
+    console.warn('[share]', e);
+    try { showToast('Partage impossible'); } catch(_){}
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = old; }
+  }
 }
 
 
