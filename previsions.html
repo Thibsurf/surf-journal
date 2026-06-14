@@ -254,6 +254,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <div class="logo">Surf <span>NC</span><span class="logo-suffix"> — Prévisions</span></div>
   <div class="nav-tabs-group" id="nav-tabs-group">
     <button class="nav-tab active" onclick="showTab('forecast',this);closeNavMenu()">📊 Prévisions</button>
+    <button class="nav-tab" onclick="showTab('compare',this);closeNavMenu()">⚖️ Comparer</button>
     <button class="nav-tab" onclick="showTab('map',this);closeNavMenu()">🗺️ Carte spots</button>
     <button class="nav-tab" onclick="showTab('windy',this);closeNavMenu()">🌊 Windy</button>
     <button class="nav-tab" onclick="showTab('synop',this);closeNavMenu()">🗺 Isofronts</button>
@@ -558,6 +559,28 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     </div>
   </div>
 
+</div>
+</div>
+
+<!--  PAGE COMPARATEUR (PROMPT 5)  -->
+<div class="page" id="tab-compare">
+<div class="container">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+    <div class="section-label" style="margin-bottom:0;">⚖️ Comparer les spots</div>
+    <span id="compare-progress" style="font-size:10px;color:var(--faint);"></span>
+  </div>
+  <div id="compare-modes" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+    <button class="stab active" onclick="showCompare('now',this)">Maintenant</button>
+    <button class="stab" onclick="showCompare('today',this)">Aujourd'hui</button>
+    <button class="stab" onclick="showCompare('3d',this)">3 prochains jours</button>
+  </div>
+  <div id="compare-cards">
+    <div style="color:var(--faint);font-size:12px;padding:14px;text-align:center;">⏳ Chargement…</div>
+  </div>
+  <div style="font-size:9px;color:var(--faint);margin-top:10px;line-height:1.5;">
+    Score = moteur Best Session (houle, période, vent vs houle, marée, lumière du jour),
+    trié par score décroissant. Touche un spot pour ouvrir ses prévisions détaillées.
+  </div>
 </div>
 </div>
 
@@ -1608,6 +1631,7 @@ function showTab(name, btn) {
   }
   if(name==='maree' && !mareeInited){ initMaree(); mareeInited=true; }
   else if(name==='maree') { loadOpenMeteoMeteo(); }
+  if(name==='compare') { if(!_compareInited){ initCompare(); } else { renderCompare(); } }
   if(name==='synop') { loadSynopImage(); loadBaroData(); }
   if(name==='enso' && !_ensoInited) { _ensoInited=true; ensoLoadData(); }
 
@@ -3523,6 +3547,174 @@ function bsfSelectSpot(spotIdx, startMs) {
   // Scroll vers l'encart principal
   var cond = document.getElementById('current-cond');
   if (cond) setTimeout(function(){ cond.scrollIntoView({behavior:'smooth', block:'start'}); }, 200);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  PROMPT 5 — COMPARATEUR MULTI-SPOTS (réutilise intégralement le moteur BSF)
+// ════════════════════════════════════════════════════════════════════════
+var _compareMode = 'now';   // 'now' | 'today' | '3d'
+var _compareInited = false;
+
+// Découpe un fc sur les index retenus (préserve la série de marée du spot).
+function _sliceFc(fc, idxs) {
+  function pick(arr){ return idxs.map(function(i){ return arr ? arr[i] : null; }); }
+  return {
+    dates: pick(fc.dates), hs: pick(fc.hs), T: pick(fc.T), swDir: pick(fc.swDir),
+    ws: pick(fc.ws), wg: pick(fc.wg), wDir: pick(fc.wDir), pwr: pick(fc.pwr),
+    tideSeries: fc.tideSeries, tideMin: fc.tideMin, tideMax: fc.tideMax, _ts: fc._ts
+  };
+}
+
+// Métriques d'un spot pour le mode courant. null = pas de données. (fc.dates sont décalées UTC+11.)
+function _compareSpotMetrics(spot, fc, mode) {
+  if (!fc || !fc.dates || !fc.dates.length) return null;
+  loadScoreParams(spot);
+  var nowS = Date.now() + 11 * 3600000;
+
+  if (mode === 'now') {
+    var bi = -1, bestDiff = Infinity;
+    for (var i = 0; i < fc.dates.length; i++) {
+      var diff = Math.abs(fc.dates[i] - nowS);
+      if (diff < bestDiff) { bestDiff = diff; bi = i; }
+    }
+    if (bi < 0) return null;
+    var sc = calcSurfScore(fc.hs[bi], fc.T[bi], fc.swDir[bi], fc.ws[bi], fc.wg[bi], fc.wDir[bi], fc.pwr[bi]);
+    var tide = _tideStateAt(fc.dates[bi], fc.tideSeries, fc.tideMin, fc.tideMax);
+    var eff = Math.max(0, Math.min(5, sc.score + _tideAdj(spot, tide)));
+    return { hasData:true, score:eff, hs:fc.hs[bi], T:fc.T[bi], swDir:fc.swDir[bi],
+             ws:fc.ws[bi], wDir:fc.wDir[bi], tide:tide,
+             windowLabel:'~' + new Date(fc.dates[bi]).getUTCHours() + 'h',
+             startMs: fc.dates[bi], stale: bestDiff > 2 * 3600000 };
+  }
+
+  // today / 3d : on découpe la fenêtre puis on rejoue findSessionsForSpot (même physique).
+  var idxs = [];
+  if (mode === 'today') {
+    var d0 = new Date(nowS), Y = d0.getUTCFullYear(), Mo = d0.getUTCMonth(), Da = d0.getUTCDate();
+    for (var j = 0; j < fc.dates.length; j++) {
+      var dj = new Date(fc.dates[j]);
+      if (fc.dates[j] >= nowS - 3600000 && dj.getUTCFullYear()===Y && dj.getUTCMonth()===Mo && dj.getUTCDate()===Da) idxs.push(j);
+    }
+  } else {
+    var lim = nowS + 3 * 24 * 3600000;
+    for (var k = 0; k < fc.dates.length; k++) if (fc.dates[k] >= nowS - 3600000 && fc.dates[k] <= lim) idxs.push(k);
+  }
+  if (!idxs.length) return { hasData:true, score:0, windowLabel:'—', noWindow:true };
+
+  var wfc = _sliceFc(fc, idxs);
+  var sessions = findSessionsForSpot(spot, wfc);
+  if (!sessions.length) {
+    // pas de créneau exploitable → on remonte la meilleure heure brute de la fenêtre
+    var maxEff = 0, pkI = idxs[0];
+    idxs.forEach(function(i){
+      var s2 = calcSurfScore(fc.hs[i], fc.T[i], fc.swDir[i], fc.ws[i], fc.wg[i], fc.wDir[i], fc.pwr[i]);
+      var t2 = _tideStateAt(fc.dates[i], fc.tideSeries, fc.tideMin, fc.tideMax);
+      var e2 = Math.max(0, Math.min(5, s2.score + _tideAdj(spot, t2)));
+      if (e2 > maxEff) { maxEff = e2; pkI = i; }
+    });
+    return { hasData:true, score:maxEff, hs:fc.hs[pkI], T:fc.T[pkI], swDir:fc.swDir[pkI],
+             ws:fc.ws[pkI], wDir:fc.wDir[pkI], tide:_tideStateAt(fc.dates[pkI], fc.tideSeries, fc.tideMin, fc.tideMax),
+             windowLabel:'—', startMs:fc.dates[pkI], noWindow:true };
+  }
+  var best = sessions.reduce(function(a,b){ return b.mean > a.mean ? b : a; });
+  var pk = best.peakH;
+  var jours = ['dim','lun','mar','mer','jeu','ven','sam'];
+  var d1 = new Date(best.startMs).getUTCHours(), d2 = new Date(best.endMs).getUTCHours();
+  return { hasData:true, score:best.mean, hs:pk.hs, T:pk.T, swDir:wfc.swDir[pk.i],
+           ws:pk.ws, wDir:pk.wDir, tide:pk.tide,
+           windowLabel: (mode==='3d' ? jours[new Date(best.startMs).getUTCDay()] + ' ' : '') + d1 + 'h–' + d2 + 'h',
+           startMs: best.startMs };
+}
+
+// Charge tous les spots (pool BSF) puis rend ; rendu progressif à chaque spot prêt.
+async function initCompare() {
+  _compareInited = true;
+  renderCompare();
+  try {
+    await loadAllForecasts(function(done, total){
+      var p = document.getElementById('compare-progress');
+      if (p) p.textContent = done + '/' + total;
+      renderCompare();
+    });
+  } catch(e){ console.warn('[compare]', e); }
+  var p2 = document.getElementById('compare-progress'); if (p2) p2.textContent = '';
+  renderCompare();
+}
+
+function showCompare(mode, btn) {
+  _compareMode = mode;
+  var box = document.getElementById('compare-modes');
+  if (box) box.querySelectorAll('.stab').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderCompare();
+}
+
+function renderCompare() {
+  var wrap = document.getElementById('compare-cards'); if (!wrap) return;
+  var cols   = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
+  var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
+
+  var rows = SPOTS.map(function(spot, idx){
+    var m = null; try { m = _compareSpotMetrics(spot, _forecastCache[spot.name], _compareMode); } catch(e){ m = null; }
+    return { spot:spot, idx:idx, m:m };
+  });
+  // findSessionsForSpot/_compareSpotMetrics ont muté SCORE_PARAMS → restaurer le spot courant.
+  if (SPOTS[currentSpot]) loadScoreParams(SPOTS[currentSpot]);
+
+  rows.sort(function(a,b){
+    var sa = (a.m && a.m.hasData) ? a.m.score : -1;
+    var sb = (b.m && b.m.hasData) ? b.m.score : -1;
+    return sb - sa;
+  });
+
+  if (!rows.some(function(r){ return r.m && r.m.hasData; })) {
+    wrap.innerHTML = '<div style="color:var(--faint);font-size:12px;padding:14px;text-align:center;">'
+      + '⏳ Chargement des spots… <br><span style="font-size:10px;">(si rien ne vient : token meteo.nc requis pour les prévisions multi-spots)</span></div>';
+    return;
+  }
+
+  var bestLbl = _compareMode === 'now' ? 'Meilleur maintenant'
+              : _compareMode === 'today' ? "Meilleur aujourd'hui" : 'Meilleur sur 3 j';
+  var bestShown = false;
+
+  wrap.innerHTML = rows.map(function(r){
+    var m = r.m;
+    if (!m || !m.hasData) {
+      return '<div style="opacity:.42;border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:8px;">'
+        + '<span style="font-size:12px;font-weight:600;color:var(--muted);">' + escapeHtml(r.spot.name) + '</span>'
+        + '<span style="font-size:10px;color:var(--faint);margin-left:8px;">données indisponibles</span></div>';
+    }
+    var sc = Math.min(5, Math.max(0, Math.round(m.score)));
+    var col = cols[sc], lbl = labels[sc];
+    var isBest = !bestShown && sc > 0; if (isBest) bestShown = true;
+    var dots = '';
+    for (var i = 0; i < 5; i++) dots += '<span style="color:' + (i < sc ? col : 'var(--border)') + ';font-size:13px;">●</span>';
+
+    var wr = (window.ShareCard && m.swDir != null && m.wDir != null) ? ShareCard.windRel(m.wDir, m.swDir, m.ws) : null;
+    var dirArrow = (typeof svgArrow === 'function' && m.swDir != null) ? svgArrow(m.swDir, col) + ' ' : '';
+    var wArrow   = (typeof svgArrow === 'function' && m.wDir  != null) ? svgArrow(m.wDir, '#e8a057') + ' ' : '';
+    var tideTxt  = m.tide ? _tideLabel(m.tide.level01, m.tide.phase) : '—';
+
+    return '<div onclick="bsfSelectSpot(' + r.idx + ',' + (m.startMs || 0) + ')" '
+      + 'style="cursor:pointer;border:1px solid ' + (isBest ? col : 'var(--border)') + ';border-radius:12px;'
+      + 'padding:11px 13px;margin-bottom:9px;background:' + (isBest ? col + '14' : 'var(--deep)') + ';transition:background .15s;" '
+      + 'onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" onmouseout="this.style.background=\'' + (isBest ? col + '14' : 'var(--deep)') + '\'">'
+
+      + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      +   (isBest ? '<span style="font-size:9px;font-weight:700;color:' + col + ';background:' + col + '22;border:1px solid ' + col + '55;border-radius:20px;padding:2px 8px;white-space:nowrap;">🥇 ' + bestLbl + '</span>' : '')
+      +   '<span style="font-size:14px;font-weight:700;color:' + col + ';">' + escapeHtml(r.spot.name) + '</span>'
+      +   '<span style="margin-left:auto;white-space:nowrap;">' + dots
+      +     ' <span style="font-size:11px;font-weight:700;color:' + col + ';">' + sc + '/5</span></span>'
+      + '</div>'
+
+      + '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:var(--text);">'
+      +   '<span>🌊 ' + (m.hs != null ? (+m.hs).toFixed(1) + 'm' : '—') + (m.T ? ' @' + Math.round(m.T) + 's' : '') + ' ' + dirArrow + (m.swDir != null ? compass(m.swDir) : '') + '</span>'
+      +   '<span style="color:var(--muted);">💨 ' + (m.ws != null ? Math.round(m.ws) + 'kt' : '—') + ' ' + wArrow + (m.wDir != null ? compass(m.wDir) : '')
+      +     (wr ? ' <span style="color:' + wr.col + ';font-weight:600;">' + wr.txt + '</span>' : '') + '</span>'
+      +   '<span style="color:var(--muted);">🌙 ' + tideTxt + '</span>'
+      +   '<span style="color:var(--accent);">⏱ ' + (m.windowLabel || '—') + '</span>'
+      + '</div></div>';
+  }).join('');
 }
 
 // ── Calibration automatique de minPwr depuis les sessions du journal ──────────
