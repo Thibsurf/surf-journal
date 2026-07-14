@@ -144,8 +144,11 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .gw-cell svg{width:clamp(12px,3.2vw,18px);height:clamp(12px,3.2vw,18px);}
 .gw-hour{font-size:clamp(8px,2.4vw,10px);color:var(--muted);font-weight:600;}
 .gw-row-sep{border-top:1px solid var(--border);margin:3px 0 1px;grid-column:1/-1;}
-.gw-tide-row{grid-column:1/-1;position:relative;height:44px;margin:2px 0;}
+.gw-tide-row{grid-column:1/-1;position:relative;height:72px;margin:2px 0;}
 .gw-sun-row{grid-column:1/-1;position:relative;height:30px;}
+#gw-sat-info{position:absolute;left:0;right:0;bottom:0;padding:14px 6px 5px;font-size:9.5px;font-weight:700;
+  display:flex;gap:9px;justify-content:center;flex-wrap:wrap;text-align:center;line-height:1.3;
+  background:linear-gradient(transparent,rgba(6,16,30,.85) 55%);pointer-events:none;}
 @media(max-width:520px){
   .gw-lbl{font-size:8px;}
   #gw-widget .gw-head{flex-direction:column;align-items:stretch;}
@@ -390,6 +393,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <img id="gw-sat-thumb" alt="Vue satellite du spot">
         <canvas id="gw-sat-vec"></canvas>
         <div id="gw-sat-time"></div>
+        <div id="gw-sat-info"></div>
       </div>
     </div>
     <div class="gw-grid-wrap">
@@ -5051,45 +5055,56 @@ function _gwDrawVectors(fi) {
   var ws = d.wSpd && d.wSpd[fi], wd2 = d.wDir && d.wDir[fi];
   var hMax = Math.max(s1h||0, s2h||0, 0.5);
 
-  // Même convention que la rose : flèche du centre vers l'extérieur = D'OÙ ça vient
+  // Sens de PROPAGATION : la flèche part du côté d'où ça vient, traverse le spot
+  // et pointe vers où ça va (même convention que les flèches du tableau).
   var arrows = [];
-  if (s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.35), col:'#4fc3e8',
-    label:s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':''), lw:3.2 });
-  if (s2h && s2x.dir!=null) arrows.push({ deg:s2x.dir, mag:Math.max(s2h/hMax,.25), col:'#b9d0eb',
-    label:s2h.toFixed(1)+'m'+(s2x.t?' '+Math.round(s2x.t)+'s':''), lw:2.2 });
-  if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.3), col:'#e8a057',
-    label:Math.round(ws)+'kt', lw:2.6 });
+  if (s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.4), col:'#4fc3e8',
+    info:'🌊 '+s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':'')+' '+compass(s1d), lw:3.2 });
+  if (s2h && s2x.dir!=null) arrows.push({ deg:s2x.dir, mag:Math.max(s2h/hMax,.3), col:'#b9d0eb',
+    info:'🌊₂ '+s2h.toFixed(1)+'m'+(s2x.t?' '+Math.round(s2x.t)+'s':'')+' '+compass(s2x.dir), lw:2.2 });
+  if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.35), col:'#e8a057',
+    info:'💨 '+Math.round(ws)+'kt '+compass(wd2), lw:2.6 });
 
-  // Anti-collision légère : écart < 22° → ±10°
+  var infoHtml = arrows.map(function(ar){
+    return '<span style="color:'+ar.col+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+ar.info+'</span>';
+  }).join('');
+  // Anti-collision légère : écart < 22° → ±10° (deg0 = direction vraie pour le label)
+  arrows.forEach(function(ar){ ar.deg0 = ar.deg; });
   for (var a=0; a<arrows.length; a++) for (var b2=a+1; b2<arrows.length; b2++) {
     var da = Math.abs(((arrows[a].deg-arrows[b2].deg)%360+540)%360-180);
     if (da < 22) { arrows[a].deg -= 10; arrows[b2].deg += 10; }
   }
 
   arrows.forEach(function(ar){
-    var rad = (ar.deg-90)*Math.PI/180;
+    var rad = (ar.deg-90)*Math.PI/180; // azimut de PROVENANCE (0° = N en haut)
+    var ux = Math.cos(rad), uy = Math.sin(rad);
     var L = R*ar.mag;
-    var x2 = cx+L*Math.cos(rad), y2 = cy+L*Math.sin(rad);
+    var tx = cx + L*ux,       ty = cy + L*uy;        // queue : côté d'où ça vient
+    var px2 = cx - R*0.30*ux, py2 = cy - R*0.30*uy;  // pointe : au-delà du spot, où ça va
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(6,16,30,.8)'; ctx.lineWidth = ar.lw+2.5;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(px2, py2); ctx.stroke();
     ctx.strokeStyle = ar.col; ctx.lineWidth = ar.lw;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x2, y2); ctx.stroke();
-    // Pointe vers l'extérieur
-    var hx = cx+(L+7)*Math.cos(rad), hy = cy+(L+7)*Math.sin(rad);
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(px2, py2); ctx.stroke();
+    // Pointe de flèche dans le sens de propagation (vers px2, direction -u)
+    var hx = px2 - 8*ux, hy = py2 - 8*uy;
     ctx.fillStyle = ar.col;
     ctx.beginPath();
     ctx.moveTo(hx, hy);
-    ctx.lineTo(x2-5*Math.cos(rad-0.5), y2-5*Math.sin(rad-0.5));
-    ctx.lineTo(x2-5*Math.cos(rad+0.5), y2-5*Math.sin(rad+0.5));
+    ctx.lineTo(px2 + 6*Math.cos(rad-0.55), py2 + 6*Math.sin(rad-0.55));
+    ctx.lineTo(px2 + 6*Math.cos(rad+0.55), py2 + 6*Math.sin(rad+0.55));
     ctx.closePath(); ctx.fill();
-    // Label au bout, halo sombre pour lisibilité sur la photo
-    var lx = cx+(L+17)*Math.cos(rad), ly = cy+(L+17)*Math.sin(rad);
-    lx = Math.max(22, Math.min(W-22, lx)); ly = Math.max(12, Math.min(H-8, ly));
-    ctx.font = '700 9px DM Sans,sans-serif'; ctx.textAlign = 'center';
-    ctx.strokeStyle = 'rgba(6,16,30,.85)'; ctx.lineWidth = 3; ctx.strokeText(ar.label, lx, ly);
-    ctx.fillStyle = ar.col; ctx.fillText(ar.label, lx, ly);
+    // Petit point cardinal à la queue (provenance) — halo sombre
+    var lx = cx + (L+11)*ux, ly = cy + (L+11)*uy;
+    lx = Math.max(14, Math.min(W-14, lx)); ly = Math.max(12, Math.min(H-26, ly));
+    ctx.font = '700 8px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(6,16,30,.85)'; ctx.lineWidth = 3; ctx.strokeText(compass(ar.deg0!=null?ar.deg0:ar.deg), lx, ly);
+    ctx.fillStyle = ar.col; ctx.fillText(compass(ar.deg0!=null?ar.deg0:ar.deg), lx, ly);
   });
+
+  // Valeurs regroupées dans la barre du bas (aucun chevauchement possible)
+  var iEl = document.getElementById('gw-sat-info');
+  if (iEl) iEl.innerHTML = infoHtml;
 
   var tEl = document.getElementById('gw-sat-time');
   if (tEl) tEl.textContent = _gwFmtSlot(d, fi);
@@ -5285,69 +5300,119 @@ function _gwTideHeightAt(ms, events) {
 
 // Courbe alignée en "espace colonnes" (index de créneau horaire) pour coïncider
 // visuellement avec la grille au-dessus, tout en interpolant l'heure réelle sous-jacente.
+// Rendu canvas — même esthétique que l'onglet Marée : dégradé, nuit ombrée, points
+// PM (bleu) / BM (rouge) avec heure + hauteur, marqueur « maintenant » jaune.
 function _gwRenderTideRow(d, day) {
   var wrap = document.getElementById('gw-tide-svg-wrap'); if (!wrap) return;
   var events = _gwTideEvents();
   var idxs = day.indices, N = idxs.length;
   if (!events.length || N < 2) {
-    wrap.innerHTML = '<div style="font-size:9px;color:var(--faint);text-align:center;padding-top:16px;">Marée indisponible</div>';
+    wrap.innerHTML = '<div style="font-size:9px;color:var(--faint);text-align:center;padding-top:26px;">Marée indisponible</div>';
     return;
   }
+  wrap.innerHTML = '<canvas id="gw-tide-cv" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>';
+  var cv = document.getElementById('gw-tide-cv');
+  if (!cv || !cv.getContext) return;
+  var W = wrap.offsetWidth || 600, H = wrap.offsetHeight || 72;
+  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  cv.width = W*dpr; cv.height = H*dpr;
+  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
 
   var colTrueMs = idxs.map(function(fi){ return d.dates[fi].getTime() - 11*3600000; });
-  var W = 100, H = 44, padY = 7, SUB = 5;
-  var samples = [];
-  for (var i=0; i<N-1; i++) {
-    for (var s=0; s<SUB; s++) {
-      var t = s/SUB;
-      samples.push({ x:(i+0.5+t)*(W/N), ms: colTrueMs[i]+t*(colTrueMs[i+1]-colTrueMs[i]) });
-    }
-  }
-  samples.push({ x:(N-0.5)*(W/N), ms: colTrueMs[N-1] });
-
-  var heights = samples.map(function(p){ return _gwTideHeightAt(p.ms, events); });
-  var evInWindow = events.filter(function(e){ return e.ms>=colTrueMs[0]-7200000 && e.ms<=colTrueMs[N-1]+7200000; });
-  var allH = heights.concat(evInWindow.map(function(e){ return e.h; }));
-  var hMin = Math.min.apply(null, allH), hMax = Math.max.apply(null, allH);
-  if (hMax-hMin < 0.4) { var mid=(hMax+hMin)/2; hMin=mid-0.2; hMax=mid+0.2; }
-  function yOf(h) { return H-padY - ((h-hMin)/(hMax-hMin))*(H-2*padY); }
-
-  var pathD = samples.map(function(p,i){ return (i===0?'M':'L')+p.x.toFixed(2)+','+yOf(heights[i]).toFixed(2); }).join(' ');
-  var areaD = pathD+' L'+samples[samples.length-1].x.toFixed(2)+','+H+' L'+samples[0].x.toFixed(2)+','+H+' Z';
-
+  var span = W/N, SUB = 6;
   function msToX(ms) {
-    if (ms<=colTrueMs[0]) { var span0=(colTrueMs[1]-colTrueMs[0])||3600000; return Math.max(0,(0.5*(W/N)) - ((colTrueMs[0]-ms)/span0)*(W/N)); }
-    if (ms>=colTrueMs[N-1]) { var spanE=(colTrueMs[N-1]-colTrueMs[N-2])||3600000; return Math.min(W,((N-0.5)*(W/N)) + ((ms-colTrueMs[N-1])/spanE)*(W/N)); }
+    if (ms<=colTrueMs[0]) { var s0=(colTrueMs[1]-colTrueMs[0])||3600000; return 0.5*span - ((colTrueMs[0]-ms)/s0)*span; }
+    if (ms>=colTrueMs[N-1]) { var sE=(colTrueMs[N-1]-colTrueMs[N-2])||3600000; return (N-0.5)*span + ((ms-colTrueMs[N-1])/sE)*span; }
     for (var i=0; i<N-1; i++) {
       if (ms>=colTrueMs[i] && ms<=colTrueMs[i+1]) {
         var t=(ms-colTrueMs[i])/((colTrueMs[i+1]-colTrueMs[i])||1);
-        return (i+0.5+t)*(W/N);
+        return (i+0.5+t)*span;
       }
     }
     return W/2;
   }
 
-  var svg = '<svg width="100%" height="100%" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="display:block;">'
-    + '<path d="'+areaD+'" fill="rgba(79,163,199,.12)" stroke="none"/>'
-    + '<path d="'+pathD+'" fill="none" stroke="#4fa3c7" stroke-width="1.4" vector-effect="non-scaling-stroke"/>'
-    + '</svg>';
+  // Fenêtre du jour affiché (00h → 24h locales NC)
+  var dd = day.dateObj;
+  var dayStartUTC = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate()) - 11*3600000;
+  var dayEndUTC = dayStartUTC + 86400000;
 
-  var markersHtml = evInWindow.map(function(e){
+  // Échantillons sur toute la largeur (extrapolés 00h→24h, pas seulement 02h→23h)
+  var samples = [];
+  var STEPS = N*SUB;
+  for (var k=0; k<=STEPS; k++) {
+    var ms = dayStartUTC + (k/STEPS)*86400000;
+    samples.push({ x: msToX(ms), ms: ms, h: _gwTideHeightAt(ms, events) });
+  }
+  var evDay = events.filter(function(e){ return e.ms>=dayStartUTC-1800000 && e.ms<=dayEndUTC+1800000; });
+  var allH = samples.map(function(p){ return p.h; }).concat(evDay.map(function(e){ return e.h; }));
+  var hMin = Math.min.apply(null, allH), hMax = Math.max.apply(null, allH);
+  if (hMax-hMin < 0.4) { var mid=(hMax+hMin)/2; hMin=mid-0.2; hMax=mid+0.2; }
+  var padT = 16, padB = 15;
+  function yOf(h) { return H-padB - ((h-hMin)/(hMax-hMin))*(H-padT-padB); }
+
+  // Nuit ombrée (avant lever / après coucher) — même teinte que l'onglet Marée
+  var sun = calcSunTimes(dd.getUTCFullYear(), dd.getUTCMonth()+1, dd.getUTCDate());
+  function hm2ms(str){ if(!str) return null; var p=str.split('h'); return dayStartUTC + ((+p[0])*60+(+p[1]))*60000; }
+  var riseMs = hm2ms(sun.sunrise), setMs = hm2ms(sun.sunset);
+  ctx.fillStyle = 'rgba(5,10,30,0.4)';
+  var xd0 = Math.max(0, msToX(dayStartUTC)), xd1 = Math.min(W, msToX(dayEndUTC));
+  if (riseMs) ctx.fillRect(xd0, 0, Math.max(0, msToX(riseMs)-xd0), H);
+  if (setMs)  ctx.fillRect(msToX(setMs), 0, Math.max(0, xd1-msToX(setMs)), H);
+
+  // Zone remplie (dégradé accent → transparent, comme renderTideCurve)
+  ctx.beginPath();
+  ctx.moveTo(samples[0].x, yOf(samples[0].h));
+  samples.forEach(function(p){ ctx.lineTo(p.x, yOf(p.h)); });
+  ctx.lineTo(samples[samples.length-1].x, H); ctx.lineTo(samples[0].x, H); ctx.closePath();
+  var grad = ctx.createLinearGradient(0, padT, 0, H);
+  grad.addColorStop(0, 'rgba(79,163,199,0.4)');
+  grad.addColorStop(1, 'rgba(79,163,199,0.04)');
+  ctx.fillStyle = grad; ctx.fill();
+
+  // Courbe principale
+  ctx.beginPath();
+  ctx.moveTo(samples[0].x, yOf(samples[0].h));
+  samples.forEach(function(p){ ctx.lineTo(p.x, yOf(p.h)); });
+  ctx.strokeStyle = '#4fa3c7'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+
+  // Marqueur « maintenant » (jaune pointillé + point, comme l'onglet Marée)
+  var nowMs = Date.now();
+  if (nowMs >= dayStartUTC && nowMs <= dayEndUTC) {
+    var nx = msToX(nowMs);
+    if (nx >= 0 && nx <= W) {
+      ctx.beginPath(); ctx.moveTo(nx, 2); ctx.lineTo(nx, H-2);
+      ctx.strokeStyle = 'rgba(255,255,100,0.35)'; ctx.lineWidth = 1.5;
+      ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+      var nh = _gwTideHeightAt(nowMs, events);
+      if (nh!=null) { ctx.beginPath(); ctx.arc(nx, yOf(nh), 4, 0, 2*Math.PI); ctx.fillStyle = '#fde068'; ctx.fill(); }
+    }
+  }
+
+  // Points PM/BM : dot + « HHhMM · X.Xm » — PM au-dessus, BM en dessous, anti-chevauchement
+  var lastLblX = { up: -999, down: -999 };
+  evDay.forEach(function(e){
     var x = msToX(e.ms);
-    if (x<0 || x>W) return '';
+    if (x < -4 || x > W+4) return;
     var y = yOf(e.h);
-    var lblX = Math.max(8, Math.min(92, x));
-    var localMin = new Date(e.ms + 11*3600000);
-    var hh = String(localMin.getUTCHours()).padStart(2,'0'), mm = String(localMin.getUTCMinutes()).padStart(2,'0');
-    var col = e.type==='pm' ? '#6ab4d4' : '#8aa2b4';
-    var above = e.type==='pm';
-    return '<div style="position:absolute;left:'+x.toFixed(1)+'%;top:'+y.toFixed(1)+'px;transform:translate(-50%,-50%);'
-      +'width:5px;height:5px;border-radius:50%;background:'+col+';border:1px solid #06101e;"></div>'
-      + '<div style="position:absolute;left:'+lblX.toFixed(1)+'%;top:'+(above?Math.max(0,y-16):Math.min(H-9,y+7)).toFixed(1)+'px;transform:translateX(-50%);'
-      +'font-size:8px;font-weight:700;white-space:nowrap;color:'+col+';">'+hh+'h'+mm+' '+e.h.toFixed(1)+'m</div>';
-  }).join('');
-
-  wrap.innerHTML = svg + markersHtml;
+    var isPM = e.type==='pm';
+    var col = isPM ? '#4fa3c7' : '#e05c5c';
+    ctx.beginPath(); ctx.arc(Math.max(3, Math.min(W-3, x)), y, 3.5, 0, 2*Math.PI);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+    var localT = new Date(e.ms + 11*3600000);
+    var lbl = String(localT.getUTCHours()).padStart(2,'0')+'h'+String(localT.getUTCMinutes()).padStart(2,'0')
+      + ' · ' + e.h.toFixed(1) + 'm';
+    var lane = isPM ? 'up' : 'down';
+    var lx = Math.max(30, Math.min(W-30, x));
+    if (lx - lastLblX[lane] < 62) lx = Math.min(W-30, lastLblX[lane] + 62); // évite la superposition
+    lastLblX[lane] = lx;
+    var ly = isPM ? Math.max(8, y-10) : Math.min(H-6, y+13);
+    ctx.font = '700 8.5px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(6,16,30,0.8)'; ctx.lineWidth = 3; ctx.strokeText(lbl, lx, ly);
+    ctx.fillStyle = col; ctx.fillText(lbl, lx, ly);
+  });
 }
 
 // ─── Soleil : lever/coucher positionnés proportionnellement sur la timeline ──
