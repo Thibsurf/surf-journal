@@ -3152,6 +3152,18 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       console.warn('[NC marine] Toutes données filtrées, on prend tout');
       rows = _getNcRows(ncMarine) || [];
     }
+    // Houle secondaire NATIVE meteo.nc : le flux l'a fournie par le passé puis le champ
+    // a disparu/changé — détection dynamique des clés (secondary_swell_*, swell2_*, …)
+    // + log des clés disponibles pour diagnostiquer les évolutions du flux.
+    var _k0 = rows[0] ? Object.keys(rows[0]) : [];
+    var _sk = {
+      h: _k0.find(function(k){ return /(second|2)[a-z_]*swell[a-z_]*height|swell[a-z_]*(second|2)[a-z_]*height|secondary.*height/i.test(k); }),
+      t: _k0.find(function(k){ return /(second|2)[a-z_]*swell[a-z_]*period|swell[a-z_]*(second|2)[a-z_]*period|secondary.*period/i.test(k); }),
+      d: _k0.find(function(k){ return /(second|2)[a-z_]*swell[a-z_]*direction|swell[a-z_]*(second|2)[a-z_]*direction|secondary.*direction/i.test(k); })
+    };
+    if (_sk.h) console.info('[NC marine] houle secondaire native détectée:', _sk.h, _sk.t||'(pas de période)', _sk.d||'(pas de direction)');
+    else console.info('[NC marine] pas de houle secondaire native — résidu Hs-H1-Hvent + dir/T Open-Meteo. Clés du flux:', _k0.join(', '));
+
     rows.forEach(function(d){
       var dt=new Date(new Date(d.time).getTime()+11*3600000);
       dates.push(dt);
@@ -3163,10 +3175,18 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       lbl.push(lblStr);
       var p1h=d.primary_swell_height, p1t=d.primary_swell_period, p1d=d.primary_swell_direction;
       var tot=d.wave_height, wwind=d.wind_waves_height||0;
-      var s2h = (tot!==null && p1h!==null) ? Math.max(0, parseFloat((tot - p1h - wwind).toFixed(2))) : null;
       var eff1h = (p1h!==null) ? p1h : tot;
-      sw1h.push(eff1h); sw2h.push(s2h); wndH.push(wwind); totH.push(tot);
-      sw1t.push(p1t); sw1d.push(p1d); sw2d.push(null); sw2t.push(null);
+      sw1h.push(eff1h); wndH.push(wwind); totH.push(tot);
+      sw1t.push(p1t); sw1d.push(p1d);
+      if (_sk.h && d[_sk.h]!=null) {
+        // Houle 2 native NC (hauteur réelle, plus un résidu)
+        sw2h.push(d[_sk.h]);
+        sw2t.push(_sk.t && d[_sk.t]!=null ? d[_sk.t] : null);
+        sw2d.push(_sk.d && d[_sk.d]!=null ? d[_sk.d] : null);
+      } else {
+        var s2h = (tot!==null && p1h!==null) ? Math.max(0, parseFloat((tot - p1h - wwind).toFixed(2))) : null;
+        sw2h.push(s2h); sw2d.push(null); sw2t.push(null);
+      }
       var wsKt = d.wind_speed_kt;
       wSpd.push(wsKt); wGst.push(null); wDir.push(d.wind_direction);
       cld.push(null); rain.push(null); cldL.push(null); cldM.push(null); cldH.push(null); tAir.push(null); // complétés depuis Open-Meteo plus bas
@@ -5078,18 +5098,23 @@ function _gwDrawOverview() {
     ctx.fillStyle = wgrad; ctx.fill();
   }
 
-  // Rafales : fine ligne pointillée rouge + losanges (tendance ET points, façon Windguru)
+  // Rafales : fine ligne pointillée rouge + losanges — seulement quand elles
+  // apportent de l'info (≥5 kt et > vent moyen, sinon bruit à 0 kt)
+  function gustUseful(fi) {
+    var g = d.wGst && d.wGst[fi], v = d.wSpd && d.wSpd[fi];
+    return g!=null && g>=5 && v!=null && g>v+1 ? g : null;
+  }
   ctx.strokeStyle = 'rgba(224,92,92,.45)'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
   ctx.beginPath();
   var gStarted = false;
   gis.forEach(function(fi, k){
-    var g = d.wGst && d.wGst[fi]; if (g==null) { gStarted = false; return; }
+    var g = gustUseful(fi); if (g==null) { gStarted = false; return; }
     var x = xOf(k), y = yW(g);
     if (!gStarted) { ctx.moveTo(x, y); gStarted = true; } else ctx.lineTo(x, y);
   });
   ctx.stroke(); ctx.setLineDash([]);
   gis.forEach(function(fi, k){
-    var g = d.wGst && d.wGst[fi]; if (g==null) return;
+    var g = gustUseful(fi); if (g==null) return;
     var x = xOf(k), y = yW(g);
     ctx.fillStyle = 'rgba(224,92,92,.85)';
     ctx.beginPath(); ctx.moveTo(x,y-2.6); ctx.lineTo(x+2.6,y); ctx.lineTo(x,y+2.6); ctx.lineTo(x-2.6,y); ctx.closePath(); ctx.fill();
@@ -5325,6 +5350,23 @@ function _gwAlpha(hex, a) {
   return 'rgba('+r+','+g+','+b+','+a+')';
 }
 
+// Échelle de période (critère n°1 du surfeur) : <8s mer de vent, 8-11s houle
+// courte, 11-14s bonne houle, ≥14s groundswell long — comme les cases bleues
+// foncées de la vue meteo.nc de référence.
+function _gwPerCol(t) {
+  return t==null ? 'rgba(61,84,104,.5)'
+    : t<8 ? 'rgba(122,148,170,.5)'
+    : t<11 ? 'rgba(79,163,199,.65)'
+    : t<14 ? 'rgba(61,186,138,.7)'
+    : 'rgba(123,108,246,.8)';
+}
+function _gwPerPill(t, small) {
+  if (t==null) return '';
+  return '<span style="display:inline-block;margin-top:1px;padding:0 5px;border-radius:6px;'
+    + 'background:'+_gwPerCol(t)+';color:#fff;font-weight:700;line-height:1.5;'
+    + 'font-size:'+(small?'8.5':'10')+'px;">'+Math.round(t)+'s</span>';
+}
+
 function _gwLbl(row, text, title) {
   return '<div class="gw-lbl" style="grid-row:'+row+';grid-column:1;"'+(title?' title="'+title+'"':'')+'>'+text+'</div>';
 }
@@ -5401,9 +5443,11 @@ function _gwRenderGrid(d, day) {
     }
     var ws = d.wSpd && d.wSpd[fi]!=null ? d.wSpd[fi] : null;
     var wg = d.wGst && d.wGst[fi]!=null ? d.wGst[fi] : null;
+    // Rafale affichée seulement si elle apporte de l'info (≥5 kt ET > vent moyen)
+    var showG = wg!=null && wg>=5 && ws!=null && wg>ws+1;
     html += '<div class="gw-cell"'+gia+' style="grid-row:2;grid-column:'+col+';'+vBg(_gwAlpha(windCol(ws),.14))+'">'
       + '<span class="v" style="color:'+windCol(ws)+';">'+(ws!=null?Math.round(ws):'—')+'</span>'
-      + '<span class="u">'+(wg!=null?Math.round(wg)+'g':'kt')+'</span></div>';
+      + '<span class="u">'+(showG?'<span style="color:'+windCol(wg)+';font-weight:700;">'+Math.round(wg)+'g</span>':'kt')+'</span></div>';
 
     var wd = d.wDir && d.wDir[fi];
     html += '<div class="gw-cell"'+gia+' style="grid-row:3;grid-column:'+col+';'+nBg+'">'+(wd!=null?svgArrow(wd,'#e8a057')
@@ -5416,7 +5460,7 @@ function _gwRenderGrid(d, day) {
     var s1h = d.sw1h && d.sw1h[fi], s1t = d.sw1t && d.sw1t[fi];
     html += '<div class="gw-cell"'+gia+' style="grid-row:5;grid-column:'+col+';'+nBg+'">'
       + '<span class="v" style="color:'+hsCol(s1h)+';">'+(s1h!=null?s1h.toFixed(1)+'m':'—')+'</span>'
-      + '<span class="u">'+(s1t!=null?Math.round(s1t)+'s':'')+'</span></div>';
+      + _gwPerPill(s1t)+'</div>';
 
     var s1d = d.sw1d && d.sw1d[fi];
     html += '<div class="gw-cell"'+gia+' style="grid-row:6;grid-column:'+col+';'+nBg+'">'+(s1d!=null?svgArrow(s1d,'#4fa3c7')
@@ -5427,7 +5471,7 @@ function _gwRenderGrid(d, day) {
     html += '<div class="gw-cell"'+gia+' style="grid-row:7;grid-column:'+col+';'+nBg+'">'
       + (s2h && s2x.dir!=null ? svgArrow(s2x.dir,'#6ab4d4') : '')
       + '<span class="v" style="color:'+hsCol(s2h)+';font-size:10px;">'+(s2h?s2h.toFixed(1)+'m':'—')+'</span>'
-      + (s2h && s2x.t!=null ? '<span class="u">'+Math.round(s2x.t)+'s</span>' : '')
+      + (s2h ? _gwPerPill(s2x.t, true) : '')
       + '</div>';
 
   });
@@ -5561,19 +5605,20 @@ function _gwRenderClouds(d, day) {
 //     « Marée » de la figure de référence ─────────────────────────────────────
 function _gwRenderLevels(day) {
   var el = document.getElementById('gw-levels-row'); if (!el) return;
-  var events = _gwTideEvents();
-  var dd = day.dateObj;
-  var dayStartUTC = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate()) - 11*3600000;
-  var evDay = events.filter(function(e){ return e.ms>=dayStartUTC && e.ms<dayStartUTC+86400000; });
+  var td = _gwTideDayEvents(day);
+  var evDay = td.all.filter(function(e){ return e.ms>=td.start && e.ms<td.end; });
   if (!evDay.length) { el.innerHTML = '<span style="font-size:9px;color:var(--faint);">—</span>'; return; }
   var chips = evDay.map(function(e){
     var t = new Date(e.ms + 11*3600000);
-    var hStr = String(t.getUTCHours()).padStart(2,'0')+'h'+String(t.getUTCMinutes()).padStart(2,'0');
+    var hStr = (e.estimated ? '~' : '')
+      + String(t.getUTCHours()).padStart(2,'0')+'h'+String(t.getUTCMinutes()).padStart(2,'0');
     var isPM = e.type==='pm';
     var col = isPM ? '#4fa3c7' : '#e05c5c';
+    var op = e.estimated ? 'opacity:.7;border-style:dashed;' : '';
     return '<span style="font-size:9.5px;font-weight:700;color:'+col+';border:1px solid '+_gwAlpha(col,.35)
-      + ';background:'+_gwAlpha(col,.08)+';border-radius:9px;padding:2px 8px;white-space:nowrap;" title="'
-      + (isPM?'Pleine mer':'Basse mer')+'">'+(isPM?'▲':'▼')+' '+hStr+' · '+e.h.toFixed(2)+'m</span>';
+      + ';background:'+_gwAlpha(col,.08)+';border-radius:9px;padding:2px 8px;white-space:nowrap;'+op+'" title="'
+      + (isPM?'Pleine mer':'Basse mer')+(e.estimated?' — estimation cycle M2':'')
+      + '">'+(isPM?'▲':'▼')+' '+hStr+' · '+e.h.toFixed(2)+'m</span>';
   });
   // Marnage du jour (max PM − min BM)
   var pms = evDay.filter(function(e){return e.type==='pm';}).map(function(e){return e.h;});
@@ -5604,7 +5649,43 @@ function _gwTideEvents() {
     if (!dup) seen.push(e);
     return !dup;
   });
-  return ev;
+  // Nettoyage comme renderTideCurve : la fusion multi-jours produit des quasi-doublons
+  // (ex. BM 02h12 + BM 02h41) → PM et BM doivent ALTERNER, on garde l'extrême
+  var clean = [];
+  ev.forEach(function(e){
+    var last = clean[clean.length-1];
+    if (last && last.type === e.type) {
+      if ((e.type==='pm' && e.h >= last.h) || (e.type==='bm' && e.h <= last.h)) clean[clean.length-1] = e;
+    } else clean.push(e);
+  });
+  return clean;
+}
+
+// ─── Événements PM/BM pour UN jour donné, avec estimation M2 étiquetée si le
+//     fetch ne couvre pas ce jour : la marée se décale d'~50 min/jour (cycle
+//     lunaire M2 = 12 h 25) — approximation océanographiquement honnête ──────
+function _gwTideDayEvents(day) {
+  var events = _gwTideEvents();
+  var dd = day.dateObj;
+  var start = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate()) - 11*3600000;
+  var end = start + 86400000;
+  function near(list){ return list.filter(function(e){ return e.ms>=start-21600000 && e.ms<=end+21600000; }); }
+  var all = events, nearEv = near(events), estimated = false;
+  if (nearEv.length < 3 && events.length >= 4) {
+    var DAY_M2 = 89428000; // 2 cycles M2 ≈ 24 h 50 min : le motif du jour se répète décalé
+    var last4 = events.slice(-4);
+    var ext = events.slice();
+    for (var k = 1; k <= 7 && ext[ext.length-1].ms < end + 21600000; k++) {
+      last4.forEach(function(e){ ext.push({ ms: e.ms + k*DAY_M2, h: e.h, type: e.type, estimated: true }); });
+    }
+    ext.sort(function(a,b){ return a.ms-b.ms; });
+    all = ext; nearEv = near(ext);
+    estimated = nearEv.some(function(e){ return e.estimated; });
+  }
+  return {
+    all: all, near: nearEv, estimated: estimated, start: start, end: end,
+    dayEv: all.filter(function(e){ return e.ms>=start-1800000 && e.ms<=end+1800000; })
+  };
 }
 
 function _gwTideHeightAt(ms, events) {
@@ -5625,15 +5706,14 @@ function _gwTideHeightAt(ms, events) {
   return null;
 }
 
-// Courbe alignée en "espace colonnes" (index de créneau horaire) pour coïncider
-// visuellement avec la grille au-dessus, tout en interpolant l'heure réelle sous-jacente.
-// Rendu canvas — même esthétique que l'onglet Marée : dégradé, nuit ombrée, points
-// PM (bleu) / BM (rouge) avec heure + hauteur, marqueur « maintenant » jaune.
+// Rendu canvas de la marée — AXE TEMPS LINÉAIRE 00h→24h (journée entière, pas
+// l'espace colonnes de la grille). Même esthétique que l'onglet Marée : dégradé,
+// nuit ombrée, points PM (bleu) / BM (rouge), marqueur « maintenant » jaune.
+// Jours au-delà de la couverture fetch : estimation cycle M2 étiquetée « ~ ».
 function _gwRenderTideRow(d, day) {
   var wrap = document.getElementById('gw-tide-svg-wrap'); if (!wrap) return;
-  var events = _gwTideEvents();
-  var idxs = _gwGridIdxs(d, day), N = idxs.length; // même espace de colonnes que la grille
-  if (!events.length || N < 2) {
+  var td = _gwTideDayEvents(day);
+  if (td.near.length < 3) {
     wrap.innerHTML = '<div style="font-size:9px;color:var(--faint);text-align:center;padding-top:26px;">Marée indisponible</div>';
     return;
   }
@@ -5646,37 +5726,12 @@ function _gwRenderTideRow(d, day) {
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  var colTrueMs = idxs.map(function(fi){ return d.dates[fi].getTime() - 11*3600000; });
-  var span = W/N, SUB = 8;
-  function msToX(ms) {
-    if (ms<=colTrueMs[0]) { var s0=(colTrueMs[1]-colTrueMs[0])||3600000; return 0.5*span - ((colTrueMs[0]-ms)/s0)*span; }
-    if (ms>=colTrueMs[N-1]) { var sE=(colTrueMs[N-1]-colTrueMs[N-2])||3600000; return (N-0.5)*span + ((ms-colTrueMs[N-1])/sE)*span; }
-    for (var i=0; i<N-1; i++) {
-      if (ms>=colTrueMs[i] && ms<=colTrueMs[i+1]) {
-        var t=(ms-colTrueMs[i])/((colTrueMs[i+1]-colTrueMs[i])||1);
-        return (i+0.5+t)*span;
-      }
-    }
-    return W/2;
-  }
+  var dayStartUTC = td.start, dayEndUTC = td.end;
+  function msToX(ms) { return (ms - dayStartUTC) / 86400000 * W; }
 
-  // Fenêtre du jour affiché (00h → 24h locales NC)
-  var dd = day.dateObj;
-  var dayStartUTC = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate()) - 11*3600000;
-  var dayEndUTC = dayStartUTC + 86400000;
-
-  // Couverture PM/BM insuffisante pour ce jour (vrai jour = 3-4 événements) →
-  // dire la vérité plutôt que dessiner une ligne qui s'aplatit après le dernier point
-  var evNear = events.filter(function(e){ return e.ms>=dayStartUTC-21600000 && e.ms<=dayEndUTC+21600000; });
-  if (evNear.length < 3) {
-    wrap.innerHTML = '<div style="font-size:9px;color:var(--faint);text-align:center;padding-top:26px;">Marée non chargée pour ce jour</div>';
-    return;
-  }
-
-  // Continuité aux bords : si la fenêtre dépasse le premier/dernier événement connu,
-  // on synthétise des PM/BM virtuels au rythme semi-diurne (~6h12) plutôt qu'un plat.
-  var HALF_TIDE = 22350000; // ≈ 6 h 12 min 30 s
-  var evExt = events.slice();
+  // Continuité aux bords : PM/BM virtuels au rythme semi-diurne (~6h12) si besoin
+  var HALF_TIDE = 22350000;
+  var evExt = td.all.slice();
   var guard = 0;
   while (evExt[0].ms > dayStartUTC - 3600000 && guard++ < 6) {
     var f0 = evExt[0], fT = f0.type==='pm' ? 'bm' : 'pm', fH = null;
@@ -5690,14 +5745,15 @@ function _gwRenderTideRow(d, day) {
     evExt.push({ ms: l0.ms + HALF_TIDE, h: lH!=null ? lH : (l0.type==='pm' ? l0.h-0.8 : l0.h+0.8), type: lT, virtual: true });
   }
 
-  // Échantillons sur toute la largeur (extrapolés 00h→24h, pas seulement 02h→23h)
+  // Échantillons toutes les 15 min sur 24 h pleines
   var samples = [];
-  var STEPS = N*SUB;
+  var STEPS = 96;
   for (var k=0; k<=STEPS; k++) {
     var ms = dayStartUTC + (k/STEPS)*86400000;
     samples.push({ x: msToX(ms), ms: ms, h: _gwTideHeightAt(ms, evExt) });
   }
-  var evDay = events.filter(function(e){ return e.ms>=dayStartUTC-1800000 && e.ms<=dayEndUTC+1800000; });
+  var dd = day.dateObj;
+  var evDay = td.dayEv;
   var allH = samples.map(function(p){ return p.h; }).concat(evDay.map(function(e){ return e.h; }));
   var hMin = Math.min.apply(null, allH), hMax = Math.max.apply(null, allH);
   if (hMax-hMin < 0.4) { var mid=(hMax+hMin)/2; hMin=mid-0.2; hMax=mid+0.2; }
@@ -5767,7 +5823,8 @@ function _gwRenderTideRow(d, day) {
     ctx.beginPath(); ctx.moveTo(txx, H-6); ctx.lineTo(txx, H-2); ctx.stroke();
   }
 
-  // Points PM/BM (heures et hauteurs détaillées dans la rangée « Niveaux » dessous)
+  // Points PM/BM (hauteurs détaillées dans la rangée « Niveaux » dessous)
+  // Événements estimés (cycle M2) : anneaux creux + heure préfixée « ~ »
   evDay.forEach(function(e){
     var x = msToX(e.ms);
     if (x < -4 || x > W+4) return;
@@ -5775,46 +5832,40 @@ function _gwRenderTideRow(d, day) {
     var isPM = e.type==='pm';
     var col = isPM ? '#4fa3c7' : '#e05c5c';
     ctx.beginPath(); ctx.arc(Math.max(3, Math.min(W-3, x)), y, 3.5, 0, 2*Math.PI);
-    ctx.fillStyle = col; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
-    // Heure compacte au-dessus (PM) / en dessous (BM) du point — halo, sans hauteur
+    if (e.estimated) {
+      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke();
+    } else {
+      ctx.fillStyle = col; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+    }
     var localT = new Date(e.ms + 11*3600000);
-    var hLbl = String(localT.getUTCHours()).padStart(2,'0')+'h'+String(localT.getUTCMinutes()).padStart(2,'0');
+    var hLbl = (e.estimated ? '~' : '')
+      + String(localT.getUTCHours()).padStart(2,'0')+'h'+String(localT.getUTCMinutes()).padStart(2,'0');
     var lx = Math.max(18, Math.min(W-18, x));
-    var ly = isPM ? Math.max(7, y-9) : Math.min(H-6, y+11); // l'axe texte a disparu → la voie basse est libre
+    var ly = isPM ? Math.max(7, y-9) : Math.min(H-6, y+11);
     ctx.font = '700 8px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.strokeStyle = 'rgba(6,16,30,0.8)'; ctx.lineWidth = 3; ctx.strokeText(hLbl, lx, ly);
     ctx.fillStyle = col; ctx.fillText(hLbl, lx, ly);
   });
+
+  // Badge honnête quand la journée repose sur l'estimation M2
+  if (td.estimated) {
+    ctx.font = '700 7px DM Sans,sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(6,16,30,0.85)'; ctx.lineWidth = 3;
+    ctx.strokeText('~ estimation (cycle M2 +50 min/j)', W-4, 8);
+    ctx.fillStyle = 'rgba(232,196,74,.85)';
+    ctx.fillText('~ estimation (cycle M2 +50 min/j)', W-4, 8);
+  }
 }
 
-// ─── Soleil : lever/coucher positionnés proportionnellement sur la timeline ──
+// ─── Soleil : bande ciel en TEMPS LINÉAIRE 00h→24h (cohérente avec la marée) ──
 function _gwRenderSunRow(d, day) {
   var wrap = document.getElementById('gw-sun-wrap'); if (!wrap) return;
   var dt0 = day.dateObj;
   var sun = calcSunTimes(dt0.getUTCFullYear(), dt0.getUTCMonth()+1, dt0.getUTCDate());
-  var idxs = _gwGridIdxs(d, day), N = idxs.length; // même espace de colonnes que la grille
 
   function hmToMin(str) { if (!str) return null; var p=str.split('h'); return (+p[0])*60+(+p[1]); }
-  var colMin = idxs.map(function(fi) {
-    var dt = d.dates[fi];
-    var hh = dt.getUTCHours!==undefined ? dt.getUTCHours() : dt.getHours();
-    var mm = dt.getUTCMinutes!==undefined ? dt.getUTCMinutes() : dt.getMinutes();
-    return hh*60+mm;
-  });
-
-  function minToX(min) {
-    if (N<2) return 50;
-    if (min<=colMin[0]) { var span0=(colMin[1]-colMin[0])||180; return Math.max(2,(0.5*(100/N)) - ((colMin[0]-min)/span0)*(100/N)); }
-    if (min>=colMin[N-1]) { var spanE=(colMin[N-1]-colMin[N-2])||180; return Math.min(98,((N-0.5)*(100/N)) + ((min-colMin[N-1])/spanE)*(100/N)); }
-    for (var i=0; i<N-1; i++) {
-      if (min>=colMin[i] && min<=colMin[i+1]) {
-        var t=(min-colMin[i])/((colMin[i+1]-colMin[i])||1);
-        return (i+0.5+t)*(100/N);
-      }
-    }
-    return 50;
-  }
+  function minToX(min) { return Math.max(0, Math.min(100, min/1440*100)); }
 
   var riseMin = hmToMin(sun.sunrise), setMin = hmToMin(sun.sunset);
   var dawnMin = hmToMin(sun.civilDawn), duskMin = hmToMin(sun.civilDusk);
