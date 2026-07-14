@@ -108,6 +108,39 @@ table.ft tr:hover td{background:rgba(255,255,255,.025);}
 table.ft .daysep td{background:rgba(79,163,199,.07);font-weight:500;font-size:10px;color:var(--accent);text-align:left;padding-left:12px;}
 table.ft .night td{background:rgba(0,0,0,.15);}
 
+/* ═══ WIDGET PRÉVISIONS GLOBAL (EPIC 1) — vue synthétique sans scroll ═══ */
+#gw-widget{margin-bottom:14px;overflow:hidden;}
+#gw-widget .gw-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+#gw-widget .gw-days{display:flex;gap:5px;flex-wrap:wrap;}
+.gw-day-btn{padding:5px 11px;border-radius:14px;border:1px solid var(--border);background:none;
+  color:var(--muted);font-family:var(--font-b);font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.gw-day-btn.active{background:rgba(79,163,199,.16);border-color:var(--accent);color:var(--accent);font-weight:600;}
+.gw-day-btn:hover:not(.active){color:var(--text);border-color:var(--border-h);}
+#gw-widget .gw-tools{display:flex;gap:6px;align-items:center;}
+.gw-tool-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 9px;border-radius:var(--rs);
+  cursor:pointer;font-size:10px;font-family:var(--font-b);white-space:nowrap;}
+.gw-tool-btn:hover{color:var(--text);border-color:var(--border-h);}
+#gw-sat-thumb{width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid var(--border);
+  cursor:pointer;background:var(--mid);flex-shrink:0;transition:border-color .15s,transform .15s;}
+#gw-sat-thumb:hover{border-color:var(--accent);transform:scale(1.04);}
+.gw-grid-wrap{width:100%;overflow:hidden;}
+.gw-grid{display:grid;width:100%;row-gap:2px;column-gap:0;}
+.gw-lbl{font-size:8.5px;color:var(--muted);display:flex;align-items:center;padding:3px 3px 3px 0;white-space:nowrap;
+  text-transform:uppercase;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;}
+.gw-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3px 1px;
+  text-align:center;border-radius:4px;min-width:0;}
+.gw-cell .v{font-size:clamp(9px,2.6vw,12px);font-weight:600;line-height:1.15;}
+.gw-cell .u{font-size:clamp(7px,2vw,9px);color:var(--faint);line-height:1.1;}
+.gw-cell svg{width:clamp(12px,3.2vw,18px);height:clamp(12px,3.2vw,18px);}
+.gw-hour{font-size:clamp(8px,2.4vw,10px);color:var(--muted);font-weight:600;}
+.gw-row-sep{border-top:1px solid var(--border);margin:3px 0 1px;grid-column:1/-1;}
+.gw-tide-row{grid-column:1/-1;position:relative;height:44px;margin:2px 0;}
+.gw-sun-row{grid-column:1/-1;position:relative;height:30px;}
+@media(max-width:520px){
+  .gw-lbl{font-size:8px;}
+  #gw-widget .gw-head{flex-direction:column;align-items:stretch;}
+}
+
 /* QUICK LINKS */
 .links{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem;}
 .ql{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:var(--rs);
@@ -327,6 +360,24 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
   <div class="spot-tabs" id="spot-tabs"></div>
 
+  <!-- ═══ WIDGET PRÉVISIONS GLOBAL — vue synthétique, lisible en 3s (EPIC 1) ═══ -->
+  <div class="card" id="gw-widget" style="display:none;">
+    <div class="gw-head">
+      <div class="gw-days" id="gw-day-nav"></div>
+      <div class="gw-tools">
+        <span id="gw-src-badge" style="font-size:9px;"></span>
+        <button class="gw-tool-btn" onclick="_gwCapture()" title="Capturer le widget en image">📸 Capture</button>
+        <img id="gw-sat-thumb" alt="Vue satellite du spot" title="Vue satellite — cliquer pour la carte détaillée"
+          onclick="_gwScrollToSat()">
+      </div>
+    </div>
+    <div class="gw-grid-wrap">
+      <div class="gw-grid" id="gw-grid">
+        <div style="grid-column:1/-1;color:var(--faint);font-size:11px;padding:8px 0;">Chargement…</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Conditions actuelles -->
   <div id="current-cond" class="stats-row">
     <div class="loading"><div class="spin"></div> Chargement…</div>
@@ -456,7 +507,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <div class="g2" style="margin-bottom:12px;">
 
     <!-- Rose des houles et du vent -->
-    <div class="card" style="border-color:rgba(79,163,199,.2);background:linear-gradient(135deg,var(--deep) 80%,rgba(79,163,199,.04));display:flex;flex-direction:column;align-items:center;justify-content:space-between;">
+    <div class="card" id="rose-sat-card" style="border-color:rgba(79,163,199,.2);background:linear-gradient(135deg,var(--deep) 80%,rgba(79,163,199,.04));display:flex;flex-direction:column;align-items:center;justify-content:space-between;">
       <div style="width:100%;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <div class="section-label" style="margin-bottom:0;">🧭 Houles &amp; Vent</div>
         <button onclick="generateMeteogram()" title="Générer météogramme PNG"
@@ -2204,6 +2255,7 @@ function setHsSrc(src, skipRedraw) {
 
   // Tableau + conditions actuelles
   renderTable(d.dates||[],d.sw1h||[],d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
+  try { renderGlobalWidget(); } catch(_){} // le widget global suit le toggle de source
   if(d.sw1h&&d.sw1h.length) renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0]);
 
   // Badge source
@@ -2838,6 +2890,7 @@ async function loadForecast(i) {
         renderTideEncart(merged, s);
         _ncTideCache = merged;
         if (mareeInited) renderTideCurve(tideDayOffset || 0);
+        try { renderGlobalWidget(); } catch(_){} // marée multi-jours dispo → rafraîchir la ligne marée du widget
         // Mise à jour cache BSF avec marées complètes (multi-jours)
         var _bsfFull = _buildFcObject(s, _fcastData, merged);
         if (_bsfFull) _forecastCache[s.name] = _bsfFull;
@@ -3030,7 +3083,7 @@ function renderTideEncart(tide, spot) {
 // ─── FORECAST PRINCIPAL ────────────────────────────────────────────────
 function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   var now=new Date();
-  var lbl=[],sw1h=[],sw2h=[],wndH=[],totH=[],sw1t=[],sw1d=[],sw2d=[],wSpd=[],wGst=[],wDir=[],sst=[],pwr=[],dates=[];
+  var lbl=[],sw1h=[],sw2h=[],wndH=[],totH=[],sw1t=[],sw1d=[],sw2d=[],sw2t=[],wSpd=[],wGst=[],wDir=[],sst=[],pwr=[],dates=[];
   var rows = _getNcRows(ncMarine);
   var useNC=!!(rows&&rows.length);
 
@@ -3061,7 +3114,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       var s2h = (tot!==null && p1h!==null) ? Math.max(0, parseFloat((tot - p1h - wwind).toFixed(2))) : null;
       var eff1h = (p1h!==null) ? p1h : tot;
       sw1h.push(eff1h); sw2h.push(s2h); wndH.push(wwind); totH.push(tot);
-      sw1t.push(p1t); sw1d.push(p1d); sw2d.push(null);
+      sw1t.push(p1t); sw1d.push(p1d); sw2d.push(null); sw2t.push(null);
       var wsKt = d.wind_speed_kt;
       wSpd.push(wsKt); wGst.push(null); wDir.push(d.wind_direction);
       sst.push(d.T_sea);
@@ -3114,25 +3167,30 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       wndH.push(h.wind_wave_height[i]); totH.push(h.wave_height[i]);
       sw1t.push(h.swell_wave_period[i]); sw1d.push(h.swell_wave_direction[i]);
       sw2d.push(h.secondary_swell_wave_direction?h.secondary_swell_wave_direction[i]:null);
+      sw2t.push(h.secondary_swell_wave_period?h.secondary_swell_wave_period[i]:null);
       wSpd.push(wh.wind_speed_10m[i]); wGst.push(wh.wind_gusts_10m[i]); wDir.push(wh.wind_direction_10m[i]);
       sst.push(null);
       var hs2=h.swell_wave_height[i],T2=h.swell_wave_period[i];
       pwr.push((hs2&&T2)?+(0.5*hs2*hs2*T2).toFixed(2):null);
     }
   }
-  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,wSpd,wGst,wDir,sst,pwr,dates,
+  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,sw2t,wSpd,wGst,wDir,sst,pwr,dates,
     wGstFromGFS: useNC ? (typeof _wGstFromGFS!=='undefined' ? _wGstFromGFS : !!(omWind&&omWind.hourly)) : false};
   // Sauvegarder séparément les données NC pour le toggle
-  if(useNC) _ncFcastData = _fcastData;
+  // (reset si ce spot n'a pas de données NC — sinon le toggle/widget afficherait
+  //  les données meteo.nc du spot précédent)
+  _ncFcastData = useNC ? _fcastData : null;
 
   // Toujours peupler _omFcastData depuis Open-Meteo (pour le toggle AROME/GFS)
   // Même si useNC=true, on veut pouvoir comparer
+  // (reset d'abord : sans réponse OM pour ce spot, ne pas garder celle du spot précédent)
+  _omFcastData = null;
   if(omMarine && omMarine.hourly) {
     var omH=omMarine.hourly, omW=omWind&&omWind.hourly;
     var omNow=new Date();
     var omNi=omH.time.findIndex(function(t){return new Date(t+'Z').getTime()+11*3600000>=omNow.getTime()-3600000;}); 
     if(omNi<0)omNi=0;
-    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[];
+    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omSw2t=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[];
     for(var oi=omNi;oi<omH.time.length;oi+=3){
       var omUtc=new Date(omH.time[oi]+'Z');
       var odt=new Date(omUtc.getTime()+11*3600000); // heure NC en UTC
@@ -3150,11 +3208,12 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       omWSpd.push(omW?omW.wind_speed_10m[oi]:null); omWGst.push(omW?omW.wind_gusts_10m[oi]:null);
       omWDir.push(omW?omW.wind_direction_10m[oi]:null);
       omSw2d.push(omH.secondary_swell_wave_direction?omH.secondary_swell_wave_direction[oi]:null);
+      omSw2t.push(omH.secondary_swell_wave_period?omH.secondary_swell_wave_period[oi]:null);
       omVis.push(omW&&omW.visibility?omW.visibility[oi]:null);
       var ohs=omH.swell_wave_height[oi],oT=omH.swell_wave_period[oi];
       omPwr.push((ohs&&oT)?+(0.5*ohs*ohs*oT).toFixed(2):null);
     }
-    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis};
+    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,sw2t:omSw2t,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis};
   }
   _currentHsSrc = useNC ? 'nc' : 'om';
   updateHsToggleUI();
@@ -3204,6 +3263,10 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   // Météo meteo.nc
   renderMeteoStrip(ncForecast);
   renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst);
+
+  // Widget prévisions global (EPIC 1) — vue synthétique par jour
+  _gwDayIdx = 0;
+  try { renderGlobalWidget(); } catch(e) { console.warn('[WidgetGlobal]', e); }
 
   // Cache BSF (mise à jour quand les marées multi-jours arrivent aussi)
   var _bsfFc = _buildFcObject(spot, _fcastData, _ncTideCache);
@@ -4305,12 +4368,13 @@ function renderMeteoStrip(ncForecast) {
 // ─── VECTEURS DIRECTIONNELS (instantané) ────────────────────────────────────
 // Dessine des flèches pour houle1, houle2 et vent au créneau i
 // ─── Mosaïque satellite 3×3 centrée sur le spot (Esri, zoom 15) ─────────
-var _satAbort = null;
-function updateRoseSatBg(lat, lon) {
-  var img = document.getElementById('rose-sat-bg');
+var _satAborts = {};
+function updateRoseSatBg(lat, lon, targetId) {
+  targetId = targetId || 'rose-sat-bg';
+  var img = document.getElementById(targetId);
   if (!img) return;
-  if (_satAbort) { _satAbort.cancelled = true; }
-  var abort = { cancelled: false }; _satAbort = abort;
+  if (_satAborts[targetId]) { _satAborts[targetId].cancelled = true; }
+  var abort = { cancelled: false }; _satAborts[targetId] = abort;
   var zoom = 15, n = Math.pow(2, zoom);
   var tileSize = 256, cols = 3, rows = 3;
 
@@ -4720,7 +4784,371 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
   document.getElementById('table-wrap').innerHTML=html+'</tbody></table>';
 }
 
+// ════════════════════════════════════════════════════════════════════════
+//  WIDGET PRÉVISIONS GLOBAL (EPIC 1) — vue synthétique par jour, sans scroll
+//  Réutilise _fcastData/_omFcastData, _ncTideCache, calcSunTimes(), svgArrow(),
+//  hsCol()/windCol(), compass() — mêmes sources que le tableau détaillé.
+// ════════════════════════════════════════════════════════════════════════
+var _gwDayIdx = 0;
 
+// Même logique de sélection que setHsSrc : NC prioritaire, GFS si toggle ou si NC absent
+function _gwActiveData() {
+  return (_currentHsSrc==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
+}
+
+// La donnée affichée est-elle bien meteo.nc ? (badge source du widget)
+function _gwIsNC() {
+  return _currentHsSrc==='nc' && !!_ncFcastData;
+}
+
+// Groupe les points horaires par jour calendaire NC (clé sur les champs getUTC*
+// qui représentent l'heure locale NC — même convention que dates[] dans _fcastData).
+function _gwGroupDays(d) {
+  var days = [], byKey = {};
+  if (!d || !d.dates) return days;
+  d.dates.forEach(function(dt, i) {
+    if (!dt) return;
+    var key = dt.getUTCFullYear()+'-'+dt.getUTCMonth()+'-'+dt.getUTCDate();
+    if (!byKey[key]) { byKey[key] = { key:key, dateObj:dt, indices:[] }; days.push(byKey[key]); }
+    byKey[key].indices.push(i);
+  });
+  return days;
+}
+
+function renderGlobalWidget() {
+  var wrap = document.getElementById('gw-widget');
+  if (!wrap) return;
+  var d = _gwActiveData();
+  if (!d || !d.dates || !d.dates.length) { wrap.style.display='none'; return; }
+  var days = _gwGroupDays(d);
+  if (!days.length) { wrap.style.display='none'; return; }
+  wrap.style.display='';
+  if (_gwDayIdx >= days.length) _gwDayIdx = 0;
+  var badge = document.getElementById('gw-src-badge');
+  if (badge) badge.innerHTML = _gwIsNC()
+    ? '<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 7px;border-radius:8px;">🛰 meteo.nc</span>'
+    : '<span style="background:rgba(79,163,199,.1);color:var(--muted);border:1px solid var(--border);padding:1px 7px;border-radius:8px;">🌐 GFS</span>';
+  _gwRenderDayNav(days);
+  _gwRenderGrid(d, days[_gwDayIdx]);
+  var spot = SPOTS[currentSpot];
+  if (spot) _gwUpdateSatThumb(spot.lat, spot.lon);
+}
+
+function _gwRenderDayNav(days) {
+  var nav = document.getElementById('gw-day-nav'); if (!nav) return;
+  // "Aujourd'hui"/"Demain" ancrés sur la vraie date NC (les dates[] sont en UTC+11 lu via getUTC*)
+  var nowNC = new Date(Date.now() + 11*3600000);
+  var todayMs = Date.UTC(nowNC.getUTCFullYear(), nowNC.getUTCMonth(), nowNC.getUTCDate());
+  var DAY_FR_W = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var n = Math.min(days.length, 4);
+  var html = '';
+  for (var i=0; i<n; i++) {
+    var dd = days[i].dateObj;
+    var dMs = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
+    var diff = Math.round((dMs - todayMs) / 864e5);
+    var lbl = diff===0 ? "Aujourd'hui"
+            : diff===1 ? 'Demain'
+            : diff>1   ? 'J+'+diff
+            : DAY_FR_W[dd.getUTCDay()]+' '+dd.getUTCDate()+'/'+(dd.getUTCMonth()+1);
+    html += '<button class="gw-day-btn'+(i===_gwDayIdx?' active':'')+'" onclick="_gwSetDay('+i+')">'+lbl+'</button>';
+  }
+  nav.innerHTML = html;
+}
+
+function _gwSetDay(i) {
+  _gwDayIdx = i;
+  renderGlobalWidget();
+}
+
+function _gwAlpha(hex, a) {
+  if (!hex || hex[0] !== '#' || hex.length < 7) return 'transparent';
+  var r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+
+function _gwLbl(row, text, title) {
+  return '<div class="gw-lbl" style="grid-row:'+row+';grid-column:1;"'+(title?' title="'+title+'"':'')+'>'+text+'</div>';
+}
+
+// Direction/période de la houle 2 : la source NC ne fournit qu'un résidu de hauteur —
+// on complète dir/T depuis Open-Meteo au créneau correspondant (±1h30) quand absents.
+function _gwSw2Extra(d, fi) {
+  var out = { t: (d.sw2t && d.sw2t[fi]!=null) ? d.sw2t[fi] : null,
+              dir: (d.sw2d && d.sw2d[fi]!=null) ? d.sw2d[fi] : null };
+  if ((out.t==null || out.dir==null) && _omFcastData && _omFcastData.dates && d.dates[fi]) {
+    var ms = d.dates[fi].getTime();
+    for (var k=0; k<_omFcastData.dates.length; k++) {
+      if (Math.abs(_omFcastData.dates[k].getTime()-ms) <= 5400000) {
+        if (out.t==null && _omFcastData.sw2t) out.t = _omFcastData.sw2t[k];
+        if (out.dir==null && _omFcastData.sw2d) out.dir = _omFcastData.sw2d[k];
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+function _gwRenderGrid(d, day) {
+  var gridEl = document.getElementById('gw-grid'); if (!gridEl) return;
+  var idxs = day.indices, N = idxs.length;
+  if (!N) { gridEl.innerHTML = '<div style="grid-column:1/-1;color:var(--faint);font-size:11px;padding:8px 0;">Pas de données pour ce jour.</div>'; return; }
+  gridEl.style.gridTemplateColumns = '38px repeat('+N+',1fr)';
+
+  var html = '';
+  html += _gwLbl(1,'Heure');
+  html += _gwLbl(2,'Vent');
+  html += _gwLbl(3,'Dir.');
+  html += _gwLbl(4,'Houle');
+  html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
+  html += _gwLbl(6,'Dir.');
+  html += _gwLbl(7,'H.2','Houle secondaire — hauteur (résidu si meteo.nc) + période, flèche = direction (Open-Meteo si non fournie)');
+
+  idxs.forEach(function(fi, ci) {
+    var col = ci+2;
+    var dt = d.dates[fi];
+    var hh = dt.getUTCHours!==undefined ? dt.getUTCHours() : dt.getHours();
+
+    html += '<div class="gw-cell gw-hour" style="grid-row:1;grid-column:'+col+';">'+String(hh).padStart(2,'0')+'h</div>';
+
+    var ws = d.wSpd && d.wSpd[fi]!=null ? d.wSpd[fi] : null;
+    var wg = d.wGst && d.wGst[fi]!=null ? d.wGst[fi] : null;
+    html += '<div class="gw-cell" style="grid-row:2;grid-column:'+col+';background:'+_gwAlpha(windCol(ws),.14)+';">'
+      + '<span class="v" style="color:'+windCol(ws)+';">'+(ws!=null?Math.round(ws):'—')+'</span>'
+      + '<span class="u">'+(wg!=null?Math.round(wg)+'g':'kt')+'</span></div>';
+
+    var wd = d.wDir && d.wDir[fi];
+    html += '<div class="gw-cell" style="grid-row:3;grid-column:'+col+';">'+(wd!=null?svgArrow(wd,'#e8a057'):'—')+'</div>';
+
+    var tot = d.totH && d.totH[fi];
+    html += '<div class="gw-cell" style="grid-row:4;grid-column:'+col+';background:'+_gwAlpha(hsCol(tot),.14)+';">'
+      + '<span class="v" style="color:'+hsCol(tot)+';">'+(tot!=null?tot.toFixed(1):'—')+'</span><span class="u">m</span></div>';
+
+    var s1h = d.sw1h && d.sw1h[fi], s1t = d.sw1t && d.sw1t[fi];
+    html += '<div class="gw-cell" style="grid-row:5;grid-column:'+col+';">'
+      + '<span class="v" style="color:'+hsCol(s1h)+';">'+(s1h!=null?s1h.toFixed(1)+'m':'—')+'</span>'
+      + '<span class="u">'+(s1t!=null?Math.round(s1t)+'s':'')+'</span></div>';
+
+    var s1d = d.sw1d && d.sw1d[fi];
+    html += '<div class="gw-cell" style="grid-row:6;grid-column:'+col+';">'+(s1d!=null?svgArrow(s1d,'#4fa3c7'):'—')+'</div>';
+
+    var s2h = d.sw2h && d.sw2h[fi];
+    var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
+    html += '<div class="gw-cell" style="grid-row:7;grid-column:'+col+';">'
+      + (s2h && s2x.dir!=null ? svgArrow(s2x.dir,'#6ab4d4') : '')
+      + '<span class="v" style="color:'+hsCol(s2h)+';font-size:10px;">'+(s2h?s2h.toFixed(1)+'m':'—')+'</span>'
+      + (s2h && s2x.t!=null ? '<span class="u">'+Math.round(s2x.t)+'s</span>' : '')
+      + '</div>';
+  });
+
+  html += '<div class="gw-row-sep" style="grid-row:8;"></div>';
+  html += _gwLbl(9,'Marée');
+  html += '<div class="gw-tide-row" id="gw-tide-svg-wrap" style="grid-row:9;grid-column:2/-1;"></div>';
+  html += _gwLbl(10,'Soleil');
+  html += '<div class="gw-sun-row" id="gw-sun-wrap" style="grid-row:10;grid-column:2/-1;"></div>';
+
+  gridEl.innerHTML = html;
+
+  _gwRenderTideRow(d, day);
+  _gwRenderSunRow(d, day);
+}
+
+// ─── Marée : événements PM/BM extraits de _ncTideCache (mêmes conventions que renderTideCurve) ──
+function _gwTideMs(t) {
+  return (t && !t.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(t))
+    ? new Date(t+'Z').getTime() - 11*3600000
+    : new Date(t).getTime();
+}
+
+function _gwTideEvents() {
+  if (!_ncTideCache || !_ncTideCache.properties || !_ncTideCache.properties.tide) return [];
+  var t = _ncTideCache.properties.tide, ev = [];
+  (t.high_tide||[]).forEach(function(e){ if(e && e.time!=null && e.tidal_height!=null) ev.push({ms:_gwTideMs(e.time), h:e.tidal_height, type:'pm'}); });
+  (t.low_tide||[]).forEach(function(e){ if(e && e.time!=null && e.tidal_height!=null) ev.push({ms:_gwTideMs(e.time), h:e.tidal_height, type:'bm'}); });
+  ev.sort(function(a,b){ return a.ms-b.ms; });
+  var seen = [];
+  ev = ev.filter(function(e){
+    var dup = seen.some(function(s){ return s.type===e.type && Math.abs(s.ms-e.ms)<10*60000; });
+    if (!dup) seen.push(e);
+    return !dup;
+  });
+  return ev;
+}
+
+function _gwTideHeightAt(ms, events) {
+  if (!events.length) return null;
+  var prev=null, next=null;
+  for (var k=0; k<events.length; k++) {
+    if (events[k].ms<=ms) prev=events[k];
+    else if (!next) { next=events[k]; break; }
+  }
+  if (prev && next) {
+    var span = next.ms-prev.ms;
+    if (span<=0) return prev.h;
+    var frac = Math.max(0, Math.min(1, (ms-prev.ms)/span));
+    return prev.h + (next.h-prev.h)*(1-Math.cos(Math.PI*frac))/2;
+  }
+  if (prev) return prev.h;
+  if (next) return next.h;
+  return null;
+}
+
+// Courbe alignée en "espace colonnes" (index de créneau horaire) pour coïncider
+// visuellement avec la grille au-dessus, tout en interpolant l'heure réelle sous-jacente.
+function _gwRenderTideRow(d, day) {
+  var wrap = document.getElementById('gw-tide-svg-wrap'); if (!wrap) return;
+  var events = _gwTideEvents();
+  var idxs = day.indices, N = idxs.length;
+  if (!events.length || N < 2) {
+    wrap.innerHTML = '<div style="font-size:9px;color:var(--faint);text-align:center;padding-top:16px;">Marée indisponible</div>';
+    return;
+  }
+
+  var colTrueMs = idxs.map(function(fi){ return d.dates[fi].getTime() - 11*3600000; });
+  var W = 100, H = 44, padY = 7, SUB = 5;
+  var samples = [];
+  for (var i=0; i<N-1; i++) {
+    for (var s=0; s<SUB; s++) {
+      var t = s/SUB;
+      samples.push({ x:(i+0.5+t)*(W/N), ms: colTrueMs[i]+t*(colTrueMs[i+1]-colTrueMs[i]) });
+    }
+  }
+  samples.push({ x:(N-0.5)*(W/N), ms: colTrueMs[N-1] });
+
+  var heights = samples.map(function(p){ return _gwTideHeightAt(p.ms, events); });
+  var evInWindow = events.filter(function(e){ return e.ms>=colTrueMs[0]-7200000 && e.ms<=colTrueMs[N-1]+7200000; });
+  var allH = heights.concat(evInWindow.map(function(e){ return e.h; }));
+  var hMin = Math.min.apply(null, allH), hMax = Math.max.apply(null, allH);
+  if (hMax-hMin < 0.4) { var mid=(hMax+hMin)/2; hMin=mid-0.2; hMax=mid+0.2; }
+  function yOf(h) { return H-padY - ((h-hMin)/(hMax-hMin))*(H-2*padY); }
+
+  var pathD = samples.map(function(p,i){ return (i===0?'M':'L')+p.x.toFixed(2)+','+yOf(heights[i]).toFixed(2); }).join(' ');
+  var areaD = pathD+' L'+samples[samples.length-1].x.toFixed(2)+','+H+' L'+samples[0].x.toFixed(2)+','+H+' Z';
+
+  function msToX(ms) {
+    if (ms<=colTrueMs[0]) { var span0=(colTrueMs[1]-colTrueMs[0])||3600000; return Math.max(0,(0.5*(W/N)) - ((colTrueMs[0]-ms)/span0)*(W/N)); }
+    if (ms>=colTrueMs[N-1]) { var spanE=(colTrueMs[N-1]-colTrueMs[N-2])||3600000; return Math.min(W,((N-0.5)*(W/N)) + ((ms-colTrueMs[N-1])/spanE)*(W/N)); }
+    for (var i=0; i<N-1; i++) {
+      if (ms>=colTrueMs[i] && ms<=colTrueMs[i+1]) {
+        var t=(ms-colTrueMs[i])/((colTrueMs[i+1]-colTrueMs[i])||1);
+        return (i+0.5+t)*(W/N);
+      }
+    }
+    return W/2;
+  }
+
+  var svg = '<svg width="100%" height="100%" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="display:block;">'
+    + '<path d="'+areaD+'" fill="rgba(79,163,199,.12)" stroke="none"/>'
+    + '<path d="'+pathD+'" fill="none" stroke="#4fa3c7" stroke-width="1.4" vector-effect="non-scaling-stroke"/>'
+    + '</svg>';
+
+  var markersHtml = evInWindow.map(function(e){
+    var x = msToX(e.ms);
+    if (x<0 || x>W) return '';
+    var y = yOf(e.h);
+    var lblX = Math.max(8, Math.min(92, x));
+    var localMin = new Date(e.ms + 11*3600000);
+    var hh = String(localMin.getUTCHours()).padStart(2,'0'), mm = String(localMin.getUTCMinutes()).padStart(2,'0');
+    var col = e.type==='pm' ? '#6ab4d4' : '#8aa2b4';
+    var above = e.type==='pm';
+    return '<div style="position:absolute;left:'+x.toFixed(1)+'%;top:'+y.toFixed(1)+'px;transform:translate(-50%,-50%);'
+      +'width:5px;height:5px;border-radius:50%;background:'+col+';border:1px solid #06101e;"></div>'
+      + '<div style="position:absolute;left:'+lblX.toFixed(1)+'%;top:'+(above?Math.max(0,y-16):Math.min(H-9,y+7)).toFixed(1)+'px;transform:translateX(-50%);'
+      +'font-size:8px;font-weight:700;white-space:nowrap;color:'+col+';">'+hh+'h'+mm+' '+e.h.toFixed(1)+'m</div>';
+  }).join('');
+
+  wrap.innerHTML = svg + markersHtml;
+}
+
+// ─── Soleil : lever/coucher positionnés proportionnellement sur la timeline ──
+function _gwRenderSunRow(d, day) {
+  var wrap = document.getElementById('gw-sun-wrap'); if (!wrap) return;
+  var dt0 = day.dateObj;
+  var sun = calcSunTimes(dt0.getUTCFullYear(), dt0.getUTCMonth()+1, dt0.getUTCDate());
+  var idxs = day.indices, N = idxs.length;
+
+  function hmToMin(str) { if (!str) return null; var p=str.split('h'); return (+p[0])*60+(+p[1]); }
+  var colMin = idxs.map(function(fi) {
+    var dt = d.dates[fi];
+    var hh = dt.getUTCHours!==undefined ? dt.getUTCHours() : dt.getHours();
+    var mm = dt.getUTCMinutes!==undefined ? dt.getUTCMinutes() : dt.getMinutes();
+    return hh*60+mm;
+  });
+
+  function minToX(min) {
+    if (N<2) return 50;
+    if (min<=colMin[0]) { var span0=(colMin[1]-colMin[0])||180; return Math.max(2,(0.5*(100/N)) - ((colMin[0]-min)/span0)*(100/N)); }
+    if (min>=colMin[N-1]) { var spanE=(colMin[N-1]-colMin[N-2])||180; return Math.min(98,((N-0.5)*(100/N)) + ((min-colMin[N-1])/spanE)*(100/N)); }
+    for (var i=0; i<N-1; i++) {
+      if (min>=colMin[i] && min<=colMin[i+1]) {
+        var t=(min-colMin[i])/((colMin[i+1]-colMin[i])||1);
+        return (i+0.5+t)*(100/N);
+      }
+    }
+    return 50;
+  }
+
+  var riseMin = hmToMin(sun.sunrise), setMin = hmToMin(sun.sunset);
+  var html = '<div style="position:absolute;left:0;right:0;top:9px;height:1px;background:rgba(255,255,255,.06);"></div>';
+  if (riseMin!=null) {
+    var rx = minToX(riseMin);
+    html += '<div style="position:absolute;left:'+rx.toFixed(1)+'%;top:0;transform:translateX(-50%);text-align:center;font-size:11px;line-height:1.1;">🌅'
+      + '<div style="font-size:7px;color:var(--faint);">'+sun.sunrise+'</div></div>';
+  }
+  if (setMin!=null) {
+    var sx = minToX(setMin);
+    html += '<div style="position:absolute;left:'+sx.toFixed(1)+'%;top:0;transform:translateX(-50%);text-align:center;font-size:11px;line-height:1.1;">🌇'
+      + '<div style="font-size:7px;color:var(--faint);">'+sun.sunset+'</div></div>';
+  }
+  wrap.innerHTML = html;
+}
+
+// ─── Vue satellite compacte (réutilise la mosaïque Esri de la carte Houles & Vent) ──
+var _gwSatKey = null; // évite de refetcher les 9 tuiles à chaque clic d'onglet jour
+function _gwUpdateSatThumb(lat, lon) {
+  var key = lat.toFixed(3) + ',' + lon.toFixed(3);
+  if (key === _gwSatKey) return;
+  _gwSatKey = key;
+  updateRoseSatBg(lat, lon, 'gw-sat-thumb');
+}
+
+function _gwScrollToSat() {
+  var el = document.getElementById('rose-sat-card');
+  if (el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+// ─── Export image du widget (même mécanique que generateMeteogram) ──
+function _gwCapture() {
+  var target = document.getElementById('gw-widget');
+  if (!target) return;
+  if (typeof html2canvas === 'undefined') {
+    showToast('⏳ Chargement du module capture…');
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = function() { _gwCapture(); };
+    document.head.appendChild(s);
+    return;
+  }
+  showToast('📸 Capture en cours…');
+  var spot = SPOTS[currentSpot] ? SPOTS[currentSpot].name : 'spot';
+  html2canvas(target, {
+    backgroundColor: '#0d1f3c', scale: Math.min(window.devicePixelRatio||1, 2),
+    useCORS: true, allowTaint: true, logging: false
+  }).then(function(canvas) {
+    canvas.toBlob(function(blob) {
+      if (!blob) { showToast('Erreur capture'); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'widget-previsions-' + spot.toLowerCase().replace(/\s+/g,'-') + '-' + new Date().toISOString().slice(0,10) + '.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+      showToast('📸 Capture téléchargée !');
+    }, 'image/png');
+  }).catch(function(e) {
+    console.error('[WidgetCapture]', e);
+    showToast('Erreur capture : ' + e.message);
+  });
+}
 
 // ---
 // CHARTS — avec crosshair synchronisé
