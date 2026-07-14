@@ -5103,7 +5103,11 @@ function _gwRenderSunRow(d, day) {
 }
 
 // ─── Vue satellite compacte (réutilise la mosaïque Esri de la carte Houles & Vent) ──
+var _gwSatKey = null; // évite de refetcher les 9 tuiles à chaque clic d'onglet jour
 function _gwUpdateSatThumb(lat, lon) {
+  var key = lat.toFixed(3) + ',' + lon.toFixed(3);
+  if (key === _gwSatKey) return;
+  _gwSatKey = key;
   updateRoseSatBg(lat, lon, 'gw-sat-thumb');
 }
 
