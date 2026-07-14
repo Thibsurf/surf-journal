@@ -120,9 +120,19 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .gw-tool-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 9px;border-radius:var(--rs);
   cursor:pointer;font-size:10px;font-family:var(--font-b);white-space:nowrap;}
 .gw-tool-btn:hover{color:var(--text);border-color:var(--border-h);}
-#gw-sat-thumb{width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid var(--border);
-  cursor:pointer;background:var(--mid);flex-shrink:0;transition:border-color .15s,transform .15s;}
-#gw-sat-thumb:hover{border-color:var(--accent);transform:scale(1.04);}
+/* Graphe d'ensemble (courbe vent + barres houle, façon meteo.nc) + panneau satellite */
+.gw-main{display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;}
+.gw-chart-wrap{flex:1;min-width:260px;position:relative;}
+#gw-overview{width:100%;height:224px;display:block;cursor:crosshair;border-radius:8px;}
+#gw-ov-readout{min-height:15px;font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4;}
+.gw-sat-panel{width:184px;height:224px;position:relative;flex-shrink:0;border-radius:10px;overflow:hidden;
+  border:1px solid var(--border);cursor:pointer;background:var(--mid);transition:border-color .15s;}
+.gw-sat-panel:hover{border-color:var(--accent);}
+#gw-sat-thumb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(1.25) brightness(.9);}
+#gw-sat-vec{position:absolute;inset:0;width:100%;height:100%;}
+#gw-sat-time{position:absolute;left:6px;top:5px;font-size:9px;font-weight:700;color:#fff;
+  background:rgba(6,16,30,.7);padding:2px 8px;border-radius:9px;letter-spacing:.03em;}
+@media(max-width:600px){.gw-sat-panel{width:100%;height:170px;}}
 .gw-grid-wrap{width:100%;overflow:hidden;}
 .gw-grid{display:grid;width:100%;row-gap:2px;column-gap:0;}
 .gw-lbl{font-size:8.5px;color:var(--muted);display:flex;align-items:center;padding:3px 3px 3px 0;white-space:nowrap;
@@ -367,8 +377,19 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <div class="gw-tools">
         <span id="gw-src-badge" style="font-size:9px;"></span>
         <button class="gw-tool-btn" onclick="_gwCapture()" title="Capturer le widget en image">📸 Capture</button>
-        <img id="gw-sat-thumb" alt="Vue satellite du spot" title="Vue satellite — cliquer pour la carte détaillée"
-          onclick="_gwScrollToSat()">
+      </div>
+    </div>
+    <div class="gw-main">
+      <div class="gw-chart-wrap">
+        <canvas id="gw-overview" title="Survoler = vecteurs sur la vue satellite · cliquer = choisir le jour"></canvas>
+        <div id="gw-ov-readout">← Survolez le graphe : les vecteurs houle/vent suivent l'heure</div>
+      </div>
+      <div class="gw-sat-panel" id="gw-sat-panel"
+        title="Vue satellite — vecteurs houle/vent du créneau survolé. Cliquer : carte détaillée."
+        onclick="_gwScrollToSat()">
+        <img id="gw-sat-thumb" alt="Vue satellite du spot">
+        <canvas id="gw-sat-vec"></canvas>
+        <div id="gw-sat-time"></div>
       </div>
     </div>
     <div class="gw-grid-wrap">
@@ -4823,13 +4844,16 @@ function renderGlobalWidget() {
   var days = _gwGroupDays(d);
   if (!days.length) { wrap.style.display='none'; return; }
   wrap.style.display='';
-  if (_gwDayIdx >= days.length) _gwDayIdx = 0;
+  if (_gwDayIdx >= Math.min(days.length, 5)) _gwDayIdx = 0;
   var badge = document.getElementById('gw-src-badge');
   if (badge) badge.innerHTML = _gwIsNC()
     ? '<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 7px;border-radius:8px;">🛰 meteo.nc</span>'
     : '<span style="background:rgba(79,163,199,.1);color:var(--muted);border:1px solid var(--border);padding:1px 7px;border-radius:8px;">🌐 GFS</span>';
   _gwRenderDayNav(days);
   _gwRenderGrid(d, days[_gwDayIdx]);
+  _gwDrawOverview();
+  _gwSetHover(_gwDefaultGi(d, days[_gwDayIdx]));
+  _gwBindEvents();
   var spot = SPOTS[currentSpot];
   if (spot) _gwUpdateSatThumb(spot.lat, spot.lon);
 }
@@ -4840,7 +4864,7 @@ function _gwRenderDayNav(days) {
   var nowNC = new Date(Date.now() + 11*3600000);
   var todayMs = Date.UTC(nowNC.getUTCFullYear(), nowNC.getUTCMonth(), nowNC.getUTCDate());
   var DAY_FR_W = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-  var n = Math.min(days.length, 4);
+  var n = Math.min(days.length, 5);
   var html = '';
   for (var i=0; i<n; i++) {
     var dd = days[i].dateObj;
@@ -4858,6 +4882,272 @@ function _gwRenderDayNav(days) {
 function _gwSetDay(i) {
   _gwDayIdx = i;
   renderGlobalWidget();
+}
+
+// ─── Graphe d'ensemble multi-jours (façon meteo.nc : courbe vent + barres houle) ──
+var _gwHoverGi = -1, _gwOvGeom = null;
+
+function _gwFmtSlot(d, fi) {
+  var DAY_FR_W = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var dt = d.dates[fi];
+  return DAY_FR_W[dt.getUTCDay()]+' '+String(dt.getUTCHours()).padStart(2,'0')+'h';
+}
+
+// Créneau par défaut du jour : l'heure courante si aujourd'hui, sinon ~11h
+function _gwDefaultGi(d, day) {
+  var idxs = day.indices;
+  var nowNC = new Date(Date.now() + 11*3600000);
+  var sameDay = day.dateObj.getUTCDate()===nowNC.getUTCDate() && day.dateObj.getUTCMonth()===nowNC.getUTCMonth();
+  var targetH = sameDay ? nowNC.getUTCHours() : 11;
+  var best = idxs[0], bd = 99;
+  idxs.forEach(function(fi){
+    var df = Math.abs(d.dates[fi].getUTCHours() - targetH);
+    if (df < bd) { bd = df; best = fi; }
+  });
+  return best;
+}
+
+function _gwDrawOverview() {
+  var cv = document.getElementById('gw-overview');
+  if (!cv || !cv.getContext) return;
+  var d = _gwActiveData(); if (!d || !d.dates || !d.dates.length) return;
+  var days = _gwGroupDays(d).slice(0, 5);
+  var gis = []; days.forEach(function(dy){ gis = gis.concat(dy.indices); });
+  if (gis.length < 2) return;
+
+  var W = cv.offsetWidth || 600, H = cv.offsetHeight || 224;
+  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  cv.width = W*dpr; cv.height = H*dpr;
+  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  var padL = 30, padR = 8, headH = 20;
+  var windTop = headH+12, windBot = headH+88;
+  var hsTop = windBot+18, hsBot = H-8;
+  var iw = W-padL-padR, span = iw/gis.length;
+  function xOf(k){ return padL + (k+0.5)*span; }
+
+  var maxKt = 15, maxHs = 0.8;
+  gis.forEach(function(fi){
+    if (d.wSpd[fi]!=null) maxKt = Math.max(maxKt, d.wSpd[fi]);
+    if (d.wGst && d.wGst[fi]!=null) maxKt = Math.max(maxKt, d.wGst[fi]);
+    if (d.totH[fi]!=null) maxHs = Math.max(maxHs, d.totH[fi]);
+  });
+  maxKt *= 1.15; maxHs *= 1.15;
+  function yW(v){ return windBot - (v/maxKt)*(windBot-windTop); }
+  function yH(v){ return hsBot - (v/maxHs)*(hsBot-hsTop); }
+
+  var bounds = [], k0 = 0;
+  days.forEach(function(dy){ bounds.push({k0:k0, k1:k0+dy.indices.length}); k0 += dy.indices.length; });
+
+  // Bande jaune translucide sur le jour sélectionné (comme le graphe de référence)
+  if (_gwDayIdx < days.length) {
+    var bs = bounds[_gwDayIdx];
+    ctx.fillStyle = 'rgba(232,196,74,.09)';
+    ctx.fillRect(padL+bs.k0*span, headH, (bs.k1-bs.k0)*span, H-headH);
+  }
+
+  // Bandeau jours (bleu foncé) cliquable
+  var DAY_FR_W = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  days.forEach(function(dy, di){
+    var b = bounds[di];
+    var x0 = padL+b.k0*span, x1 = padL+b.k1*span;
+    ctx.fillStyle = di===_gwDayIdx ? 'rgba(79,163,199,.55)' : 'rgba(26,58,92,.9)';
+    ctx.fillRect(x0+1, 0, x1-x0-2, headH-2);
+    ctx.fillStyle = di===_gwDayIdx ? '#fff' : 'rgba(232,238,244,.8)';
+    ctx.font = '700 10px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var dd = dy.dateObj;
+    ctx.fillText(DAY_FR_W[dd.getUTCDay()]+' '+dd.getUTCDate()+'/'+(dd.getUTCMonth()+1), (x0+x1)/2, headH/2-1);
+    if (di > 0) {
+      ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, headH); ctx.lineTo(x0, H-2); ctx.stroke();
+    }
+  });
+
+  // Grilles + graduations
+  ctx.font = '8px DM Sans,sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  var ktStep = maxKt > 40 ? 20 : 10;
+  for (var v = 0; v <= maxKt; v += ktStep) {
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.beginPath(); ctx.moveTo(padL, yW(v)); ctx.lineTo(W-padR, yW(v)); ctx.stroke();
+    ctx.fillStyle = 'rgba(122,148,170,.8)'; ctx.fillText(String(v), padL-4, yW(v));
+  }
+  var hsStep = maxHs > 2.5 ? 1 : 0.5;
+  for (var hv = 0; hv <= maxHs; hv += hsStep) {
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.beginPath(); ctx.moveTo(padL, yH(hv)); ctx.lineTo(W-padR, yH(hv)); ctx.stroke();
+    ctx.fillStyle = 'rgba(122,148,170,.8)'; ctx.fillText(hsStep < 1 ? hv.toFixed(1) : String(hv), padL-4, yH(hv));
+  }
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(61,186,138,.9)';  ctx.fillText('Vent (kt)',  padL+2, windTop-6);
+  ctx.fillStyle = 'rgba(79,163,199,.95)'; ctx.fillText('Houle (m)', padL+2, hsTop-6);
+
+  // Barres houle : totale (bleu accent) derrière, primaire (bleu clair) devant
+  var bw = Math.min(span*0.55, 14);
+  gis.forEach(function(fi, k){
+    var x = xOf(k), tot = d.totH[fi], p1 = d.sw1h[fi];
+    if (tot!=null) { ctx.fillStyle = 'rgba(79,163,199,.85)';  ctx.fillRect(x-bw/2,   yH(tot), bw,      hsBot-yH(tot)); }
+    if (p1!=null)  { ctx.fillStyle = 'rgba(185,208,235,.85)'; ctx.fillRect(x-bw*0.28, yH(p1), bw*0.56, hsBot-yH(p1)); }
+  });
+
+  // Rafales : losanges rouges (comme la légende du graphe de référence)
+  gis.forEach(function(fi, k){
+    var g = d.wGst && d.wGst[fi]; if (g==null) return;
+    var x = xOf(k), y = yW(g);
+    ctx.fillStyle = 'rgba(224,92,92,.85)';
+    ctx.beginPath(); ctx.moveTo(x,y-3); ctx.lineTo(x+3,y); ctx.lineTo(x,y+3); ctx.lineTo(x-3,y); ctx.closePath(); ctx.fill();
+  });
+
+  // Courbe vent moyen (verte)
+  ctx.strokeStyle = '#3dba8a'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round'; ctx.beginPath();
+  var started = false;
+  gis.forEach(function(fi, k){
+    var v2 = d.wSpd[fi]; if (v2==null) { started = false; return; }
+    var x = xOf(k), y = yW(v2);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Crosshair sur l'heure survolée
+  var kh = gis.indexOf(_gwHoverGi);
+  if (kh >= 0) {
+    var xh = xOf(kh);
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(xh, headH); ctx.lineTo(xh, H-2); ctx.stroke(); ctx.setLineDash([]);
+    var vw = d.wSpd[_gwHoverGi];
+    if (vw!=null) {
+      ctx.fillStyle = '#3dba8a'; ctx.beginPath(); ctx.arc(xh, yW(vw), 3.5, 0, 2*Math.PI); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.2; ctx.stroke();
+    }
+  }
+
+  _gwOvGeom = { padL:padL, span:span, gis:gis, bounds:bounds, headH:headH };
+}
+
+// ─── Vecteurs houle/vent dessinés SUR la vue satellite (suivent l'heure survolée) ──
+function _gwDrawVectors(fi) {
+  var cv = document.getElementById('gw-sat-vec');
+  if (!cv || !cv.getContext) return;
+  var d = _gwActiveData();
+  if (!d || !d.dates || fi==null || fi<0 || !d.dates[fi]) return;
+  var W = cv.offsetWidth || 184, H = cv.offsetHeight || 224;
+  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  cv.width = W*dpr; cv.height = H*dpr;
+  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  var cx = W/2, cy = H/2, R = Math.min(W, H)/2 - 18;
+
+  // Repère : cercle discret + N + point spot
+  ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2*Math.PI); ctx.stroke();
+  ctx.font = '700 9px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.strokeStyle = 'rgba(6,16,30,.8)'; ctx.lineWidth = 3; ctx.strokeText('N', cx, cy-R-7);
+  ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillText('N', cx, cy-R-7);
+  ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2*Math.PI); ctx.fill();
+
+  var s1h = d.sw1h[fi], s1d = d.sw1d[fi], s1t = d.sw1t && d.sw1t[fi];
+  var s2h = d.sw2h && d.sw2h[fi];
+  var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
+  var ws = d.wSpd && d.wSpd[fi], wd2 = d.wDir && d.wDir[fi];
+  var hMax = Math.max(s1h||0, s2h||0, 0.5);
+
+  // Même convention que la rose : flèche du centre vers l'extérieur = D'OÙ ça vient
+  var arrows = [];
+  if (s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.35), col:'#4fc3e8',
+    label:s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':''), lw:3.2 });
+  if (s2h && s2x.dir!=null) arrows.push({ deg:s2x.dir, mag:Math.max(s2h/hMax,.25), col:'#b9d0eb',
+    label:s2h.toFixed(1)+'m'+(s2x.t?' '+Math.round(s2x.t)+'s':''), lw:2.2 });
+  if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.3), col:'#e8a057',
+    label:Math.round(ws)+'kt', lw:2.6 });
+
+  // Anti-collision légère : écart < 22° → ±10°
+  for (var a=0; a<arrows.length; a++) for (var b2=a+1; b2<arrows.length; b2++) {
+    var da = Math.abs(((arrows[a].deg-arrows[b2].deg)%360+540)%360-180);
+    if (da < 22) { arrows[a].deg -= 10; arrows[b2].deg += 10; }
+  }
+
+  arrows.forEach(function(ar){
+    var rad = (ar.deg-90)*Math.PI/180;
+    var L = R*ar.mag;
+    var x2 = cx+L*Math.cos(rad), y2 = cy+L*Math.sin(rad);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(6,16,30,.8)'; ctx.lineWidth = ar.lw+2.5;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = ar.col; ctx.lineWidth = ar.lw;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x2, y2); ctx.stroke();
+    // Pointe vers l'extérieur
+    var hx = cx+(L+7)*Math.cos(rad), hy = cy+(L+7)*Math.sin(rad);
+    ctx.fillStyle = ar.col;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(x2-5*Math.cos(rad-0.5), y2-5*Math.sin(rad-0.5));
+    ctx.lineTo(x2-5*Math.cos(rad+0.5), y2-5*Math.sin(rad+0.5));
+    ctx.closePath(); ctx.fill();
+    // Label au bout, halo sombre pour lisibilité sur la photo
+    var lx = cx+(L+17)*Math.cos(rad), ly = cy+(L+17)*Math.sin(rad);
+    lx = Math.max(22, Math.min(W-22, lx)); ly = Math.max(12, Math.min(H-8, ly));
+    ctx.font = '700 9px DM Sans,sans-serif'; ctx.textAlign = 'center';
+    ctx.strokeStyle = 'rgba(6,16,30,.85)'; ctx.lineWidth = 3; ctx.strokeText(ar.label, lx, ly);
+    ctx.fillStyle = ar.col; ctx.fillText(ar.label, lx, ly);
+  });
+
+  var tEl = document.getElementById('gw-sat-time');
+  if (tEl) tEl.textContent = _gwFmtSlot(d, fi);
+}
+
+// Survol d'une heure (graphe ou grille) : crosshair + vecteurs + résumé texte
+function _gwSetHover(gi) {
+  if (gi==null || gi<0) return;
+  _gwHoverGi = gi;
+  _gwDrawOverview();
+  _gwDrawVectors(gi);
+  var d = _gwActiveData(); if (!d || !d.dates || !d.dates[gi]) return;
+  var el = document.getElementById('gw-ov-readout');
+  if (el) {
+    var ws = d.wSpd[gi], wg = d.wGst && d.wGst[gi], tot = d.totH[gi];
+    var s1 = d.sw1h[gi], t1 = d.sw1t && d.sw1t[gi];
+    el.innerHTML = '<b style="color:var(--accent)">'+_gwFmtSlot(d, gi)+'</b>'
+      + ' · <span style="color:#3dba8a">vent '+(ws!=null?Math.round(ws)+' kt':'—')
+      + (wg!=null?' (raf '+Math.round(wg)+')':'')+' '+compass(d.wDir&&d.wDir[gi])+'</span>'
+      + ' · <span style="color:#4fa3c7">houle '+(s1!=null?s1.toFixed(1)+' m':'—')
+      + (t1?' '+Math.round(t1)+' s':'')+' '+compass(d.sw1d&&d.sw1d[gi])+'</span>'
+      + ' · mer totale '+(tot!=null?tot.toFixed(1)+' m':'—');
+  }
+}
+
+// Câblage souris : graphe (survol heure + clic jour) et grille horaire (survol heure)
+function _gwBindEvents() {
+  var cv = document.getElementById('gw-overview');
+  if (cv) {
+    cv.onmousemove = function(e) {
+      if (!_gwOvGeom) return;
+      var k = Math.floor((e.offsetX - _gwOvGeom.padL) / _gwOvGeom.span);
+      if (k < 0 || k >= _gwOvGeom.gis.length) return;
+      _gwSetHover(_gwOvGeom.gis[k]);
+    };
+    cv.onclick = function(e) {
+      if (!_gwOvGeom) return;
+      var k = Math.floor((e.offsetX - _gwOvGeom.padL) / _gwOvGeom.span);
+      if (k < 0 || k >= _gwOvGeom.gis.length) return;
+      for (var di = 0; di < _gwOvGeom.bounds.length; di++) {
+        if (k >= _gwOvGeom.bounds[di].k0 && k < _gwOvGeom.bounds[di].k1) {
+          if (di !== _gwDayIdx) _gwSetDay(di);
+          break;
+        }
+      }
+    };
+  }
+  var grid = document.getElementById('gw-grid');
+  if (grid) {
+    grid.onmousemove = function(e) {
+      var t = e.target, gi = null, hops = 0;
+      while (t && hops < 5) {
+        if (t.getAttribute) { var a = t.getAttribute('data-gi'); if (a != null) { gi = +a; break; } }
+        t = t.parentNode; hops++;
+      }
+      if (gi != null) _gwSetHover(gi);
+    };
+  }
 }
 
 function _gwAlpha(hex, a) {
@@ -4907,33 +5197,34 @@ function _gwRenderGrid(d, day) {
     var col = ci+2;
     var dt = d.dates[fi];
     var hh = dt.getUTCHours!==undefined ? dt.getUTCHours() : dt.getHours();
+    var gia = ' data-gi="'+fi+'"'; // survol → vecteurs satellite sur ce créneau
 
-    html += '<div class="gw-cell gw-hour" style="grid-row:1;grid-column:'+col+';">'+String(hh).padStart(2,'0')+'h</div>';
+    html += '<div class="gw-cell gw-hour"'+gia+' style="grid-row:1;grid-column:'+col+';">'+String(hh).padStart(2,'0')+'h</div>';
 
     var ws = d.wSpd && d.wSpd[fi]!=null ? d.wSpd[fi] : null;
     var wg = d.wGst && d.wGst[fi]!=null ? d.wGst[fi] : null;
-    html += '<div class="gw-cell" style="grid-row:2;grid-column:'+col+';background:'+_gwAlpha(windCol(ws),.14)+';">'
+    html += '<div class="gw-cell"'+gia+' style="grid-row:2;grid-column:'+col+';background:'+_gwAlpha(windCol(ws),.14)+';">'
       + '<span class="v" style="color:'+windCol(ws)+';">'+(ws!=null?Math.round(ws):'—')+'</span>'
       + '<span class="u">'+(wg!=null?Math.round(wg)+'g':'kt')+'</span></div>';
 
     var wd = d.wDir && d.wDir[fi];
-    html += '<div class="gw-cell" style="grid-row:3;grid-column:'+col+';">'+(wd!=null?svgArrow(wd,'#e8a057'):'—')+'</div>';
+    html += '<div class="gw-cell"'+gia+' style="grid-row:3;grid-column:'+col+';">'+(wd!=null?svgArrow(wd,'#e8a057'):'—')+'</div>';
 
     var tot = d.totH && d.totH[fi];
-    html += '<div class="gw-cell" style="grid-row:4;grid-column:'+col+';background:'+_gwAlpha(hsCol(tot),.14)+';">'
+    html += '<div class="gw-cell"'+gia+' style="grid-row:4;grid-column:'+col+';background:'+_gwAlpha(hsCol(tot),.14)+';">'
       + '<span class="v" style="color:'+hsCol(tot)+';">'+(tot!=null?tot.toFixed(1):'—')+'</span><span class="u">m</span></div>';
 
     var s1h = d.sw1h && d.sw1h[fi], s1t = d.sw1t && d.sw1t[fi];
-    html += '<div class="gw-cell" style="grid-row:5;grid-column:'+col+';">'
+    html += '<div class="gw-cell"'+gia+' style="grid-row:5;grid-column:'+col+';">'
       + '<span class="v" style="color:'+hsCol(s1h)+';">'+(s1h!=null?s1h.toFixed(1)+'m':'—')+'</span>'
       + '<span class="u">'+(s1t!=null?Math.round(s1t)+'s':'')+'</span></div>';
 
     var s1d = d.sw1d && d.sw1d[fi];
-    html += '<div class="gw-cell" style="grid-row:6;grid-column:'+col+';">'+(s1d!=null?svgArrow(s1d,'#4fa3c7'):'—')+'</div>';
+    html += '<div class="gw-cell"'+gia+' style="grid-row:6;grid-column:'+col+';">'+(s1d!=null?svgArrow(s1d,'#4fa3c7'):'—')+'</div>';
 
     var s2h = d.sw2h && d.sw2h[fi];
     var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
-    html += '<div class="gw-cell" style="grid-row:7;grid-column:'+col+';">'
+    html += '<div class="gw-cell"'+gia+' style="grid-row:7;grid-column:'+col+';">'
       + (s2h && s2x.dir!=null ? svgArrow(s2x.dir,'#6ab4d4') : '')
       + '<span class="v" style="color:'+hsCol(s2h)+';font-size:10px;">'+(s2h?s2h.toFixed(1)+'m':'—')+'</span>'
       + (s2h && s2x.t!=null ? '<span class="u">'+Math.round(s2x.t)+'s</span>' : '')
