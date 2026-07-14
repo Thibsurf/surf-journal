@@ -153,7 +153,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .gw-hour{font-size:clamp(8px,2.4vw,10px);color:var(--muted);font-weight:600;}
 .gw-row-sep{border-top:1px solid var(--border);margin:3px 0 1px;grid-column:1/-1;}
 .gw-tide-row{grid-column:1/-1;position:relative;height:72px;margin:2px 0;}
-.gw-sun-row{grid-column:1/-1;position:relative;height:30px;}
+.gw-sun-row{grid-column:1/-1;position:relative;height:33px;}
 #gw-sat-info{position:absolute;left:0;right:0;bottom:0;padding:14px 6px 5px;font-size:9.5px;font-weight:700;
   display:flex;gap:9px;justify-content:center;flex-wrap:wrap;text-align:center;line-height:1.3;
   background:linear-gradient(transparent,rgba(6,16,30,.85) 55%);pointer-events:none;}
@@ -2912,8 +2912,10 @@ async function loadForecast(i) {
         extraDays.push(xDate.toISOString().split('T')[0]);
       }
       
+      // ncGet (worker → fallback direct rpcache) et non ncFetch : sans token local,
+      // les jours supplémentaires arrivaient vides → courbe plate passé aujourd'hui
       Promise.all(extraDays.map(function(ds) {
-        return ncFetch(tideBase + '&date=' + ds).catch(function() {
+        return ncGet('/tide?id=9881752&date=' + ds, 'tide?id=9881752&date=' + ds).catch(function() {
           return null;
         });
       })).then(function(extras) {
@@ -5172,18 +5174,14 @@ function _gwDrawVectors(fi) {
   ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2*Math.PI); ctx.fill();
 
   var s1h = d.sw1h[fi], s1d = d.sw1d[fi], s1t = d.sw1t && d.sw1t[fi];
-  var s2h = d.sw2h && d.sw2h[fi];
-  var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
   var ws = d.wSpd && d.wSpd[fi], wd2 = d.wDir && d.wDir[fi];
-  var hMax = Math.max(s1h||0, s2h||0, 0.5);
+  var hMax = Math.max(s1h||0, 0.5);
 
-  // Sens de PROPAGATION : la flèche part du côté d'où ça vient, traverse le spot
-  // et pointe vers où ça va (même convention que les flèches du tableau).
+  // Houle primaire + vent uniquement : la houle 2 (résidu) reste dans la grille,
+  // deux flèches suffisent pour une lecture immédiate sur la photo.
   var arrows = [];
   if (s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.4), col:'#4fc3e8',
     info:'🌊 '+s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':'')+' '+compass(s1d)+' '+Math.round(s1d)+'°', lw:3.2 });
-  if (s2h && s2x.dir!=null) arrows.push({ deg:s2x.dir, mag:Math.max(s2h/hMax,.3), col:'#b9d0eb',
-    info:'🌊₂ '+s2h.toFixed(1)+'m'+(s2x.t?' '+Math.round(s2x.t)+'s':'')+' '+compass(s2x.dir)+' '+Math.round(s2x.dir)+'°', lw:2.2 });
   if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.35), col:'#e8a057',
     info:'💨 '+Math.round(ws)+'kt '+compass(wd2)+' '+Math.round(wd2)+'°', lw:2.6 });
 
@@ -5217,12 +5215,8 @@ function _gwDrawVectors(fi) {
     ctx.lineTo(ex2 - headLen*Math.cos(arrAng+headAng), ey2 - headLen*Math.sin(arrAng+headAng));
     ctx.closePath(); ctx.fillStyle = ar.col; ctx.fill();
     ctx.shadowBlur = 0;
-    // Point cardinal de provenance à la queue (direction vraie, pas décalée)
-    var lx = cx + (len+12)*Math.cos(rad), ly = cy + (len+12)*Math.sin(rad);
-    lx = Math.max(14, Math.min(W-14, lx)); ly = Math.max(12, Math.min(H-30, ly));
-    ctx.font = '700 8.5px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.strokeStyle = 'rgba(6,16,30,.85)'; ctx.lineWidth = 3; ctx.strokeText(compass(ar.deg0!=null?ar.deg0:ar.deg), lx, ly);
-    ctx.fillStyle = ar.col; ctx.fillText(compass(ar.deg0!=null?ar.deg0:ar.deg), lx, ly);
+    // (pas de label à la queue : les cardinaux du cercle + la barre du bas suffisent —
+    //  les labels de queue se superposaient aux lettres N/E/S/O)
   });
 
   // Disque central propre par-dessus les pointes convergentes (comme la rose)
@@ -5386,8 +5380,7 @@ function _gwRenderGrid(d, day) {
   html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
   html += _gwLbl(6,'Dir.');
   html += _gwLbl(7,'H.2','Houle secondaire — hauteur (résidu si meteo.nc) + période, flèche = direction (Open-Meteo si non fournie)');
-  html += _gwLbl(8,'☁ Nuages','Nappes nuageuses par altitude (haut/moyen/bas, opacité = couverture) — Open-Meteo');
-  html += _gwLbl(9,'🌧 mm','Cumul de précipitations sur 3h (Open-Meteo)');
+  html += _gwLbl(8,'☁ 🌧','Nuages par altitude (haut/moyen/bas, opacité = couverture) + pluie en mm/3h — Open-Meteo');
 
   idxs.forEach(function(fi, ci) {
     var col = ci+2;
@@ -5437,24 +5430,18 @@ function _gwRenderGrid(d, day) {
       + (s2h && s2x.t!=null ? '<span class="u">'+Math.round(s2x.t)+'s</span>' : '')
       + '</div>';
 
-    // 🌧 Précipitations cumulées sur le créneau
-    var rr = d.rain && d.rain[fi]!=null ? d.rain[fi] : null;
-    var rTxt = rr==null ? '—' : rr<0.1 ? '·' : rr.toFixed(1);
-    var rCol = rr==null||rr<0.1 ? 'var(--faint)' : rr<2 ? '#4fa3c7' : '#7b6cf6';
-    html += '<div class="gw-cell"'+gia+' style="grid-row:9;grid-column:'+col+';'+nBg+'">'
-      + '<span class="v" style="color:'+rCol+';font-size:10px;'+(rr>=0.1?'font-weight:700;':'')+'">'+rTxt+'</span></div>';
   });
 
-  // ☁ Nuages façon Windy : bande pleine largeur, nappes grises par altitude
-  html += '<div id="gw-cloud-wrap" style="grid-row:8;grid-column:2/-1;position:relative;height:34px;"></div>';
+  // ☁🌧 Bande météo unifiée : nappes de nuages par altitude + pluie (barres + mm) en bas
+  html += '<div id="gw-cloud-wrap" style="grid-row:8;grid-column:2/-1;position:relative;height:48px;"></div>';
 
-  html += '<div class="gw-row-sep" style="grid-row:10;"></div>';
-  html += _gwLbl(11,'Marée');
-  html += '<div class="gw-tide-row" id="gw-tide-svg-wrap" style="grid-row:11;grid-column:2/-1;"></div>';
-  html += _gwLbl(12,'Niveaux','Pleines et basses mers du jour (heure · hauteur)');
-  html += '<div id="gw-levels-row" style="grid-row:12;grid-column:2/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;padding:2px 0;"></div>';
-  html += _gwLbl(13,'Soleil');
-  html += '<div class="gw-sun-row" id="gw-sun-wrap" style="grid-row:13;grid-column:2/-1;"></div>';
+  html += '<div class="gw-row-sep" style="grid-row:9;"></div>';
+  html += _gwLbl(10,'Marée');
+  html += '<div class="gw-tide-row" id="gw-tide-svg-wrap" style="grid-row:10;grid-column:2/-1;"></div>';
+  html += _gwLbl(11,'Niveaux','Pleines et basses mers du jour (heure · hauteur)');
+  html += '<div id="gw-levels-row" style="grid-row:11;grid-column:2/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;padding:2px 0;"></div>';
+  html += _gwLbl(12,'Soleil');
+  html += '<div class="gw-sun-row" id="gw-sun-wrap" style="grid-row:12;grid-column:2/-1;"></div>';
 
   gridEl.innerHTML = html;
 
@@ -5500,14 +5487,17 @@ function _gwRenderClouds(d, day) {
     return W/2;
   }
 
-  // 3 étages (comme Windy) : haut = voiles clairs, bas = nappes denses sombres
+  // Zone nuages en haut, voie pluie en bas (bande météo unifiée façon Windy)
+  var rainTop = H-13, cloudBot = H-16;
+  // 3 étages : haut = voiles clairs, bas = nappes denses sombres
+  var zH = cloudBot - 2;
   var LAYERS = [
-    { arr: d.cldH, y0: 2,  y1: Math.round(H*0.33)-1, col: '226,232,240', aMax: 0.42 },
-    { arr: d.cldM, y0: Math.round(H*0.33)+1, y1: Math.round(H*0.66)-1, col: '203,213,224', aMax: 0.52 },
-    { arr: d.cldL, y0: Math.round(H*0.66)+1, y1: H-2, col: '154,168,182', aMax: 0.62 }
+    { arr: d.cldH, y0: 2,                       y1: 2+Math.round(zH*0.33)-1, col: '226,232,240', aMax: 0.42 },
+    { arr: d.cldM, y0: 2+Math.round(zH*0.33)+1, y1: 2+Math.round(zH*0.66)-1, col: '203,213,224', aMax: 0.52 },
+    { arr: d.cldL, y0: 2+Math.round(zH*0.66)+1, y1: cloudBot,                col: '154,168,182', aMax: 0.62 }
   ];
   // Fallback : pas de couches détaillées → une seule nappe médiane avec le total
-  if (!hasLayers) LAYERS = [ { arr: d.cld, y0: 4, y1: H-4, col: '203,213,224', aMax: 0.55 } ];
+  if (!hasLayers) LAYERS = [ { arr: d.cld, y0: 4, y1: cloudBot, col: '203,213,224', aMax: 0.55 } ];
 
   LAYERS.forEach(function(L){
     if (!L.arr) return;
@@ -5537,10 +5527,34 @@ function _gwRenderClouds(d, day) {
     });
   });
 
+  // ── Voie pluie : filet séparateur + barres bleues arrondies + valeur en mm ──
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, rainTop-1.5); ctx.lineTo(W, rainTop-1.5); ctx.stroke();
+  var laneH = H-2 - rainTop;
+  cols.forEach(function(fi, k){
+    var rr = d.rain && d.rain[fi]!=null ? d.rain[fi] : null;
+    if (rr==null || rr < 0.1) return;
+    var x = (k+0.5)*spanC;
+    var bh2 = Math.max(2.5, Math.min(rr,5)/5*laneH);
+    var bw2 = Math.min(spanC*0.4, 12);
+    var rCol = rr < 2 ? 'rgba(79,195,232,.8)' : 'rgba(123,108,246,.85)';
+    ctx.fillStyle = rCol;
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x-bw2/2, H-2-bh2, bw2, bh2, [2,2,0,0]); ctx.fill(); }
+    else ctx.fillRect(x-bw2/2, H-2-bh2, bw2, bh2);
+    if (rr >= 0.5) {
+      ctx.font = '700 7px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(6,16,30,.85)'; ctx.lineWidth = 2.5;
+      ctx.strokeText(rr.toFixed(1), x, rainTop+laneH/2-1);
+      ctx.fillStyle = '#cfeaf7'; ctx.fillText(rr.toFixed(1), x, rainTop+laneH/2-1);
+    }
+  });
+
   // Repères d'étages discrets à gauche
   ctx.font = '6.5px DM Sans,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(122,148,170,.55)';
-  if (hasLayers) { ctx.fillText('haut', 2, H*0.17); ctx.fillText('moy', 2, H*0.5); ctx.fillText('bas', 2, H*0.83); }
+  if (hasLayers) { ctx.fillText('haut', 2, 2+zH*0.17); ctx.fillText('moy', 2, 2+zH*0.5); ctx.fillText('bas', 2, 2+zH*0.83); }
+  ctx.fillStyle = 'rgba(79,195,232,.6)';
+  ctx.fillText('mm', 2, rainTop+laneH/2-1);
 }
 
 // ─── Niveaux d'eau : chips PM/BM du jour (heure · hauteur), comme la bande
@@ -5659,12 +5673,29 @@ function _gwRenderTideRow(d, day) {
     return;
   }
 
+  // Continuité aux bords : si la fenêtre dépasse le premier/dernier événement connu,
+  // on synthétise des PM/BM virtuels au rythme semi-diurne (~6h12) plutôt qu'un plat.
+  var HALF_TIDE = 22350000; // ≈ 6 h 12 min 30 s
+  var evExt = events.slice();
+  var guard = 0;
+  while (evExt[0].ms > dayStartUTC - 3600000 && guard++ < 6) {
+    var f0 = evExt[0], fT = f0.type==='pm' ? 'bm' : 'pm', fH = null;
+    for (var q1=0; q1<evExt.length; q1++) { if (evExt[q1].type===fT) { fH = evExt[q1].h; break; } }
+    evExt.unshift({ ms: f0.ms - HALF_TIDE, h: fH!=null ? fH : (f0.type==='pm' ? f0.h-0.8 : f0.h+0.8), type: fT, virtual: true });
+  }
+  guard = 0;
+  while (evExt[evExt.length-1].ms < dayEndUTC + 3600000 && guard++ < 6) {
+    var l0 = evExt[evExt.length-1], lT = l0.type==='pm' ? 'bm' : 'pm', lH = null;
+    for (var q2=evExt.length-1; q2>=0; q2--) { if (evExt[q2].type===lT && !evExt[q2].virtual) { lH = evExt[q2].h; break; } }
+    evExt.push({ ms: l0.ms + HALF_TIDE, h: lH!=null ? lH : (l0.type==='pm' ? l0.h-0.8 : l0.h+0.8), type: lT, virtual: true });
+  }
+
   // Échantillons sur toute la largeur (extrapolés 00h→24h, pas seulement 02h→23h)
   var samples = [];
   var STEPS = N*SUB;
   for (var k=0; k<=STEPS; k++) {
     var ms = dayStartUTC + (k/STEPS)*86400000;
-    samples.push({ x: msToX(ms), ms: ms, h: _gwTideHeightAt(ms, events) });
+    samples.push({ x: msToX(ms), ms: ms, h: _gwTideHeightAt(ms, evExt) });
   }
   var evDay = events.filter(function(e){ return e.ms>=dayStartUTC-1800000 && e.ms<=dayEndUTC+1800000; });
   var allH = samples.map(function(p){ return p.h; }).concat(evDay.map(function(e){ return e.h; }));
@@ -5714,7 +5745,7 @@ function _gwRenderTideRow(d, day) {
       ctx.beginPath(); ctx.moveTo(nx, 2); ctx.lineTo(nx, H-2);
       ctx.strokeStyle = 'rgba(255,255,100,0.35)'; ctx.lineWidth = 1.5;
       ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
-      var nh = _gwTideHeightAt(nowMs, events);
+      var nh = _gwTideHeightAt(nowMs, evExt);
       if (nh!=null) {
         var nyy = yOf(nh);
         ctx.beginPath(); ctx.arc(nx, nyy, 4, 0, 2*Math.PI); ctx.fillStyle = '#fde068'; ctx.fill();
@@ -5728,16 +5759,12 @@ function _gwRenderTideRow(d, day) {
     }
   }
 
-  // Axe horaire discret 00h→24h (ticks + labels toutes les 6h, clampés aux bords :
-  // l'espace colonnes commence au 1er créneau ~02h, 00h/24h débordent légèrement)
-  ctx.font = '7.5px DM Sans,sans-serif'; ctx.textBaseline = 'alphabetic';
+  // Ticks 6h discrets, SANS labels (les heures sont déjà dans la grille au-dessus —
+  // et les labels d'axe se superposaient aux heures des BM)
   for (var th = 0; th <= 24; th += 6) {
     var txx = Math.max(0.5, Math.min(W-0.5, msToX(dayStartUTC + th*3600000)));
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(txx, H-padB+3); ctx.lineTo(txx, H-padB+6); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.textAlign = th===0 ? 'left' : th===24 ? 'right' : 'center';
-    ctx.fillText(String(th).padStart(2,'0')+'h', Math.max(2, Math.min(W-2, txx)), H-2);
+    ctx.beginPath(); ctx.moveTo(txx, H-6); ctx.lineTo(txx, H-2); ctx.stroke();
   }
 
   // Points PM/BM (heures et hauteurs détaillées dans la rangée « Niveaux » dessous)
@@ -5754,7 +5781,7 @@ function _gwRenderTideRow(d, day) {
     var localT = new Date(e.ms + 11*3600000);
     var hLbl = String(localT.getUTCHours()).padStart(2,'0')+'h'+String(localT.getUTCMinutes()).padStart(2,'0');
     var lx = Math.max(18, Math.min(W-18, x));
-    var ly = isPM ? Math.max(7, y-9) : Math.min(H-padB-2, y+11);
+    var ly = isPM ? Math.max(7, y-9) : Math.min(H-6, y+11); // l'axe texte a disparu → la voie basse est libre
     ctx.font = '700 8px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.strokeStyle = 'rgba(6,16,30,0.8)'; ctx.lineWidth = 3; ctx.strokeText(hLbl, lx, ly);
     ctx.fillStyle = col; ctx.fillText(hLbl, lx, ly);
@@ -5803,23 +5830,25 @@ function _gwRenderSunRow(d, day) {
     + GOLD +' '+pct(riseMin)+',' + DAY+' '+pct(riseMin+50)+','
     + DAY  +' '+pct(setMin-50)+',' + GOLD+' '+pct(setMin)+','
     + NIGHT+' '+pct(duskMin)+',' + NIGHT+' 100%)';
-  var html = '<div style="position:absolute;left:0;right:0;top:3px;height:12px;border-radius:6px;'
+  // Bande ciel en haut, ligne d'infos dédiée en dessous → aucune superposition possible
+  var html = '<div style="position:absolute;left:0;right:0;top:2px;height:14px;border-radius:7px;'
     + 'background:'+grad+';border:1px solid rgba(255,255,255,.06);"></div>';
 
-  // Marqueurs lever / coucher (heure sous la bande) + durée du jour au centre
-  var rx = minToX(riseMin), sx = minToX(setMin);
-  html += '<div style="position:absolute;left:'+rx.toFixed(1)+'%;top:1px;transform:translateX(-50%);text-align:center;line-height:1;">'
-    + '<span style="font-size:10px;">🌅</span>'
-    + '<div style="font-size:7.5px;font-weight:700;color:#fde068;margin-top:4px;">'+sun.sunrise+'</div></div>';
-  html += '<div style="position:absolute;left:'+sx.toFixed(1)+'%;top:1px;transform:translateX(-50%);text-align:center;line-height:1;">'
-    + '<span style="font-size:10px;">🌇</span>'
-    + '<div style="font-size:7.5px;font-weight:700;color:#fde068;margin-top:4px;">'+sun.sunset+'</div></div>';
-  if (sun.dayLenMin) {
-    var midX = (rx+sx)/2;
-    html += '<div style="position:absolute;left:'+midX.toFixed(1)+'%;top:4px;transform:translateX(-50%);'
-      + 'font-size:8px;color:rgba(232,238,244,.75);font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.6);white-space:nowrap;">'
-      + '☀ '+Math.floor(sun.dayLenMin/60)+'h'+String(sun.dayLenMin%60).padStart(2,'0')+' de jour</div>';
-  }
+  // Icônes posées SUR la bande, aux positions exactes (sans texte accolé)
+  var rx = Math.max(4, Math.min(96, minToX(riseMin)));
+  var sx = Math.max(4, Math.min(96, minToX(setMin)));
+  html += '<div style="position:absolute;left:'+rx.toFixed(1)+'%;top:3px;transform:translateX(-50%);font-size:11px;line-height:1;text-shadow:0 1px 3px rgba(0,0,0,.8);">🌅</div>';
+  html += '<div style="position:absolute;left:'+sx.toFixed(1)+'%;top:3px;transform:translateX(-50%);font-size:11px;line-height:1;text-shadow:0 1px 3px rgba(0,0,0,.8);">🌇</div>';
+
+  // Ligne du bas : heure de lever (ancrée gauche), durée du jour (centre), coucher (ancrée droite)
+  html += '<div style="position:absolute;left:0;right:0;top:20px;height:11px;font-size:7.5px;font-weight:700;line-height:11px;">'
+    + '<span style="position:absolute;left:'+rx.toFixed(1)+'%;transform:translateX(-35%);color:#fde068;">↑ '+sun.sunrise+'</span>'
+    + (sun.dayLenMin
+      ? '<span style="position:absolute;left:50%;transform:translateX(-50%);color:var(--muted);font-weight:600;">☀ '
+        + Math.floor(sun.dayLenMin/60)+'h'+String(sun.dayLenMin%60).padStart(2,'0')+' de jour</span>'
+      : '')
+    + '<span style="position:absolute;left:'+sx.toFixed(1)+'%;transform:translateX(-65%);color:#fde068;">↓ '+sun.sunset+'</span>'
+    + '</div>';
   wrap.innerHTML = html;
 }
 
