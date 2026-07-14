@@ -365,6 +365,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <div class="gw-head">
       <div class="gw-days" id="gw-day-nav"></div>
       <div class="gw-tools">
+        <span id="gw-src-badge" style="font-size:9px;"></span>
         <button class="gw-tool-btn" onclick="_gwCapture()" title="Capturer le widget en image">📸 Capture</button>
         <img id="gw-sat-thumb" alt="Vue satellite du spot" title="Vue satellite — cliquer pour la carte détaillée"
           onclick="_gwScrollToSat()">
@@ -2254,6 +2255,7 @@ function setHsSrc(src, skipRedraw) {
 
   // Tableau + conditions actuelles
   renderTable(d.dates||[],d.sw1h||[],d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
+  try { renderGlobalWidget(); } catch(_){} // le widget global suit le toggle de source
   if(d.sw1h&&d.sw1h.length) renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0]);
 
   // Badge source
@@ -3081,7 +3083,7 @@ function renderTideEncart(tide, spot) {
 // ─── FORECAST PRINCIPAL ────────────────────────────────────────────────
 function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   var now=new Date();
-  var lbl=[],sw1h=[],sw2h=[],wndH=[],totH=[],sw1t=[],sw1d=[],sw2d=[],wSpd=[],wGst=[],wDir=[],sst=[],pwr=[],dates=[];
+  var lbl=[],sw1h=[],sw2h=[],wndH=[],totH=[],sw1t=[],sw1d=[],sw2d=[],sw2t=[],wSpd=[],wGst=[],wDir=[],sst=[],pwr=[],dates=[];
   var rows = _getNcRows(ncMarine);
   var useNC=!!(rows&&rows.length);
 
@@ -3112,7 +3114,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       var s2h = (tot!==null && p1h!==null) ? Math.max(0, parseFloat((tot - p1h - wwind).toFixed(2))) : null;
       var eff1h = (p1h!==null) ? p1h : tot;
       sw1h.push(eff1h); sw2h.push(s2h); wndH.push(wwind); totH.push(tot);
-      sw1t.push(p1t); sw1d.push(p1d); sw2d.push(null);
+      sw1t.push(p1t); sw1d.push(p1d); sw2d.push(null); sw2t.push(null);
       var wsKt = d.wind_speed_kt;
       wSpd.push(wsKt); wGst.push(null); wDir.push(d.wind_direction);
       sst.push(d.T_sea);
@@ -3165,25 +3167,30 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       wndH.push(h.wind_wave_height[i]); totH.push(h.wave_height[i]);
       sw1t.push(h.swell_wave_period[i]); sw1d.push(h.swell_wave_direction[i]);
       sw2d.push(h.secondary_swell_wave_direction?h.secondary_swell_wave_direction[i]:null);
+      sw2t.push(h.secondary_swell_wave_period?h.secondary_swell_wave_period[i]:null);
       wSpd.push(wh.wind_speed_10m[i]); wGst.push(wh.wind_gusts_10m[i]); wDir.push(wh.wind_direction_10m[i]);
       sst.push(null);
       var hs2=h.swell_wave_height[i],T2=h.swell_wave_period[i];
       pwr.push((hs2&&T2)?+(0.5*hs2*hs2*T2).toFixed(2):null);
     }
   }
-  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,wSpd,wGst,wDir,sst,pwr,dates,
+  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,sw2t,wSpd,wGst,wDir,sst,pwr,dates,
     wGstFromGFS: useNC ? (typeof _wGstFromGFS!=='undefined' ? _wGstFromGFS : !!(omWind&&omWind.hourly)) : false};
   // Sauvegarder séparément les données NC pour le toggle
-  if(useNC) _ncFcastData = _fcastData;
+  // (reset si ce spot n'a pas de données NC — sinon le toggle/widget afficherait
+  //  les données meteo.nc du spot précédent)
+  _ncFcastData = useNC ? _fcastData : null;
 
   // Toujours peupler _omFcastData depuis Open-Meteo (pour le toggle AROME/GFS)
   // Même si useNC=true, on veut pouvoir comparer
+  // (reset d'abord : sans réponse OM pour ce spot, ne pas garder celle du spot précédent)
+  _omFcastData = null;
   if(omMarine && omMarine.hourly) {
     var omH=omMarine.hourly, omW=omWind&&omWind.hourly;
     var omNow=new Date();
     var omNi=omH.time.findIndex(function(t){return new Date(t+'Z').getTime()+11*3600000>=omNow.getTime()-3600000;}); 
     if(omNi<0)omNi=0;
-    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[];
+    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omSw2t=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[];
     for(var oi=omNi;oi<omH.time.length;oi+=3){
       var omUtc=new Date(omH.time[oi]+'Z');
       var odt=new Date(omUtc.getTime()+11*3600000); // heure NC en UTC
@@ -3201,11 +3208,12 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       omWSpd.push(omW?omW.wind_speed_10m[oi]:null); omWGst.push(omW?omW.wind_gusts_10m[oi]:null);
       omWDir.push(omW?omW.wind_direction_10m[oi]:null);
       omSw2d.push(omH.secondary_swell_wave_direction?omH.secondary_swell_wave_direction[oi]:null);
+      omSw2t.push(omH.secondary_swell_wave_period?omH.secondary_swell_wave_period[oi]:null);
       omVis.push(omW&&omW.visibility?omW.visibility[oi]:null);
       var ohs=omH.swell_wave_height[oi],oT=omH.swell_wave_period[oi];
       omPwr.push((ohs&&oT)?+(0.5*ohs*ohs*oT).toFixed(2):null);
     }
-    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis};
+    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,sw2t:omSw2t,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis};
   }
   _currentHsSrc = useNC ? 'nc' : 'om';
   updateHsToggleUI();
@@ -4783,8 +4791,14 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
 // ════════════════════════════════════════════════════════════════════════
 var _gwDayIdx = 0;
 
+// Même logique de sélection que setHsSrc : NC prioritaire, GFS si toggle ou si NC absent
 function _gwActiveData() {
-  return (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
+  return (_currentHsSrc==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
+}
+
+// La donnée affichée est-elle bien meteo.nc ? (badge source du widget)
+function _gwIsNC() {
+  return _currentHsSrc==='nc' && !!_ncFcastData;
 }
 
 // Groupe les points horaires par jour calendaire NC (clé sur les champs getUTC*
@@ -4810,6 +4824,10 @@ function renderGlobalWidget() {
   if (!days.length) { wrap.style.display='none'; return; }
   wrap.style.display='';
   if (_gwDayIdx >= days.length) _gwDayIdx = 0;
+  var badge = document.getElementById('gw-src-badge');
+  if (badge) badge.innerHTML = _gwIsNC()
+    ? '<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 7px;border-radius:8px;">🛰 meteo.nc</span>'
+    : '<span style="background:rgba(79,163,199,.1);color:var(--muted);border:1px solid var(--border);padding:1px 7px;border-radius:8px;">🌐 GFS</span>';
   _gwRenderDayNav(days);
   _gwRenderGrid(d, days[_gwDayIdx]);
   var spot = SPOTS[currentSpot];
@@ -4818,11 +4836,21 @@ function renderGlobalWidget() {
 
 function _gwRenderDayNav(days) {
   var nav = document.getElementById('gw-day-nav'); if (!nav) return;
-  var LABELS = ["Aujourd'hui","Demain","J+2","J+3"];
+  // "Aujourd'hui"/"Demain" ancrés sur la vraie date NC (les dates[] sont en UTC+11 lu via getUTC*)
+  var nowNC = new Date(Date.now() + 11*3600000);
+  var todayMs = Date.UTC(nowNC.getUTCFullYear(), nowNC.getUTCMonth(), nowNC.getUTCDate());
+  var DAY_FR_W = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   var n = Math.min(days.length, 4);
   var html = '';
   for (var i=0; i<n; i++) {
-    html += '<button class="gw-day-btn'+(i===_gwDayIdx?' active':'')+'" onclick="_gwSetDay('+i+')">'+LABELS[i]+'</button>';
+    var dd = days[i].dateObj;
+    var dMs = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
+    var diff = Math.round((dMs - todayMs) / 864e5);
+    var lbl = diff===0 ? "Aujourd'hui"
+            : diff===1 ? 'Demain'
+            : diff>1   ? 'J+'+diff
+            : DAY_FR_W[dd.getUTCDay()]+' '+dd.getUTCDate()+'/'+(dd.getUTCMonth()+1);
+    html += '<button class="gw-day-btn'+(i===_gwDayIdx?' active':'')+'" onclick="_gwSetDay('+i+')">'+lbl+'</button>';
   }
   nav.innerHTML = html;
 }
@@ -4838,8 +4866,26 @@ function _gwAlpha(hex, a) {
   return 'rgba('+r+','+g+','+b+','+a+')';
 }
 
-function _gwLbl(row, text) {
-  return '<div class="gw-lbl" style="grid-row:'+row+';grid-column:1;">'+text+'</div>';
+function _gwLbl(row, text, title) {
+  return '<div class="gw-lbl" style="grid-row:'+row+';grid-column:1;"'+(title?' title="'+title+'"':'')+'>'+text+'</div>';
+}
+
+// Direction/période de la houle 2 : la source NC ne fournit qu'un résidu de hauteur —
+// on complète dir/T depuis Open-Meteo au créneau correspondant (±1h30) quand absents.
+function _gwSw2Extra(d, fi) {
+  var out = { t: (d.sw2t && d.sw2t[fi]!=null) ? d.sw2t[fi] : null,
+              dir: (d.sw2d && d.sw2d[fi]!=null) ? d.sw2d[fi] : null };
+  if ((out.t==null || out.dir==null) && _omFcastData && _omFcastData.dates && d.dates[fi]) {
+    var ms = d.dates[fi].getTime();
+    for (var k=0; k<_omFcastData.dates.length; k++) {
+      if (Math.abs(_omFcastData.dates[k].getTime()-ms) <= 5400000) {
+        if (out.t==null && _omFcastData.sw2t) out.t = _omFcastData.sw2t[k];
+        if (out.dir==null && _omFcastData.sw2d) out.dir = _omFcastData.sw2d[k];
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 function _gwRenderGrid(d, day) {
@@ -4853,9 +4899,9 @@ function _gwRenderGrid(d, day) {
   html += _gwLbl(2,'Vent');
   html += _gwLbl(3,'Dir.');
   html += _gwLbl(4,'Houle');
-  html += _gwLbl(5,'H.1');
+  html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
   html += _gwLbl(6,'Dir.');
-  html += _gwLbl(7,'H.2');
+  html += _gwLbl(7,'H.2','Houle secondaire — hauteur (résidu si meteo.nc) + période, flèche = direction (Open-Meteo si non fournie)');
 
   idxs.forEach(function(fi, ci) {
     var col = ci+2;
@@ -4886,8 +4932,12 @@ function _gwRenderGrid(d, day) {
     html += '<div class="gw-cell" style="grid-row:6;grid-column:'+col+';">'+(s1d!=null?svgArrow(s1d,'#4fa3c7'):'—')+'</div>';
 
     var s2h = d.sw2h && d.sw2h[fi];
+    var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
     html += '<div class="gw-cell" style="grid-row:7;grid-column:'+col+';">'
-      + '<span class="v" style="color:'+hsCol(s2h)+';font-size:10px;">'+(s2h?s2h.toFixed(1)+'m':'—')+'</span></div>';
+      + (s2h && s2x.dir!=null ? svgArrow(s2x.dir,'#6ab4d4') : '')
+      + '<span class="v" style="color:'+hsCol(s2h)+';font-size:10px;">'+(s2h?s2h.toFixed(1)+'m':'—')+'</span>'
+      + (s2h && s2x.t!=null ? '<span class="u">'+Math.round(s2x.t)+'s</span>' : '')
+      + '</div>';
   });
 
   html += '<div class="gw-row-sep" style="grid-row:8;"></div>';
