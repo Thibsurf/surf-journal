@@ -132,6 +132,8 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 #gw-sat-vec{position:absolute;inset:0;width:100%;height:100%;}
 #gw-sat-time{position:absolute;left:6px;top:5px;font-size:9px;font-weight:700;color:#fff;
   background:rgba(6,16,30,.7);padding:2px 8px;border-radius:9px;letter-spacing:.03em;}
+#gw-sat-temp{position:absolute;right:6px;top:5px;font-size:8.5px;font-weight:700;
+  background:rgba(6,16,30,.7);padding:2px 7px;border-radius:9px;line-height:1.5;text-align:right;}
 @media(max-width:600px){.gw-sat-panel{width:100%;height:170px;}}
 .gw-grid-wrap{width:100%;overflow:hidden;}
 .gw-grid{display:grid;width:100%;row-gap:2px;column-gap:0;}
@@ -399,6 +401,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <img id="gw-sat-thumb" alt="Vue satellite du spot">
         <canvas id="gw-sat-vec"></canvas>
         <div id="gw-sat-time"></div>
+        <div id="gw-sat-temp" title="Température de l'air (Open-Meteo) / de l'eau (meteo.nc ou Open-Meteo)"></div>
         <div id="gw-sat-info"></div>
       </div>
     </div>
@@ -2785,10 +2788,10 @@ async function loadForecast(i) {
 
     var omMarineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + s.lat + '&longitude=' + s.lon
       + '&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period'
-      + ',wind_wave_height,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period'
+      + ',wind_wave_height,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period,sea_surface_temperature'
       + '&forecast_days=7&timezone=GMT';
     var omWindUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + s.lat + '&longitude=' + s.lon
-      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,cloud_cover,precipitation&wind_speed_unit=kn&forecast_days=7&timezone=GMT';
+      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,temperature_2m&wind_speed_unit=kn&forecast_days=7&timezone=GMT';
 
     // ─── FETCH (parallèle + rendu progressif — BONUS 3) ──────────────────────
     // Token non IP-bound : marine/météo en direct rpcache (ncFetch) ; marées/obs via ncGet
@@ -2895,8 +2898,9 @@ async function loadForecast(i) {
       var tideBase = BASE + 'tide?id=9881752';
       var todayNC = new Date();
       var extraDays = [];
-      
-      for (var xd = -2; xd <= 1; xd++) {
+
+      // J-2 → J+5 : couvre toute la fenêtre du widget global (sinon courbe plate passé J+1)
+      for (var xd = -2; xd <= 5; xd++) {
         if (xd === 0) continue;
         var xDate = new Date(todayNC.getTime() + xd * 864e5);
         extraDays.push(xDate.toISOString().split('T')[0]);
@@ -3114,7 +3118,7 @@ function renderTideEncart(tide, spot) {
 // ─── FORECAST PRINCIPAL ────────────────────────────────────────────────
 function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   var now=new Date();
-  var lbl=[],sw1h=[],sw2h=[],wndH=[],totH=[],sw1t=[],sw1d=[],sw2d=[],sw2t=[],wSpd=[],wGst=[],wDir=[],sst=[],pwr=[],dates=[],cld=[],rain=[];
+  var lbl=[],sw1h=[],sw2h=[],wndH=[],totH=[],sw1t=[],sw1d=[],sw2d=[],sw2t=[],wSpd=[],wGst=[],wDir=[],sst=[],pwr=[],dates=[],cld=[],rain=[],cldL=[],cldM=[],cldH=[],tAir=[];
   // Pluie du créneau = cumul des 3h couvertes (résolution horaire Open-Meteo)
   function _rainSlot(wh2, idx0){
     if(!wh2 || !wh2.precipitation) return null;
@@ -3157,7 +3161,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       sw1t.push(p1t); sw1d.push(p1d); sw2d.push(null); sw2t.push(null);
       var wsKt = d.wind_speed_kt;
       wSpd.push(wsKt); wGst.push(null); wDir.push(d.wind_direction);
-      cld.push(null); rain.push(null); // complétés depuis Open-Meteo plus bas (comme les rafales)
+      cld.push(null); rain.push(null); cldL.push(null); cldM.push(null); cldH.push(null); tAir.push(null); // complétés depuis Open-Meteo plus bas
       sst.push(d.T_sea);
       pwr.push((p1h&&p1t)?+(0.5*p1h*p1h*p1t).toFixed(2):(tot&&p1t)?+(0.5*tot*tot*p1t).toFixed(2):null);
     });
@@ -3181,11 +3185,16 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     if(omWind&&omWind.hourly){
       rows.forEach(function(d,i){
         var tms=new Date(d.time).getTime();
-        var idx=omWind.hourly.time.findIndex(function(ot){return Math.abs(new Date(ot).getTime()-tms)<5400000;});
+        var wh3=omWind.hourly;
+        var idx=wh3.time.findIndex(function(ot){return Math.abs(new Date(ot).getTime()-tms)<5400000;});
         if(idx<0) return;
-        if(wGst[i]===null&&omWind.hourly.wind_gusts_10m[idx]!==null) wGst[i]=Math.round(omWind.hourly.wind_gusts_10m[idx]);
-        if(omWind.hourly.cloud_cover&&omWind.hourly.cloud_cover[idx]!=null) cld[i]=Math.round(omWind.hourly.cloud_cover[idx]);
-        rain[i]=_rainSlot(omWind.hourly, idx);
+        if(wGst[i]===null&&wh3.wind_gusts_10m[idx]!==null) wGst[i]=Math.round(wh3.wind_gusts_10m[idx]);
+        if(wh3.cloud_cover&&wh3.cloud_cover[idx]!=null) cld[i]=Math.round(wh3.cloud_cover[idx]);
+        if(wh3.cloud_cover_low&&wh3.cloud_cover_low[idx]!=null) cldL[i]=Math.round(wh3.cloud_cover_low[idx]);
+        if(wh3.cloud_cover_mid&&wh3.cloud_cover_mid[idx]!=null) cldM[i]=Math.round(wh3.cloud_cover_mid[idx]);
+        if(wh3.cloud_cover_high&&wh3.cloud_cover_high[idx]!=null) cldH[i]=Math.round(wh3.cloud_cover_high[idx]);
+        if(wh3.temperature_2m&&wh3.temperature_2m[idx]!=null) tAir[i]=wh3.temperature_2m[idx];
+        rain[i]=_rainSlot(wh3, idx);
       });
     }
     var _wGstFromGFS = !gotNcGusts; // true seulement si 0 rafale NC disponible
@@ -3214,13 +3223,17 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       sw2t.push(h.secondary_swell_wave_period?h.secondary_swell_wave_period[i]:null);
       wSpd.push(wh.wind_speed_10m[i]); wGst.push(wh.wind_gusts_10m[i]); wDir.push(wh.wind_direction_10m[i]);
       cld.push(wh.cloud_cover&&wh.cloud_cover[i]!=null?Math.round(wh.cloud_cover[i]):null);
+      cldL.push(wh.cloud_cover_low&&wh.cloud_cover_low[i]!=null?Math.round(wh.cloud_cover_low[i]):null);
+      cldM.push(wh.cloud_cover_mid&&wh.cloud_cover_mid[i]!=null?Math.round(wh.cloud_cover_mid[i]):null);
+      cldH.push(wh.cloud_cover_high&&wh.cloud_cover_high[i]!=null?Math.round(wh.cloud_cover_high[i]):null);
+      tAir.push(wh.temperature_2m&&wh.temperature_2m[i]!=null?wh.temperature_2m[i]:null);
       rain.push(_rainSlot(wh, i));
-      sst.push(null);
+      sst.push(h.sea_surface_temperature&&h.sea_surface_temperature[i]!=null?h.sea_surface_temperature[i]:null);
       var hs2=h.swell_wave_height[i],T2=h.swell_wave_period[i];
       pwr.push((hs2&&T2)?+(0.5*hs2*hs2*T2).toFixed(2):null);
     }
   }
-  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,sw2t,wSpd,wGst,wDir,sst,pwr,dates,cld,rain,
+  _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,sw2t,wSpd,wGst,wDir,sst,pwr,dates,cld,rain,cldL,cldM,cldH,tAir,
     wGstFromGFS: useNC ? (typeof _wGstFromGFS!=='undefined' ? _wGstFromGFS : !!(omWind&&omWind.hourly)) : false};
   // Sauvegarder séparément les données NC pour le toggle
   // (reset si ce spot n'a pas de données NC — sinon le toggle/widget afficherait
@@ -3236,7 +3249,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     var omNow=new Date();
     var omNi=omH.time.findIndex(function(t){return new Date(t+'Z').getTime()+11*3600000>=omNow.getTime()-3600000;}); 
     if(omNi<0)omNi=0;
-    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omSw2t=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[],omCld=[],omRain=[];
+    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omSw2t=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[],omCld=[],omRain=[],omCldL=[],omCldM=[],omCldH=[],omTAir=[],omSst=[];
     for(var oi=omNi;oi<omH.time.length;oi+=3){
       var omUtc=new Date(omH.time[oi]+'Z');
       var odt=new Date(omUtc.getTime()+11*3600000); // heure NC en UTC
@@ -3257,11 +3270,16 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       omSw2t.push(omH.secondary_swell_wave_period?omH.secondary_swell_wave_period[oi]:null);
       omVis.push(omW&&omW.visibility?omW.visibility[oi]:null);
       omCld.push(omW&&omW.cloud_cover&&omW.cloud_cover[oi]!=null?Math.round(omW.cloud_cover[oi]):null);
+      omCldL.push(omW&&omW.cloud_cover_low&&omW.cloud_cover_low[oi]!=null?Math.round(omW.cloud_cover_low[oi]):null);
+      omCldM.push(omW&&omW.cloud_cover_mid&&omW.cloud_cover_mid[oi]!=null?Math.round(omW.cloud_cover_mid[oi]):null);
+      omCldH.push(omW&&omW.cloud_cover_high&&omW.cloud_cover_high[oi]!=null?Math.round(omW.cloud_cover_high[oi]):null);
+      omTAir.push(omW&&omW.temperature_2m&&omW.temperature_2m[oi]!=null?omW.temperature_2m[oi]:null);
+      omSst.push(omH.sea_surface_temperature&&omH.sea_surface_temperature[oi]!=null?omH.sea_surface_temperature[oi]:null);
       omRain.push(omW?_rainSlot(omW, oi):null);
       var ohs=omH.swell_wave_height[oi],oT=omH.swell_wave_period[oi];
       omPwr.push((ohs&&oT)?+(0.5*ohs*ohs*oT).toFixed(2):null);
     }
-    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,sw2t:omSw2t,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis,cld:omCld,rain:omRain};
+    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,sw2t:omSw2t,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis,cld:omCld,rain:omRain,cldL:omCldL,cldM:omCldM,cldH:omCldH,tAir:omTAir,sst:omSst};
   }
   _currentHsSrc = useNC ? 'nc' : 'om';
   updateHsToggleUI();
@@ -5082,11 +5100,11 @@ function _gwDrawVectors(fi) {
   // et pointe vers où ça va (même convention que les flèches du tableau).
   var arrows = [];
   if (s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.4), col:'#4fc3e8',
-    info:'🌊 '+s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':'')+' '+compass(s1d), lw:3.2 });
+    info:'🌊 '+s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':'')+' '+compass(s1d)+' '+Math.round(s1d)+'°', lw:3.2 });
   if (s2h && s2x.dir!=null) arrows.push({ deg:s2x.dir, mag:Math.max(s2h/hMax,.3), col:'#b9d0eb',
-    info:'🌊₂ '+s2h.toFixed(1)+'m'+(s2x.t?' '+Math.round(s2x.t)+'s':'')+' '+compass(s2x.dir), lw:2.2 });
+    info:'🌊₂ '+s2h.toFixed(1)+'m'+(s2x.t?' '+Math.round(s2x.t)+'s':'')+' '+compass(s2x.dir)+' '+Math.round(s2x.dir)+'°', lw:2.2 });
   if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.35), col:'#e8a057',
-    info:'💨 '+Math.round(ws)+'kt '+compass(wd2), lw:2.6 });
+    info:'💨 '+Math.round(ws)+'kt '+compass(wd2)+' '+Math.round(wd2)+'°', lw:2.6 });
 
   var infoHtml = arrows.map(function(ar){
     return '<span style="color:'+ar.col+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+ar.info+'</span>';
@@ -5142,6 +5160,17 @@ function _gwDrawVectors(fi) {
 
   var tEl = document.getElementById('gw-sat-time');
   if (tEl) tEl.textContent = _gwFmtSlot(d, fi);
+
+  // Thermomètre discret : air (Open-Meteo) / eau (T_sea meteo.nc ou SST Open-Meteo)
+  var tpEl = document.getElementById('gw-sat-temp');
+  if (tpEl) {
+    var ta = d.tAir && d.tAir[fi]!=null ? Math.round(d.tAir[fi]) : null;
+    var tw = d.sst && d.sst[fi]!=null ? Math.round(d.sst[fi]) : null;
+    tpEl.innerHTML = (ta==null && tw==null) ? '' :
+      (ta!=null ? '<span style="color:#e8c44a;">🌡 '+ta+'°</span>' : '')
+      + (ta!=null && tw!=null ? '<br>' : '')
+      + (tw!=null ? '<span style="color:#4fc3e8;">🌊 '+tw+'°</span>' : '');
+  }
 }
 
 // Survol d'une heure (graphe ou grille) : crosshair + vecteurs + résumé texte
@@ -5155,12 +5184,16 @@ function _gwSetHover(gi) {
   if (el) {
     var ws = d.wSpd[gi], wg = d.wGst && d.wGst[gi], tot = d.totH[gi];
     var s1 = d.sw1h[gi], t1 = d.sw1t && d.sw1t[gi];
+    var wdv = d.wDir && d.wDir[gi], s1dv = d.sw1d && d.sw1d[gi];
+    var ccv2 = d.cld && d.cld[gi], rrv = d.rain && d.rain[gi];
     el.innerHTML = '<b style="color:var(--accent)">'+_gwFmtSlot(d, gi)+'</b>'
       + ' · <span style="color:#3dba8a">vent '+(ws!=null?Math.round(ws)+' kt':'—')
-      + (wg!=null?' (raf '+Math.round(wg)+')':'')+' '+compass(d.wDir&&d.wDir[gi])+'</span>'
+      + (wg!=null?' (raf '+Math.round(wg)+')':'')+' '+compass(wdv)+(wdv!=null?' '+Math.round(wdv)+'°':'')+'</span>'
       + ' · <span style="color:#4fa3c7">houle '+(s1!=null?s1.toFixed(1)+' m':'—')
-      + (t1?' '+Math.round(t1)+' s':'')+' '+compass(d.sw1d&&d.sw1d[gi])+'</span>'
-      + ' · mer totale '+(tot!=null?tot.toFixed(1)+' m':'—');
+      + (t1?' '+Math.round(t1)+' s':'')+' '+compass(s1dv)+(s1dv!=null?' '+Math.round(s1dv)+'°':'')+'</span>'
+      + ' · mer totale '+(tot!=null?tot.toFixed(1)+' m':'—')
+      + (ccv2!=null?' · ☁ '+ccv2+'%':'')
+      + (rrv!=null&&rrv>=0.1?' · 🌧 '+rrv.toFixed(1)+' mm':'');
   }
 }
 
@@ -5195,6 +5228,18 @@ function _gwBindEvents() {
         t = t.parentNode; hops++;
       }
       if (gi != null) _gwSetHover(gi);
+    };
+  }
+  // Bande nuages : position x → créneau du jour affiché
+  var ccv = document.getElementById('gw-cloud-cv');
+  if (ccv) {
+    ccv.onmousemove = function(e) {
+      var d2 = _gwActiveData(); if (!d2) return;
+      var days2 = _gwGroupDays(d2); if (_gwDayIdx >= days2.length) return;
+      var idxs2 = days2[_gwDayIdx].indices;
+      var w2 = ccv.offsetWidth || 600;
+      var k2 = Math.floor(e.offsetX / (w2/idxs2.length));
+      if (k2 >= 0 && k2 < idxs2.length) _gwSetHover(idxs2[k2]);
     };
   }
 }
@@ -5241,7 +5286,7 @@ function _gwRenderGrid(d, day) {
   html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
   html += _gwLbl(6,'Dir.');
   html += _gwLbl(7,'H.2','Houle secondaire — hauteur (résidu si meteo.nc) + période, flèche = direction (Open-Meteo si non fournie)');
-  html += _gwLbl(8,'☁ %','Couverture nuageuse (Open-Meteo)');
+  html += _gwLbl(8,'☁ Nuages','Nappes nuageuses par altitude (haut/moyen/bas, opacité = couverture) — Open-Meteo');
   html += _gwLbl(9,'🌧 mm','Cumul de précipitations sur 3h (Open-Meteo)');
 
   idxs.forEach(function(fi, ci) {
@@ -5262,7 +5307,8 @@ function _gwRenderGrid(d, day) {
       + '<span class="u">'+(wg!=null?Math.round(wg)+'g':'kt')+'</span></div>';
 
     var wd = d.wDir && d.wDir[fi];
-    html += '<div class="gw-cell"'+gia+' style="grid-row:3;grid-column:'+col+';'+nBg+'">'+(wd!=null?svgArrow(wd,'#e8a057'):'—')+'</div>';
+    html += '<div class="gw-cell"'+gia+' style="grid-row:3;grid-column:'+col+';'+nBg+'">'+(wd!=null?svgArrow(wd,'#e8a057')
+      + '<span class="u" style="color:rgba(232,160,87,.75);">'+Math.round(wd)+'°</span>':'—')+'</div>';
 
     var tot = d.totH && d.totH[fi];
     html += '<div class="gw-cell"'+gia+' style="grid-row:4;grid-column:'+col+';background:'+_gwAlpha(hsCol(tot),.14)+';">'
@@ -5274,7 +5320,8 @@ function _gwRenderGrid(d, day) {
       + '<span class="u">'+(s1t!=null?Math.round(s1t)+'s':'')+'</span></div>';
 
     var s1d = d.sw1d && d.sw1d[fi];
-    html += '<div class="gw-cell"'+gia+' style="grid-row:6;grid-column:'+col+';'+nBg+'">'+(s1d!=null?svgArrow(s1d,'#4fa3c7'):'—')+'</div>';
+    html += '<div class="gw-cell"'+gia+' style="grid-row:6;grid-column:'+col+';'+nBg+'">'+(s1d!=null?svgArrow(s1d,'#4fa3c7')
+      + '<span class="u" style="color:rgba(79,163,199,.75);">'+Math.round(s1d)+'°</span>':'—')+'</div>';
 
     var s2h = d.sw2h && d.sw2h[fi];
     var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
@@ -5284,13 +5331,6 @@ function _gwRenderGrid(d, day) {
       + (s2h && s2x.t!=null ? '<span class="u">'+Math.round(s2x.t)+'s</span>' : '')
       + '</div>';
 
-    // ☁ Couverture nuageuse (comme la ligne « Couverture nuageuse » de la référence)
-    var cc = d.cld && d.cld[fi]!=null ? d.cld[fi] : null;
-    var cIco = cc==null ? '' : cc<15 ? '☀' : cc<45 ? '🌤' : cc<75 ? '⛅' : '☁';
-    var cCol = cc==null ? 'var(--faint)' : cc<45 ? '#e8c44a' : cc<75 ? '#aac8e0' : '#8aa2b4';
-    html += '<div class="gw-cell"'+gia+' style="grid-row:8;grid-column:'+col+';'+nBg+'">'
-      + '<span class="v" style="color:'+cCol+';font-size:10px;">'+(cc!=null?cIco+' '+cc:'—')+'</span></div>';
-
     // 🌧 Précipitations cumulées sur le créneau
     var rr = d.rain && d.rain[fi]!=null ? d.rain[fi] : null;
     var rTxt = rr==null ? '—' : rr<0.1 ? '·' : rr.toFixed(1);
@@ -5298,6 +5338,9 @@ function _gwRenderGrid(d, day) {
     html += '<div class="gw-cell"'+gia+' style="grid-row:9;grid-column:'+col+';'+nBg+'">'
       + '<span class="v" style="color:'+rCol+';font-size:10px;'+(rr>=0.1?'font-weight:700;':'')+'">'+rTxt+'</span></div>';
   });
+
+  // ☁ Nuages façon Windy : bande pleine largeur, nappes grises par altitude
+  html += '<div id="gw-cloud-wrap" style="grid-row:8;grid-column:2/-1;position:relative;height:34px;"></div>';
 
   html += '<div class="gw-row-sep" style="grid-row:10;"></div>';
   html += _gwLbl(11,'Marée');
@@ -5309,9 +5352,71 @@ function _gwRenderGrid(d, day) {
 
   gridEl.innerHTML = html;
 
+  _gwRenderClouds(d, day);
   _gwRenderTideRow(d, day);
   _gwRenderLevels(day);
   _gwRenderSunRow(d, day);
+}
+
+// ─── Nuages façon Windy : nappes grises floues sur 3 étages (haut/moyen/bas),
+//     opacité ∝ couverture — données cloud_cover_low/mid/high Open-Meteo ────────
+function _gwRenderClouds(d, day) {
+  var wrap = document.getElementById('gw-cloud-wrap'); if (!wrap) return;
+  var idxs = day.indices, N = idxs.length;
+  var hasLayers = d.cldL && d.cldL.some(function(v){ return v!=null; });
+  var hasTotal  = d.cld  && d.cld.some(function(v){ return v!=null; });
+  if (!N || (!hasLayers && !hasTotal)) {
+    wrap.innerHTML = '<div style="font-size:9px;color:var(--faint);text-align:center;padding-top:12px;">Nuages indisponibles</div>';
+    return;
+  }
+  wrap.innerHTML = '<canvas id="gw-cloud-cv" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>';
+  var cv = document.getElementById('gw-cloud-cv');
+  if (!cv || !cv.getContext) return;
+  var W = wrap.offsetWidth || 600, H = wrap.offsetHeight || 34;
+  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  cv.width = W*dpr; cv.height = H*dpr;
+  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  var span = W/N;
+
+  // 3 étages (comme Windy) : haut = voiles clairs, bas = nappes denses sombres
+  var LAYERS = [
+    { arr: d.cldH, y0: 2,  y1: Math.round(H*0.33)-1, col: '226,232,240', aMax: 0.42 },
+    { arr: d.cldM, y0: Math.round(H*0.33)+1, y1: Math.round(H*0.66)-1, col: '203,213,224', aMax: 0.52 },
+    { arr: d.cldL, y0: Math.round(H*0.66)+1, y1: H-2, col: '154,168,182', aMax: 0.62 }
+  ];
+  // Fallback : pas de couches détaillées → une seule nappe médiane avec le total
+  if (!hasLayers) LAYERS = [ { arr: d.cld, y0: 4, y1: H-4, col: '203,213,224', aMax: 0.55 } ];
+
+  LAYERS.forEach(function(L){
+    if (!L.arr) return;
+    var hBand = L.y1 - L.y0;
+    idxs.forEach(function(fi, k){
+      var c = L.arr[fi];
+      if (c==null || c < 4) return;
+      var frac = Math.min(1, c/100);
+      var x = (k+0.5)*span;
+      var bw = span*0.96;
+      // épaisseur de nappe ∝ couverture, ancrée au centre de l'étage
+      var bh = Math.max(3, hBand*frac);
+      var y = L.y0 + (hBand-bh)/2;
+      ctx.save();
+      ctx.shadowColor = 'rgba('+L.col+','+(L.aMax*frac)+')';
+      ctx.shadowBlur = 5;
+      ctx.fillStyle = 'rgba('+L.col+','+(L.aMax*frac).toFixed(3)+')';
+      if (ctx.roundRect) {
+        ctx.beginPath(); ctx.roundRect(x-bw/2, y, bw, bh, Math.min(6, bh/2)); ctx.fill();
+      } else {
+        ctx.fillRect(x-bw/2, y, bw, bh);
+      }
+      ctx.restore();
+    });
+  });
+
+  // Repères d'étages discrets à gauche
+  ctx.font = '6.5px DM Sans,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(122,148,170,.55)';
+  if (hasLayers) { ctx.fillText('haut', 2, H*0.17); ctx.fillText('moy', 2, H*0.5); ctx.fillText('bas', 2, H*0.83); }
 }
 
 // ─── Niveaux d'eau : chips PM/BM du jour (heure · hauteur), comme la bande
@@ -5404,7 +5509,7 @@ function _gwRenderTideRow(d, day) {
   ctx.clearRect(0, 0, W, H);
 
   var colTrueMs = idxs.map(function(fi){ return d.dates[fi].getTime() - 11*3600000; });
-  var span = W/N, SUB = 6;
+  var span = W/N, SUB = 8;
   function msToX(ms) {
     if (ms<=colTrueMs[0]) { var s0=(colTrueMs[1]-colTrueMs[0])||3600000; return 0.5*span - ((colTrueMs[0]-ms)/s0)*span; }
     if (ms>=colTrueMs[N-1]) { var sE=(colTrueMs[N-1]-colTrueMs[N-2])||3600000; return (N-0.5)*span + ((ms-colTrueMs[N-1])/sE)*span; }
@@ -5421,6 +5526,14 @@ function _gwRenderTideRow(d, day) {
   var dd = day.dateObj;
   var dayStartUTC = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate()) - 11*3600000;
   var dayEndUTC = dayStartUTC + 86400000;
+
+  // Couverture PM/BM insuffisante pour ce jour (vrai jour = 3-4 événements) →
+  // dire la vérité plutôt que dessiner une ligne qui s'aplatit après le dernier point
+  var evNear = events.filter(function(e){ return e.ms>=dayStartUTC-21600000 && e.ms<=dayEndUTC+21600000; });
+  if (evNear.length < 3) {
+    wrap.innerHTML = '<div style="font-size:9px;color:var(--faint);text-align:center;padding-top:26px;">Marée non chargée pour ce jour</div>';
+    return;
+  }
 
   // Échantillons sur toute la largeur (extrapolés 00h→24h, pas seulement 02h→23h)
   var samples = [];
@@ -5455,13 +5568,21 @@ function _gwRenderTideRow(d, day) {
   grad.addColorStop(1, 'rgba(79,163,199,0.04)');
   ctx.fillStyle = grad; ctx.fill();
 
-  // Courbe principale
+  // Courbe principale — halo doux puis trait net
+  ctx.save();
+  ctx.shadowColor = 'rgba(79,163,199,0.55)'; ctx.shadowBlur = 6;
   ctx.beginPath();
   ctx.moveTo(samples[0].x, yOf(samples[0].h));
   samples.forEach(function(p){ ctx.lineTo(p.x, yOf(p.h)); });
   ctx.strokeStyle = '#4fa3c7'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.restore();
+  // Liseré clair sur la crête de la courbe (relief subtil)
+  ctx.beginPath();
+  ctx.moveTo(samples[0].x, yOf(samples[0].h)-0.8);
+  samples.forEach(function(p){ ctx.lineTo(p.x, yOf(p.h)-0.8); });
+  ctx.strokeStyle = 'rgba(220,240,255,0.25)'; ctx.lineWidth = 0.8; ctx.stroke();
 
-  // Marqueur « maintenant » (jaune pointillé + point, comme l'onglet Marée)
+  // Marqueur « maintenant » (jaune pointillé + point + hauteur actuelle)
   var nowMs = Date.now();
   if (nowMs >= dayStartUTC && nowMs <= dayEndUTC) {
     var nx = msToX(nowMs);
@@ -5470,7 +5591,16 @@ function _gwRenderTideRow(d, day) {
       ctx.strokeStyle = 'rgba(255,255,100,0.35)'; ctx.lineWidth = 1.5;
       ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
       var nh = _gwTideHeightAt(nowMs, events);
-      if (nh!=null) { ctx.beginPath(); ctx.arc(nx, yOf(nh), 4, 0, 2*Math.PI); ctx.fillStyle = '#fde068'; ctx.fill(); }
+      if (nh!=null) {
+        var nyy = yOf(nh);
+        ctx.beginPath(); ctx.arc(nx, nyy, 4, 0, 2*Math.PI); ctx.fillStyle = '#fde068'; ctx.fill();
+        ctx.strokeStyle = 'rgba(6,16,30,.7)'; ctx.lineWidth = 1.2; ctx.stroke();
+        var nhLbl = nh.toFixed(2)+'m';
+        var nlx = nx + 26 > W-6 ? nx-26 : nx+26; // bascule à gauche près du bord droit
+        ctx.font = '700 8.5px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.strokeStyle = 'rgba(6,16,30,0.8)'; ctx.lineWidth = 3; ctx.strokeText(nhLbl, nlx, nyy);
+        ctx.fillStyle = '#fde068'; ctx.fillText(nhLbl, nlx, nyy);
+      }
     }
   }
 
