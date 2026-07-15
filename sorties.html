@@ -248,14 +248,16 @@ nav a.back:hover{color:var(--text);}
   color:var(--warm);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;}
 
 /* Timeline */
-.timeline{display:flex;gap:0;margin:14px 0;padding:12px;background:var(--glass);border-radius:10px;border:1px solid var(--border);overflow-x:auto;}
-.tl-step{display:flex;flex-direction:column;align-items:center;min-width:72px;flex:1;position:relative;padding:0 4px;}
-.tl-step:not(:last-child):after{content:'';position:absolute;top:14px;right:-50%;width:100%;height:2px;
+.timeline-wrap{margin:14px 0;padding:10px 12px 12px;background:var(--glass);border-radius:10px;border:1px solid var(--border);}
+.tl-head{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.timeline{display:flex;gap:0;overflow-x:auto;}
+.tl-step{display:flex;flex-direction:column;align-items:center;min-width:76px;flex:1;position:relative;padding:0 4px;}
+.tl-step:not(:last-child):after{content:'';position:absolute;top:16px;right:-50%;width:100%;height:2px;
   background:linear-gradient(to right,var(--accent),rgba(79,163,199,.2));}
-.tl-dot{width:28px;height:28px;border-radius:50%;background:var(--deep);border:2px solid var(--accent);
-  display:flex;align-items:center;justify-content:center;font-size:13px;margin-bottom:6px;position:relative;z-index:1;}
-.tl-time{font-size:10px;font-weight:700;color:var(--accent);font-family:var(--font-d);}
-.tl-label{font-size:9px;color:var(--text-muted);text-align:center;margin-top:2px;line-height:1.3;}
+.tl-dot{width:32px;height:32px;border-radius:50%;background:var(--deep);border:2px solid var(--accent);
+  display:flex;align-items:center;justify-content:center;font-size:15px;margin-bottom:6px;position:relative;z-index:1;}
+.tl-time{font-size:13px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
+.tl-label{font-size:10px;color:var(--text-muted);text-align:center;margin-top:2px;line-height:1.3;}
 
 /* Covoit — visual redesign */
 .covoit-box{background:rgba(123,108,246,.06);border:1px solid rgba(123,108,246,.2);border-radius:12px;
@@ -888,8 +890,13 @@ nav a.back:hover{color:var(--text);}
       <input type="text" class="form-input" id="ins-brings" placeholder="ex: 6 bières + pique-nique">
     </div>
     <div class="form-group">
-      <label class="form-label">Voiture / covoit</label>
-      <input type="text" class="form-input" id="ins-car" placeholder="ex: Je prends ma voiture, 3 places dispo">
+      <label class="form-label">🚗 Voiture / covoit</label>
+      <input type="text" class="form-input" id="ins-car" placeholder='ex: "3 places" — écris un nombre de places pour être conducteur'>
+      <div style="font-size:10px;color:var(--text-faint);margin-top:4px;line-height:1.5;">
+        Écris « <b>N places</b> » (ex : 3 places) → ta voiture apparaît dans l'encart Covoiturage
+        de la sortie et les autres peuvent cliquer <b>+ Rejoindre</b>. Passager ? Laisse vide,
+        tu choisiras ta voiture sur la carte de la sortie.
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Commentaire</label>
@@ -1647,14 +1654,14 @@ async function openMeteogramSilent(sortieId) {
   try {
     var ncData = await fetchMeteoNC(coords.lat, coords.lon, dateStr);
     if (ncData && ncData.hours && ncData.hours.length > 0) {
-      var tide = computeTideForDay(coords.lat, coords.lon, dateStr);
+      var tide = await computeTideForDay(coords.lat, coords.lon, dateStr);
       drawMeteogramV2(s, ncData, tide, coords, 'meteo.nc'); return;
     }
   } catch(e) {}
   try {
     var omData = await fetchOpenMeteoComplete(coords.lat, coords.lon, dateStr);
-    var tide = computeTideForDay(coords.lat, coords.lon, dateStr);
-    drawMeteogramV2(s, omData, tide, coords, 'GFS (Open-Meteo)');
+    var tide2 = await computeTideForDay(coords.lat, coords.lon, dateStr);
+    drawMeteogramV2(s, omData, tide2, coords, 'GFS (Open-Meteo)');
   } catch(e) {
     drawMeteogramV2(s, null, null, coords, 'demo');
   }
@@ -1697,26 +1704,24 @@ async function copyShareImg() {
   }, 'image/png');
 }
 
+// Message COURT — l'essentiel en ~5 lignes, lisible d'un coup d'œil dans
+// WhatsApp ; tout le détail (apports, notes, copros, planches…) est sur la
+// page, à un clic du lien. L'ancien format déroulait tout → pavé illisible.
 function buildShareMessage(s) {
   const dateStr = formatSortieDate(s).replace('📅 ', '');
   const inCount = (s.inscriptions || []).filter(i => i.status === 'in').length;
-  let msg = (s.type === 'camping' ? '⛺ ' : '🏄 ') + 'SORTIE ' + (s.type === 'camping' ? 'CAMPING' : 'SURF') + '\n\n';
-  msg += '📍 ' + s.spot + '\n';
-  msg += '📅 ' + dateStr + '\n';
-  if (s.time_start) msg += '⏰ ' + s.time_start + (s.time_end ? ' → ' + s.time_end : '') + '\n';
-  if (s.launch_point) msg += '🚤 Mise à l\'eau : ' + s.launch_point + '\n';
-  if (s.boats) msg += '⛵ Bateau(x) : ' + s.boats + '\n';
-  if (s.boat_owners && s.boat_owners.length) {
-    var oNames = s.boat_owners.map(function(u){return profileCache[u]||'Copro';}).join(', ');
-    msg += '⭐ Copropriétaires (places réservées) : ' + oNames + '\n';
-  }
-  msg += '👥 ' + inCount + '/' + s.places + ' places prises\n';
-  if (s.boards_needed) msg += '🏄 ' + s.boards_needed + ' planche(s) à prendre\n';
-  if (s.price_estimate) msg += '💰 ~' + s.price_estimate.toLocaleString('fr') + ' CFP/pers\n';
-  if (s.apports) msg += '\n🎒 À prévoir :\n' + s.apports + '\n';
-  if (s.cars) msg += '\n🚗 ' + s.cars + '\n';
-  if (s.notes) msg += '\n💬 ' + s.notes + '\n';
-  msg += '\n👉 S\'inscrire : https://thibsurf.github.io/surf-journal/sorties.html';
+  const placesLeft = Math.max(0, (s.places || 0) - inCount);
+  let msg = (s.type === 'camping' ? '⛺' : '🏄') + ' ' + (s.spot || 'Sortie') + ' — ' + dateStr + '\n';
+  const l2 = [];
+  if (s.time_start) l2.push('⏰ ' + s.time_start + (s.time_end ? '→' + s.time_end : ''));
+  if (s.launch_point) l2.push('🚤 ' + s.launch_point);
+  if (l2.length) msg += l2.join(' · ') + '\n';
+  const l3 = [];
+  if (s.boats) l3.push('⛵ ' + s.boats);
+  l3.push('👥 ' + (placesLeft > 0 ? placesLeft + ' place' + (placesLeft > 1 ? 's' : '') + ' dispo' : 'complet') + ' (' + inCount + '/' + s.places + ')');
+  if (s.price_estimate) l3.push('💰 ~' + s.price_estimate.toLocaleString('fr') + ' CFP');
+  msg += l3.join(' · ') + '\n';
+  msg += '\n👉 Détails + inscription : https://thibsurf.github.io/surf-journal/sorties.html';
   return msg;
 }
 
@@ -2007,22 +2012,20 @@ function buildTimeline(s) {
     h = Math.floor(tot / 60) % 24; m = tot % 60;
     return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
   }
+  // 4-5 jalons max, uniquement ancrés sur les VRAIS horaires saisis (t0/tEnd) —
+  // l'étape « Surf +3h » inventée embrouillait plus qu'elle n'aidait.
   var steps = [
-    { time: addMin(t0, -30), label: 'RDV parking', icon: String.fromCodePoint(0x1F697) }
+    { time: addMin(t0, -30), label: 'RDV', icon: String.fromCodePoint(0x1F697) }
   ];
   if (s.miton) {
-    steps.push({ time: addMin(t0, -15), label: 'Arret mitron', icon: String.fromCodePoint(0x1F950) });
+    steps.push({ time: addMin(t0, -15), label: 'Mitron', icon: String.fromCodePoint(0x1F950) });
   }
-  steps.push({ time: t0, label: 'Embarquement', icon: String.fromCodePoint(0x26F5) });
-  steps.push({ time: addMin(t0, 30), label: s.type === 'camping' ? 'Installation' : 'Debut surf', icon: s.type === 'camping' ? String.fromCodePoint(0x26FA) : String.fromCodePoint(0x1F3C4) });
-  if (s.type === 'camping') {
-    steps.push({ time: addMin(t0, 180), label: 'Apéro / bouffe', icon: '🍺' });
-    steps.push({ time: tEnd || addMin(t0, 720), label: 'Retour', icon: '🏠' });
-  } else {
-    steps.push({ time: addMin(t0, 180), label: 'Surf', icon: '🌊' });
-    if (tEnd) steps.push({ time: tEnd, label: 'Retour', icon: '🏠' });
-  }
-  return '<div class="timeline">'
+  steps.push({ time: t0, label: 'Départ bateau', icon: String.fromCodePoint(0x26F5) });
+  steps.push({ time: addMin(t0, 30), label: s.type === 'camping' ? 'Installation' : 'À l\'eau', icon: s.type === 'camping' ? String.fromCodePoint(0x26FA) : String.fromCodePoint(0x1F3C4) });
+  if (tEnd) steps.push({ time: tEnd, label: 'Retour', icon: '🏠' });
+  return '<div class="timeline-wrap">'
+    + '<div class="tl-head">🕐 Journée type <span style="font-weight:400;opacity:.6;">(indicatif — RDV 30 min avant le départ)</span></div>'
+    + '<div class="timeline">'
     + steps.map(function(st) {
       return '<div class="tl-step">'
         + '<div class="tl-dot">' + st.icon + '</div>'
@@ -2030,7 +2033,7 @@ function buildTimeline(s) {
         + '<div class="tl-label">' + st.label + '</div>'
         + '</div>';
     }).join('')
-    + '</div>';
+    + '</div></div>';
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2057,16 +2060,31 @@ function extractCarOffers(sortie) {
 
 function buildCovoitBox(sortie) {
   var cars = extractCarOffers(sortie);
-  if (!cars.length) return '';
+  var hasIns = (sortie.inscriptions || []).some(function(i){ return i.status === 'in'; });
+
+  // Avant : la boîte DISPARAISSAIT sans voiture — personne ne savait comment en
+  // proposer une. État vide guidant à la place (seulement si la sortie a des inscrits).
+  if (!cars.length) {
+    if (!hasIns || !currentUser) return '';
+    return '<div class="covoit-box">'
+      + '<div class="covoit-header"><div class="covoit-title">🚗 Covoiturage</div></div>'
+      + '<div class="covoit-no-car">Personne ne propose de voiture pour l\'instant.<br>'
+      + '<b style="color:#a99ff8;">Conducteur ?</b> Modifie ton inscription et écris par ex. '
+      + '« <b>3 places</b> » dans le champ 🚗 Voiture — ta voiture apparaîtra ici et les autres pourront la rejoindre.</div>'
+      + '</div>';
+  }
 
   // Count total seats & passengers across all cars
   var totalSeats = cars.reduce(function(a,c){ return a + (c.seats||0); }, 0);
   var totalPax   = cars.reduce(function(a,c){ return a + c.passengers.length; }, 0);
+  var freeSeats  = Math.max(0, totalSeats - totalPax);
 
   var html = '<div class="covoit-box">'
     + '<div class="covoit-header">'
     + '<div class="covoit-title">🚗 Covoiturage</div>'
-    + '<div class="covoit-summary">' + totalPax + '/' + totalSeats + ' places</div>'
+    + '<div class="covoit-summary" title="' + totalPax + ' passager(s) casé(s) · ' + totalSeats + ' place(s) offerte(s) par les conducteurs">'
+    + (freeSeats > 0 ? '🟢 ' + freeSeats + ' place' + (freeSeats > 1 ? 's' : '') + ' libre' + (freeSeats > 1 ? 's' : '') : '🔴 complet')
+    + '</div>'
     + '</div>'
     + '<div class="covoit-cars-list">';
 
@@ -2358,7 +2376,7 @@ async function openMeteogram(sortieId) {
     // Tenter meteo.nc d’abord (via token Supabase)
     var ncData = await fetchMeteoNC(coords.lat, coords.lon, dateStr);
     if (ncData && ncData.hours && ncData.hours.length > 0) {
-      var tide = computeTideForDay(coords.lat, coords.lon, dateStr);
+      var tide = await computeTideForDay(coords.lat, coords.lon, dateStr);
       drawMeteogramV2(s, ncData, tide, coords, 'meteo.nc');
       return;
     }
@@ -2367,8 +2385,8 @@ async function openMeteogram(sortieId) {
   // Fallback Open-Meteo
   try {
     var omData = await fetchOpenMeteoComplete(coords.lat, coords.lon, dateStr);
-    var tide = computeTideForDay(coords.lat, coords.lon, dateStr);
-    drawMeteogramV2(s, omData, tide, coords, 'GFS (Open-Meteo)');
+    var tide2 = await computeTideForDay(coords.lat, coords.lon, dateStr);
+    drawMeteogramV2(s, omData, tide2, coords, 'GFS (Open-Meteo)');
   } catch(e) {
     console.error(e);
     toast('Erreur chargement meteo', 'err');
@@ -2444,15 +2462,73 @@ async function fetchOpenMeteoComplete(lat, lon, dateStr) {
   return { hours: hours, source: 'GFS (Open-Meteo)', resolution: '1h' };
 }
 
-function computeTideForDay(lat, lon, dateStr) {
-  // Sinusoïde simplifiée port Nouméa (semi-diurne, M2 dominante)
-  var tides = [];
+async function computeTideForDay(lat, lon, dateStr) {
+  // VRAIE marée meteo.nc/SHOM (PM/BM du jour ± voisins pour couvrir 00h/24h),
+  // interpolation cosinus — l'ancienne sinusoïde inventée donnait une image
+  // fausse sur le météogramme partagé. Fallback sinusoïde UNIQUEMENT en
+  // dernier recours, étiqueté (_real=false → « ⚠ estimée » sur l'image).
+  try {
+    function shiftDay(ds, n) {
+      var d = new Date(ds + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    }
+    var days = [shiftDay(dateStr, -1), dateStr, shiftDay(dateStr, 1)];
+    var res = await Promise.all(days.map(function(ds) {
+      return ncGet('/tide?id=9881852&date=' + ds, 'tide?id=9881852&date=' + ds).catch(function(){ return null; });
+    }));
+    var evs = [];
+    res.forEach(function(r) {
+      var t = r && r.properties && r.properties.tide;
+      if (!t) return;
+      function push(arr, type) {
+        (arr || []).forEach(function(e) {
+          if (!e || e.time == null || e.tidal_height == null) return;
+          var s = String(e.time);
+          var ms = /Z$|[+-]\d{2}:\d{2}$/.test(s) ? new Date(s).getTime() : new Date(s + 'Z').getTime() - 11*3600000;
+          evs.push({ ms: ms, h: e.tidal_height, type: type });
+        });
+      }
+      push(t.high_tide, 'pm'); push(t.low_tide, 'bm');
+    });
+    evs.sort(function(a, b) { return a.ms - b.ms; });
+    // Dédup + alternance PM/BM (même nettoyage que le widget prévisions)
+    var clean = [];
+    evs.forEach(function(e) {
+      var last = clean[clean.length - 1];
+      if (last && Math.abs(last.ms - e.ms) < 10*60000 && last.type === e.type) return;
+      if (last && last.type === e.type) {
+        if ((e.type === 'pm' && e.h >= last.h) || (e.type === 'bm' && e.h <= last.h)) clean[clean.length - 1] = e;
+      } else clean.push(e);
+    });
+    if (clean.length >= 3) {
+      var day0 = new Date(dateStr + 'T00:00:00+11:00').getTime();
+      var tides = [];
+      for (var hq = 0; hq <= 24; hq += 0.25) {
+        var ms = day0 + hq * 3600000;
+        var prev = null, next = null;
+        for (var k = 0; k < clean.length; k++) {
+          if (clean[k].ms <= ms) prev = clean[k];
+          else { next = clean[k]; break; }
+        }
+        var lv;
+        if (prev && next) {
+          var t2 = (ms - prev.ms) / ((next.ms - prev.ms) || 1);
+          lv = prev.h + (next.h - prev.h) * (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, t2)))) / 2;
+        } else lv = (prev || next || { h: 0.9 }).h;
+        tides.push({ hour: hq, level: +lv.toFixed(2) });
+      }
+      tides._real = true;
+      return tides;
+    }
+  } catch(e) { console.warn('[meteogram] marée réelle indisponible:', e && e.message); }
+  // Dernier recours : approximation M2 — sera étiquetée « estimée » sur l'image
+  var approx = [];
   for (var h = 0; h <= 24; h += 0.25) {
     var phase = (h / 12.42) * 2 * Math.PI;
-    var level = 0.9 + 0.6 * Math.sin(phase);
-    tides.push({ hour: h, level: level });
+    approx.push({ hour: h, level: 0.9 + 0.6 * Math.sin(phase) });
   }
-  return tides;
+  approx._real = false;
+  return approx;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2484,6 +2560,7 @@ function drawMeteogramV2(sortie, data, tide, coords, sourceLabel) {
     rafales:  pts.map(function(p){ return +(p.gust || p.wind || 0); }),
     ventDir:  pts.map(function(p){ return +(p.windDir || 0); }),
     maree:    (tide || []).map(function(t){ return { h: t.hour, v: t.level }; }),
+    tideReal: !!(tide && tide._real),
     session:  { startIndex: 0, endIndex: Math.max(0, pts.length - 1) },
     boat: {
       name:    sortie.boats || 'Bateau',
@@ -2858,6 +2935,16 @@ function mg_drawTide(ctx,D,C,x,y,w,h){
 
   ctx.fillStyle=C.text;mg_sf(ctx,700,29,'DM Sans'); ctx.textAlign='left';
   ctx.fillText('MARÉE',x+40,y+40);
+  // Source affichée sur l'image partagée : réelle (SHOM) ou approximation étiquetée
+  ctx.textAlign='right';
+  if (D.tideReal) {
+    ctx.fillStyle='rgba(122,148,170,.85)';mg_sf(ctx,600,19,'DM Sans');
+    ctx.fillText('SHOM · meteo.nc', x+w-40, y+40);
+  } else {
+    ctx.fillStyle=C.warn;mg_sf(ctx,700,19,'DM Sans');
+    ctx.fillText('⚠ estimée (M2)', x+w-40, y+40);
+  }
+  ctx.textAlign='left';
 
   var lv=(D.maree||[]).map(function(p){return p.v;});
   if(!lv.length) return;
@@ -2961,45 +3048,64 @@ function mg_drawTide(ctx,D,C,x,y,w,h){
 }
 
 /* ═══════════════════════════════════════════
-   4. UV + ACTIVITÉS
+   4. SOLEIL (réel — remplace l'indice UV qui était codé en dur à 8)
 ═══════════════════════════════════════════ */
+// Lever/coucher pour Nouméa (algo NOAA compact, ±2 min) — retourne minutes locales
+function mg_sunTimes(dateStr){
+  var p=dateStr.split('-'), year=+p[0], month=+p[1], day=+p[2];
+  var lat=-22.27, lon=166.43;
+  var JD=367*year-Math.floor(7*(year+Math.floor((month+9)/12))/4)+Math.floor(275*month/9)+day+1721013.5;
+  var T=(JD-2451545)/36525;
+  var M=(357.52911+35999.05029*T)*Math.PI/180;
+  var L0=(280.46646+36000.76983*T)%360;
+  var C1=(1.914602-0.004817*T)*Math.sin(M)+0.019993*Math.sin(2*M);
+  var lambda=(L0+C1-0.00569)*Math.PI/180;
+  var eps=23.4392911*Math.PI/180;
+  var decl=Math.asin(Math.sin(eps)*Math.sin(lambda));
+  var EqT=(-1.915*Math.sin(M)+2.466*Math.sin(2*lambda)-0.053*Math.sin(4*lambda))/60;
+  var noon=12-EqT-lon/15;
+  var ha=Math.acos((Math.sin(-0.833*Math.PI/180)-Math.sin(lat*Math.PI/180)*Math.sin(decl))/(Math.cos(lat*Math.PI/180)*Math.cos(decl)))*180/Math.PI/15;
+  function toMin(h2){ return Math.round(((h2+11+24)%24)*60); }
+  return { rise: toMin(noon-ha), set: toMin(noon+ha) };
+}
+function mg_fmtMin(m){ return String(Math.floor(m/60)).padStart(2,'0')+'h'+String(m%60).padStart(2,'0'); }
+
 function mg_drawUV(ctx,D,C,x,y,w,h){
  mg_cCard(ctx,x,y,w,h,20,C.card,C.border);
   ctx.save();mg_cClip(ctx,x,y,w,h,20);
 
-  var px=x+44, py=y+36;
+  var px=x+44, py=y+40;
   ctx.fillStyle=C.text;mg_sf(ctx,700,26,'DM Sans'); ctx.textAlign='left';
-  ctx.fillText('INDICE UV', px, py);
+  ctx.fillText('☀ SOLEIL', px, py);
 
-  // UV scale bar
-  var barX=x+180, barY=y+16, barW=w-240, barH=30, uv=D.uvMax||0;
-  // Gradient: green→yellow→orange→red→violet
-  var uvG=ctx.createLinearGradient(barX,0,barX+barW,0);
-  uvG.addColorStop(0,'#3DBA8A'); uvG.addColorStop(.25,'#A8CC3C');
-  uvG.addColorStop(.45,'#E8C43C'); uvG.addColorStop(.65,'#E8A057');
-  uvG.addColorStop(.82,'#E05C5C'); uvG.addColorStop(1,'#9B59B6');
-  ctx.fillStyle=uvG;mg_mg_rrf(ctx,barX,barY,barW,barH,8);
+  var sun=null;
+  try { sun=mg_sunTimes(D.date); } catch(e){}
+  if(!sun){ ctx.restore(); return; }
 
-  // Tick marks 0–11
-  for(var u=0;u<=11;u++){
-    var tx=barX+u/11*barW;
-    ctx.fillStyle='rgba(0,0,0,.4)'; ctx.fillRect(tx,barY,1,barH);
-    ctx.fillStyle='rgba(255,255,255,.6)';mg_sf(ctx,500,13,'DM Sans'); ctx.textAlign='center';
-    ctx.fillText(u+'',tx,barY+barH+14);
-  }
+  // Bande jour : nuit → aube dorée → jour → crépuscule → nuit (0h→24h)
+  var barX=x+230, barY=y+24, barW=w-290, barH=26;
+  function xm(min){ return barX+(min/1440)*barW; }
+  ctx.fillStyle='rgba(8,16,38,.9)';mg_mg_rrf(ctx,barX,barY,barW,barH,8);
+  var dayG=ctx.createLinearGradient(xm(sun.rise-40),0,xm(sun.set+40),0);
+  dayG.addColorStop(0,'rgba(232,160,87,0)'); dayG.addColorStop(.06,'rgba(232,160,87,.85)');
+  dayG.addColorStop(.5,'rgba(130,180,215,.55)');
+  dayG.addColorStop(.94,'rgba(232,160,87,.85)'); dayG.addColorStop(1,'rgba(232,160,87,0)');
+  ctx.save(); ctx.beginPath(); ctx.rect(barX,barY,barW,barH); ctx.clip();
+  ctx.fillStyle=dayG; ctx.fillRect(xm(sun.rise-40),barY,xm(sun.set+40)-xm(sun.rise-40),barH);
+  ctx.restore();
+  // Ticks 6h
+  ctx.fillStyle='rgba(255,255,255,.35)';mg_sf(ctx,500,14,'DM Sans'); ctx.textAlign='center';
+  [0,6,12,18,24].forEach(function(hh){ ctx.fillRect(xm(hh*60),barY+barH,1,5); ctx.fillText(hh+'h',xm(hh*60),barY+barH+22); });
 
-  // Current UV marker
-  var uvX=barX+Math.min(uv,11)/11*barW;
-  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(uvX,barY+barH/2,8,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle='#000'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(uvX,barY+barH/2,8,0,Math.PI*2); ctx.stroke();
-  ctx.fillStyle='#000';mg_sf(ctx,700,13,'DM Sans'); ctx.textAlign='center';
-  ctx.fillText(uv+'',uvX,barY+barH/2+5);
-
-  // UV label
-  var uvLabel=uv<=2?'Faible':uv<=5?'Modéré':uv<=7?'Élevé':uv<=10?'Très élevé':'Extrême';
-  var uvCol=uv<=2?C.ok:uv<=5?'#A8CC3C':uv<=7?C.warn:uv<=10?C.danger:'#9B59B6';
-  ctx.fillStyle=uvCol;mg_sf(ctx,700,20,'DM Sans'); ctx.textAlign='left';
-  ctx.fillText(uvLabel+' ('+uv+')',px,py+26);
+  // Marqueurs lever / coucher + durée du jour
+  ctx.fillStyle=C.warm;mg_sf(ctx,700,22,'DM Sans'); ctx.textAlign='left';
+  ctx.fillText('🌅 '+mg_fmtMin(sun.rise), px, py+34);
+  var durMin=sun.set-sun.rise;
+  ctx.fillStyle=C.muted;mg_sf(ctx,500,18,'DM Sans');
+  ctx.fillText('☀ '+Math.floor(durMin/60)+'h'+String(durMin%60).padStart(2,'0')+' de jour', px, py+60);
+  ctx.fillStyle=C.warm;mg_sf(ctx,700,22,'DM Sans'); ctx.textAlign='right';
+  ctx.fillText('🌇 '+mg_fmtMin(sun.set), x+w-46, py+34);
+  ctx.textAlign='left';
 
   ctx.restore();
 }
@@ -4578,7 +4684,19 @@ async function addAlias() {
     // avec { error }. Sans ce contrôle, la liaison semblait enregistrée (toast ✓,
     // localStorage local) mais n'atteignait JAMAIS le cloud → « les comptes liés
     // sur un PC ne le sont plus sur l'autre ».
-    var res = await sb.from('aliases').upsert({ alias_text: text, user_id: uid, created_by: currentUser.id }, { onConflict: 'alias_text' });
+    // delete + insert (PAS upsert/ON CONFLICT) : la table aliases n'a pas de
+    // contrainte unique sur alias_text — l'upsert échouait avec « there is no
+    // unique or exclusion constraint matching the ON CONFLICT specification »
+    // depuis toujours. Le delete rend l'opération idempotente sans contrainte.
+    // (Idéal : ajouter la contrainte côté Supabase —
+    //  ALTER TABLE aliases ADD CONSTRAINT aliases_alias_text_key UNIQUE (alias_text);)
+    var del = await sb.from('aliases').delete().eq('alias_text', text);
+    if (del && del.error) {
+      console.error('[alias] Refus Supabase (delete):', del.error);
+      toast('❌ Liaison NON partagée (refus serveur : ' + (del.error.message || del.error.code) + ').', 'err');
+      return;
+    }
+    var res = await sb.from('aliases').insert({ alias_text: text, user_id: uid, created_by: currentUser.id });
     if (res && res.error) {
       console.error('[alias] Refus Supabase:', res.error);
       toast('❌ Liaison NON partagée (refus serveur : ' + (res.error.message || res.error.code) + '). Elle ne serait visible que sur cet appareil — corrige les droits de la table aliases.', 'err');
