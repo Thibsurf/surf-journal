@@ -2477,14 +2477,34 @@ async function computeTideForDay(lat, lon, dateStr) {
       return ncGet('/tide?id=9881852&date=' + ds, 'tide?id=9881852&date=' + ds).catch(function(){ return null; });
     }));
     var evs = [];
-    res.forEach(function(r) {
+    res.forEach(function(r, ri) {
       var t = r && r.properties && r.properties.tide;
       if (!t) return;
+      // Suffixe Z ABUSIF possible (« 11:36:00Z » = 11h36 LOCALE NC, pas UTC) :
+      // vote de cohérence — l'interprétation qui place le plus d'événements dans
+      // la journée demandée gagne (même logique que previsions._tideNormalizeDay).
+      var dayStartV = new Date(days[ri] + 'T00:00:00+11:00').getTime();
+      var all = (t.high_tide || []).concat(t.low_tide || []);
+      var zoned = all.filter(function(e){ return e && e.time && /Z$|[+-]\d{2}:\d{2}$/.test(String(e.time)); });
+      var localWins = false;
+      if (zoned.length) {
+        var uv = 0, lv2 = 0;
+        zoned.forEach(function(e){
+          var u = Date.parse(e.time);
+          if (u >= dayStartV && u < dayStartV + 86400000) uv++;
+          if (u - 11*3600000 >= dayStartV && u - 11*3600000 < dayStartV + 86400000) lv2++;
+        });
+        localWins = lv2 > uv;
+      }
       function push(arr, type) {
         (arr || []).forEach(function(e) {
           if (!e || e.time == null || e.tidal_height == null) return;
           var s = String(e.time);
-          var ms = /Z$|[+-]\d{2}:\d{2}$/.test(s) ? new Date(s).getTime() : new Date(s + 'Z').getTime() - 11*3600000;
+          var hasTz = /Z$|[+-]\d{2}:\d{2}$/.test(s);
+          var ms;
+          if (!hasTz) ms = new Date(s + 'Z').getTime() - 11*3600000;      // naïf = local NC
+          else if (localWins) ms = Date.parse(s) - 11*3600000;            // Z abusif = local NC
+          else ms = Date.parse(s);                                         // fuseau honnête
           evs.push({ ms: ms, h: e.tidal_height, type: type });
         });
       }
@@ -2808,6 +2828,16 @@ function mg_drawSwellWind(ctx,D,C,x,y,w,h){
   ctx.fillStyle=C.warn;mg_sf(ctx,500,17,'DM Sans'); ctx.textAlign='center';
   ctx.fillText('Vent (kt)',0,0); ctx.restore();
 
+  // Colonnes de NUIT ombrées (signature du widget prévisions : lecture immédiate
+  // des créneaux hors jour) — avant la bande session pour rester dessous
+  for(var ni=0;ni<n;ni++){
+    var nh=parseInt(D.hours[ni]);
+    if(!(nh<6||nh>=19)) continue;
+    var ncw=iW/n;
+    ctx.fillStyle='rgba(0,0,0,.25)';
+    ctx.fillRect(iX+ni*ncw,wTop,ncw,hBot-wTop);
+  }
+
   // Session band
   var si=D.session.startIndex, ei=D.session.endIndex;
   var ssx=xP(si)-bw/2-4, sex=xP(ei)+bw/2+4;
@@ -2848,6 +2878,23 @@ function mg_drawSwellWind(ctx,D,C,x,y,w,h){
 
   // ── HS BAND — clipped ──
   ctx.save(); ctx.beginPath(); ctx.rect(iX,hTop,iW,hBH); ctx.clip();
+  // Rangée PÉRIODE en pills colorées — échelle surfeur du widget prévisions :
+  // <8s mer de vent (gris), 8-11s (bleu), 11-14s bonne houle (vert), ≥14s
+  // groundswell (violet). La période manquait totalement sur l'image partagée.
+  function mgPerCol(t2){
+    return t2==null?'rgba(61,84,104,.6)':t2<8?'rgba(122,148,170,.6)':t2<11?'rgba(79,163,199,.8)':t2<14?'rgba(61,186,138,.85)':'rgba(123,108,246,.9)';
+  }
+  for(var i=0;i<n;i++){
+    var per=D.periode[i];
+    if(per==null) continue;
+    var pTxt=Math.round(per)+'s';
+    mg_sf(ctx,700,19,'DM Sans');
+    var pw2=ctx.measureText(pTxt).width+18, ph2=26, ppx=xP(i)-pw2/2, ppy=hTop+8;
+    ctx.fillStyle=mgPerCol(per);mg_mg_rrf(ctx,ppx,ppy,pw2,ph2,13);
+    ctx.fillStyle='#fff'; ctx.textAlign='center';
+    ctx.fillText(pTxt,xP(i),ppy+19);
+  }
+  ctx.textAlign='left';
   for(var i=0;i<n;i++){
     var bh2=Math.max(2,(D.houle[i]/maxHs)*hBH), by=hBot-bh2, bx2=xP(i)-bw/2;
     var bg2=ctx.createLinearGradient(0,by,0,hBot);

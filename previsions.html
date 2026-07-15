@@ -2908,7 +2908,15 @@ async function loadForecast(i) {
 
     // ─── RENDER ───
     renderObs(obsData, s, _obsRes);
-    
+
+    // Neutraliser un éventuel suffixe Z abusif sur la marée de base (jour J)
+    // — les extras multi-jours passent déjà par _fetchTideDay qui normalise.
+    if (ncTide) {
+      var _nowNC0 = new Date(Date.now() + 11*3600000);
+      var _todayDs = _nowNC0.getUTCFullYear() + '-' + String(_nowNC0.getUTCMonth()+1).padStart(2,'0') + '-' + String(_nowNC0.getUTCDate()).padStart(2,'0');
+      ncTide = _tideNormalizeDay(ncTide, _todayDs);
+    }
+
     if (ncTide && ncTide.properties && ncTide.properties.tide) {
       _ncTideCache = ncTide; // disponible immédiatement pour _saveForecastDays (avant le Promise.all)
       var todayNC = new Date();
@@ -3006,6 +3014,40 @@ async function loadForecast(i) {
   }
 
 // Helper — extraire les lignes de prévision NC selon la structure retournée
+// Certaines réponses /tide portent un suffixe Z ABUSIF : « 2026-07-17T11:36:00Z »
+// est en réalité 11 h 36 HEURE LOCALE NC, pas UTC (la séquence BM/PM n'est
+// physiquement semi-diurne qu'en lecture locale). Interprété comme UTC vrai,
+// tout se décale de 11 h → courbe fausse/plate. On départage par VOTE : celle
+// des deux interprétations qui place le plus d'événements dans la journée
+// demandée gagne ; si « local-malgré-Z » gagne, on retire simplement le suffixe
+// (les chiffres sont déjà l'heure locale) → convention naïve historique, tout
+// le code aval inchangé.
+function _tideNormalizeDay(resp, ds) {
+  try {
+    var t = resp && resp.properties && resp.properties.tide;
+    if (!t) return resp;
+    var all = (t.high_tide || []).concat(t.low_tide || []);
+    var zoned = all.filter(function(e){ return e && e.time && /Z$|[+-]\d{2}:\d{2}$/.test(String(e.time)); });
+    if (!zoned.length) return resp; // déjà naïf → rien à faire
+    var dayStart = new Date(ds + 'T00:00:00+11:00').getTime();
+    function inDay(ms){ return ms >= dayStart && ms < dayStart + 86400000; }
+    var utcVotes = 0, localVotes = 0;
+    zoned.forEach(function(e){
+      var utc = Date.parse(e.time);
+      if (inDay(utc)) utcVotes++;
+      if (inDay(utc - 11*3600000)) localVotes++;
+    });
+    if (localVotes > utcVotes) {
+      console.info('[tide] Suffixe Z abusif détecté pour ' + ds + ' (' + localVotes + '/' + zoned.length + ' locaux vs ' + utcVotes + ' UTC) — heures relues en local NC');
+      function strip(arr){ (arr || []).forEach(function(e){
+        if (e && e.time) e.time = String(e.time).replace(/Z$|[+-]\d{2}:\d{2}$/, '');
+      }); }
+      strip(t.high_tide); strip(t.low_tide);
+    }
+    return resp;
+  } catch(_) { return resp; }
+}
+
 // Récupère la marée d'UN jour précis en VALIDANT que la réponse couvre bien ce
 // jour : les workers déployés avant le fix « forward &date » renvoyaient la marée
 // d'AUJOURD'HUI pour toute demande J±N (le param était ignoré) → on détecte la
@@ -3030,12 +3072,12 @@ async function _fetchTideDay(tideId, ds) {
     } catch(_) { return false; }
   }
   try {
-    var r = await ncGet('/tide?id='+tideId+'&date='+ds, 'tide?id='+tideId+'&date='+ds);
+    var r = _tideNormalizeDay(await ncGet('/tide?id='+tideId+'&date='+ds, 'tide?id='+tideId+'&date='+ds), ds);
     if (covers(r)) return r;
     if (r) console.warn('[tide] Réponse hors-date pour '+ds+' (worker sans support &date — redéployer worker_cloudflare) → retry direct');
   } catch(_) {}
   try {
-    var r2 = await ncFetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id='+tideId+'&date='+ds);
+    var r2 = _tideNormalizeDay(await ncFetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id='+tideId+'&date='+ds), ds);
     if (covers(r2)) return r2;
   } catch(_) {}
   return null;
