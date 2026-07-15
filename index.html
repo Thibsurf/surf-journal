@@ -1878,15 +1878,34 @@ async function _saveDailyCache(date, lat, lon, spotName, data) {
   } catch(e) { console.warn('[cache] Erreur save:', e && e.message); }
 }
 
-// Charge les conditions meteo.nc sauvegardées pour une date passée
-async function _loadDailyCache(date, lat, lon) {
+// Charge les conditions meteo.nc sauvegardées pour une date passée.
+// targetHour (0-23) : si fourni et que la ligne contient le détail horaire
+// (data.hours[], écrit par previsions.html::_saveForecastDays), on remplace
+// hs/period/swellDir/windKt/windDir par l'entrée la plus proche de CETTE heure
+// — sinon on gardait toujours l'heure "par défaut du spot" (souvent 7h), pas
+// l'heure réelle de la session loguée.
+async function _loadDailyCache(date, lat, lon, targetHour) {
   if (!sb) return null;
   var id = date + '_' + lat.toFixed(3) + '_' + lon.toFixed(3);
   try {
     var res = await sb.from('meteo_cache').select('data,status').eq('id', id).maybeSingle();
     if (res.data && res.data.data) {
       console.log('[cache] Cache NC trouvé ✅', id);
-      return Object.assign({}, res.data.data, { source: 'cache_nc' });
+      var out = Object.assign({}, res.data.data, { source: 'cache_nc' });
+      if (targetHour != null && out.hours && out.hours.length) {
+        var best = null, bestDiff = Infinity;
+        out.hours.forEach(function(row) {
+          if (row.h == null) return;
+          var diff = Math.abs(row.h - targetHour);
+          if (diff < bestDiff) { bestDiff = diff; best = row; }
+        });
+        if (best) {
+          out.hs = best.hs; out.period = best.period; out.swellDir = best.swellDir;
+          out.windKt = best.windKt; out.windDir = best.windDir;
+          console.log('[cache] Heure la plus proche de ' + targetHour + 'h → ' + best.h + 'h');
+        }
+      }
+      return out;
     }
   } catch(e) { console.warn('[cache] Erreur load:', e && e.message); }
   return null;
@@ -2005,7 +2024,7 @@ async function _autoFillConditions(targetDate) {
 
   if (_isHistory) {
     // ── Priorité 1 : cache Supabase (données meteo.nc sauvegardées) ────
-    ncData = await _loadDailyCache(targetDate, lat, lon);
+    ncData = await _loadDailyCache(targetDate, lat, lon, _getSessionHour());
 
     // ── Priorité 2 : GFS open-meteo historique (fallback, sans token) ──
     if (!ncData) {
@@ -2307,16 +2326,26 @@ function _refreshForecastStrip() {
   // Obtenir la date de la session sélectionnée
   var dateEl = document.getElementById('f-date');
   var sessionDate = dateEl ? dateEl.value : new Date().toISOString().slice(0, 10);
-  var nowH = new Date().getHours();
-  var sessionHour = nowH >= 5 && nowH <= 18 ? nowH : 7; // heure actuelle
+  // Heure de LA SESSION (tideRanges / défaut), pas l'heure actuelle de l'horloge —
+  // sinon un formulaire ouvert le soir pour une session du matin pointait sur le
+  // mauvais créneau.
+  var sessionHour = _getSessionHour();
 
   // Chercher l'index horaire correspondant à date + heure
   var times = mar.hourly.time || [];
   var targetStr = sessionDate + 'T' + String(sessionHour).padStart(2,'0') + ':00';
   var idx = times.indexOf(targetStr);
   if (idx < 0) {
-    // Fallback: prendre l'heure la plus proche du jour J
-    idx = times.findIndex(function(t) { return t && t.startsWith(sessionDate); });
+    // Fallback : heure la plus proche de sessionHour CE jour-là (pas la première
+    // heure du jour ~00h, qui n'a aucun rapport avec l'heure de session voulue).
+    var bestIdx = -1, bestDiff = Infinity;
+    times.forEach(function(t, i) {
+      if (!t || t.indexOf(sessionDate) !== 0) return;
+      var h = parseInt(t.split('T')[1], 10);
+      var diff = Math.abs(h - sessionHour);
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    });
+    idx = bestIdx;
     var stripEl = document.getElementById('forecast-strip');
     if (idx < 0) { if (stripEl) stripEl.style.display='none'; return; }
   }

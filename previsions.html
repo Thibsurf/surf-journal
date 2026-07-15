@@ -1605,7 +1605,7 @@ function nearestObs(lat,lon) {
 
 var DEFAULT_SPOTS = [
   { name:'Passe de Dumbéa',  lat:-22.35, lon:166.24, wg:'https://www.windguru.cz/208760', tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881822', marineName:'Passe de Dumbéa' },
-  { name:'Ilot Ténia',       lat:-22.01, lon:165.94, wg:'https://www.windguru.cz/6476',   tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9880324', marineName:'Ténia'           },
+  { name:'Ilot Ténia',       lat:-22.01, lon:165.94, wg:'https://www.windguru.cz/6476',   tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9880324', marineName:'Ténia', surfSpots:['Grand bac','Gros nem','Petit U'] },
   { name:'Passe de Boulari', lat:-22.50, lon:166.44, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881826', marineName:'Passe de Boulari'},
   { name:'Passe de Ouano',   lat:-21.91, lon:165.75, wg:null,                              tideId:'9881852', tideName:'Bourake', obsId:'9880904', obsName:'Bourake',       marineId:'9880323', marineName:'Passe de Ouano'  },
   { name:'Passe de Mato',    lat:-22.69, lon:166.63, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881827', marineName:'Passe de Mato'   },
@@ -1624,6 +1624,12 @@ var SPOTS = (function() {
         if (!spot.marineId) {
           var m = nearestMarine(spot.lat, spot.lon);
           if (m) { spot.marineId = m.id; spot.marineName = spot.marineName || m.name; }
+        }
+        // Migration : spots liés de Ténia (le bouton Enregistrer était cassé, donc
+        // aucun utilisateur n'a jamais pu les persister — cf. fix ss-minPwr ci-dessus)
+        if (spot.name === 'Ilot Ténia' && (!spot.surfSpots || !spot.surfSpots.length)) {
+          spot.surfSpots = ['Grand bac','Gros nem','Petit U'];
+          spot.sessionSpot = spot.surfSpots[0];
         }
         // Snap automatique : si coords très proches d'un marine point ET pas déplacé manuellement
         if (spot.marineId && !spot._posUserDefined) {
@@ -1644,8 +1650,11 @@ var SPOTS = (function() {
 
 function saveSpots() {
   try { localStorage.setItem('surf-spots-nc', JSON.stringify(SPOTS)); } catch(e) {}
-  // Sync vers Supabase pour partager les positions entre appareils
-  _pushSpotsToSupabase();
+  // Sync vers Supabase pour partager les positions entre appareils.
+  // Retourne la promesse : la plupart des appelants l'ignorent (fire-and-forget,
+  // comportement inchangé), mais le bouton "Enregistrer" peut l'attendre pour
+  // afficher un état de chargement honnête.
+  return _pushSpotsToSupabase();
 }
 
 async function _pushSpotsToSupabase() {
@@ -1767,6 +1776,7 @@ function buildSpotTabs() {
       // Appliquer la source houle préférée du spot
       var sp = SPOTS[i];
       if (sp && sp.hsSrc) { _currentHsSrc = sp.hsSrc; updateHsToggleUI(); }
+      _recenterSpotMap(i);
       loadForecast(i);
     };
     el.appendChild(btn);
@@ -2806,7 +2816,7 @@ async function loadForecast(i) {
     var ncMarine = null, ncForecast = null, ncTide = null;
     var omMarine = null, omWind = null, obsData = null;
 
-    var _pTide = ncGet('/tide?id=' + (s.tideId || '9881752'), 'tide?id=' + (s.tideId || '9881752'))
+    var _pTide = ncGet('/tide?id=' + (s.tideId || '9881852'), 'tide?id=' + (s.tideId || '9881852'))
       .catch(function(e){ console.warn('[NC tide] FAIL:', e && e.message); return null; });
     // Vent observé : station assignée + fallback auto vers la plus proche qui rapporte du vent
     var _pObs = _loadObsWind(s).catch(function(){ return { data:null, station:null, fallback:false }; });
@@ -2901,7 +2911,6 @@ async function loadForecast(i) {
     
     if (ncTide && ncTide.properties && ncTide.properties.tide) {
       _ncTideCache = ncTide; // disponible immédiatement pour _saveForecastDays (avant le Promise.all)
-      var tideBase = BASE + 'tide?id=9881752';
       var todayNC = new Date();
       var extraDays = [];
 
@@ -2913,9 +2922,12 @@ async function loadForecast(i) {
       }
       
       // ncGet (worker → fallback direct rpcache) et non ncFetch : sans token local,
-      // les jours supplémentaires arrivaient vides → courbe plate passé aujourd'hui
+      // les jours supplémentaires arrivaient vides → courbe plate passé aujourd'hui.
+      // id=9881852 (station Nouméa confirmée, cf. commentaire L1469) — pas 9881752,
+      // coquille présente ici et dans tideShift() qui pointait vers un id inexistant.
+      var _tideStationId = s.tideId || '9881852';
       Promise.all(extraDays.map(function(ds) {
-        return ncGet('/tide?id=9881752&date=' + ds, 'tide?id=9881752&date=' + ds).catch(function() {
+        return ncGet('/tide?id=' + _tideStationId + '&date=' + ds, 'tide?id=' + _tideStationId + '&date=' + ds).catch(function() {
           return null;
         });
       })).then(function(extras) {
@@ -3700,6 +3712,7 @@ function bsfSelectSpot(spotIdx, startMs) {
   loadScoreParams(SPOTS[spotIdx]);
   var sp = SPOTS[spotIdx];
   if (sp && sp.hsSrc) { _currentHsSrc = sp.hsSrc; updateHsToggleUI(); }
+  _recenterSpotMap(spotIdx);
   loadForecast(spotIdx);
   // Scroll vers l'encart principal
   var cond = document.getElementById('current-cond');
@@ -4955,6 +4968,14 @@ function _gwRenderDayNav(days) {
 function _gwSetDay(i) {
   _gwDayIdx = i;
   renderGlobalWidget();
+  // EPIC 3 : le widget et l'onglet Marée utilisent chacun leur propre index de
+  // jour — on les garde synchronisés dans les deux sens (cf. l'autre moitié
+  // dans tideShift()) pour que houle/vent/marée/soleil restent cohérents
+  // sans forcer l'init de l'onglet Marée s'il n'a jamais été ouvert.
+  if (typeof tideDayOffset !== 'undefined' && tideDayOffset !== i) {
+    tideDayOffset = i;
+    if (typeof mareeInited !== 'undefined' && mareeInited) { try { renderTideCurve(tideDayOffset); } catch(_){} }
+  }
 }
 
 // ─── Graphe d'ensemble multi-jours (façon meteo.nc : courbe vent + barres houle) ──
@@ -6343,9 +6364,22 @@ function addObsMarkersToMap(map) {
 
 // Marégraphes retirés — positions terrestres non fiables
 
+// Recentre la carte "Spots" sur le spot actif — appelé à chaque changement de
+// spot (onglets, comparateur, popup carte). Ne fait rien si l'onglet Carte n'a
+// jamais été ouvert (leafletMap pas encore créé) : initMap() se charge alors
+// de centrer correctement dès son premier init (cf. juste en dessous).
+function _recenterSpotMap(i) {
+  if (!leafletMap) return;
+  var sp = SPOTS[i];
+  if (!sp) return;
+  leafletMap.setView([sp.lat, sp.lon], leafletMap.getZoom());
+}
+
 function initMap() {
   if(leafletMap){leafletMap.remove();leafletMap=null;}
-  leafletMap=L.map('spot-map',{center:[-22.25,166.35],zoom:9});
+  var initSpot = SPOTS[currentSpot];
+  var initCenter = initSpot ? [initSpot.lat, initSpot.lon] : [-22.25,166.35];
+  leafletMap=L.map('spot-map',{center:initCenter,zoom:9});
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     {attribution:'Tiles © Esri',maxZoom:18}).addTo(leafletMap);
   L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
@@ -7174,6 +7208,7 @@ function selectSpotFromMap(i){
   currentSpot=i;
   document.querySelectorAll('.stab').forEach(function(b,j){b.classList.toggle('active',j===i);});
   saveActiveSpot();
+  _recenterSpotMap(i);
   showTab('forecast',document.querySelector('.nav-tab'));
   loadForecast(i);
 }
@@ -7725,8 +7760,6 @@ function tideShift(d){
     +String(prev.getUTCMonth()+1).padStart(2,'0')+'-'
     +String(prev.getUTCDate()).padStart(2,'0');
   var spot = SPOTS[currentSpot]||SPOTS[0];
-  var BASE = 'https://rpcache.meteo.nc/internet2018client/2.0/';
-  var tideId = spot.tideId||'9881852';
   var tsDays = [];
   for(var tdi=-2; tdi<=1; tdi++) {
     var tsD = new Date(tgt.getTime()+tdi*864e5);
@@ -7734,8 +7767,13 @@ function tideShift(d){
       +String(tsD.getUTCMonth()+1).padStart(2,'0')+'-'
       +String(tsD.getUTCDate()).padStart(2,'0'));
   }
+  // ncGet (worker → fallback direct rpcache), pas ncFetch (exige un token local) :
+  // sans token local, la navigation de jour en jour renvoyait une marée vide.
+  // id=9881852 (station Nouméa confirmée) — pas 9881752, coquille qui pointait
+  // vers un id inexistant et cassait silencieusement la marée du jour affiché.
+  var _tideStationId2 = spot.tideId || '9881852';
   Promise.all(tsDays.map(function(ds){
-    return ncFetch(BASE+'tide?id=9881752&date='+ds).catch(function(){return null;});
+    return ncGet('/tide?id='+_tideStationId2+'&date='+ds, 'tide?id='+_tideStationId2+'&date='+ds).catch(function(){return null;});
   })).then(function(res){
     var mergedHT2=[],mergedLT2=[];
     res.forEach(function(r){
@@ -7750,6 +7788,12 @@ function tideShift(d){
       _ncTideCache = null;
     }
     renderTideCurve(tideDayOffset);
+    // EPIC 3 : répercuter sur le widget (jours passés hors de sa portée → ignoré,
+    // le widget clampe lui-même sur "Aujourd'hui" dans ce cas).
+    if (tideDayOffset >= 0 && typeof _gwDayIdx !== 'undefined' && _gwDayIdx !== tideDayOffset) {
+      _gwDayIdx = tideDayOffset;
+      try { renderGlobalWidget(); } catch(_){}
+    }
   });
 }
 
@@ -9931,55 +9975,67 @@ function showSpotSettings(forceOpen) {
     showToast('Réglages réinitialisés pour '+spot.name);
   };
 
-  document.getElementById('ss-save').onclick = function() {
-    // Sauvegarder les 4 champs techniques dans le spot
-    var newTide   = document.getElementById('ss-tide').value;
-    var newObs    = document.getElementById('ss-obs').value;
-    var newMarine = document.getElementById('ss-marine').value;
-    var ncBtn = document.getElementById('ss-nc');
-    var gfsBtn = document.getElementById('ss-gfs');
-    var newHsSrc = (ncBtn && ncBtn.style.color && ncBtn.style.color.includes('3dba8a')) ? 'nc' : 'gfs';
+  document.getElementById('ss-save').onclick = async function() {
+    var btn = this;
+    var btnOrigText = btn.textContent;
+    btn.disabled = true; btn.textContent = '⏳ Enregistrement…';
+    try {
+      // Sauvegarder les 4 champs techniques dans le spot
+      var newTide   = document.getElementById('ss-tide').value;
+      var newObs    = document.getElementById('ss-obs').value;
+      var newMarine = document.getElementById('ss-marine').value;
+      var ncBtn = document.getElementById('ss-nc');
+      var gfsBtn = document.getElementById('ss-gfs');
+      var newHsSrc = (ncBtn && ncBtn.style.color && ncBtn.style.color.includes('3dba8a')) ? 'nc' : 'gfs';
 
-    // Trouver les noms correspondants
-    var portObj   = PORTS_LIST.find ? PORTS_LIST.find(function(p){return p.id===newTide;})     : null;
-    var obsObj    = OBS_LIST.find   ? OBS_LIST.find(function(o){return o.id===newObs;})         : null;
-    var marineObj = MARINE_SPOTS.find ? MARINE_SPOTS.find(function(m){return m.id===newMarine;}) : null;
+      // Trouver les noms correspondants
+      var portObj   = PORTS_LIST.find ? PORTS_LIST.find(function(p){return p.id===newTide;})     : null;
+      var obsObj    = OBS_LIST.find   ? OBS_LIST.find(function(o){return o.id===newObs;})         : null;
+      var marineObj = MARINE_SPOTS.find ? MARINE_SPOTS.find(function(m){return m.id===newMarine;}) : null;
 
-    spot.tideId    = newTide;
-    spot.tideName  = portObj   ? portObj.name   : spot.tideName;
-    spot.obsId     = newObs;
-    spot.obsName   = obsObj    ? obsObj.name    : spot.obsName;
-    spot.marineId  = newMarine || null;
-    spot.marineName= marineObj ? marineObj.name : (spot.marineName||'');
-    spot._marineManual = !!newMarine; // flagué manuellement → le dragend ne l'écrasera plus
-    spot.hsSrc     = newHsSrc;
-    var sessionHourEl = document.getElementById('ss-session-hour');
-    if (sessionHourEl) spot.sessionHour = parseInt(sessionHourEl.value) || 7;
-    var sessionSpotEl = document.getElementById('ss-session-spot');
-    if (sessionSpotEl && sessionSpotEl.value.trim()) {
-      spot.surfSpots = sessionSpotEl.value.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-      spot.sessionSpot = spot.surfSpots[0]; // compat ascendante
-      delete _spotPwrRefCache[spot.name];
+      spot.tideId    = newTide;
+      spot.tideName  = portObj   ? portObj.name   : spot.tideName;
+      spot.obsId     = newObs;
+      spot.obsName   = obsObj    ? obsObj.name    : spot.obsName;
+      spot.marineId  = newMarine || null;
+      spot.marineName= marineObj ? marineObj.name : (spot.marineName||'');
+      spot._marineManual = !!newMarine; // flagué manuellement → le dragend ne l'écrasera plus
+      spot.hsSrc     = newHsSrc;
+      var sessionHourEl = document.getElementById('ss-session-hour');
+      if (sessionHourEl) spot.sessionHour = parseInt(sessionHourEl.value) || 7;
+      var sessionSpotEl = document.getElementById('ss-session-spot');
+      if (sessionSpotEl && sessionSpotEl.value.trim()) {
+        spot.surfSpots = sessionSpotEl.value.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        spot.sessionSpot = spot.surfSpots[0]; // compat ascendante
+        delete _spotPwrRefCache[spot.name];
+      }
+
+      // Sauvegarder les params de score dans le spot — minPwr n'a pas de champ dans
+      // CETTE boîte de dialogue (il vit dans showScoreSettings()/sc-minPwr) : on
+      // préserve la valeur existante au lieu de lire un id inexistant (ss-minPwr
+      // n'a jamais existé → plantait ici et annulait tout le reste de la sauvegarde).
+      var newScore = {
+        minHs:     +document.getElementById('ss-minHs').value     || 0.4,
+        minPeriod: +document.getElementById('ss-minPeriod').value || 8,
+        minPwr:    p.minPwr != null ? p.minPwr : _DEFAULT_SCORE.minPwr,
+        windMalusKt: +document.getElementById('ss-wind').value    || 18,
+        gustMalusKt: +document.getElementById('ss-gust').value    || 25,
+        swellDirIdeal: +document.getElementById('ss-swell').value    || 120,
+        windDirIdeal:  +document.getElementById('ss-wind-dir').value || 270,
+        maxHs: p.maxHs || 4.0,
+        onshoreLimit: p.onshoreLimit || 45,
+        offshoreMin: p.offshoreMin || 135,
+      };
+      saveScoreParams(newScore);
+      await saveSpots();
+      div.remove();
+      loadForecast(currentSpot);
+      showToast('Réglages enregistrés pour '+spot.name+' ✓');
+    } catch (e) {
+      console.error('[Spot settings] Échec de sauvegarde:', e);
+      btn.disabled = false; btn.textContent = btnOrigText;
+      showToast('❌ Échec de la sauvegarde : ' + (e && e.message || 'erreur inconnue'));
     }
-
-    // Sauvegarder les params de score dans le spot
-    var newScore = {
-      minHs:     +document.getElementById('ss-minHs').value     || 0.4,
-      minPeriod: +document.getElementById('ss-minPeriod').value || 8,
-      minPwr:    +document.getElementById('ss-minPwr').value,
-      windMalusKt: +document.getElementById('ss-wind').value    || 18,
-      gustMalusKt: +document.getElementById('ss-gust').value    || 25,
-      swellDirIdeal: +document.getElementById('ss-swell').value    || 120,
-      windDirIdeal:  +document.getElementById('ss-wind-dir').value || 270,
-      maxHs: p.maxHs || 4.0,
-      onshoreLimit: p.onshoreLimit || 45,
-      offshoreMin: p.offshoreMin || 135,
-    };
-    saveScoreParams(newScore);
-    saveSpots();
-    div.remove();
-    loadForecast(currentSpot);
-    showToast('Réglages enregistrés pour '+spot.name+' ✓');
   };
 }
 
