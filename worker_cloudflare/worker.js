@@ -190,13 +190,17 @@ export default {
         return jsonOrRaw(up, cors);
       }
 
-      // ── /tide — marées (id station SHOM) ────────────────────────────────────
+      // ── /tide — marées (id station SHOM, date optionnelle YYYY-MM-DD) ───────
+      // Le param date DOIT être forwardé : sans lui, previsions.html recevait la
+      // marée d'AUJOURD'HUI pour toute demande J±N → courbe plate/estimée au-delà.
       if (url.pathname === "/tide") {
         const id = url.searchParams.get("id");
+        const date = url.searchParams.get("date");
         if (!id) return json({ error: "missing id" }, 400);
         const up = await proxyMeteo(
           env,
-          "https://rpcache.meteo.nc/internet2018client/2.0/tide?id=" + id
+          "https://rpcache.meteo.nc/internet2018client/2.0/tide?id=" + id +
+            (date ? "&date=" + encodeURIComponent(date) : "")
         );
         return jsonOrRaw(up, cors);
       }

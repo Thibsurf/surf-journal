@@ -2927,7 +2927,7 @@ async function loadForecast(i) {
       // coquille présente ici et dans tideShift() qui pointait vers un id inexistant.
       var _tideStationId = s.tideId || '9881852';
       Promise.all(extraDays.map(function(ds) {
-        return ncGet('/tide?id=' + _tideStationId + '&date=' + ds, 'tide?id=' + _tideStationId + '&date=' + ds).catch(function() {
+        return _fetchTideDay(_tideStationId, ds).catch(function() {
           return null;
         });
       })).then(function(extras) {
@@ -3006,6 +3006,41 @@ async function loadForecast(i) {
   }
 
 // Helper — extraire les lignes de prévision NC selon la structure retournée
+// Récupère la marée d'UN jour précis en VALIDANT que la réponse couvre bien ce
+// jour : les workers déployés avant le fix « forward &date » renvoyaient la marée
+// d'AUJOURD'HUI pour toute demande J±N (le param était ignoré) → on détecte la
+// réponse hors-date et on retente en direct rpcache (token local) avant d'abandonner.
+async function _fetchTideDay(tideId, ds) {
+  function covers(r) {
+    try {
+      var t = r && r.properties && r.properties.tide;
+      if (!t) return false;
+      var evs = (t.high_tide || []).concat(t.low_tide || []);
+      return evs.some(function(e) {
+        if (!e || !e.time) return false;
+        var s = String(e.time);
+        if (s.indexOf(ds) === 0) return true; // heure locale NC naïve (cas normal)
+        if (/Z$|[+-]\d{2}:\d{2}$/.test(s)) {  // fuseau explicite → date locale NC
+          var loc = new Date(new Date(s).getTime() + 11*3600000);
+          var lds = loc.getUTCFullYear()+'-'+String(loc.getUTCMonth()+1).padStart(2,'0')+'-'+String(loc.getUTCDate()).padStart(2,'0');
+          return lds === ds;
+        }
+        return false;
+      });
+    } catch(_) { return false; }
+  }
+  try {
+    var r = await ncGet('/tide?id='+tideId+'&date='+ds, 'tide?id='+tideId+'&date='+ds);
+    if (covers(r)) return r;
+    if (r) console.warn('[tide] Réponse hors-date pour '+ds+' (worker sans support &date — redéployer worker_cloudflare) → retry direct');
+  } catch(_) {}
+  try {
+    var r2 = await ncFetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id='+tideId+'&date='+ds);
+    if (covers(r2)) return r2;
+  } catch(_) {}
+  return null;
+}
+
 function _getNcRows(nc) {
   if (!nc || !nc.properties) return null;
   if (nc.properties.marine   && nc.properties.marine.length)   return nc.properties.marine;
@@ -5899,14 +5934,14 @@ function _gwRenderTideRow(d, day) {
     ctx.fillStyle = col; ctx.fillText(hLbl, lx, ly);
   });
 
-  // Badge honnête quand la journée repose sur l'estimation M2
-  if (td.estimated) {
-    ctx.font = '700 7px DM Sans,sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.strokeStyle = 'rgba(6,16,30,0.85)'; ctx.lineWidth = 3;
-    ctx.strokeText('~ estimation (cycle M2 +50 min/j)', W-4, 8);
-    ctx.fillStyle = 'rgba(232,196,74,.85)';
-    ctx.fillText('~ estimation (cycle M2 +50 min/j)', W-4, 8);
-  }
+  // Badge de source, toujours visible : données réelles SHOM/meteo.nc, ou
+  // estimation locale clairement signalée quand le chargement NC n'a pas suivi
+  ctx.font = '700 7px DM Sans,sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  var srcLbl = td.estimated ? '⚠ estimé (marées NC non chargées)' : 'SHOM · meteo.nc';
+  ctx.strokeStyle = 'rgba(6,16,30,0.85)'; ctx.lineWidth = 3;
+  ctx.strokeText(srcLbl, W-4, 8);
+  ctx.fillStyle = td.estimated ? 'rgba(232,196,74,.9)' : 'rgba(122,148,170,.75)';
+  ctx.fillText(srcLbl, W-4, 8);
 }
 
 // ─── Soleil : bande ciel en TEMPS LINÉAIRE 00h→24h (cohérente avec la marée) ──
@@ -7773,7 +7808,7 @@ function tideShift(d){
   // vers un id inexistant et cassait silencieusement la marée du jour affiché.
   var _tideStationId2 = spot.tideId || '9881852';
   Promise.all(tsDays.map(function(ds){
-    return ncGet('/tide?id='+_tideStationId2+'&date='+ds, 'tide?id='+_tideStationId2+'&date='+ds).catch(function(){return null;});
+    return _fetchTideDay(_tideStationId2, ds).catch(function(){return null;});
   })).then(function(res){
     var mergedHT2=[],mergedLT2=[];
     res.forEach(function(r){
