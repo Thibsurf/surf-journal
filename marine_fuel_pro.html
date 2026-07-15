@@ -1181,6 +1181,35 @@ function loadMemberNicknames(){
 function saveMemberNicknames(){
   if(!boat)return;
   localStorage.setItem('mnicks-'+boat.id,JSON.stringify(_memberNicknames));
+  // Partage entre appareils : pousser aussi dans boats.member_aliases (JSONB),
+  // que extractBoatAliases() sait déjà lire côté chargement. Avant ce fix, les
+  // noms/liaisons ne vivaient QUE dans le localStorage de l'appareil courant —
+  // « les comptes que j'ai liés sur un PC ne le sont plus sur l'autre ».
+  _pushNicknamesToSupabase();
+}
+async function _pushNicknamesToSupabase(){
+  if(!boat||!sb)return;
+  try{
+    // Fusionner avec l'existant en base pour ne pas écraser les surnoms posés
+    // depuis un autre appareil pour d'autres membres
+    var cur={};
+    try{
+      var r0=await sb.from('boats').select('member_aliases').eq('id',boat.id).maybeSingle();
+      if(r0&&r0.data&&r0.data.member_aliases&&typeof r0.data.member_aliases==='object')cur=r0.data.member_aliases;
+    }catch(_){/* colonne peut-être absente → l'update dira si c'est le cas */}
+    var merged=Object.assign({},cur,_memberNicknames);
+    var res=await sb.from('boats').update({member_aliases:merged}).eq('id',boat.id);
+    if(res&&res.error){
+      console.error('[membres] Sync Supabase refusée:',res.error);
+      if(typeof toast==='function')toast('⚠ Nom enregistré sur CET appareil seulement — refus serveur : '+(res.error.message||res.error.code),'err');
+      return;
+    }
+    boat.member_aliases=merged; // refléter localement (extractBoatAliases relit boat)
+    console.debug('[membres] Surnoms synchronisés sur tous les appareils ✓',merged);
+  }catch(e){
+    console.warn('[membres] Sync Supabase échouée:',e&&e.message);
+    if(typeof toast==='function')toast('⚠ Nom enregistré sur CET appareil seulement ('+(e&&e.message||'réseau')+')','err');
+  }
 }
 
 // Parse "Thib, Lucas" → ["Thib","Lucas"]
@@ -1319,9 +1348,9 @@ async function addMemberToBoat(){
   if(uuid && uuid.length === 36){
     const {error}=await sb.from('boat_members').upsert({boat_id:boat.id,user_id:uuid,role:'member'},{onConflict:'boat_id,user_id'});
     if(error&&!error.message.includes('duplicate')){toast('Erreur Supabase: '+error.message,'err');return;}
-    // Sauvegarder le surnom
+    // Sauvegarder le surnom (localStorage + sync Supabase inter-appareils)
     _memberNicknames[uuid]=name;
-    localStorage.setItem('mnicks-'+boat.id,JSON.stringify(_memberNicknames));
+    saveMemberNicknames();
     toast(name+' ajouté au bateau ✓','ok');
   } else {
     toast('UUID requis pour ajouter un vrai membre Supabase','err');
@@ -1337,8 +1366,8 @@ function renameMember(uid, currentName, btn){
   const newName=prompt('Nouveau surnom pour '+currentName+' :', currentName);
   if(!newName||!newName.trim())return;
   _memberNicknames[uid]=newName.trim();
-  localStorage.setItem('mnicks-'+boat.id,JSON.stringify(_memberNicknames));
-  loadMembers().then(()=>{ loadLogs(); toast('Surnom mis à jour ✓','ok'); });
+  saveMemberNicknames(); // localStorage + sync Supabase inter-appareils
+  loadMembers().then(()=>{ loadLogs(); toast('Surnom mis à jour ✓ (partagé sur tous les appareils)','ok'); });
 }
 
 // ── Modal info équilibre + simulateur ───────────────────────────────────────

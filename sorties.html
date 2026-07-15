@@ -1309,7 +1309,9 @@ function renderInscriptions(inscriptions, sortie) {
 async function loadMeteoForSortie(s) {
   const el = document.getElementById('meteo-' + s.id);
   if (!el) return;
-  const now = new Date(), date = new Date(s.date_start);
+  // parseLocalDate (et non new Date(str)) : cohérent avec le reste de la page,
+  // évite le glissement de jour sur l'interprétation UTC d'une date nue
+  const now = new Date(), date = parseLocalDate(s.date_start);
   const daysAhead = Math.round((date - now) / 86400000);
   if (daysAhead > 7 || daysAhead < -1) {
     el.innerHTML = '<span class="meteo-loading">📅 Prévisions disponibles ~7 jours avant</span>';
@@ -3587,15 +3589,42 @@ var _origSaveSortie = null; // sera défini après le chargement
 // ════════════════════════════════════════════════════════════════
 // Stocké dans chaque sortie : s.expenses = [{id, payer_id, payer_name, amount, label, splits:[user_id,...], created_at}]
 
+// Historique COMPLET des sorties pour l'équilibre général : loadSorties() ne
+// charge que les 60 derniers jours (affichage), ce qui tronquait silencieusement
+// les dettes plus anciennes du tricount. Chargé une fois, rafraîchi au besoin.
+var _tricountAllSorties = null;
+async function _loadAllSortiesForTricount() {
+  if (!sb) return null;
+  try {
+    var res = await sb.from('sorties').select('*').order('date_start', { ascending: false });
+    if (!res.error && res.data) { _tricountAllSorties = res.data; return res.data; }
+    if (res.error) console.warn('[tricount] Historique complet indisponible:', res.error.message);
+  } catch(e) { console.warn('[tricount] Historique complet:', e && e.message); }
+  return null;
+}
+
 function renderTricount() {
   var grid = document.getElementById('tricount-summary-grid');
   var list = document.getElementById('tricount-sorties-list');
   if (!grid || !list) return;
 
+  // Équilibre calculé sur l'HISTORIQUE COMPLET (pas seulement les 60 j affichés) ;
+  // les lignes des 60 derniers jours (allSorties) priment car ce sont les plus
+  // fraîches (mutations locales : dépenses ajoutées à l'instant, etc.)
+  var tcSorties = allSorties;
+  if (_tricountAllSorties) {
+    var _byId = {};
+    _tricountAllSorties.forEach(function(s){ _byId[s.id] = s; });
+    allSorties.forEach(function(s){ _byId[s.id] = s; });
+    tcSorties = Object.values(_byId);
+  } else if (sb) {
+    _loadAllSortiesForTricount().then(function(d){ if (d && d.length) renderTricount(); });
+  }
+
   // Construire un map uid → nom enrichi (profileCache + inscriptions)
   var nameMap = {};
   Object.keys(profileCache).forEach(function(uid) { if (profileCache[uid]) nameMap[uid] = profileCache[uid]; });
-  allSorties.forEach(function(s) {
+  tcSorties.forEach(function(s) {
     (s.inscriptions || []).forEach(function(i) {
       if (i.user_id && i.username && i.username !== 'Surfeur') nameMap[i.user_id] = i.username;
       // Invités : mapper guest_id → username
@@ -3612,7 +3641,7 @@ function renderTricount() {
     if (!balances[uid]) balances[uid] = { name: name || resolveName(uid), paid: 0, owes: 0, rembPaid: 0, rembReceived: 0 };
   }
 
-  allSorties.forEach(function(s) {
+  tcSorties.forEach(function(s) {
     var inscriptions = (s.inscriptions || []).filter(function(i) { return i.status === 'in'; });
     var ownerIds = s.boat_owners || [];
 
@@ -3640,32 +3669,46 @@ function renderTricount() {
       var amt = parseFloat(exp.amount) || 0;
       if (!payer || amt <= 0) return;
 
-      // Remboursement : offset de dette, traité séparément
+      // Remboursement : offset de dette, traité séparément.
+      // Le bénéficiaire est résolu par aliasMap comme partout ailleurs — sinon un
+      // remboursement vers un invité lié plus tard à un compte créditait
+      // l'identité invité et ne compensait jamais la vraie dette.
       if (exp.is_reimbursement) {
         ensureBalance(payer, exp.payer_name);
         balances[payer].rembPaid += amt;
         var beneficiary = exp.splits && exp.splits[0];
         if (beneficiary) {
-          ensureBalance(beneficiary);
-          balances[beneficiary].rembReceived += amt;
+          var resolvedBenef = aliasMap[String(beneficiary).toLowerCase()] || beneficiary;
+          ensureBalance(resolvedBenef);
+          balances[resolvedBenef].rembReceived += amt;
         }
         return;
       }
 
-      // Dépense partagée (égale ou personnalisée)
-      var splits = exp.splits && exp.splits.length ? exp.splits : participants.map(function(p) { return p.id; });
+      // Dépense partagée (égale ou personnalisée).
+      // Filtrer les entrées vides : les anciennes dépenses créées via addExpense/
+      // addFreeExpense mettaient `undefined` pour les invités (i.user_id inexistant)
+      // → crash undefined.toLowerCase() qui blanchissait tout l'Équilibre.
+      var splits = (exp.splits && exp.splits.length ? exp.splits : participants.map(function(p) { return p.id; }))
+        .filter(function(uid) { return uid != null && uid !== ''; });
       if (!splits.length) return;
 
       ensureBalance(payer, exp.payer_name);
       balances[payer].paid += amt;
 
-      splits.forEach(function(uid) {
+      // Parts EXACTES au centime (méthode du plus fort reste) : amt/n en flottant
+      // laissait des résidus (5000/3×3 = 5000.01) qui empêchaient la somme des
+      // balances de tomber juste à zéro.
+      var nSplit = splits.length;
+      var baseC = Math.floor((amt * 100) / nSplit);
+      var remC = Math.round(amt * 100) - baseC * nSplit;
+      splits.forEach(function(uid, si) {
         // Résoudre les guest IDs via aliasMap (ex: "guest-17..." → user_id Anne-Lou)
-        var resolvedUid = aliasMap[uid.toLowerCase()] || uid;
+        var resolvedUid = aliasMap[String(uid).toLowerCase()] || uid;
         ensureBalance(resolvedUid);
         var share = exp.custom_shares && exp.custom_shares[uid] != null
           ? exp.custom_shares[uid]
-          : amt / splits.length;
+          : (baseC + (si < remC ? 1 : 0)) / 100;
         balances[resolvedUid].owes += share;
       });
     });
@@ -3679,27 +3722,29 @@ function renderTricount() {
     return { id: uid, name: b.name, net: Math.round(net * 10) / 10 };
   }).sort(function(a, b) { return b.net - a.net; });
 
-  // Calcul des transferts optimaux (algorithme greedy)
-  var debtors   = people.filter(function(p) { return p.net < -5; }).map(function(p) { return { id: p.id, name: p.name, rem: -p.net }; });
-  var creditors = people.filter(function(p) { return p.net >  5; }).map(function(p) { return { id: p.id, name: p.name, rem:  p.net }; });
+  // Calcul des transferts optimaux (algorithme greedy) — seuil ±1 CFP, aligné
+  // sur FuelCore.computeBalances (le ±5 masquait des petits soldes non réglés)
+  var debtors   = people.filter(function(p) { return p.net < -1; }).map(function(p) { return { id: p.id, name: p.name, rem: -p.net }; });
+  var creditors = people.filter(function(p) { return p.net >  1; }).map(function(p) { return { id: p.id, name: p.name, rem:  p.net }; });
   var transfers = [];
   window._tcTransfers = []; // registre global — évite les pb de guillemets dans onclick
   var di = 0, ci = 0;
   while (di < debtors.length && ci < creditors.length) {
     var amt = Math.min(debtors[di].rem, creditors[ci].rem);
-    if (amt > 5) { var tr = { from: debtors[di].name, fromId: debtors[di].id, to: creditors[ci].name, toId: creditors[ci].id, amt: Math.round(amt) }; transfers.push(tr); window._tcTransfers.push(tr); }
+    if (amt > 1) { var tr = { from: debtors[di].name, fromId: debtors[di].id, to: creditors[ci].name, toId: creditors[ci].id, amt: Math.round(amt) }; transfers.push(tr); window._tcTransfers.push(tr); }
     debtors[di].rem -= amt; creditors[ci].rem -= amt;
-    if (debtors[di].rem < 5) di++;
-    if (creditors[ci].rem < 5) ci++;
+    if (debtors[di].rem < 1) di++;
+    if (creditors[ci].rem < 1) ci++;
   }
 
   // Global summary card — remboursements exclus des dépenses réelles
-  var totalExpenses = allSorties.reduce(function(s, sortie) {
+  // (totaux sur le même périmètre que l'équilibre : l'historique complet)
+  var totalExpenses = tcSorties.reduce(function(s, sortie) {
     return s + (sortie.expenses || []).reduce(function(a, e) {
       return a + (e.is_reimbursement ? 0 : (parseFloat(e.amount) || 0));
     }, 0);
   }, 0);
-  var totalReimb = allSorties.reduce(function(s, sortie) {
+  var totalReimb = tcSorties.reduce(function(s, sortie) {
     return s + (sortie.expenses || []).reduce(function(a, e) {
       return a + (e.is_reimbursement ? (parseFloat(e.amount) || 0) : 0);
     }, 0);
@@ -3719,7 +3764,11 @@ function renderTricount() {
     : '';
 
   grid.innerHTML = '<div class="tricount-card" style="grid-column:1/-1;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
     + '<div class="tricount-title">⚖️ Équilibre général</div>'
+    + '<span style="font-size:9px;font-weight:700;color:'+(_tricountAllSorties?'var(--ok)':'var(--warm)')+';border:1px solid '+(_tricountAllSorties?'rgba(61,186,138,.3)':'rgba(232,160,87,.3)')+';border-radius:9px;padding:2px 8px;" title="'+(_tricountAllSorties?'Toutes les sorties depuis le début sont comptées dans cet équilibre.':'Chargement de l\'historique complet en cours — équilibre provisoire sur les 60 derniers jours.')+'">'
+    + (_tricountAllSorties ? '☁ historique complet ('+tcSorties.length+' sorties)' : '⏳ 60 derniers jours…')
+    + '</span></div>'
     + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">'
     + 'Dépenses : <b style="color:var(--text);">' + totalExpenses.toLocaleString('fr') + ' CFP</b>'
     + (totalReimb > 0 ? ' <span style="color:#3dba8a;font-size:11px;margin-left:8px;">✓ ' + totalReimb.toLocaleString('fr') + ' CFP remboursés</span>' : '')
@@ -3727,8 +3776,8 @@ function renderTricount() {
     + guestBanner
     + (people.length ? people.map(function(p) {
         var isMe = currentUser && p.id === currentUser.id;
-        var col = p.net > 5 ? 'positive' : p.net < -5 ? 'negative' : 'neutral';
-        var sign = p.net > 5 ? 'À récupérer' : p.net < -5 ? 'Doit rembourser' : 'À l\'équilibre';
+        var col = p.net > 1 ? 'positive' : p.net < -1 ? 'negative' : 'neutral';
+        var sign = p.net > 1 ? 'À récupérer' : p.net < -1 ? 'Doit rembourser' : 'À l\'équilibre';
         var maxAbs = Math.max.apply(null, people.map(function(x) { return Math.abs(x.net); })) || 1;
         var isUnresolvedGuest = p.id.startsWith('guest-') && !aliasMap[p.id.toLowerCase()];
         // Extraire le prénom lisible depuis l'ID guest (ex: guest-17000-anne-lou → Anne-Lou)
@@ -4174,7 +4223,9 @@ async function addExpenseFromDialog(sortieId) {
 
   var expenses = (s.expenses || []).concat([expense]);
   try {
-    await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Dépense NON enregistrée : ' + res.error.message, 'err'); return; }
+    _tricountAllSorties = null;
     document.getElementById('quick-expense-dialog')?.remove();
     toast(amt.toLocaleString('fr') + ' CFP ajouté ✓', 'ok');
     await loadSorties();
@@ -4209,7 +4260,10 @@ async function addFreeExpense() {
     payer_name: (currentProfile && currentProfile.username) || 'Surfeur',
     amount: amt,
     label: lbl,
-    splits: (target.inscriptions || []).filter(function(i) { return i.status === 'in'; }).map(function(i) { return i.user_id; }),
+    // user_id OU guest_id : les invités n'ont pas de user_id — l'ancien mapping
+    // produisait des `undefined` dans splits (part perdue + crash de l'Équilibre)
+    splits: (target.inscriptions || []).filter(function(i) { return i.status === 'in'; })
+      .map(function(i) { return i.is_guest ? i.guest_id : i.user_id; }).filter(Boolean),
     is_free: true,
     created_at: new Date().toISOString()
   };
@@ -4217,7 +4271,9 @@ async function addFreeExpense() {
 
   var expenses = (target.expenses || []).concat([expense]);
   try {
-    await sb.from('sorties').update({ expenses: expenses }).eq('id', target.id);
+    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', target.id);
+    if (res && res.error) { toast('❌ Dépense NON enregistrée : ' + res.error.message, 'err'); return; }
+    _tricountAllSorties = null; // forcer le rechargement de l'historique complet
     toast(amt.toLocaleString('fr') + ' CFP enregistré ✓', 'ok');
     document.getElementById('tc-free-label').value = '';
     document.getElementById('tc-free-amount').value = '';
@@ -4252,12 +4308,16 @@ async function addExpense(sortieId) {
     payer_name: (currentProfile && currentProfile.username) || 'Surfeur',
     amount: amt,
     label: lbl,
-    splits: inscriptions.map(function(i) { return i.user_id; }),
+    // user_id OU guest_id — les invités produisaient des `undefined` dans splits
+    splits: inscriptions.map(function(i) { return i.is_guest ? i.guest_id : i.user_id; }).filter(Boolean),
     created_at: new Date().toISOString()
   };
+  if (!expense.splits.length) expense.splits = [currentUser.id];
   var expenses = (s.expenses || []).concat([expense]);
   try {
-    await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Dépense NON enregistrée : ' + res.error.message, 'err'); return; }
+    _tricountAllSorties = null;
     toast(amt.toLocaleString('fr') + ' CFP ajouté ✓', 'ok');
     label.value = ''; amount.value = '';
     await loadSorties();
@@ -4272,7 +4332,9 @@ async function deleteExpense(sortieId, idx) {
   var expenses = (s.expenses || []).slice();
   expenses.splice(idx, 1);
   try {
-    await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Suppression refusée : ' + res.error.message, 'err'); return; }
+    _tricountAllSorties = null;
     await loadSorties();
     renderTricount();
     toast('Dépense supprimée', 'ok');
@@ -4298,8 +4360,11 @@ function openAliasManager() {
   var div = document.createElement('div');
   div.id = 'alias-manager';
   div.style.cssText = 'margin-top:10px;padding:12px;background:rgba(79,163,199,.05);border:1px solid rgba(79,163,199,.2);border-radius:10px;';
-  div.innerHTML = '<div style="font-size:11px;font-weight:700;color:#4fa3c7;margin-bottom:10px;">🔗 Relier un nom à un compte</div>'
-    + '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Utile quand une dépense a été saisie avec un prénom (ex: "Thib") avant la création du compte.</div>'
+  div.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">'
+    + '<div style="font-size:11px;font-weight:700;color:#4fa3c7;">🔗 Relier un nom à un compte</div>'
+    + '<span style="font-size:9px;font-weight:700;color:var(--ok);background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.3);border-radius:9px;padding:2px 8px;white-space:nowrap;" title="Les liaisons sont enregistrées dans le cloud (table aliases) et valent pour tous tes appareils. En cas de refus serveur, un message d\'erreur explicite s\'affiche.">☁ partagé entre appareils</span>'
+    + '</div>'
+    + '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Utile quand une dépense a été saisie avec un prénom (ex: "Thib") avant la création du compte. Une liaison faite ici vaut <b>une bonne fois pour toutes</b>, sur PC comme sur téléphone.</div>'
     + '<div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center;margin-bottom:10px;">'
     + '<input id="al-text" placeholder=\'Nom saisi (ex: "Thib")\' style="background:var(--mid);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;min-width:0;">'
     + '<span style="color:var(--ok);font-weight:700;font-size:13px;text-align:center;">→</span>'
@@ -4327,11 +4392,20 @@ async function addAlias() {
   var uid  = document.getElementById('al-uid')?.value;
   if (!text || !uid) { toast('Remplis les deux champs', 'err'); return; }
   try {
-    await sb.from('aliases').upsert({ alias_text: text, user_id: uid, created_by: currentUser.id }, { onConflict: 'alias_text' });
+    // supabase-js ne LÈVE PAS d'exception sur un refus RLS/contrainte — il résout
+    // avec { error }. Sans ce contrôle, la liaison semblait enregistrée (toast ✓,
+    // localStorage local) mais n'atteignait JAMAIS le cloud → « les comptes liés
+    // sur un PC ne le sont plus sur l'autre ».
+    var res = await sb.from('aliases').upsert({ alias_text: text, user_id: uid, created_by: currentUser.id }, { onConflict: 'alias_text' });
+    if (res && res.error) {
+      console.error('[alias] Refus Supabase:', res.error);
+      toast('❌ Liaison NON partagée (refus serveur : ' + (res.error.message || res.error.code) + '). Elle ne serait visible que sur cet appareil — corrige les droits de la table aliases.', 'err');
+      return;
+    }
     aliasMap[text.toLowerCase()] = uid;
-    // Sauvegarder dans localStorage pour persistance cross-session même sans Supabase
+    // Cache local pour démarrage rapide (la source de vérité reste Supabase)
     try { localStorage.setItem('surf-aliases', JSON.stringify(aliasMap)); } catch(e) {}
-    toast('Alias ajouté : "'+text+'" → '+( profileCache[uid]||uid.slice(0,8)), 'ok');
+    toast('🔗 Liaison partagée sur tous les appareils : "'+text+'" → '+( profileCache[uid]||uid.slice(0,8)), 'ok');
     openAliasManager(); openAliasManager(); // ferme puis rouvre pour rafraîchir
     renderTricount();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -4340,9 +4414,15 @@ async function addAlias() {
 async function deleteAlias(aliasText) {
   if (!confirm('Supprimer l\'alias "'+aliasText+'" ?')) return;
   try {
-    await sb.from('aliases').delete().eq('alias_text', aliasText);
+    var res = await sb.from('aliases').delete().eq('alias_text', aliasText);
+    if (res && res.error) {
+      console.error('[alias] Refus Supabase:', res.error);
+      toast('❌ Suppression refusée par le serveur : ' + (res.error.message || res.error.code), 'err');
+      return;
+    }
     delete aliasMap[aliasText.toLowerCase()];
-    toast('Alias supprimé', 'ok');
+    try { localStorage.setItem('surf-aliases', JSON.stringify(aliasMap)); } catch(e) {}
+    toast('Alias supprimé (sur tous les appareils)', 'ok');
     openAliasManager(); openAliasManager();
     renderTricount();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -4447,7 +4527,9 @@ async function _recordReimbursement(fromId, fromName, toId, toName, amt) {
   };
   var expenses = (target.expenses || []).concat([expense]);
   try {
-    await sb.from('sorties').update({ expenses: expenses }).eq('id', target.id);
+    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', target.id);
+    if (res && res.error) { toast('❌ Remboursement NON enregistré : ' + res.error.message, 'err'); return; }
+    _tricountAllSorties = null;
     toast('Remboursement enregistré ✓', 'ok');
     await loadSorties();
     renderTricount();
