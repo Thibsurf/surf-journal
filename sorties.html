@@ -378,14 +378,36 @@ nav a.back:hover{color:var(--text);}
 .tricount-card{background:var(--deep);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
 .tricount-title{font-family:var(--font-d);font-size:1rem;font-weight:600;color:var(--text);margin-bottom:12px;
   display:flex;align-items:center;gap:8px;}
-.tricount-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;
+.tricount-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;
   border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;}
 .tricount-row:last-child{border-bottom:none;}
 .tricount-name{font-weight:600;color:var(--text);}
-.tricount-amount{font-weight:700;font-size:14px;}
+.tricount-amount{font-weight:800;font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .tricount-amount.positive{color:var(--ok);}
 .tricount-amount.negative{color:var(--bad);}
 .tricount-amount.neutral{color:var(--text-muted);}
+/* Avatar-initiale coloré : identification en un coup d'œil (vert = on lui doit,
+   rouge = il doit, gris = à l'équilibre) */
+.tc-avatar{flex-shrink:0;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-weight:800;font-size:13px;border:2px solid transparent;}
+.tc-avatar.positive{background:rgba(61,186,138,.15);color:var(--ok);border-color:rgba(61,186,138,.35);}
+.tc-avatar.negative{background:rgba(224,92,92,.15);color:var(--bad);border-color:rgba(224,92,92,.35);}
+.tc-avatar.neutral{background:rgba(255,255,255,.06);color:var(--text-muted);border-color:var(--border);}
+.tc-status{font-size:9.5px;font-weight:600;letter-spacing:.02em;}
+.tc-status.positive{color:var(--ok);}
+.tc-status.negative{color:var(--bad);}
+.tc-status.neutral{color:var(--text-faint);}
+/* Carte de virement « pour solder » : la ligne d'action la plus importante de la
+   page — grosse, contrastée, bouton évident */
+.tc-transfer{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 12px;border-radius:10px;margin-bottom:6px;background:rgba(255,255,255,.03);
+  border:1px solid var(--border);}
+.tc-transfer.mine{background:rgba(232,160,87,.09);border-color:rgba(232,160,87,.35);}
+.tc-transfer-who{font-size:13px;line-height:1.4;min-width:0;}
+.tc-transfer-amt{font-weight:800;font-size:16px;color:var(--warm);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.tc-paid-btn{background:rgba(61,186,138,.15);border:1px solid rgba(61,186,138,.4);color:#3dba8a;
+  border-radius:8px;font-size:11px;padding:6px 12px;cursor:pointer;font-weight:700;white-space:nowrap;}
+.tc-paid-btn:hover{background:rgba(61,186,138,.28);}
 .tricount-expense-row{display:flex;gap:8px;align-items:center;padding:5px 0;font-size:11px;
   border-bottom:1px solid rgba(255,255,255,.03);}
 .tricount-expense-row:last-child{border-bottom:none;}
@@ -521,18 +543,32 @@ nav a.back:hover{color:var(--text);}
     <!-- Section tricount -->
     <div id="tricount-section" style="display:none;">
 
-      <!-- Tuto -->
+      <!-- Tuto : 3 étapes scannables (le cerveau retient 3 choses, pas 7) -->
       <div style="background:rgba(123,108,246,.07);border:1px solid rgba(123,108,246,.2);border-radius:12px;padding:14px 16px;margin-bottom:16px;">
-        <div style="font-weight:700;color:#a99ff8;margin-bottom:6px;font-size:13px;">⚖️ Comment ça marche ?</div>
-        <div style="font-size:11px;color:var(--text-muted);line-height:1.8;">
-          <b>💰 Dépense</b> sur chaque carte → ajoute une dépense (essence, repas, matériel…) partagée entre les inscrits.<br>
-          <b>👤+</b> → ajoute un participant sans compte (par prénom) pour inclure quelqu'un dans les dépenses.<br>
-          <b>➕ Dépense hors sortie</b> ci-dessous → pour un frais non lié à une sortie précise.<br>
-          <b>⚖️ Bilan</b> → solde de chaque personne + virements minimaux pour tout solder.<br>
-          <b>✓ Payé</b> sur un transfert → enregistre qu'un remboursement a eu lieu, le solde se met à jour.<br>
-          <b>💸 Remboursement A→B</b> → enregistre manuellement un paiement entre deux personnes quelconques.<br>
-          <b>🔗 Alias de noms</b> → relie un prénom saisi manuellement (ex: "Thib") à un compte, pour que les anciennes dépenses soient comptées correctement.
+        <div style="font-weight:700;color:#a99ff8;margin-bottom:10px;font-size:13px;">⚖️ Le principe en 3 étapes</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+          <div style="display:flex;gap:9px;align-items:flex-start;">
+            <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(123,108,246,.25);color:#c9c2fb;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;">1</span>
+            <div style="font-size:11.5px;color:var(--text);line-height:1.5;"><b>Quelqu'un paie ?</b><br><span style="color:var(--text-muted);">Bouton <b>💰 Dépense</b> sur la sortie — c'est partagé entre les inscrits.</span></div>
+          </div>
+          <div style="display:flex;gap:9px;align-items:flex-start;">
+            <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(123,108,246,.25);color:#c9c2fb;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;">2</span>
+            <div style="font-size:11.5px;color:var(--text);line-height:1.5;"><b>L'app calcule tout</b><br><span style="color:var(--text-muted);">L'Équilibre ci-dessous dit qui doit combien à qui — le minimum de virements.</span></div>
+          </div>
+          <div style="display:flex;gap:9px;align-items:flex-start;">
+            <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(61,186,138,.25);color:#7fd7b5;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;">3</span>
+            <div style="font-size:11.5px;color:var(--text);line-height:1.5;"><b>Tu rembourses en vrai</b><br><span style="color:var(--text-muted);">puis clique <b style="color:#3dba8a;">✓ Payé</b> sur le virement — le solde se met à jour pour tous.</span></div>
+          </div>
         </div>
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer;font-size:10.5px;color:var(--text-faint);list-style:none;">▸ Cas particuliers (invités, dépense hors sortie, liaisons de comptes…)</summary>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.8;margin-top:6px;">
+            <b>👤+</b> → ajoute un participant sans compte (par prénom) pour l'inclure dans les partages.<br>
+            <b>➕ Dépense hors sortie</b> ci-dessous → pour un frais non lié à une sortie précise.<br>
+            <b>💸 Remboursement A→B</b> → enregistre un paiement direct entre deux personnes quelconques.<br>
+            <b>🔗 Relier un nom à un compte</b> → un prénom saisi à la main (ex : « Thib ») compte comme le vrai compte, partout, définitivement.
+          </div>
+        </details>
       </div>
 
       <!-- Bilan global + transferts -->
@@ -597,12 +633,28 @@ nav a.back:hover{color:var(--text);}
     </div>
     <div id="login-error" style="display:none;background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.3);
       color:var(--bad);font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;"></div>
+    <div id="login-info" style="display:none;background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.3);
+      color:var(--ok);font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;line-height:1.5;"></div>
     <div style="display:flex;gap:10px;">
       <button class="btn" onclick="doLoginSorties()" id="login-btn" style="flex:1;">Se connecter</button>
       <button class="btn btn-ghost" onclick="closeModal('modal-login')">Annuler</button>
     </div>
-    <div style="text-align:center;margin-top:14px;font-size:11px;color:var(--text-faint);">
-      Pas encore de compte ? 
+    <div style="display:flex;align-items:center;gap:8px;margin:14px 0 10px;">
+      <div style="flex:1;height:1px;background:var(--border);"></div>
+      <span style="font-size:10px;color:var(--text-faint);">ou sans mot de passe</span>
+      <div style="flex:1;height:1px;background:var(--border);"></div>
+    </div>
+    <button class="btn btn-ghost" onclick="sendMagicLink()" id="magic-btn"
+      style="width:100%;border-color:rgba(79,163,199,.4);color:var(--accent);font-weight:600;">
+      ✉️ Recevoir un lien magique par email
+    </button>
+    <div style="font-size:10px;color:var(--text-faint);margin-top:6px;line-height:1.5;text-align:center;">
+      Saisis juste ton email ci-dessus → tu reçois un lien → tu cliques, tu es connecté.<br>
+      Marche aussi si tu n'as pas encore de compte. <b>Ouvre le lien sur CET appareil.</b>
+    </div>
+    <div style="text-align:center;margin-top:12px;font-size:11px;">
+      <a href="javascript:sendPasswordReset()" style="color:var(--warm);">Mot de passe oublié ?</a>
+      <span style="color:var(--text-faint);margin:0 6px;">·</span>
       <a href="https://thibsurf.github.io/surf-journal/" style="color:var(--accent);">Créer un compte →</a>
     </div>
   </div>
@@ -968,14 +1020,18 @@ nav a.back:hover{color:var(--text);}
 const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
 
-// Auth persistante — même storageKey que index.html pour partager la session
+// Auth persistante — même storageKey que index.html pour partager la session.
+// detectSessionInUrl: true est INDISPENSABLE pour les liens magiques et la
+// récupération de mot de passe : le lien reçu par email ramène ici avec un
+// token dans l'URL — à false, il était silencieusement ignoré (d'où les
+// « je n'arrive pas à me connecter »).
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
     persistSession: true,
     storageKey: 'surf-nc-auth',
     storage: window.localStorage,
     autoRefreshToken: true,
-    detectSessionInUrl: false
+    detectSessionInUrl: true
   }
 });
 
@@ -3144,6 +3200,109 @@ function openLoginModal() {
   setTimeout(function() { document.getElementById('login-email').focus(); }, 100);
 }
 
+// Traduction FR des erreurs Supabase Auth les plus fréquentes — les copains
+// abandonnaient sur des messages anglais cryptiques.
+function _frAuthError(e) {
+  var m = (e && e.message) || '';
+  if (/invalid login credentials/i.test(m)) return 'Email ou mot de passe incorrect. Essaie « Mot de passe oublié ? » ou le lien magique ci-dessous.';
+  if (/email not confirmed/i.test(m)) return 'Email pas encore confirmé — clique le lien reçu à l\'inscription (regarde les spams), ou utilise le lien magique.';
+  if (/rate limit|too many/i.test(m)) return 'Trop de tentatives — attends une minute puis réessaie.';
+  if (/user not found/i.test(m)) return 'Aucun compte avec cet email. Utilise le lien magique : il crée le compte automatiquement.';
+  if (/network|fetch/i.test(m)) return 'Problème réseau — vérifie ta connexion et réessaie.';
+  return m || 'Erreur de connexion';
+}
+
+// ── Lien magique : connexion sans mot de passe (crée le compte si besoin) ──
+async function sendMagicLink() {
+  var email = (document.getElementById('login-email')?.value || '').trim();
+  var errEl = document.getElementById('login-error');
+  var infoEl = document.getElementById('login-info');
+  errEl.style.display = 'none'; infoEl.style.display = 'none';
+  if (!email || email.indexOf('@') < 1) {
+    errEl.textContent = 'Saisis d\'abord ton email dans le champ ci-dessus.';
+    errEl.style.display = 'block';
+    return;
+  }
+  var btn = document.getElementById('magic-btn');
+  btn.disabled = true; btn.textContent = '⏳ Envoi…';
+  try {
+    var res = await sb.auth.signInWithOtp({
+      email: email,
+      options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true }
+    });
+    if (res.error) throw res.error;
+    infoEl.innerHTML = '📬 <b>Email envoyé à ' + email + '</b><br>'
+      + 'Ouvre-le <b>sur cet appareil</b> et clique le lien : tu seras connecté automatiquement.'
+      + '<br><span style="opacity:.8">Rien reçu au bout d\'une minute ? Regarde les <b>spams</b>.</span>';
+    infoEl.style.display = 'block';
+  } catch(e) {
+    errEl.textContent = _frAuthError(e);
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = '✉️ Recevoir un lien magique par email';
+  }
+}
+
+// ── Mot de passe oublié : email de réinitialisation ──
+async function sendPasswordReset() {
+  var email = (document.getElementById('login-email')?.value || '').trim();
+  var errEl = document.getElementById('login-error');
+  var infoEl = document.getElementById('login-info');
+  errEl.style.display = 'none'; infoEl.style.display = 'none';
+  if (!email || email.indexOf('@') < 1) {
+    errEl.textContent = 'Saisis d\'abord ton email dans le champ ci-dessus, puis reclique « Mot de passe oublié ? ».';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    var res = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (res.error) throw res.error;
+    infoEl.innerHTML = '📬 <b>Email de réinitialisation envoyé à ' + email + '</b><br>'
+      + 'Clique le lien <b>sur cet appareil</b> : la page te demandera ton nouveau mot de passe.'
+      + '<br><span style="opacity:.8">Pense aux <b>spams</b> si rien au bout d\'une minute.</span>';
+    infoEl.style.display = 'block';
+  } catch(e) {
+    errEl.textContent = _frAuthError(e);
+    errEl.style.display = 'block';
+  }
+}
+
+// ── Retour de lien magique / récupération : hydrater la session détectée ──
+// (detectSessionInUrl:true fait le gros du travail ; ici on branche l'UI)
+sb.auth.onAuthStateChange(function(event, session) {
+  if (event === 'PASSWORD_RECOVERY') {
+    // Arrivée via le lien « mot de passe oublié »
+    setTimeout(async function() {
+      var np = prompt('🔑 Choisis ton nouveau mot de passe (6 caractères minimum) :');
+      if (!np || np.length < 6) { toast('Mot de passe trop court — réessaie via « Mot de passe oublié ? »', 'err'); return; }
+      var res = await sb.auth.updateUser({ password: np });
+      if (res.error) { toast('❌ ' + _frAuthError(res.error), 'err'); return; }
+      toast('✓ Nouveau mot de passe enregistré — tu es connecté', 'ok');
+    }, 300);
+  }
+  if (event === 'SIGNED_IN' && session && session.user && !currentUser && !window._pwLoginInFlight) {
+    // Connexion via lien magique (ou session restaurée) → même hydratation que doLoginSorties
+    currentUser = session.user;
+    (async function() {
+      try {
+        var { data: p } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+        currentProfile = p || { username: session.user.email.split('@')[0] };
+      } catch(e) { currentProfile = { username: session.user.email.split('@')[0] }; }
+      updateNavUser();
+      var gate = document.getElementById('auth-gate');
+      if (gate) gate.style.display = 'none';
+      closeModal('modal-login');
+      await Promise.all([loadProfiles(), loadAliases()]);
+      await loadSorties();
+      // Nettoyer le token de l'URL (esthétique + évite un re-traitement au refresh)
+      if (location.hash && /access_token|type=/.test(location.hash)) {
+        try { history.replaceState(null, '', location.pathname + location.search); } catch(e) {}
+      }
+      toast('Connecté en tant que ' + (currentProfile.username || session.user.email), 'ok');
+    })();
+  }
+});
+
 async function doLoginSorties() {
   var email = document.getElementById('login-email').value.trim();
   var pass  = document.getElementById('login-pass').value;
@@ -3152,6 +3311,7 @@ async function doLoginSorties() {
   var btn   = document.getElementById('login-btn');
   errEl.style.display = 'none';
   btn.disabled = true; btn.textContent = '⏳ Connexion…';
+  window._pwLoginInFlight = true; // évite la double hydratation via onAuthStateChange
 
   try {
     var { data, error } = await sb.auth.signInWithPassword({ email: email, password: pass });
@@ -3174,9 +3334,11 @@ async function doLoginSorties() {
     await loadSorties();
     toast('Connecté en tant que ' + (currentProfile.username || email), 'ok');
   } catch(e) {
-    errEl.textContent = e.message || 'Erreur de connexion';
+    errEl.textContent = _frAuthError(e);
     errEl.style.display = 'block';
     btn.disabled = false; btn.textContent = 'Se connecter';
+  } finally {
+    window._pwLoginInFlight = false;
   }
 }
 
@@ -3589,9 +3751,18 @@ var _origSaveSortie = null; // sera défini après le chargement
 // ════════════════════════════════════════════════════════════════
 // Stocké dans chaque sortie : s.expenses = [{id, payer_id, payer_name, amount, label, splits:[user_id,...], created_at}]
 
+// ── REMISE À ZÉRO DU COMPTEUR ────────────────────────────────────────────────
+// Les sorties antérieures à cette date ne comptent PLUS dans l'équilibre
+// (soldes considérés réglés hors app). Décision du 15/07/2026 : repartir de la
+// sortie îlot du week-end. Pour une prochaine remise à zéro, changer juste
+// cette date (partagée par tous les appareils puisque livrée avec la page).
+var TRICOUNT_EPOCH = '2026-07-10';
+
 // Historique COMPLET des sorties pour l'équilibre général : loadSorties() ne
 // charge que les 60 derniers jours (affichage), ce qui tronquait silencieusement
 // les dettes plus anciennes du tricount. Chargé une fois, rafraîchi au besoin.
+// (Toujours utile malgré TRICOUNT_EPOCH : si un futur reset remonte plus loin
+// que 60 jours, l'équilibre reste juste.)
 var _tricountAllSorties = null;
 async function _loadAllSortiesForTricount() {
   if (!sb) return null;
@@ -3620,6 +3791,8 @@ function renderTricount() {
   } else if (sb) {
     _loadAllSortiesForTricount().then(function(d){ if (d && d.length) renderTricount(); });
   }
+  // Remise à zéro : seules les sorties depuis TRICOUNT_EPOCH comptent
+  tcSorties = tcSorties.filter(function(s){ return (s.date_start || '') >= TRICOUNT_EPOCH; });
 
   // Construire un map uid → nom enrichi (profileCache + inscriptions)
   var nameMap = {};
@@ -3766,8 +3939,8 @@ function renderTricount() {
   grid.innerHTML = '<div class="tricount-card" style="grid-column:1/-1;">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
     + '<div class="tricount-title">⚖️ Équilibre général</div>'
-    + '<span style="font-size:9px;font-weight:700;color:'+(_tricountAllSorties?'var(--ok)':'var(--warm)')+';border:1px solid '+(_tricountAllSorties?'rgba(61,186,138,.3)':'rgba(232,160,87,.3)')+';border-radius:9px;padding:2px 8px;" title="'+(_tricountAllSorties?'Toutes les sorties depuis le début sont comptées dans cet équilibre.':'Chargement de l\'historique complet en cours — équilibre provisoire sur les 60 derniers jours.')+'">'
-    + (_tricountAllSorties ? '☁ historique complet ('+tcSorties.length+' sorties)' : '⏳ 60 derniers jours…')
+    + '<span style="font-size:9px;font-weight:700;color:var(--ok);border:1px solid rgba(61,186,138,.3);border-radius:9px;padding:2px 8px;" title="Compteur remis à zéro le '+TRICOUNT_EPOCH.split('-').reverse().join('/')+' (les soldes antérieurs sont considérés réglés). Depuis, toutes les sorties comptent, sur tous les appareils.">'
+    + '🔄 depuis le '+TRICOUNT_EPOCH.split('-').reverse().join('/')+' · '+tcSorties.length+' sortie'+(tcSorties.length>1?'s':'')
     + '</span></div>'
     + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">'
     + 'Dépenses : <b style="color:var(--text);">' + totalExpenses.toLocaleString('fr') + ' CFP</b>'
@@ -3777,56 +3950,65 @@ function renderTricount() {
     + (people.length ? people.map(function(p) {
         var isMe = currentUser && p.id === currentUser.id;
         var col = p.net > 1 ? 'positive' : p.net < -1 ? 'negative' : 'neutral';
-        var sign = p.net > 1 ? 'À récupérer' : p.net < -1 ? 'Doit rembourser' : 'À l\'équilibre';
+        var sign = p.net > 1 ? 'on lui doit' : p.net < -1 ? 'doit rembourser' : 'à l\'équilibre ✓';
         var maxAbs = Math.max.apply(null, people.map(function(x) { return Math.abs(x.net); })) || 1;
         var isUnresolvedGuest = p.id.startsWith('guest-') && !aliasMap[p.id.toLowerCase()];
         // Extraire le prénom lisible depuis l'ID guest (ex: guest-17000-anne-lou → Anne-Lou)
         var guestDisplayName = isUnresolvedGuest
           ? p.name.startsWith('guest-') ? p.id.replace(/^guest-\d+-/,'').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}) : p.name
           : p.name;
+        var initial = (guestDisplayName || '?').trim()[0] ? (guestDisplayName || '?').trim()[0].toUpperCase() : '?';
         return '<div class="tricount-row">'
-          + '<span class="tricount-name">'
-          + (isMe ? '⭐ ' : '')
-          + escapeHtml(isUnresolvedGuest ? '👤 ' + guestDisplayName : guestDisplayName)
+          + '<div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">'
+          + '<span class="tc-avatar ' + col + '">' + (isUnresolvedGuest ? '👤' : escapeHtml(initial)) + '</span>'
+          + '<div style="min-width:0;">'
+          + '<div class="tricount-name" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">'
+          + escapeHtml(guestDisplayName) + (isMe ? ' <span style="font-size:9px;color:var(--warm);font-weight:700;">(toi)</span>' : '')
           + (isUnresolvedGuest && currentUser
-            ? ' <button onclick="openAliasManagerForGuest(\'' + p.id + '\')" title="Lier définitivement à un compte" style="background:rgba(232,160,87,.15);border:1px solid rgba(232,160,87,.3);color:#e8a057;border-radius:5px;font-size:9px;padding:1px 6px;cursor:pointer;margin-left:4px;">🔗 Lier</button>'
+            ? ' <button onclick="openAliasManagerForGuest(\'' + p.id + '\')" title="Lier définitivement à un compte" style="background:rgba(232,160,87,.15);border:1px solid rgba(232,160,87,.3);color:#e8a057;border-radius:5px;font-size:9px;padding:1px 6px;cursor:pointer;">🔗 Lier</button>'
             : '')
-          + '</span>'
-          + '<div style="flex:1;margin:0 14px;">'
-          + '<div class="tc-balance-bar"><div class="tc-balance-fill" style="width:'
+          + '</div>'
+          + '<div class="tc-status ' + col + '">' + sign + '</div>'
+          + '<div class="tc-balance-bar" style="max-width:130px;margin-top:3px;"><div class="tc-balance-fill" style="width:'
           + Math.round(Math.abs(p.net)/maxAbs*100) + '%;background:'
           + (col === 'positive' ? 'var(--ok)' : col === 'negative' ? 'var(--bad)' : 'var(--text-faint)') + ';"></div></div>'
-          + '<div style="font-size:9px;color:var(--text-faint);">' + sign + '</div>'
           + '</div>'
-          + '<span class="tricount-amount ' + col + '">' + (p.net > 0 ? '+' : '') + p.net.toLocaleString('fr') + ' CFP</span>'
+          + '</div>'
+          + '<span class="tricount-amount ' + col + '">' + (p.net > 0 ? '+' : '') + Math.round(p.net).toLocaleString('fr') + '<span style="font-size:10px;font-weight:600;opacity:.7;"> CFP</span></span>'
           + '</div>';
       }).join('')
-      : '<div style="font-size:12px;color:var(--text-faint);font-style:italic;">Aucune dépense enregistrée</div>')
-    // Transferts optimaux pour solder les dettes
+      : '<div style="font-size:12px;color:var(--text-faint);font-style:italic;">Aucune dépense enregistrée depuis la remise à zéro</div>')
+    // Virements minimaux pour tout solder — l'action n°1 de la page
     + (transfers.length ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
-        + '<div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">💸 Pour solder les comptes</div>'
+        + '<div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">💸 Pour tout solder — ' + transfers.length + ' virement' + (transfers.length>1?'s':'') + ' suffi' + (transfers.length>1?'sent':'t') + '</div>'
         + transfers.map(function(t, idx) {
-            var isMe = currentUser && (t.fromId === currentUser.id || t.toId === currentUser.id);
-            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:8px;margin-bottom:4px;background:'
-              + (isMe ? 'rgba(248,163,0,.08)' : 'rgba(255,255,255,.03)') + ';border:1px solid '
-              + (isMe ? 'rgba(248,163,0,.25)' : 'var(--border)') + ';">'
-              + '<span style="font-size:12px;">'
-              + (t.fromId === (currentUser && currentUser.id) ? '⭐ <b>Toi</b>' : escapeHtml(t.from))
-              + ' → ' + (t.toId === (currentUser && currentUser.id) ? '<b>Toi</b> ⭐' : escapeHtml(t.to))
+            var meFrom = t.fromId === (currentUser && currentUser.id);
+            var meTo   = t.toId   === (currentUser && currentUser.id);
+            var isMe = meFrom || meTo;
+            return '<div class="tc-transfer' + (isMe ? ' mine' : '') + '">'
+              + '<span class="tc-transfer-who">'
+              + (meFrom ? '<b style="color:var(--warm);">Toi</b>' : '<b>' + escapeHtml(t.from) + '</b>')
+              + ' <span style="color:var(--text-faint);">rembourse</span> '
+              + (meTo ? '<b style="color:var(--warm);">toi</b>' : '<b>' + escapeHtml(t.to) + '</b>')
+              + (meFrom ? '<div style="font-size:9.5px;color:var(--warm);font-weight:600;">👆 c\'est à toi de payer</div>' : '')
+              + (meTo ? '<div style="font-size:9.5px;color:var(--ok);font-weight:600;">💰 tu vas recevoir</div>' : '')
               + '</span>'
-              + '<div style="display:flex;align-items:center;gap:8px;">'
-              + '<b style="color:var(--warm);font-size:13px;">' + t.amt.toLocaleString('fr') + ' CFP</b>'
-              + (currentUser ? '<button onclick="markReimbursed(' + idx + ')" style="background:rgba(61,186,138,.15);border:1px solid rgba(61,186,138,.3);color:#3dba8a;border-radius:6px;font-size:10px;padding:3px 8px;cursor:pointer;font-weight:600;">✓ Payé</button>' : '')
+              + '<div style="display:flex;align-items:center;gap:10px;">'
+              + '<span class="tc-transfer-amt">' + t.amt.toLocaleString('fr') + '<span style="font-size:10px;font-weight:600;opacity:.7;"> CFP</span></span>'
+              + (currentUser ? '<button class="tc-paid-btn" onclick="markReimbursed(' + idx + ')" title="À cliquer UNE FOIS le remboursement réellement fait (virement, espèces…)">✓ Payé</button>' : '')
               + '</div>'
               + '</div>';
           }).join('')
-        + '</div>' : '')
+        + '</div>'
+      : (people.length ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ok);font-weight:600;">✓ Tout le monde est à l\'équilibre — rien à rembourser</div>' : ''))
     + '</div>';
 
   // Liste par sortie — à venir + passées récentes avec dépenses
+  // (même périmètre que l'équilibre : rien avant la remise à zéro)
   var today0 = new Date(new Date().setHours(0,0,0,0));
-  var upcoming = allSorties.filter(function(s) { return parseLocalDate(s.date_start) >= today0; });
-  var recent = allSorties.filter(function(s) { return parseLocalDate(s.date_start) < today0; }).slice(-8);
+  var tcListSorties = allSorties.filter(function(s){ return (s.date_start || '') >= TRICOUNT_EPOCH; });
+  var upcoming = tcListSorties.filter(function(s) { return parseLocalDate(s.date_start) >= today0; });
+  var recent = tcListSorties.filter(function(s) { return parseLocalDate(s.date_start) < today0; }).slice(-8);
 
   // Toutes les sorties à venir + 8 passées récentes (pour ajouter des dépenses après coup)
   var tricountList = upcoming.concat(recent).sort(function(a, b) {
