@@ -5330,16 +5330,19 @@ function _gwBindEvents() {
       if (gi != null) _gwSetHover(gi);
     };
   }
-  // Bande nuages : position x → créneau du jour affiché
+  // Bande nuages : position x (temps linéaire) → créneau du jour affiché
   var ccv = document.getElementById('gw-cloud-cv');
   if (ccv) {
     ccv.onmousemove = function(e) {
       var d2 = _gwActiveData(); if (!d2) return;
       var days2 = _gwGroupDays(d2); if (_gwDayIdx >= days2.length) return;
-      var idxs2 = _gwGridIdxs(d2, days2[_gwDayIdx]); // même espace que la grille
+      var idxs2 = _gwGridIdxs(d2, days2[_gwDayIdx]);
+      var bounds2 = _gwColBoundsMin(d2, idxs2);
       var w2 = ccv.offsetWidth || 600;
-      var k2 = Math.floor(e.offsetX / (w2/idxs2.length));
-      if (k2 >= 0 && k2 < idxs2.length) _gwSetHover(idxs2[k2]);
+      var minAt = e.offsetX / w2 * 1440;
+      for (var k2=0; k2<idxs2.length; k2++) {
+        if (minAt >= bounds2[k2] && minAt < bounds2[k2+1]) { _gwSetHover(idxs2[k2]); break; }
+      }
     };
   }
 }
@@ -5407,12 +5410,40 @@ function _gwGridIdxs(d, day) {
   return out.length >= 4 ? out : idxs;
 }
 
+// Minute du jour (0..1440) en heure locale NC — même lecture que dates[] partout
+// ailleurs dans le widget (getUTC* représente l'heure locale par construction).
+function _gwMinOfDay(d, fi) {
+  var dt = d.dates[fi];
+  var hh = dt.getUTCHours!==undefined ? dt.getUTCHours() : dt.getHours();
+  var mm = dt.getUTCMinutes!==undefined ? dt.getUTCMinutes() : dt.getMinutes();
+  return hh*60+mm;
+}
+
+// Bornes de colonnes en minutes (0..1440) : chaque colonne couvre depuis le milieu
+// avec la précédente jusqu'au milieu avec la suivante, bord à bord 00h→24h. Utilisées
+// à la fois pour dimensionner la grille (en fr, proportionnel au temps réel) ET pour
+// positionner marée/soleil/nuages en temps linéaire — les deux restent ainsi phasés
+// exactement, même si les créneaux ne sont pas parfaitement équidistants.
+function _gwColBoundsMin(d, cols) {
+  var mins = cols.map(function(fi){ return _gwMinOfDay(d, fi); });
+  var N = mins.length, bounds = [0];
+  for (var i=1; i<N; i++) bounds.push((mins[i-1]+mins[i])/2);
+  bounds.push(1440);
+  return bounds;
+}
+
 function _gwRenderGrid(d, day) {
   var gridEl = document.getElementById('gw-grid'); if (!gridEl) return;
   var idxs = _gwGridIdxs(d, day), N = idxs.length;
   if (!N) { gridEl.innerHTML = '<div style="grid-column:1/-1;color:var(--faint);font-size:11px;padding:8px 0;">Pas de données pour ce jour.</div>'; return; }
   var lblW = (typeof window !== 'undefined' && window.innerWidth <= 480) ? '38px' : '44px';
-  gridEl.style.gridTemplateColumns = lblW+' repeat('+N+',1fr)';
+  // Colonnes en fr proportionnelles au temps réel couvert (pas 1fr uniforme) :
+  // ainsi la grille est phasée pixel pour pixel avec les courbes marée/soleil/nuages
+  // qui utilisent l'axe 00h→24h linéaire juste en dessous.
+  var bounds = _gwColBoundsMin(d, idxs);
+  var colFr = [];
+  for (var bi=0; bi<N; bi++) colFr.push(Math.max(0.15, bounds[bi+1]-bounds[bi]).toFixed(1)+'fr');
+  gridEl.style.gridTemplateColumns = lblW+' '+colFr.join(' ');
 
   var html = '';
   html += _gwLbl(1,'Heure');
@@ -5515,21 +5546,12 @@ function _gwRenderClouds(d, day) {
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  // Espace de colonnes = celui de la grille (décimé), mais nappes dessinées en
-  // PLEINE résolution horaire, positionnées par le temps → détail Windy + alignement
-  var cols = _gwGridIdxs(d, day), NC2 = cols.length, spanC = W/NC2;
-  var colMs = cols.map(function(fi){ return d.dates[fi].getTime(); });
-  function tToX(ms) {
-    if (ms<=colMs[0]) { var s0=(colMs[1]-colMs[0])||3600000; return 0.5*spanC - ((colMs[0]-ms)/s0)*spanC; }
-    if (ms>=colMs[NC2-1]) { var sE=(colMs[NC2-1]-colMs[NC2-2])||3600000; return (NC2-0.5)*spanC + ((ms-colMs[NC2-1])/sE)*spanC; }
-    for (var i2=0; i2<NC2-1; i2++) {
-      if (ms>=colMs[i2] && ms<=colMs[i2+1]) {
-        var t2=(ms-colMs[i2])/((colMs[i2+1]-colMs[i2])||1);
-        return (i2+0.5+t2)*spanC;
-      }
-    }
-    return W/2;
-  }
+  // Nappes dessinées en PLEINE résolution horaire (détail Windy), positionnées
+  // en TEMPS LINÉAIRE 00h→24h — même axe que la marée et le soleil juste en
+  // dessous, et phasé avec la grille (colonnes désormais proportionnelles au temps).
+  var dd0 = day.dateObj;
+  var dayStart0 = Date.UTC(dd0.getUTCFullYear(), dd0.getUTCMonth(), dd0.getUTCDate());
+  function tToX(ms) { return (ms - dayStart0) / 86400000 * W; }
 
   // Zone nuages en haut, voie pluie en bas (bande météo unifiée façon Windy)
   var rainTop = H-13, cloudBot = H-16;
@@ -5572,15 +5594,20 @@ function _gwRenderClouds(d, day) {
   });
 
   // ── Voie pluie : filet séparateur + barres bleues arrondies + valeur en mm ──
+  // Une barre par colonne de grille (résolution bulletin), positionnée en temps
+  // réel — largeur = étendue temporelle de la colonne (cohérent avec la grille).
   ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, rainTop-1.5); ctx.lineTo(W, rainTop-1.5); ctx.stroke();
   var laneH = H-2 - rainTop;
-  cols.forEach(function(fi, k){
+  var rainCols = _gwGridIdxs(d, day);
+  var rainBounds = _gwColBoundsMin(d, rainCols);
+  rainCols.forEach(function(fi, k){
     var rr = d.rain && d.rain[fi]!=null ? d.rain[fi] : null;
     if (rr==null || rr < 0.1) return;
-    var x = (k+0.5)*spanC;
+    var cx0 = rainBounds[k]/1440*W, cx1 = rainBounds[k+1]/1440*W;
+    var x = (cx0+cx1)/2;
     var bh2 = Math.max(2.5, Math.min(rr,5)/5*laneH);
-    var bw2 = Math.min(spanC*0.4, 12);
+    var bw2 = Math.min((cx1-cx0)*0.5, 12);
     var rCol = rr < 2 ? 'rgba(79,195,232,.8)' : 'rgba(123,108,246,.85)';
     ctx.fillStyle = rCol;
     if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x-bw2/2, H-2-bh2, bw2, bh2, [2,2,0,0]); ctx.fill(); }
@@ -5706,10 +5733,13 @@ function _gwTideHeightAt(ms, events) {
   return null;
 }
 
-// Rendu canvas de la marée — AXE TEMPS LINÉAIRE 00h→24h (journée entière, pas
-// l'espace colonnes de la grille). Même esthétique que l'onglet Marée : dégradé,
-// nuit ombrée, points PM (bleu) / BM (rouge), marqueur « maintenant » jaune.
-// Jours au-delà de la couverture fetch : estimation cycle M2 étiquetée « ~ ».
+// Rendu canvas de la marée — AXE TEMPS LINÉAIRE 00h→24h (journée entière). La
+// grille au-dessus utilise des colonnes en fr proportionnelles au temps réel
+// (_gwColBoundsMin) : les deux partagent donc le même axe et restent phasés,
+// même si les créneaux ne sont pas parfaitement équidistants. Même esthétique
+// que l'onglet Marée : dégradé, nuit ombrée, points PM (bleu) / BM (rouge),
+// marqueur « maintenant » jaune. Jours au-delà de la couverture fetch :
+// estimation cycle M2 étiquetée « ~ ».
 function _gwRenderTideRow(d, day) {
   var wrap = document.getElementById('gw-tide-svg-wrap'); if (!wrap) return;
   var td = _gwTideDayEvents(day);
@@ -5873,7 +5903,8 @@ function _gwRenderSunRow(d, day) {
   if (dawnMin==null) dawnMin = riseMin-25;
   if (duskMin==null) duskMin = setMin+25;
 
-  // Bande ciel : nuit → aube dorée → jour → crépuscule doré → nuit (positions en espace colonnes)
+  // Bande ciel : nuit → aube dorée → jour → crépuscule doré → nuit (temps linéaire 00h→24h,
+  // phasé avec la grille dont les colonnes sont maintenant proportionnelles au temps réel)
   var NIGHT='rgba(8,16,38,.85)', GOLD='rgba(232,160,87,.75)', DAY='rgba(130,180,215,.35)';
   function pct(m){ return Math.max(0, Math.min(100, minToX(m))).toFixed(1)+'%'; }
   var grad = 'linear-gradient(90deg,'
