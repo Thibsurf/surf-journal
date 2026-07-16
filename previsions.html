@@ -182,7 +182,8 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 /* Animations risque */
 @keyframes sharkSwim{from{transform:translateX(-5px) scaleX(1);}50%{transform:translateX(5px) scaleX(1);}to{transform:translateX(-5px) scaleX(1);}}
 @keyframes sharkFast{from{transform:translateX(-8px) rotate(-3deg);}50%{transform:translateX(8px) rotate(3deg);}to{transform:translateX(-8px) rotate(-3deg);}}
-@keyframes cycloneSpin{to{transform:rotate(360deg);}}
+/* cycloneSpin : défini UNE seule fois, plus bas (section légende isofronts) —
+   la définition dupliquée qui vivait ici masquait l'autre (le dernier @keyframes gagne) */
 @keyframes cyclonePulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.15);opacity:.8;}}
 
 /* MAP */
@@ -294,11 +295,46 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 /* HS : les cyclones tournent en sens HORAIRE (rotate positif) — l'ancien -360deg
    faisait tourner le symbole en sens antihoraire, convention hémisphère Nord */
 @keyframes cycloneSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-/* Animations pédago fronts : occlusion + convergence ZCPS */
-@keyframes occlChase{0%,100%{transform:translateX(0)}50%{transform:translateX(9%)}}
-@keyframes occlLift{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
-@keyframes convLeft{0%,100%{transform:translateX(0);opacity:.65}50%{transform:translateX(9px);opacity:1}}
-@keyframes convRight{0%,100%{transform:translateX(0);opacity:.65}50%{transform:translateX(-9px);opacity:1}}
+
+/* ── Onglet Animations : coupes SVG animées ─────────────────────────────── */
+.anim-card{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;}
+.anim-title{font-size:11px;font-weight:700;margin-bottom:7px;}
+.anim-title span{font-weight:400;color:var(--muted);font-size:9.5px;margin-left:6px;}
+.anim-svg{width:100%;height:auto;display:block;border-radius:7px;}
+.anim-p{font-size:10px;color:var(--muted);line-height:1.65;padding:6px 8px;margin:8px 0 6px;border-left:2px solid;border-radius:0 5px 5px 0;background:rgba(255,255,255,.02);}
+.cf-wedge{animation:cfAdvance 3.4s ease-in-out infinite alternate;}
+.cb-grow{animation:cbGrow 3.4s ease-in-out infinite alternate;}
+.cb-flash{opacity:0;animation:cbFlash 3.4s infinite;}
+.rainl{stroke-dasharray:4 10;animation:rainFall .95s linear infinite;}
+.r2{animation-delay:.3s}.r3{animation-delay:.6s}.r4{animation-delay:.45s}
+.lift-arrow{stroke-dasharray:5 5;animation:liftDash 1.4s linear infinite;}
+.wf-glide{animation:wfGlide 4.5s ease-in-out infinite;}
+.cloud-seq{animation:cloudSeq 4.5s ease-in-out infinite;}
+.cloud-seq.c1{animation-delay:0s}.cloud-seq.c2{animation-delay:.5s}.cloud-seq.c3{animation-delay:1s}
+.occl-cold{animation:occlChase 3.6s ease-in-out infinite alternate;}
+.occl-warm{animation:occlLift 3.6s ease-in-out infinite alternate;}
+.rot-anti{animation:rotAnti 15s linear infinite;}
+.rot-horaire{animation:rotHoraire 11s linear infinite;}
+.cyc-spin{animation:cycloneSpin 7s linear infinite;}
+.eye-pulse{animation:eyePulse 2.4s ease-in-out infinite alternate;}
+.conv-l{animation:convLeft 2.4s ease-in-out infinite;}
+.conv-r{animation:convRight 2.4s ease-in-out infinite;}
+.rise-col{animation:riseCol 2.4s ease-in-out infinite;}
+@keyframes cfAdvance{from{transform:translateX(-9px)}to{transform:translateX(15px)}}
+@keyframes cbGrow{from{transform:scale(.9)}to{transform:scale(1.07)}}
+@keyframes cbFlash{0%,86%,94%,100%{opacity:0}89%,91%{opacity:1}}
+@keyframes rainFall{from{stroke-dashoffset:0}to{stroke-dashoffset:-14}}
+@keyframes liftDash{from{stroke-dashoffset:0}to{stroke-dashoffset:-10}}
+@keyframes wfGlide{0%{transform:translate(288px,74px) rotate(-13deg);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:translate(30px,22px) rotate(-13deg);opacity:0}}
+@keyframes cloudSeq{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes occlChase{0%,100%{transform:translateX(0)}50%{transform:translateX(12px)}}
+@keyframes occlLift{0%{transform:translateY(4px)}100%{transform:translateY(-7px)}}
+@keyframes rotAnti{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
+@keyframes rotHoraire{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes eyePulse{from{r:8}to{r:10}}
+@keyframes convLeft{0%,100%{transform:translateX(0);opacity:.6}50%{transform:translateX(11px);opacity:1}}
+@keyframes convRight{0%,100%{transform:translateX(0);opacity:.6}50%{transform:translateX(-11px);opacity:1}}
+@keyframes riseCol{0%{transform:translateY(6px);opacity:.4}60%{opacity:1}100%{transform:translateY(-8px);opacity:0}}
 .sym-spin{animation:cycloneSpin 4s linear infinite;display:inline-block;transform-origin:center;}
 </style>
 
@@ -857,39 +893,56 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <div class="leg-sep" style="color:#4fa3c7;border-color:#4fa3c7;background:rgba(79,163,199,.08);">⊕ Pression mer</div>
   <div class="leg-grid" style="margin-bottom:4px;">
     <div class="leg-row">
-      <div class="leg-sym"><span class="sym-anti" style="font-size:24px;font-weight:900;color:#3b82f6;font-family:monospace;line-height:1;">A</span></div>
-      <div class="leg-txt"><b style="color:#60a5fa;">Anticyclone</b><i>High — vent anti-horaire (HS)</i></div>
+      <div class="leg-sym">
+        <svg width="34" height="22" viewBox="0 0 34 22">
+          <text x="15" y="17" text-anchor="middle" font-size="17" font-weight="900" fill="#3b82f6" font-family="monospace">A</text>
+          <path d="M26,15 a6.5,6.5 0 1 1 4,-6" fill="none" stroke="#60a5fa" stroke-width="1.3" opacity=".8"/>
+          <polygon points="30.6,6.4 28.2,9.6 32.2,10.4" fill="#60a5fa" opacity=".8"/>
+        </svg>
+      </div>
+      <div class="leg-txt"><b style="color:#60a5fa;">Anticyclone</b><i>High — vent ANTI-horaire (HS), air qui descend, temps stable</i></div>
     </div>
     <div class="leg-row">
-      <div class="leg-sym"><span class="sym-cyclo" style="font-size:24px;font-weight:900;color:#ef4444;font-family:monospace;line-height:1;">D</span></div>
-      <div class="leg-txt"><b style="color:#f87171;">Dépression</b><i>Low — vent horaire (HS)</i></div>
+      <div class="leg-sym">
+        <svg width="34" height="22" viewBox="0 0 34 22">
+          <text x="15" y="17" text-anchor="middle" font-size="17" font-weight="900" fill="#ef4444" font-family="monospace">D</text>
+          <path d="M30,9 a6.5,6.5 0 1 1 -4,-6" fill="none" stroke="#f87171" stroke-width="1.3" opacity=".8"/>
+          <polygon points="25.4,2.4 29.4,3.2 27,6.4" fill="#f87171" opacity=".8"/>
+        </svg>
+      </div>
+      <div class="leg-txt"><b style="color:#f87171;">Dépression</b><i>Low — vent HORAIRE (HS), air qui monte, perturbé</i></div>
     </div>
   </div>
-  <!-- Cyclones tropicaux -->
+  <!-- Cyclones tropicaux — symbole météo officiel : disque + 2 bras spiralés
+       (plein = sévère, creux = Cat 1-2, disque seul = faible), rotation HORAIRE (HS) -->
   <div class="leg-row">
     <div class="leg-sym">
-      <svg width="34" height="20" viewBox="0 0 34 20"><g class="sym-spin" style="transform-origin:17px 10px">
-        <path d="M17,10 C17,5 22,2 25,5 C28,8 25,14 20,15 C15,16 10,12 11,7 C12,2 18,1 21,4" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+      <svg width="34" height="22" viewBox="0 0 34 22"><g class="sym-spin" style="transform-origin:17px 11px;">
+        <circle cx="17" cy="11" r="4" fill="#ef4444"/>
+        <path d="M17,7 a7.5,7.5 0 0 1 7.5,7.5" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M17,15 a7.5,7.5 0 0 1 -7.5,-7.5" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/>
       </g></svg>
     </div>
-    <div class="leg-txt"><b style="color:#f87171;">Cyclone tropical sévère</b><i>Severe Tropical Cyclone (&gt;63kt)</i></div>
+    <div class="leg-txt"><b style="color:#f87171;">Cyclone tropical (sévère)</b><i>Vent moyen 10 min &gt; 117 km/h (&gt;63 kt) — symbole plein</i></div>
   </div>
   <div class="leg-row">
     <div class="leg-sym">
-      <svg width="34" height="20" viewBox="0 0 34 20"><g style="transform-origin:17px 10px;animation:cycloneSpin 5s linear infinite;display:block">
-        <path d="M17,10 C17,6 20,4 22,6 C24,8 22,13 19,14 C16,15 12,12 13,8 C14,5 18,4 20,7" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+      <svg width="34" height="22" viewBox="0 0 34 22"><g style="transform-origin:17px 11px;animation:cycloneSpin 6.5s linear infinite;display:block">
+        <circle cx="17" cy="11" r="4" fill="none" stroke="#ef4444" stroke-width="2"/>
+        <path d="M17,7 a7.5,7.5 0 0 1 7.5,7.5" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M17,15 a7.5,7.5 0 0 1 -7.5,-7.5" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
       </g></svg>
     </div>
-    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale forte</b><i>Cat 1–2 (33–63kt)</i></div>
+    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale modérée à forte</b><i>61–117 km/h · Cat 1 ou 2 (33–63 kt) — centre creux</i></div>
   </div>
   <div class="leg-row">
     <div class="leg-sym">
-      <svg width="34" height="20" viewBox="0 0 34 20">
-        <circle cx="17" cy="10" r="6" fill="none" stroke="#ef4444" stroke-width="2"/>
-        <circle cx="17" cy="10" r="2.5" fill="#ef4444"/>
+      <svg width="34" height="22" viewBox="0 0 34 22">
+        <circle cx="17" cy="11" r="7" fill="none" stroke="#ef4444" stroke-width="1.2" opacity=".4"/>
+        <circle cx="17" cy="11" r="4.5" fill="#ef4444"/>
       </svg>
     </div>
-    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale faible</b><i>Tropical low (&lt;33kt)</i></div>
+    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale faible · perturbation</b><i>&lt; 61 km/h (&lt;33 kt) — disque simple, pas de bras</i></div>
   </div>
 
   <!-- ═══ FRONTS ═══ -->
@@ -1135,102 +1188,193 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 
     <!-- Panneau animations -->
     <div id="front-anim" style="display:none;">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;">Comment fonctionnent les fronts ?</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;">Coupes animées — ce que chaque objet de la carte te prépare</div>
 
-      <div class="scene">
-        <span class="scene-label">Front chaud →</span>
-        <div style="position:relative;width:100%;height:100%;">
-          <div class="air-mass air-cold-bg" style="position:absolute;">❄ FROID</div>
-          <div class="air-mass air-warm">🌡 CHAUD</div>
-          <div class="warm-slope"></div>
-          <div class="cloud-warm" style="font-size:22px;">☁️</div>
-          <div class="rain-drop" style="left:55%;top:32%;animation-delay:0s;">🌂</div>
-          <div style="position:absolute;top:8px;right:10px;font-size:9px;color:#f87171;font-weight:700;letter-spacing:.05em;">→ avance lentement</div>
-        </div>
+      <!-- ═══ FRONT FROID — coupe verticale ═══ -->
+      <div class="anim-card">
+        <div class="anim-title" style="color:#93c5fd;">Front froid <span>l'air froid dense soulève brutalement l'air chaud</span></div>
+        <svg viewBox="0 0 320 96" class="anim-svg">
+          <defs>
+            <linearGradient id="agSky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#0a1e3d"/><stop offset="1" stop-color="#12305c"/>
+            </linearGradient>
+            <marker id="agArrO" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#fb923c"/></marker>
+            <marker id="agArrB" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#60a5fa"/></marker>
+          </defs>
+          <rect x="0" y="0" width="320" height="96" fill="url(#agSky)"/>
+          <rect x="130" y="26" width="190" height="62" fill="rgba(239,68,68,.08)"/>
+          <text x="245" y="80" font-size="9" fill="#fca5a5" font-weight="700">AIR CHAUD</text>
+          <g class="cf-wedge">
+            <path d="M0,88 L152,88 Q122,62 92,50 Q56,38 0,34 Z" fill="rgba(59,130,246,.30)" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="14" y="78" font-size="9" fill="#bfdbfe" font-weight="700">AIR FROID</text>
+            <path d="M30,64 h26" stroke="#60a5fa" stroke-width="1.8" marker-end="url(#agArrB)"/>
+          </g>
+          <g class="cb-grow" style="transform-origin:150px 88px;">
+            <path d="M126,16 h52" stroke="#e2e8f0" stroke-width="5" stroke-linecap="round" opacity=".9"/>
+            <ellipse cx="150" cy="28" rx="24" ry="11" fill="#cbd5e1" opacity=".9"/>
+            <ellipse cx="138" cy="42" rx="19" ry="11" fill="#94a3b8" opacity=".85"/>
+            <ellipse cx="160" cy="46" rx="21" ry="12" fill="#64748b" opacity=".9"/>
+          </g>
+          <text class="cb-flash" x="146" y="64" font-size="12">⚡</text>
+          <g stroke="#7dd3fc" stroke-width="1.6" stroke-linecap="round">
+            <line class="rainl r1" x1="141" y1="60" x2="136" y2="74"/>
+            <line class="rainl r2" x1="153" y1="62" x2="148" y2="76"/>
+            <line class="rainl r3" x1="165" y1="60" x2="160" y2="74"/>
+          </g>
+          <path class="lift-arrow" d="M186,80 Q176,54 188,32" fill="none" stroke="#fb923c" stroke-width="2" marker-end="url(#agArrO)"/>
+          <line x1="0" y1="88" x2="320" y2="88" stroke="#475569" stroke-width="2.5"/>
+        </svg>
+        <p class="anim-p" style="border-left-color:rgba(59,130,246,.45);">Pente <b style="color:#93c5fd;">raide</b> → cumulonimbus : grains violents mais <b>brefs</b>, le vent tourne SE→S→SW et forcit, la température chute, le baromètre remonte d'un coup. En NC c'est souvent LE train de houle SW qui suit 24-48h derrière.</p>
       </div>
-      <p style="font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.7;padding:6px 8px;background:rgba(239,68,68,.04);border-left:2px solid rgba(239,68,68,.3);border-radius:0 5px 5px 0;">
-        L'air chaud <b style="color:#f87171;">s'élève sur l'air froid</b> → nuages étalés (cirrus → cumulus), pluies <b>progressives et durables</b>. Baromètre en baisse.
-      </p>
 
-      <div class="scene">
-        <span class="scene-label">Front froid ←</span>
-        <div style="position:relative;width:100%;height:100%;">
-          <div class="air-mass air-warm-bg" style="position:absolute;">🌡 CHAUD</div>
-          <div class="air-mass air-cold-adv" style="position:absolute;right:0;">❄ FROID</div>
-          <div class="cold-slope"></div>
-          <div class="storm-icon" style="font-size:24px;">⛈️</div>
-          <div class="rain-drop" style="left:44%;top:22%;animation-delay:.3s;font-size:14px;">💧</div>
-          <div class="rain-drop" style="left:50%;top:28%;animation-delay:.7s;font-size:11px;">💧</div>
-          <div style="position:absolute;top:8px;right:10px;font-size:9px;color:#93c5fd;font-weight:700;letter-spacing:.05em;">← pénètre vite</div>
-        </div>
+      <!-- ═══ FRONT CHAUD — coupe verticale ═══ -->
+      <div class="anim-card">
+        <div class="anim-title" style="color:#fca5a5;">Front chaud <span>l'air chaud glisse en douceur PAR-DESSUS l'air froid</span></div>
+        <svg viewBox="0 0 320 96" class="anim-svg">
+          <rect x="0" y="0" width="320" height="96" fill="url(#agSky)"/>
+          <path d="M0,88 L320,88 L320,84 Q210,74 120,52 Q60,36 20,30 L0,28 Z" fill="rgba(59,130,246,.16)" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,3"/>
+          <text x="236" y="82" font-size="9" fill="#93c5fd" font-weight="700">AIR FROID (recule)</text>
+          <path d="M300,80 Q210,68 120,46 Q55,30 10,24" fill="none" stroke="#ef4444" stroke-width="2"/>
+          <g class="wf-glide"><text x="0" y="0" font-size="12" fill="#fb923c">➤</text></g>
+          <text x="30" y="88" font-size="8.5" fill="#fda4af">le chaud monte la pente ➤</text>
+          <g class="cloud-seq c1"><text x="270" y="18" font-size="12">🌤</text><text x="286" y="16" font-size="9" fill="#94a3b8">cirrus</text></g>
+          <g class="cloud-seq c2"><ellipse cx="185" cy="30" rx="30" ry="8" fill="#94a3b8" opacity=".7"/><text x="164" y="20" font-size="8.5" fill="#94a3b8">altostratus</text></g>
+          <g class="cloud-seq c3">
+            <ellipse cx="80" cy="38" rx="38" ry="12" fill="#64748b" opacity=".85"/>
+            <text x="52" y="26" font-size="8.5" fill="#94a3b8">nimbostratus</text>
+            <g stroke="#7dd3fc" stroke-width="1.3" stroke-linecap="round">
+              <line class="rainl r1" x1="60" y1="52" x2="57" y2="66"/>
+              <line class="rainl r2" x1="76" y1="54" x2="73" y2="68"/>
+              <line class="rainl r3" x1="92" y1="52" x2="89" y2="66"/>
+              <line class="rainl r4" x1="106" y1="54" x2="103" y2="68"/>
+            </g>
+          </g>
+          <line x1="0" y1="88" x2="320" y2="88" stroke="#475569" stroke-width="2.5"/>
+        </svg>
+        <p class="anim-p" style="border-left-color:rgba(239,68,68,.45);">Pente <b style="color:#fca5a5;">douce</b> → le ciel se dégrade dans l'ordre, 24-48h À L'AVANCE : cirrus → voile qui s'épaissit → plafond bas et <b>pluie fine continue</b>. Baromètre en baisse régulière = le signal le plus fiable.</p>
       </div>
-      <p style="font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.7;padding:6px 8px;background:rgba(59,130,246,.04);border-left:2px solid rgba(59,130,246,.3);border-radius:0 5px 5px 0;">
-        L'air froid dense <b style="color:#93c5fd;">soulève brutalement l'air chaud</b> → cumulo-nimbus, orages violents, averses intenses. Passage rapide — le vent <b>tourne et le ciel se lève</b>.
-      </p>
 
-      <div class="scene" style="height:120px;">
-        <span class="scene-label">Circulation</span>
-        <div class="pressure-scene">
-          <div class="pressure-cell">
-            <div class="isobar-ring anti-ring" style="width:44px;height:44px;">
-              <span class="cell-letter" style="color:#3b82f6;">A</span>
-              <!-- HS : anticyclone = ANTI-horaire -->
-              <svg class="wind-arrows" viewBox="0 0 44 44" fill="none">
-                <text x="22" y="7"  text-anchor="middle" font-size="8" fill="#3b82f688">↖</text>
-                <text x="5"  y="24" text-anchor="middle" font-size="8" fill="#3b82f688">↓</text>
-                <text x="22" y="41" text-anchor="middle" font-size="8" fill="#3b82f688">↘</text>
-                <text x="38" y="24" text-anchor="middle" font-size="8" fill="#3b82f688">↑</text>
-              </svg>
-            </div>
-            <span class="cell-desc">Hautes press.<br>Temps stable ☀️</span>
-          </div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;">←gradient→<br><span style="font-size:9px;">vent des H vers B press.</span></div>
-          <div class="pressure-cell">
-            <div class="isobar-ring cyclo-ring" style="width:44px;height:44px;">
-              <span class="cell-letter" style="color:#ef4444;">D</span>
-              <!-- HS : dépression = HORAIRE -->
-              <svg class="wind-arrows" viewBox="0 0 44 44" fill="none">
-                <text x="22" y="7"  text-anchor="middle" font-size="8" fill="#ef444488">↗</text>
-                <text x="38" y="24" text-anchor="middle" font-size="8" fill="#ef444488">↓</text>
-                <text x="22" y="41" text-anchor="middle" font-size="8" fill="#ef444488">↙</text>
-                <text x="5"  y="24" text-anchor="middle" font-size="8" fill="#ef444488">↑</text>
-              </svg>
-            </div>
-            <span class="cell-desc">Basses press.<br>Perturbations 🌧️</span>
-          </div>
-        </div>
+      <!-- ═══ CIRCULATIONS A / D (HS) ═══ -->
+      <div class="anim-card">
+        <div class="anim-title" style="color:#e2e8f0;">Circulations — hémisphère SUD <span>le sens de rotation est l'inverse de l'hémisphère Nord</span></div>
+        <svg viewBox="0 0 320 100" class="anim-svg">
+          <rect x="0" y="0" width="320" height="100" fill="url(#agSky)"/>
+          <g class="rot-anti" style="transform-origin:85px 50px;">
+            <circle cx="85" cy="50" r="34" fill="none" stroke="rgba(59,130,246,.5)" stroke-width="1.6" stroke-dasharray="8,7"/>
+            <circle cx="85" cy="50" r="22" fill="none" stroke="rgba(59,130,246,.35)" stroke-width="1.3" stroke-dasharray="6,6"/>
+            <polygon points="85,13 80,19 90,19" fill="#60a5fa"/>
+            <polygon points="85,87 80,81 90,81" fill="#60a5fa"/>
+          </g>
+          <text x="85" y="57" text-anchor="middle" font-size="20" font-weight="900" fill="#3b82f6" font-family="monospace">A</text>
+          <text x="85" y="12" text-anchor="middle" font-size="8" fill="#93c5fd">↺ ANTI-horaire</text>
+          <text x="85" y="97" text-anchor="middle" font-size="8" fill="#94a3b8">air descend → ciel dégagé ☀</text>
+          <g class="rot-horaire" style="transform-origin:235px 50px;">
+            <circle cx="235" cy="50" r="34" fill="none" stroke="rgba(239,68,68,.5)" stroke-width="1.6" stroke-dasharray="8,7"/>
+            <circle cx="235" cy="50" r="22" fill="none" stroke="rgba(239,68,68,.35)" stroke-width="1.3" stroke-dasharray="6,6"/>
+            <polygon points="235,13 230,19 240,19" fill="#f87171"/>
+            <polygon points="235,87 230,81 240,81" fill="#f87171"/>
+          </g>
+          <text x="235" y="57" text-anchor="middle" font-size="20" font-weight="900" fill="#ef4444" font-family="monospace">D</text>
+          <text x="235" y="12" text-anchor="middle" font-size="8" fill="#fca5a5">↻ HORAIRE</text>
+          <text x="235" y="97" text-anchor="middle" font-size="8" fill="#94a3b8">air converge et monte → nuages 🌧</text>
+          <text x="160" y="54" text-anchor="middle" font-size="8" fill="#64748b">vent : des H</text>
+          <text x="160" y="63" text-anchor="middle" font-size="8" fill="#64748b">vers les B</text>
+        </svg>
+        <p class="anim-p" style="border-left-color:rgba(148,163,184,.4);">Isobares serrées = vent fort. L'alizé NC, c'est le flanc nord de l'anticyclone de Tasman qui tourne <b style="color:#93c5fd;">antihoraire</b> → flux d'E-SE quasi permanent sur le lagon.</p>
       </div>
-      <p style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6;">Isobares serrées = vent fort. En hémisphère SUD : anticyclone = <strong style="color:#e2e8f0">antihoraire</strong>, dépression = <strong style="color:#e2e8f0">horaire</strong> (l'inverse de l'hémisphère Nord).</p>
 
-      <div class="scene" style="margin-top:10px;">
-        <span class="scene-label">Occlusion</span>
-        <div style="position:relative;width:100%;height:100%;">
-          <div class="air-mass" style="left:0;width:34%;background:rgba(59,130,246,.18);border:1px solid rgba(59,130,246,.35);color:#93c5fd;animation:occlChase 3.5s ease-in-out infinite;">❄ FROID (rapide)</div>
-          <div class="air-mass" style="left:40%;width:22%;height:38px;bottom:24px;background:rgba(239,68,68,.16);border:1px solid rgba(239,68,68,.35);color:#fca5a5;animation:occlLift 3.5s ease-in-out infinite;">🌡 CHAUD</div>
-          <div class="air-mass" style="right:0;width:30%;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);color:#93c5fd;">❄ FROID (lent)</div>
-          <div style="position:absolute;top:10px;left:44%;font-size:18px;animation:cloudDrift 2.8s ease-in-out infinite alternate;">☁️🌧</div>
-          <div style="position:absolute;top:8px;right:10px;font-size:9px;color:#d946ef;font-weight:700;letter-spacing:.05em;">froid rattrape chaud</div>
-        </div>
+      <!-- ═══ OCCLUSION ═══ -->
+      <div class="anim-card">
+        <div class="anim-title" style="color:#f0abfc;">Occlusion <span>le front froid rattrape le front chaud</span></div>
+        <svg viewBox="0 0 320 96" class="anim-svg">
+          <rect x="0" y="0" width="320" height="96" fill="url(#agSky)"/>
+          <g class="occl-cold">
+            <path d="M0,88 L128,88 Q96,60 60,46 Q30,36 0,32 Z" fill="rgba(59,130,246,.30)" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="12" y="76" font-size="8.5" fill="#bfdbfe" font-weight="700">FROID rapide →</text>
+          </g>
+          <path d="M320,88 L192,88 Q226,64 258,50 Q290,38 320,34 Z" fill="rgba(59,130,246,.18)" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,3"/>
+          <text x="238" y="78" font-size="8.5" fill="#93c5fd" font-weight="700">froid lent</text>
+          <g class="occl-warm">
+            <ellipse cx="160" cy="40" rx="34" ry="16" fill="rgba(239,68,68,.28)" stroke="#ef4444" stroke-width="1.2"/>
+            <text x="140" y="43" font-size="8.5" fill="#fecaca" font-weight="700">CHAUD soulevé</text>
+          </g>
+          <g class="cloud-seq c2"><ellipse cx="160" cy="16" rx="34" ry="8" fill="#94a3b8" opacity=".8"/></g>
+          <g stroke="#7dd3fc" stroke-width="1.4" stroke-linecap="round">
+            <line class="rainl r1" x1="146" y1="62" x2="142" y2="76"/>
+            <line class="rainl r3" x1="174" y1="62" x2="170" y2="76"/>
+          </g>
+          <g transform="translate(146,88)">
+            <line x1="0" y1="0" x2="28" y2="0" stroke="#d946ef" stroke-width="2.5"/>
+            <path d="M4,0 a4,4 0 0 1 8,0 z" fill="#d946ef"/>
+            <polygon points="18,0 24,-6 24,0" fill="#d946ef"/>
+          </g>
+          <line x1="0" y1="88" x2="320" y2="88" stroke="#475569" stroke-width="2.5"/>
+        </svg>
+        <p class="anim-p" style="border-left-color:rgba(217,70,239,.45);">L'air chaud est <b style="color:#f0abfc;">décollé du sol</b> et pris en sandwich : au sol on passe directement du froid… au froid. Pluies étendues, mais le système est <b>en fin de vie</b> — symbole magenta sur la carte.</p>
       </div>
-      <p style="font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.7;padding:6px 8px;background:rgba(217,70,239,.05);border-left:2px solid rgba(217,70,239,.35);border-radius:0 5px 5px 0;">
-        Le front froid, plus rapide, <b style="color:#f0abfc;">rattrape le front chaud</b> : l'air chaud est soulevé du sol → <b>front occlus</b> (symbole magenta). Pluies étendues mais système en fin de vie.
-      </p>
 
-      <div class="scene">
-        <span class="scene-label">ZCPS (SPCZ)</span>
-        <div style="position:relative;width:100%;height:100%;">
-          <div style="position:absolute;top:14px;left:6%;font-size:11px;color:#4ade80;animation:convLeft 2.4s ease-in-out infinite;">alizé SE →</div>
-          <div style="position:absolute;top:14px;right:6%;font-size:11px;color:#4ade80;animation:convRight 2.4s ease-in-out infinite;">← flux NE</div>
-          <div style="position:absolute;top:34px;left:50%;transform:translateX(-50%);font-size:22px;animation:cloudDrift 2.4s ease-in-out infinite alternate;">☁️⛈☁️</div>
-          <div class="rain-drop" style="left:46%;top:58%;animation-delay:.2s;">💧</div>
-          <div class="rain-drop" style="left:53%;top:60%;animation-delay:.8s;">💧</div>
-          <div style="position:absolute;bottom:8px;left:0;right:0;height:3px;background:repeating-linear-gradient(90deg,#22c55e 0 10px,transparent 10px 17px);opacity:.6;"></div>
-          <div style="position:absolute;top:8px;right:10px;font-size:9px;color:#4ade80;font-weight:700;letter-spacing:.05em;">convergence = ascendance</div>
-        </div>
+      <!-- ═══ CYCLONE TROPICAL (structure) ═══ -->
+      <div class="anim-card">
+        <div class="anim-title" style="color:#f87171;">Cyclone tropical <span>structure — rotation horaire (HS)</span></div>
+        <svg viewBox="0 0 320 110" class="anim-svg">
+          <rect x="0" y="0" width="320" height="110" fill="url(#agSky)"/>
+          <g class="cyc-spin" style="transform-origin:160px 55px;">
+            <path d="M160,55 m0,-46 a46,46 0 0 1 44,33" fill="none" stroke="rgba(239,68,68,.75)" stroke-width="7" stroke-linecap="round"/>
+            <path d="M160,55 m0,46 a46,46 0 0 1 -44,-33" fill="none" stroke="rgba(239,68,68,.75)" stroke-width="7" stroke-linecap="round"/>
+            <path d="M160,55 m0,-32 a32,32 0 0 1 30,23" fill="none" stroke="rgba(251,146,60,.7)" stroke-width="6" stroke-linecap="round"/>
+            <path d="M160,55 m0,32 a32,32 0 0 1 -30,-23" fill="none" stroke="rgba(251,146,60,.7)" stroke-width="6" stroke-linecap="round"/>
+          </g>
+          <circle cx="160" cy="55" r="17" fill="none" stroke="#ef4444" stroke-width="5" opacity=".95"/>
+          <circle class="eye-pulse" cx="160" cy="55" r="9" fill="#0a1e3d"/>
+          <text x="160" y="58" text-anchor="middle" font-size="7.5" fill="#fbbf24" font-weight="700">ŒIL</text>
+          <line x1="178" y1="55" x2="216" y2="40" stroke="#94a3b8" stroke-width=".8"/>
+          <text x="219" y="40" font-size="8" fill="#e2e8f0">mur de l'œil = <tspan font-weight="700" fill="#f87171">vents max</tspan></text>
+          <line x1="196" y1="76" x2="224" y2="84" stroke="#94a3b8" stroke-width=".8"/>
+          <text x="227" y="87" font-size="8" fill="#e2e8f0">bandes = grains</text>
+          <text x="8" y="14" font-size="8.5" fill="#fbbf24">⚠ l'œil = accalmie TROMPEUSE :</text>
+          <text x="8" y="24" font-size="8.5" fill="#fbbf24">le mur revient par l'autre bord</text>
+        </svg>
+        <p class="anim-p" style="border-left-color:rgba(239,68,68,.45);">Rotation <b style="color:#f87171;">horaire</b> en HS. La houle cyclonique arrive 2-4 jours AVANT le météore — surveiller les cartes dès qu'un symbole apparaît entre le Vanuatu et la mer de Corail. Si l'œil passe : le calme ne dure que quelques minutes à 1-2h.</p>
       </div>
-      <p style="font-size:10px;color:var(--muted);margin-bottom:2px;line-height:1.7;padding:6px 8px;background:rgba(34,197,94,.04);border-left:2px solid rgba(34,197,94,.3);border-radius:0 5px 5px 0;">
-        La <b style="color:#4ade80;">Zone de Convergence du Pacifique Sud</b> : les alizés convergent → l'air monte → bande nuageuse quasi permanente. Quand elle glisse sur la NC (été), c'est elle qui apporte <b>l'essentiel des fortes pluies</b> — cherchez le talweg vert (carrés) sur la carte.
-      </p>
+
+      <!-- ═══ ZCPS / SPCZ ═══ -->
+      <div class="anim-card" style="margin-bottom:2px;">
+        <div class="anim-title" style="color:#4ade80;">ZCPS (SPCZ) <span>la machine à pluie n°1 de la NC en été</span></div>
+        <svg viewBox="0 0 320 96" class="anim-svg">
+          <defs><marker id="agArrG" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ade80"/></marker></defs>
+          <rect x="0" y="0" width="320" height="96" fill="url(#agSky)"/>
+          <g class="conv-l">
+            <path d="M18,66 h44" stroke="#4ade80" stroke-width="2" marker-end="url(#agArrG)"/>
+            <path d="M8,76 h54" stroke="#4ade80" stroke-width="1.4" opacity=".6" marker-end="url(#agArrG)"/>
+            <text x="10" y="60" font-size="8.5" fill="#86efac">alizé de SE</text>
+          </g>
+          <g class="conv-r">
+            <path d="M302,66 h-44" stroke="#4ade80" stroke-width="2" marker-end="url(#agArrG)"/>
+            <path d="M312,76 h-54" stroke="#4ade80" stroke-width="1.4" opacity=".6" marker-end="url(#agArrG)"/>
+            <text x="252" y="60" font-size="8.5" fill="#86efac">flux de NE</text>
+          </g>
+          <g class="rise-col">
+            <path d="M150,74 q-4,-12 2,-22" fill="none" stroke="#86efac" stroke-width="1.6" opacity=".85"/>
+            <path d="M162,74 q4,-12 -2,-22" fill="none" stroke="#86efac" stroke-width="1.6" opacity=".85"/>
+            <path d="M156,76 v-26" stroke="#86efac" stroke-width="1.6" opacity=".85"/>
+          </g>
+          <g class="cb-grow" style="transform-origin:156px 40px;">
+            <ellipse cx="128" cy="34" rx="24" ry="10" fill="#64748b" opacity=".85"/>
+            <ellipse cx="160" cy="26" rx="30" ry="12" fill="#94a3b8" opacity=".9"/>
+            <ellipse cx="192" cy="34" rx="24" ry="10" fill="#64748b" opacity=".85"/>
+          </g>
+          <text class="cb-flash" x="150" y="48" font-size="11">⚡</text>
+          <g stroke="#7dd3fc" stroke-width="1.5" stroke-linecap="round">
+            <line class="rainl r1" x1="136" y1="48" x2="132" y2="62"/>
+            <line class="rainl r2" x1="158" y1="50" x2="154" y2="64"/>
+            <line class="rainl r4" x1="180" y1="48" x2="176" y2="62"/>
+          </g>
+          <line x1="0" y1="86" x2="320" y2="86" stroke="#22c55e" stroke-width="2.5" stroke-dasharray="10,7"/>
+          <rect x="118" y="82" width="9" height="9" fill="#22c55e"/><rect x="156" y="82" width="9" height="9" fill="#22c55e"/><rect x="194" y="82" width="9" height="9" fill="#22c55e"/>
+          <text x="212" y="94" font-size="8" fill="#4ade80">← son symbole sur la carte</text>
+        </svg>
+        <p class="anim-p" style="border-left-color:rgba(34,197,94,.4);">Les flux <b style="color:#4ade80;">convergent → l'air n'a qu'une issue : monter</b> → bande orageuse quasi permanente Salomon→Fidji. Quand elle glisse sur la NC (Nov-Avr), c'est elle qui apporte l'essentiel des fortes pluies — repérer le talweg vert à carrés sur la carte isofronts.</p>
+      </div>
     </div><!-- fin front-anim -->
   </div>
 
