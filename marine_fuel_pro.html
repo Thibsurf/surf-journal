@@ -590,6 +590,32 @@ select option{background:var(--s2)}
         <div style="font-size:.72rem;color:var(--muted);margin-top:4px" id="bidons-sub"></div>
       </div>
 
+      <!-- Remplir un bidon (station-service) — le JS fillBidon()/updateFillBidonSelect()
+           existait, complet et branché, mais SON FORMULAIRE avait disparu du HTML :
+           impossible de remplir un bidon depuis cet onglet (audit 2026-07-16) -->
+      <div style="margin-top:12px;padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--green);margin-bottom:10px">⛽ Remplir un bidon (à la station)</div>
+        <div class="grid2">
+          <div class="field">
+            <label>Bidon à remplir</label>
+            <select id="bidon-fill-src"></select>
+          </div>
+          <div class="field">
+            <label>Litres ajoutés</label>
+            <input type="number" id="bidon-fill-l" min="0.1" step="0.5" placeholder="ex: 20">
+          </div>
+          <div class="field">
+            <label>Prix / litre (XPF, optionnel)</label>
+            <input type="number" id="bidon-fill-price" min="0" step="1" placeholder="ex: 158">
+          </div>
+          <div class="field">
+            <label>Note</label>
+            <input type="text" id="bidon-fill-note" placeholder="ex: Station Ducos">
+          </div>
+        </div>
+        <button class="btn btn-ok-soft" onclick="fillBidon()" style="margin-top:8px">⛽ Enregistrer le remplissage</button>
+      </div>
+
       <!-- Log verser dans réservoir -->
       <div style="margin-top:12px;padding:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
         <div style="font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--a2);margin-bottom:10px">⬇️ Verser dans le réservoir</div>
