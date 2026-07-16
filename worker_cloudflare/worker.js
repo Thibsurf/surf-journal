@@ -219,6 +219,35 @@ export default {
         return jsonOrRaw(up, cors);
       }
 
+      // ── /enso — flux NOAA CPC Nino 3.4 (detrended), cache edge 6h ───────────
+      // Le site NOAA n'a pas de CORS → previsions.html passe par ici pour avoir
+      // des données ENSO à jour (l'embarqué dans la page n'est qu'un fallback).
+      if (url.pathname === "/enso") {
+        const src =
+          "https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/ensostuff/detrend.nino34.ascii.txt";
+        const cache = caches.default;
+        const cacheKey = new Request("https://surf-nc-cache/enso-nino34");
+        let hit = await cache.match(cacheKey);
+        if (!hit) {
+          const up = await fetch(src, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; SurfNC/1.0)" },
+          });
+          if (!up.ok) return new Response("upstream " + up.status, { status: 502, headers: cors });
+          const body = await up.text();
+          // Sanité minimale : le fichier commence par l'en-tête YR MON…
+          if (!/^\s*YR\s+MON/.test(body))
+            return new Response("unexpected upstream format", { status: 502, headers: cors });
+          hit = new Response(body, {
+            headers: { "Content-Type": "text/plain", "Cache-Control": "public, max-age=21600" },
+          });
+          await cache.put(cacheKey, hit.clone());
+        }
+        return new Response(hit.body, {
+          status: 200,
+          headers: { "Content-Type": "text/plain", "Cache-Control": "public, max-age=21600", ...cors },
+        });
+      }
+
       // ── /proxy — proxy HTML meteo.nc (scraping rafales) ────────────────────
       if (url.pathname === "/proxy") {
         const target = url.searchParams.get("url");

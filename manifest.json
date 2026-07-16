@@ -16,8 +16,7 @@
       "short_name": "Prévisions",
       "url": "/surf-journal/previsions.html",
       "icons": [
-        { "src": "icons/icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-        { "src": "icons/icon-192x192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" }
+        { "src": "icons/shortcut-previsions.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
       ]
     },
     {
@@ -25,8 +24,7 @@
       "short_name": "Sorties",
       "url": "/surf-journal/sorties.html",
       "icons": [
-        { "src": "icons/icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-        { "src": "icons/icon-192x192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" }
+        { "src": "icons/shortcut-sorties.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
       ]
     },
     {
@@ -34,8 +32,7 @@
       "short_name": "Fuel Pro",
       "url": "/surf-journal/marine_fuel_pro.html",
       "icons": [
-        { "src": "icons/icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-        { "src": "icons/icon-192x192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" }
+        { "src": "icons/shortcut-fuel.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
       ]
     },
     {
@@ -43,7 +40,7 @@
       "short_name": "Nav",
       "url": "/surf-journal/thibsurf_nav/",
       "icons": [
-        { "src": "thibsurf_nav/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
+        { "src": "icons/shortcut-nav.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
       ]
     }
   ],

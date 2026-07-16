@@ -1040,6 +1040,8 @@ select option{background:var(--s2)}
       Tous les membres liés à ce bateau dans Supabase. Si un nom n'est pas reconnu, tu peux lui donner un surnom local (juste pour l'affichage).
     </p>
     <div id="membersList" style="margin-bottom:14px"></div>
+    <!-- Ajout de membre disponible ICI aussi (même UI que le dialogue 👥 du bateau) -->
+    <div id="membersAddSection" style="margin-bottom:14px"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost btn-full" onclick="modal('membersModal',false)">Fermer</button>
     </div>
@@ -1370,22 +1372,15 @@ function showManageMembers(){
     <button onclick="document.getElementById('manage-members-dialog').remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;">×</button>
   </div>
   <div style="margin-bottom:14px;">${membersHtml||'<div style="color:var(--muted);font-size:12px;">Aucun membre chargé</div>'}</div>
-  <div style="border-top:1px solid var(--border);padding-top:12px;">
-    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">➕ Ajouter un membre</div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Tape son <b>pseudo du journal surf</b> (ou une partie) — n'importe quel membre du bateau peut ajouter un copain, en 10 secondes.</div>
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <input id="mm-search" type="text" placeholder="Pseudo journal (ex: Lucas)" oninput="searchProfileForBoat()" style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
+  ${_addMemberSectionHtml('mm')}
+  <details style="font-size:10px;color:var(--muted);margin-top:8px;">
+    <summary style="cursor:pointer;">▸ Ajout manuel par UUID (dépannage)</summary>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;">
+      <input id="mm-name" type="text" placeholder="Prénom" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
+      <input id="mm-uuid" type="text" placeholder="UUID Supabase" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;font-family:monospace;">
     </div>
-    <div id="mm-results" style="margin-bottom:8px;"></div>
-    <details style="font-size:10px;color:var(--muted);">
-      <summary style="cursor:pointer;">▸ Ajout manuel par UUID (dépannage)</summary>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;">
-        <input id="mm-name" type="text" placeholder="Prénom" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
-        <input id="mm-uuid" type="text" placeholder="UUID Supabase" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;font-family:monospace;">
-      </div>
-      <button onclick="addMemberToBoat()" style="width:100%;background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;">Ajouter par UUID</button>
-    </details>
-  </div>`;
+    <button onclick="addMemberToBoat()" style="width:100%;background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;">Ajouter par UUID</button>
+  </details>`;
 
   document.body.appendChild(div);
 }
@@ -1393,14 +1388,26 @@ function showManageMembers(){
 // Recherche dans profiles (pseudos du journal) → ajout au bateau en 1 tap.
 // Fini le mur « UUID Supabase → Authentication → Users » que seul l'admin
 // pouvait franchir : c'était LE blocage pour intégrer les copains.
+// prefix : la même UI vit dans DEUX endroits (dialogue 👥 du bateau = 'mm',
+// modal 👥 de la barre du haut = 'mm2') → ids préfixés pour ne pas se marcher dessus.
 let _mmSearchTimer=null;
-function searchProfileForBoat(){
+function _addMemberSectionHtml(prefix){
+  return `<div style="border-top:1px solid var(--border);padding-top:12px;">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">➕ Ajouter un membre</div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Tape son <b>pseudo du journal surf</b> (2 lettres minimum) — n'importe quel membre peut ajouter un copain.</div>
+    <input id="${prefix}-search" type="text" placeholder="🔍 Pseudo journal (ex: Lucas)" oninput="searchProfileForBoat('${prefix}')" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;margin-bottom:8px;">
+    <div id="${prefix}-results" style="margin-bottom:4px;"><div style="font-size:10px;color:var(--muted);font-style:italic;padding:2px 0;">Les résultats s'affichent ici dès la saisie…</div></div>
+  </div>`;
+}
+function searchProfileForBoat(prefix){
+  prefix=prefix||'mm';
   clearTimeout(_mmSearchTimer);
   _mmSearchTimer=setTimeout(async()=>{
-    const q=document.getElementById('mm-search')?.value.trim();
-    const box=document.getElementById('mm-results');
+    const q=document.getElementById(prefix+'-search')?.value.trim();
+    const box=document.getElementById(prefix+'-results');
     if(!box)return;
-    if(!q||q.length<2){box.innerHTML='';return;}
+    if(!q||q.length<2){box.innerHTML='<div style="font-size:10px;color:var(--muted);font-style:italic;padding:2px 0;">Tape au moins 2 lettres…</div>';return;}
+    box.innerHTML='<div style="font-size:11px;color:var(--muted);">Recherche… ⏳</div>';
     const {data,error}=await sb.from('profiles').select('id,username').ilike('username','%'+q+'%').limit(6);
     if(error){box.innerHTML='<div style="font-size:11px;color:var(--red);">Erreur : '+error.message+'</div>';return;}
     if(!data||!data.length){
@@ -1410,11 +1417,11 @@ function searchProfileForBoat(){
     const memberIds=_members.map(m=>m.id);
     box.innerHTML=data.map(p=>{
       const already=memberIds.includes(p.id);
-      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
-        <span style="flex:1;font-size:12px;"><b>${p.username||'Surfeur'}</b></span>
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+        <span style="flex:1;font-size:13px;"><b>${p.username||'Surfeur'}</b></span>
         ${already
           ?'<span style="font-size:10px;color:var(--green);">✓ déjà membre</span>'
-          :`<button onclick="addProfileToBoat('${p.id}','${(p.username||'Surfeur').replace(/'/g,"\\'")}')" style="background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.35);color:var(--green);border-radius:5px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:600;">+ Ajouter</button>`}
+          :`<button onclick="addProfileToBoat('${p.id}','${(p.username||'Surfeur').replace(/'/g,"\\'")}')" style="background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.35);color:var(--green);border-radius:6px;font-size:12px;padding:6px 14px;cursor:pointer;font-weight:600;white-space:nowrap;">+ Ajouter</button>`}
       </div>`;
     }).join('');
   },300);
@@ -1429,6 +1436,9 @@ async function addProfileToBoat(uid,username){
   toast(username+' ajouté au bateau ✓ — il voit tout dès sa prochaine connexion','ok');
   document.getElementById('manage-members-dialog')?.remove();
   await loadMembers();
+  renderMembersList(); // rafraîchit le modal 👥 topbar s'il est ouvert
+  const res2=document.getElementById('mm2-results'); if(res2)res2.innerHTML='';
+  const s2=document.getElementById('mm2-search'); if(s2)s2.value='';
   loadLogs();
 }
 
@@ -2156,6 +2166,10 @@ async function applyFuelRecalc(){
 function openMembersModal(){
   loadMembers().then(()=>{
     renderMembersList();
+    // Ajout de membre aussi depuis ce modal (préfixe mm2 : le dialogue 👥 du
+    // bateau utilise mm — les deux UIs coexistent dans le DOM sans collision d'ids)
+    const add=document.getElementById('membersAddSection');
+    if(add&&!add.innerHTML)add.innerHTML=_addMemberSectionHtml('mm2');
     modal('membersModal',true);
   });
 }
