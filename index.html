@@ -1778,8 +1778,8 @@ function sessionCardHTML(s, opts) {
   const tags = [];
   if (s.moves && s.moves.includes('tube')) tags.push('<span class="tag tag-tube">tube</span>');
   if (s.is_shared) tags.push('<span class="tag tag-shared">partagée</span>');
-  if (s.board) tags.push(`<span class="tag tag-board">${s.board}</span>`);
-  if (s.moves) s.moves.filter(m=>m!=='tube').slice(0,2).forEach(m => tags.push(`<span class="tag tag-board">${m}</span>`));
+  if (s.board) tags.push(`<span class="tag tag-board">${escapeHtml(s.board)}</span>`);
+  if (s.moves) s.moves.filter(m=>m!=='tube').slice(0,2).forEach(m => tags.push(`<span class="tag tag-board">${escapeHtml(m)}</span>`));
   const dur = s.duration_h ? `${s.duration_h}h` : '';
   return `<div class="session-card ${s.is_shared ? 'shared' : ''}" onclick="openDetail('${s.id}')" style="margin-bottom:8px;">
     <div class="session-date-block">
@@ -1787,7 +1787,7 @@ function sessionCardHTML(s, opts) {
       <div class="session-month">${month} ${year}</div>
     </div>
     <div>
-      <div class="session-spot">${s.spot || '—'}</div>
+      <div class="session-spot">${escapeHtml(s.spot || '—')}</div>
       <div class="session-meta">${_fmtMeta(s)}</div>
       ${tags.length ? `<div class="session-tags">${tags.join('')}</div>` : ''}
       ${(function(){
@@ -1800,7 +1800,7 @@ function sessionCardHTML(s, opts) {
           ? 'font-size:10px;color:var(--text-muted);margin-top:3px;'
           : 'font-size:10px;color:var(--accent);margin-top:3px;opacity:.8;cursor:pointer;';
         var cls = isMe ? '' : 'tap-author';
-        return '<div class="' + cls + '" ' + (isMe ? '' : 'data-uid="' + s.user_id + '"') + ' style="' + style + '">👤 ' + name + '</div>';
+        return '<div class="' + cls + '" ' + (isMe ? '' : 'data-uid="' + s.user_id + '"') + ' style="' + style + '">👤 ' + escapeHtml(name) + '</div>';
       })()}
     </div>
     <div class="session-right">
@@ -3054,6 +3054,15 @@ async function saveSession() {
 }
 
 // ══ SESSION DETAIL ══
+// Échappe le texte UTILISATEUR avant injection dans innerHTML — sans ça, un
+// simple « < » dans une observation casse l'affichage, et un copain (ou un
+// pseudo) peut injecter du HTML/JS chez les autres (XSS stocké).
+function escapeHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 async function openDetail(id) {
   const s = allSessions.find(x => x.id === id) || (await (async () => {
     const { data } = await sb.from('sessions').select('*').eq('id', id).single();
@@ -3082,7 +3091,7 @@ async function openDetail(id) {
   var authorEl = document.getElementById('detail-author');
   if (authorEl) {
     if (!_isOwn && _authorName) {
-            authorEl.innerHTML = '<span class="tap-author" data-uid="' + s.user_id + '" style="cursor:pointer;">👤 ' + _authorName + ' <span style="font-size:9px;opacity:.6;">↗ voir profil</span></span>';
+            authorEl.innerHTML = '<span class="tap-author" data-uid="' + s.user_id + '" style="cursor:pointer;">👤 ' + escapeHtml(_authorName) + ' <span style="font-size:9px;opacity:.6;">↗ voir profil</span></span>';
     } else {
       authorEl.textContent = '';
     }
@@ -3097,16 +3106,16 @@ async function openDetail(id) {
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem;">${dateStr}</div>
     ${moves ? `<div style="margin-bottom:1rem;display:flex;gap:4px;flex-wrap:wrap;">${moves}</div>` : ''}
     <div class="detail-grid">
-      ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? '· '+s.swell_dir : ''}</div></div>` : ''}
+      ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? '· '+escapeHtml(s.swell_dir) : ''}</div></div>` : ''}
       ${s.period ? `<div class="detail-item"><div class="detail-label">Période</div><div class="detail-value">${s.period}s</div></div>` : ''}
-      ${s.wind_kts !== null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+s.wind_dir : ''}</div></div>` : ''}
-      ${s.tide ? `<div class="detail-item"><div class="detail-label">Marée</div><div class="detail-value">${s.tide}</div></div>` : ''}
-      ${s.board ? `<div class="detail-item"><div class="detail-label">Planche</div><div class="detail-value">${s.board}</div></div>` : ''}
-      ${s.launch_point ? `<div class="detail-item"><div class="detail-label">Mise à l'eau</div><div class="detail-value">${s.launch_point}</div></div>` : ''}
+      ${s.wind_kts !== null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+escapeHtml(s.wind_dir) : ''}</div></div>` : ''}
+      ${s.tide ? `<div class="detail-item"><div class="detail-label">Marée</div><div class="detail-value">${escapeHtml(s.tide)}</div></div>` : ''}
+      ${s.board ? `<div class="detail-item"><div class="detail-label">Planche</div><div class="detail-value">${escapeHtml(s.board)}</div></div>` : ''}
+      ${s.launch_point ? `<div class="detail-item"><div class="detail-label">Mise à l'eau</div><div class="detail-value">${escapeHtml(s.launch_point)}</div></div>` : ''}
       ${s.price_cfp ? `<div class="detail-item"><div class="detail-label">Prix bateau</div><div class="detail-value">${s.price_cfp.toLocaleString('fr')} CFP</div></div>` : ''}
-      ${s.shared_with && s.shared_with.length ? `<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">Surfeurs</div><div class="detail-value">${s.shared_with.join(', ')}</div></div>` : ''}
+      ${s.shared_with && s.shared_with.length ? `<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">Surfeurs</div><div class="detail-value">${escapeHtml(s.shared_with.join(', '))}</div></div>` : ''}
     </div>
-    ${s.observations ? `<div style="margin-top:1rem;padding:12px 14px;background:var(--glass);border-radius:var(--radius-sm);font-size:13px;color:var(--text);line-height:1.7;">${s.observations}</div>` : ''}
+    ${s.observations ? `<div style="margin-top:1rem;padding:12px 14px;background:var(--glass);border-radius:var(--radius-sm);font-size:13px;color:var(--text);line-height:1.7;">${escapeHtml(s.observations)}</div>` : ''}
     ${isOwn ? `<div style="margin-top:1rem;text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteSession('${s.id}')">Supprimer</button></div>` : ''}
   `;
   if (s.is_shared && sb) {
@@ -3130,8 +3139,8 @@ async function loadComments(sessionId) {
   }
   el.innerHTML = comments.map(c => `
     <div class="comment">
-      <div class="comment-author">${c.username || 'Surfeur'} ${c.quality ? '<span style="color:var(--star)">'+('★'.repeat(c.quality))+'</span>' : ''}</div>
-      <div class="comment-text">${c.comment || ''}</div>
+      <div class="comment-author">${escapeHtml(c.username || 'Surfeur')} ${c.quality ? '<span style="color:var(--star)">'+('★'.repeat(c.quality))+'</span>' : ''}</div>
+      <div class="comment-text">${escapeHtml(c.comment || '')}</div>
       <div class="comment-meta">${new Date(c.created_at).toLocaleDateString('fr-FR')}</div>
     </div>
   `).join('');
