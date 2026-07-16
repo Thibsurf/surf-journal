@@ -240,14 +240,23 @@ select option{background:var(--s2)}
     <div class="auth-logo">
       <div class="ico">⛽</div>
       <h2>Marine Fuel</h2>
-      <p>Gestion carburant embarquée</p>
+      <p>Le carnet carburant du bateau — partagé entre copains</p>
+    </div>
+    <div style="background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;line-height:1.8;color:var(--muted);">
+      ⛽ <b style="color:var(--text);">Jauge estimée</b> — combien il reste dans le réservoir, sans y aller<br>
+      📐 <b style="color:var(--text);">Autonomie réelle</b> — L/mille appris de VOS sorties, pas de la brochure<br>
+      💸 <b style="color:var(--text);">Qui doit quoi</b> — l'essence se partage toute seule, remboursements en 1 tap<br>
+      🛢 <b style="color:var(--text);">Bidons suivis</b> — le stock à bord et à terre, toujours à jour
+    </div>
+    <div style="text-align:center;font-size:.72rem;color:var(--green);margin-bottom:12px;">
+      ✓ Même compte que le Journal surf / Sorties — si tu y es déjà inscrit, connecte-toi direct.
     </div>
     <div id="auth-err"></div>
     <div class="fld"><label>Email</label><input id="em" type="email" placeholder="vous@mail.com"></div>
     <div class="fld"><label>Mot de passe</label><input id="pw" type="password" placeholder="••••••••"></div>
     <button class="btn btn-primary btn-full" id="loginBtn"><span id="login-txt">Se connecter</span></button>
     <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn btn-ghost btn-full" onclick="sendMagicLink()" style="font-size:.76rem">✉️ Lien magique</button>
+      <button class="btn btn-ghost btn-full" onclick="sendMagicLink()" style="font-size:.76rem" title="Reçois un lien par email — crée le compte s'il n'existe pas encore">✉️ Lien magique (ou 1ʳᵉ connexion)</button>
       <button class="btn btn-ghost btn-full" onclick="resetPassword()" style="font-size:.76rem">Mot de passe oublié</button>
     </div>
   </div>
@@ -282,6 +291,9 @@ select option{background:var(--s2)}
 
     <!-- Hero solde (2.1) — première chose visible -->
     <div id="balanceHero"></div>
+
+    <!-- Pont Sorties → Fuel Pro : essence du tricount non rapprochée -->
+    <div id="sortiesFuelBridge"></div>
 
     <!-- Sélecteur bateau -->
     <div class="card">
@@ -1148,10 +1160,10 @@ function showApp(){
 // ── Bateaux (via boat_members) ────────────────────────────────────────────────
 async function loadBoats(){
   const {data:mem}=await sb.from('boat_members').select('boat_id').eq('user_id',user.id);
-  if(!mem?.length){toast('Aucun bateau trouvé','err');return;}
+  if(!mem?.length){showNoBoatOnboarding();return;}
   const ids=mem.map(m=>m.boat_id);
   const {data:boats}=await sb.from('boats').select('*').in('id',ids);
-  if(!boats?.length){toast('Erreur bateaux','err');return;}
+  if(!boats?.length){showNoBoatOnboarding();return;}
   const sel=document.getElementById('boatSelect');
   sel.innerHTML='';
   boats.forEach(b=>{
@@ -1163,6 +1175,39 @@ async function loadBoats(){
   updateBoatChips();
   await loadMembers();
   loadLogs();
+}
+
+// Compte OK mais aucun bateau : avant, un simple toast d'erreur laissait une
+// app vide et morte — l'impasse exacte où atterrissait chaque nouveau copain.
+// Maintenant : explication + pseudo à donner + demande WhatsApp prête à envoyer.
+async function showNoBoatOnboarding(){
+  const heroEl=document.getElementById('balanceHero');
+  if(!heroEl)return;
+  let myName=user.email.split('@')[0];
+  try{
+    const {data:p}=await sb.from('profiles').select('username').eq('id',user.id).maybeSingle();
+    if(p&&p.username)myName=p.username;
+  }catch(e){}
+  heroEl.innerHTML=`<div class="card" style="border-color:rgba(79,163,199,.4);">
+    <div style="font-size:1.05rem;font-weight:700;margin-bottom:8px;">👋 Bienvenue à bord — presque !</div>
+    <div style="font-size:.8rem;color:var(--muted);line-height:1.7;margin-bottom:12px;">
+      Ton compte fonctionne ✓ mais tu n'es encore rattaché à aucun bateau.<br>
+      Demande à un membre du bateau de t'ajouter : chez lui, bouton <b>👥 → Ajouter un membre</b>,
+      il tape ton pseudo <b style="color:var(--a);">${myName}</b> et c'est fait — tu verras tout ici.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary" style="flex:1;min-width:150px;" onclick="requestBoatAccess('${myName.replace(/'/g,"\\'")}')">📤 Envoyer ma demande (WhatsApp…)</button>
+      <button class="btn btn-ghost" onclick="loadBoats()">↻ J'ai été ajouté — actualiser</button>
+    </div>
+  </div>`;
+}
+async function requestBoatAccess(myName){
+  const msg='Salut ! Tu peux m\'ajouter sur Marine Fuel (le carnet carburant du bateau) ?\n'
+    +'Mon pseudo : '+myName+'\n'
+    +'(bouton 👥 → Ajouter un membre → tape mon pseudo)\n'
+    +'https://thibsurf.github.io/surf-journal/marine_fuel_pro.html';
+  if(navigator.share){try{await navigator.share({text:msg});return;}catch(e){if(e&&e.name==='AbortError')return;}}
+  try{await navigator.clipboard.writeText(msg);toast('Message copié — colle-le dans WhatsApp ✅');}catch(e){alert(msg);}
 }
 
 let _members=[]; // membres du bateau courant
@@ -1327,15 +1372,64 @@ function showManageMembers(){
   <div style="margin-bottom:14px;">${membersHtml||'<div style="color:var(--muted);font-size:12px;">Aucun membre chargé</div>'}</div>
   <div style="border-top:1px solid var(--border);padding-top:12px;">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">➕ Ajouter un membre</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-      <input id="mm-name" type="text" placeholder="Prénom (ex: Lucas)" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
-      <input id="mm-uuid" type="text" placeholder="UUID Supabase (optionnel)" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;font-family:monospace;">
+    <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Tape son <b>pseudo du journal surf</b> (ou une partie) — n'importe quel membre du bateau peut ajouter un copain, en 10 secondes.</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <input id="mm-search" type="text" placeholder="Pseudo journal (ex: Lucas)" oninput="searchProfileForBoat()" style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
     </div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:8px;">L'UUID se trouve dans Supabase → Authentication → Users. Sans UUID, le membre apparaîtra mais ne pourra pas se connecter.</div>
-    <button onclick="addMemberToBoat()" style="width:100%;background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;">Ajouter au bateau</button>
+    <div id="mm-results" style="margin-bottom:8px;"></div>
+    <details style="font-size:10px;color:var(--muted);">
+      <summary style="cursor:pointer;">▸ Ajout manuel par UUID (dépannage)</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;">
+        <input id="mm-name" type="text" placeholder="Prénom" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
+        <input id="mm-uuid" type="text" placeholder="UUID Supabase" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;font-family:monospace;">
+      </div>
+      <button onclick="addMemberToBoat()" style="width:100%;background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;">Ajouter par UUID</button>
+    </details>
   </div>`;
 
   document.body.appendChild(div);
+}
+
+// Recherche dans profiles (pseudos du journal) → ajout au bateau en 1 tap.
+// Fini le mur « UUID Supabase → Authentication → Users » que seul l'admin
+// pouvait franchir : c'était LE blocage pour intégrer les copains.
+let _mmSearchTimer=null;
+function searchProfileForBoat(){
+  clearTimeout(_mmSearchTimer);
+  _mmSearchTimer=setTimeout(async()=>{
+    const q=document.getElementById('mm-search')?.value.trim();
+    const box=document.getElementById('mm-results');
+    if(!box)return;
+    if(!q||q.length<2){box.innerHTML='';return;}
+    const {data,error}=await sb.from('profiles').select('id,username').ilike('username','%'+q+'%').limit(6);
+    if(error){box.innerHTML='<div style="font-size:11px;color:var(--red);">Erreur : '+error.message+'</div>';return;}
+    if(!data||!data.length){
+      box.innerHTML='<div style="font-size:11px;color:var(--muted);">Aucun pseudo trouvé — il doit d\'abord créer son compte (même compte que le journal surf / la page Sorties).</div>';
+      return;
+    }
+    const memberIds=_members.map(m=>m.id);
+    box.innerHTML=data.map(p=>{
+      const already=memberIds.includes(p.id);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span style="flex:1;font-size:12px;"><b>${p.username||'Surfeur'}</b></span>
+        ${already
+          ?'<span style="font-size:10px;color:var(--green);">✓ déjà membre</span>'
+          :`<button onclick="addProfileToBoat('${p.id}','${(p.username||'Surfeur').replace(/'/g,"\\'")}')" style="background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.35);color:var(--green);border-radius:5px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:600;">+ Ajouter</button>`}
+      </div>`;
+    }).join('');
+  },300);
+}
+
+async function addProfileToBoat(uid,username){
+  if(!boat){toast('Aucun bateau sélectionné','err');return;}
+  const {error}=await sb.from('boat_members').upsert({boat_id:boat.id,user_id:uid,role:'member'},{onConflict:'boat_id,user_id'});
+  if(error&&!error.message.includes('duplicate')){toast('❌ Refus serveur : '+error.message,'err');return;}
+  _memberNicknames[uid]=username;
+  saveMemberNicknames();
+  toast(username+' ajouté au bateau ✓ — il voit tout dès sa prochaine connexion','ok');
+  document.getElementById('manage-members-dialog')?.remove();
+  await loadMembers();
+  loadLogs();
 }
 
 async function addMemberToBoat(){
@@ -2160,6 +2254,83 @@ async function loadLogs(){
   renderBidonsInline();
   // Mettre à jour les graphes si l'onglet est actif
   if(document.getElementById('tab-charts').classList.contains('active'))renderCharts();
+  loadSortiesFuelBridge(); // essence saisie dans Sorties (tricount) non rapprochée
+}
+
+// ── Pont Sorties → Fuel Pro ──────────────────────────────────────────────────
+// Les copains saisissent déjà l'essence dans le tricount de sorties.html — ces
+// dépenses n'apparaissaient JAMAIS ici (systèmes disjoints), donc Fuel Pro
+// semblait vide/inutile. On les affiche en lecture avec préremplissage 1-tap.
+async function loadSortiesFuelBridge(){
+  const box=document.getElementById('sortiesFuelBridge');
+  if(!box)return;
+  let seen={};
+  try{seen=JSON.parse(localStorage.getItem('mfp-sortie-fuel-seen')||'{}');}catch(e){}
+  try{
+    const since=new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+    const {data,error}=await sb.from('sorties').select('id,spot,date_start,expenses').gte('date_start',since);
+    if(error||!data){box.innerHTML='';return;}
+    const items=[];
+    data.forEach(s=>{
+      (s.expenses||[]).forEach(e=>{
+        if(e.is_reimbursement)return;
+        if(!/essence|⛽|fuel|gasoil|gazole|carburant/i.test(e.label||''))return;
+        if(seen[e.id])return;
+        // Déjà rapproché ? heuristique : un log fuel du même montant à ±3 jours
+        const eDay=new Date(e.created_at||s.date_start+'T12:00:00').getTime();
+        const dup=allLogs.some(l=>l.total_price&&Math.abs(l.total_price-e.amount)<1
+          &&Math.abs(new Date(l.created_at).getTime()-eDay)<3*86400000);
+        if(dup)return;
+        items.push({e,s});
+      });
+    });
+    if(!items.length){box.innerHTML='';return;}
+    items.sort((a,b)=>new Date(b.e.created_at||b.s.date_start)-new Date(a.e.created_at||a.s.date_start));
+    box.innerHTML=`<div class="card" style="border-color:rgba(232,160,87,.35);">
+      <div class="card-head"><div class="card-title">⛽ Essence saisie dans Sorties — pas encore loguée ici</div></div>
+      <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px;">Le tricount de Sorties partage l'argent ; Fuel Pro suit le réservoir. Un plein noté là-bas peut être enregistré ici en 1 tap (litres pré-estimés au prix du jour).</div>
+      ${items.slice(0,5).map(({e,s})=>{
+        const d=(e.created_at||s.date_start||'').slice(0,10).split('-').reverse().join('/');
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:.76rem;">
+          <div style="flex:1;min-width:0;">
+            <b>${(e.label||'Essence').replace(/</g,'&lt;')}</b> · ${(e.payer_name||'?').replace(/</g,'&lt;')}
+            <div style="font-size:.64rem;color:var(--muted);">${(s.spot||'').replace(/</g,'&lt;')} · ${d}</div>
+          </div>
+          <span style="font-family:var(--mono);color:var(--a2);">${fmt(e.amount)} XPF</span>
+          <button class="btn btn-ghost btn-sm" onclick="prefillFromSortie('${e.id}',${e.amount},'${(e.created_at||s.date_start+'T12:00:00')}','${(e.payer_id||'').replace(/'/g,'')}')" title="Préremplir le formulaire Plein">→ Loguer</button>
+          <button class="btn btn-ghost btn-sm" onclick="dismissSortieFuel('${e.id}')" title="Ne plus proposer">✕</button>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }catch(e){box.innerHTML='';}
+}
+function dismissSortieFuel(expId){
+  let seen={};
+  try{seen=JSON.parse(localStorage.getItem('mfp-sortie-fuel-seen')||'{}');}catch(e){}
+  seen[expId]=1;
+  try{localStorage.setItem('mfp-sortie-fuel-seen',JSON.stringify(seen));}catch(e){}
+  loadSortiesFuelBridge();
+}
+function prefillFromSortie(expId,amount,dateIso,payerId){
+  dismissSortieFuel(expId); // marqué traité (réaffichable en vidant le cache navigateur)
+  goAddTab();
+  document.getElementById('logType').value='refuel';
+  onTypeChange();
+  const price=getFuelPrice(dateIso)||0;
+  document.getElementById('fuelTotal').value=Math.round(amount);
+  if(price>0){
+    document.getElementById('fuelP').value=price;
+    document.getElementById('fuelL').value=(amount/price).toFixed(1);
+  }
+  try{
+    const dt=new Date(dateIso);dt.setMinutes(dt.getMinutes()-dt.getTimezoneOffset());
+    document.getElementById('fuelDate').value=dt.toISOString().slice(0,16);
+  }catch(e){}
+  const payerSel=document.getElementById('fuelPaidBy');
+  if(payerSel&&payerId&&_members.some(m=>m.id===payerId))payerSel.value=payerId;
+  if(typeof renderSplitInputs==='function')renderSplitInputs();
+  if(typeof liveEstimate==='function')liveEstimate();
+  toast('Formulaire prérempli depuis Sorties — vérifie les litres puis Enregistrer','ok');
 }
 
 // ── FOB — méthode aviatique chaîne comptable ──────────────────────────────────
@@ -3466,6 +3637,7 @@ async function shareBalance(){
   if(!bal.transfers.length)lines.push('✓ Comptes à l\'équilibre');
   else bal.transfers.forEach(t=>lines.push('• '+t.from+' → '+t.to+' : '+fmt(t.amt)+' XPF'));
   lines.push('Total dépensé partagé : '+fmt(Math.round(bal.totals.totalGlobal))+' XPF');
+  lines.push('📱 Détail + jauge réservoir : https://thibsurf.github.io/surf-journal/marine_fuel_pro.html');
   const msg=lines.join('\n');
   if(navigator.share){ try{ await navigator.share({text:msg}); return; }catch(e){ if(e&&e.name==='AbortError')return; } }
   try{ await navigator.clipboard.writeText(msg); toast('Solde copié ✅'); }catch(e){ alert(msg); }

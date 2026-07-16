@@ -1861,22 +1861,30 @@ function setNcToken(t) {
 
 function _updateTokenBtn() {
   var btn = document.getElementById('token-btn'); if(!btn) return;
+  // ⚠ Toujours passer par innerHTML avec le <span id="token-btn-label"> :
+  // l'ancien btn.textContent='🔑' DÉTRUISAIT le span enfant → dès le 2ᵉ passage
+  // le libellé de durée restante ne se mettait plus jamais à jour.
   if (_ncToken && _isTokenValid()) {
+    var rest = '';
     try {
       var p = JSON.parse(atob(_ncToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-      if (p.exp) {
-        var mn = Math.round((p.exp - Date.now()/1000) / 60);
-        btn.title = 'Token valide · ' + (mn > 60 ? Math.round(mn/60)+'h' : mn+'min') + ' restantes';
-      var lbl = document.getElementById('token-btn-label');
-      if (lbl) lbl.textContent = mn > 60 ? Math.round(mn/60)+'h' : mn+'min';
+      var mn = null;
+      if (p.exp)      mn = Math.round((p.exp - Date.now()/1000) / 60);
+      else if (p.iat) mn = Math.max(0, Math.round(55 - (Date.now()/1000 - p.iat) / 60)); // TTL meteo.nc ~55min
+      if (mn != null) {
+        rest = mn > 60 ? Math.round(mn/60)+'h' : mn+'min';
+        btn.title = 'Token valide · ' + rest + ' restantes';
       }
     } catch(e){}
-    btn.style.color = 'var(--ok)'; btn.style.borderColor = 'var(--ok)'; btn.textContent = '🔑';
+    btn.style.color = 'var(--ok)'; btn.style.borderColor = 'var(--ok)';
+    btn.innerHTML = '🔑 <span id="token-btn-label" style="font-size:9px;">'+rest+'</span>';
   } else if (_ncToken && !_isTokenValid()) {
-    btn.style.color = 'var(--bad)'; btn.style.borderColor = 'var(--bad)'; btn.textContent = '🔑 !';
+    btn.style.color = 'var(--bad)'; btn.style.borderColor = 'var(--bad)';
+    btn.innerHTML = '🔑 ! <span id="token-btn-label" style="font-size:9px;"></span>';
     btn.title = 'Token expiré — cliquer pour renouveler';
   } else {
-    btn.style.color = 'var(--warm)'; btn.style.borderColor = 'var(--warm)'; btn.textContent = '🔑 ?';
+    btn.style.color = 'var(--warm)'; btn.style.borderColor = 'var(--warm)';
+    btn.innerHTML = '🔑 ? <span id="token-btn-label" style="font-size:9px;"></span>';
     btn.title = 'Aucun token — cliquer pour en obtenir un';
   }
 }
@@ -2155,8 +2163,14 @@ function showNcTokenPrompt() {
     } catch(e){ wOk = false; } })();
     var pS = (async function(){ try { sOk = !!(await _loadTokenFromSupabase()); } catch(e){ sOk = false; } })();
     var pD = (async function(){ if (!(_ncToken && _isTokenValid())) { dOk = null; return; }
-      try { var r = await fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881752',
-        { headers: { 'Authorization': 'Bearer ' + _ncToken }, credentials: 'omit' }); dOk = r.ok; }
+      try {
+        // Timeout 4s obligatoire : sans lui, un rpcache qui blackhole (réseau
+        // mobile) laissait le diagnostic sur « ⏳ » sans fin (Promise.all bloqué)
+        var cD = new AbortController(); var tD = setTimeout(function(){ cD.abort(); }, 4000);
+        var r = await fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881752',
+          { headers: { 'Authorization': 'Bearer ' + _ncToken }, credentials: 'omit', signal: cD.signal });
+        clearTimeout(tD); dOk = r.ok;
+      }
       catch(e){ dOk = false; } })();
     await Promise.all([pW, pS, pD]);
     var el = document.getElementById('nc-tok-diag'); if (!el) return; // panneau fermé entre-temps

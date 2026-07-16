@@ -74,7 +74,14 @@ async function _loadTokenFromSupabase() {
   var sb = _nctSb();
   if (!sb) return null;
   try {
-    var res = await sb.from('shared_tokens').select('token, updated_at').eq('id', 'meteo-nc').maybeSingle();
+    // Promise.race 6s : sur certains réseaux mobiles NC la requête peut rester
+    // pendue indéfiniment (blackhole) → sans plafond, tout appelant qui await
+    // (bouton « Actualiser le token », diagnostic 🔑) restait en chargement
+    // sans fin. On rend null au bout de 6s, la requête de fond est abandonnée.
+    var res = await Promise.race([
+      sb.from('shared_tokens').select('token, updated_at').eq('id', 'meteo-nc').maybeSingle(),
+      new Promise(function(resolve){ setTimeout(function(){ resolve(null); }, 6000); })
+    ]);
     if (!res || res.error || !res.data || !res.data.token) return null;
     var ageMs = Date.now() - new Date(res.data.updated_at).getTime();
     // Le cron du worker upsert un token < 5 min ; au-delà de 30 min c'est probablement
