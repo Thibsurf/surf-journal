@@ -577,6 +577,14 @@ nav a.back:hover{color:var(--text);}
       <!-- Bilan global + transferts -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;" id="tricount-summary-grid"></div>
 
+      <!-- Trace : historique complet dépenses + remboursements, toutes sorties confondues -->
+      <details style="margin-bottom:16px;">
+        <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-muted);padding:8px 12px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px;">
+          🧾 Historique complet <span style="font-weight:400;opacity:.75;" id="tc-history-count"></span>
+        </summary>
+        <div id="tc-history-list" style="padding:10px 4px;max-height:340px;overflow-y:auto;"></div>
+      </details>
+
       <!-- Dépense libre (hors sortie) -->
       <details style="margin-bottom:16px;" ontoggle="if(this.open)_renderFreePeopleChips()">
         <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#a99ff8;padding:8px 12px;background:rgba(123,108,246,.07);border:1px solid rgba(123,108,246,.2);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px;">
@@ -597,10 +605,9 @@ nav a.back:hover{color:var(--text);}
           <div id="tc-free-people-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;"></div>
           <div style="font-size:10px;color:var(--text-faint);margin-bottom:10px;">
             Toi paies, le montant est partagé entre les personnes cochées ci-dessus (décoche tout le monde sauf 1 pour une dépense perso, non partagée).<br>
-            Pour un <b>remboursement direct</b> entre deux personnes (solder une dette existante), clique <b>💸 Remboursement A→B</b> ci-dessous.
+            Pour <b>rembourser une dette</b> (pas une nouvelle dépense), c'est dans ⚖️ Équilibre général ci-dessus, à côté des virements suggérés.
           </div>
-          <button onclick="addFreeExpense()" style="width:100%;background:rgba(123,108,246,.2);border:1px solid rgba(123,108,246,.4);color:#a99ff8;border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;margin-bottom:8px;">✓ Enregistrer la dépense</button>
-          <button type="button" onclick="openManualReimbursement()" style="width:100%;background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.2);color:#3dba8a;border-radius:6px;font-size:11px;padding:6px 8px;cursor:pointer;">💸 Remboursement A→B (solder une dette)</button>
+          <button onclick="addFreeExpense()" style="width:100%;background:rgba(123,108,246,.2);border:1px solid rgba(123,108,246,.4);color:#a99ff8;border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;">✓ Enregistrer la dépense</button>
         </div>
       </details>
 
@@ -3887,8 +3894,12 @@ function addEditParticipant(type) {
     var name = prompt('Prénom de l\'invité :');
     if (!name || !name.trim()) return;
     name = name.trim();
-    var gid = 'guest-' + Date.now() + '-' + name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
-    _editInscriptions.push({ user_id: null, guest_id: gid, username: name, is_guest: true, status: 'in' });
+    var p = _tcMakeParticipant(name);
+    if (!p.is_guest && _editInscriptions.some(function(i){ return i.user_id === p.user_id; })) {
+      toast(name + ' est déjà dans la liste (compte déjà lié)', 'err'); return;
+    }
+    p.status = 'in';
+    _editInscriptions.push(p);
     _renderEditParticipants();
   } else {
     // Membres existants non déjà dans la liste
@@ -4220,9 +4231,54 @@ function renderTricount() {
               + '</div>'
               + '</div>';
           }).join('')
+        + (currentUser ? '<button type="button" onclick="openManualReimbursement()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--text-faint);font-size:10.5px;padding:4px;cursor:pointer;text-decoration:underline;">+ Autre remboursement (montant différent, pas dans la liste…)</button>' : '')
         + '</div>'
-      : (people.length ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ok);font-weight:600;">✓ Tout le monde est à l\'équilibre — rien à rembourser</div>' : ''))
+      : (people.length ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--ok);font-weight:600;">✓ Tout le monde est à l\'équilibre — rien à rembourser'
+          + (currentUser ? '<br><button type="button" onclick="openManualReimbursement()" style="margin-top:6px;background:none;border:none;color:var(--text-faint);font-size:10.5px;padding:4px;cursor:pointer;text-decoration:underline;font-weight:400;">+ Enregistrer un remboursement quand même</button>' : '')
+          + '</div>' : ''))
     + '</div>';
+
+  // Trace : historique complet (dépenses + remboursements), toutes sorties
+  // confondues, triées par date d'enregistrement — le user demandait à voir
+  // une trace de ce qui a réellement été payé/remboursé plutôt que d'avoir à
+  // fouiller sortie par sortie (inspiré du fil "Transactions" de Tricount).
+  var histEl = document.getElementById('tc-history-list');
+  var histCountEl = document.getElementById('tc-history-count');
+  if (histEl) {
+    var allTx = [];
+    tcSorties.forEach(function(s) {
+      (s.expenses || []).forEach(function(e) { allTx.push({ e: e, sortie: s }); });
+    });
+    allTx.sort(function(a, b) { return new Date(b.e.created_at || 0) - new Date(a.e.created_at || 0); });
+    if (histCountEl) histCountEl.textContent = '(' + allTx.length + ')';
+    histEl.innerHTML = !allTx.length
+      ? '<div style="font-size:11px;color:var(--text-faint);font-style:italic;padding:6px 8px;">Aucune dépense ni remboursement enregistré depuis la remise à zéro.</div>'
+      : allTx.map(function(tx) {
+          var e = tx.e, s = tx.sortie;
+          var amt = parseFloat(e.amount) || 0;
+          var payerId = aliasMap[(e.payer_id || '').toLowerCase()] || e.payer_id;
+          var payerNm = e.payer_name || resolveName(payerId, '?');
+          var when = e.created_at ? new Date(e.created_at).toLocaleDateString('fr', {day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+          var icon = e.is_reimbursement ? '💸' : (e.is_free ? '🔗' : '💰');
+          var iconColor = e.is_reimbursement ? '#3dba8a' : (e.is_free ? '#a99ff8' : 'var(--accent)');
+          var detail;
+          if (e.is_reimbursement) {
+            var benefId = aliasMap[String((e.splits && e.splits[0]) || '').toLowerCase()] || (e.splits && e.splits[0]);
+            detail = escapeHtml(payerNm) + ' → ' + escapeHtml(resolveName(benefId, '?'));
+          } else {
+            var n = (e.splits && e.splits.length) || 0;
+            detail = 'payé par ' + escapeHtml(payerNm) + (n ? ' · partagé ×' + n : '');
+          }
+          return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;">'
+            + '<span style="flex-shrink:0;width:22px;text-align:center;">' + icon + '</span>'
+            + '<div style="flex:1;min-width:0;">'
+            + '<div style="color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(e.label || 'Dépense') + '</div>'
+            + '<div style="color:var(--text-faint);font-size:10px;">' + detail + ' · ' + escapeHtml(s.spot || '') + ' ' + when + '</div>'
+            + '</div>'
+            + '<span style="flex-shrink:0;font-weight:700;color:' + iconColor + ';">' + amt.toLocaleString('fr') + ' CFP</span>'
+            + '</div>';
+        }).join('');
+  }
 
   // Liste par sortie — à venir + passées récentes avec dépenses
   // (même périmètre que l'équilibre : rien avant la remise à zéro)
@@ -4572,24 +4628,25 @@ async function addGuest(sortieId) {
   var s = allSorties.find(function(x) { return x.id === sortieId; });
   if (!s) return;
 
-  var guestId = 'guest-' + Date.now() + '-' + name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  var p = _tcMakeParticipant(name);
   var guest = {
-    user_id: null,
-    guest_id: guestId,
+    user_id: p.user_id,
+    guest_id: p.guest_id,
     username: name,
-    is_guest: true,
+    is_guest: p.is_guest,
     status: 'in',
     created_at: new Date().toISOString()
   };
 
   var current = (s.inscriptions || []).filter(function(i) {
-    return !(i.is_guest && i.username === name); // évite doublons par prénom
+    if (guest.is_guest) return !(i.is_guest && i.username === name); // évite doublons par prénom
+    return i.user_id !== guest.user_id; // déjà lié à un compte réel : évite le doublon par compte
   });
   current.push(guest);
 
   try {
     await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
-    toast(name + ' ajouté comme invité ✓', 'ok');
+    toast(guest.is_guest ? (name + ' ajouté comme invité ✓') : (name + ' ajouté — déjà lié à un compte, reconnu automatiquement ✓'), 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
 }
@@ -4650,6 +4707,30 @@ function tcFreePreset(label, amount) {
   if (l) l.value = label;
   if (a && amount > 0) { a.value = amount; a.focus(); }
   else if (a) { a.value = ''; a.focus(); }
+}
+
+// Slug STABLE (sans timestamp) pour l'id d'un invité — même prénom (insensible
+// aux accents/casse) → même guest_id PARTOUT (toutes sorties, tous appareils,
+// dans le temps). L'ancien format embarquait Date.now() : chaque nouvelle
+// sortie générait un id différent pour la MÊME personne, donc une liaison 🔗
+// posée une fois ne servait que pour cette sortie-là — à refaire à chaque
+// nouvelle sortie. C'était la cause du « je passe mon temps à lier les
+// comptes » remonté par le user.
+function _tcGuestId(name) {
+  var slug = String(name || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  return 'guest-' + (slug || 'invite');
+}
+
+// Si ce prénom est déjà lié à un compte réel (alias posé une fois via 🔗 Lier),
+// retourne directement un participant "réel" — plus jamais besoin de relier ce
+// nom. Sinon, un participant invité avec un guest_id stable (cf _tcGuestId).
+function _tcMakeParticipant(name) {
+  var gid = _tcGuestId(name);
+  var linked = aliasMap[gid.toLowerCase()];
+  if (linked) return { user_id: linked, guest_id: null, username: name, is_guest: false };
+  return { user_id: null, guest_id: gid, username: name, is_guest: true };
 }
 
 // Tous les participants connus (inscrits + copropriétaires) sur l'historique
@@ -4844,7 +4925,10 @@ function openAliasManager() {
 }
 
 function openAliasManagerForGuest(guestId) {
-  // Ouvre l'alias manager et pré-remplit le champ texte avec le guest ID complet
+  // Ouvre l'alias manager et pré-remplit le champ texte avec le guest ID —
+  // stable (_tcGuestId, sans timestamp) depuis la correction du 2026-07-16 :
+  // une liaison posée ici vaut désormais pour CE prénom sur toutes les sorties
+  // passées et futures, plus besoin de relier à chaque nouvelle sortie.
   openAliasManager();
   setTimeout(function() {
     var input = document.getElementById('al-text');
