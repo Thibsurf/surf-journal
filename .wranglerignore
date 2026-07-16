@@ -1,0 +1,9 @@
+.git
+node_modules
+.github
+.wrangler
+package.json
+package-lock.json
+bun.lockb
+extension
+worker_cloudflare

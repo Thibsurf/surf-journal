@@ -305,6 +305,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   <a href="https://thibsurf.github.io/surf-journal/" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Retour au journal">← Journal</a>
   <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Sorties">🏄 Sorties</a>
   <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" style="color:#e8c44a;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;padding:3px 8px;border:1px solid rgba(232,196,74,.35);border-radius:12px;background:rgba(232,196,74,.08);" title="Gestion carburant bateau">⛽ Fuel</a>
+  <a href="https://thibsurf.github.io/surf-journal/thibsurf_nav/" target="_blank" rel="noopener" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Traceur GPS nautique (app séparée)">🧭 Nav</a>
   <div class="logo">Surf <span>NC</span><span class="logo-suffix"> — Prévisions</span></div>
   <div class="nav-tabs-group" id="nav-tabs-group">
     <button class="nav-tab active" onclick="showTab('forecast',this);closeNavMenu()">📊 Prévisions</button>
@@ -4586,13 +4587,32 @@ function updateRoseSatBg(lat, lon, targetId) {
   function tryFinish() {
     if (abort.cancelled) return;
     if (loaded < total) return;
-    // Position du point exact dans l'image 768×768
+    // Position du point exact dans l'image source 768×768
     var ptX = tileSize + offsetX; // 256..512
     var ptY = tileSize + offsetY; // 256..512
-    // Pour centrer ptX/ptY dans l'affichage 240×240, via object-position en %
-    // object-position: X% Y% où X% = ptX/(768-240)*100, Y% = ptY/(768-240)*100
-    var pctX = (ptX / (tileSize * cols)) * 100;
-    var pctY = (ptY / (tileSize * rows)) * 100;
+    var S = tileSize * cols; // 768, source carrée
+
+    // Formule CSS object-position correcte pour object-fit:cover — la formule
+    // naïve « ptX/S*100 » ne centre le point QUE si le conteneur affiché est
+    // CARRÉ comme la source (cas historique de la rose 240×240, où ça marchait
+    // par coïncidence puisque cover ne recadre alors rien). Pour un conteneur
+    // RECTANGULAIRE (ex: le panneau satellite du widget, 184×224), cover
+    // recadre un axe et cette formule produisait un décalage visible entre le
+    // point choisi et le centre affiché. Formule générale : l'image est mise à
+    // l'échelle par scale=max(cw/S,ch/S), et object-position% résout la
+    // position pour que le point mis à l'échelle tombe au centre du conteneur.
+    var cw = img.clientWidth || img.offsetWidth || S;
+    var ch = img.clientHeight || img.offsetHeight || S;
+    var scale = Math.max(cw / S, ch / S);
+    var scaledW = S * scale, scaledH = S * scale;
+    function centerPct(pt, contSize, scaledSize) {
+      var excess = contSize - scaledSize;
+      if (Math.abs(excess) < 0.5) return 50; // pas de recadrage sur cet axe → object-position sans effet
+      var pct = ((contSize / 2 - pt * scale) / excess) * 100;
+      return Math.max(0, Math.min(100, pct));
+    }
+    var pctX = centerPct(ptX, cw, scaledW);
+    var pctY = centerPct(ptY, ch, scaledH);
     img.style.objectPosition = pctX.toFixed(1) + '% ' + pctY.toFixed(1) + '%';
     img.src = cv2.toDataURL('image/jpeg', 0.9);
   }

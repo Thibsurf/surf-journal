@@ -97,6 +97,14 @@ nav {
   font-size: 12px; font-weight: 500; color: var(--accent);
   cursor: pointer;
 }
+.nav-quick-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(79,163,199,0.15); border: 1px solid rgba(79,163,199,0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; text-decoration: none; flex-shrink: 0;
+  transition: all .2s;
+}
+.nav-quick-btn:hover { background: rgba(79,163,199,0.3); }
 
 /* ── LAYOUT ── */
 .page { display: none; }
@@ -447,6 +455,7 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c2-4 5-7 10-7s8 3 10 7c-2 4-5 7-10 7s-8-3-10-7z"/><path d="M20 12C17 8 14 5 9 5"/></svg>
     <span>Coups de surf <span>NC</span>
   </a>
+  <a href="https://thibsurf.github.io/surf-journal/previsions.html" class="nav-quick-btn" title="Prévisions" aria-label="Prévisions">🌊</a>
   <!-- Desktop nav buttons (masqués sur mobile) -->
   <div class="nav-menu-btns" id="nav-menu-btns">
     <button class="nav-btn" onclick="showPage('dashboard');closeIndexMenu()">Mes sessions</button>
@@ -461,6 +470,8 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
        class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">🏄 Sorties</a>
     <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html"
        class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">⛽ Marine Fuel – Pro</a>
+    <a href="https://thibsurf.github.io/surf-journal/thibsurf_nav/" target="_blank" rel="noopener"
+       class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()" title="Traceur GPS nautique (app séparée)">🧭 Nav GPS</a>
   </div>
   <button class="nav-btn primary" id="nav-new-session-btn" onclick="openAddSession()">+ Session</button>
   <div id="nav-token-dot" title="Token meteo.nc : —" style="width:9px;height:9px;border-radius:50%;background:var(--border);flex-shrink:0;cursor:default;transition:background .3s;"></div>
@@ -487,9 +498,26 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
         <input type="checkbox" id="auth-remember" checked style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
         <label for="auth-remember" style="font-size:13px;color:var(--text-muted);cursor:pointer;user-select:none;">Se souvenir de moi</label>
       </div>
+      <div id="auth-error" style="display:none;background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.3);color:var(--danger);font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;line-height:1.5;"></div>
+      <div id="auth-info" style="display:none;background:rgba(61,186,138,.1);border:1px solid rgba(61,186,138,.3);color:var(--success);font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;line-height:1.5;"></div>
       <button class="btn btn-primary btn-full" onclick="doLogin()" id="btn-login">Se connecter</button>
-      <div style="text-align:center;margin-top:1rem;font-size:13px;color:var(--text-muted)">
-        Pas encore de compte ? <a href="#" style="color:var(--accent)" onclick="switchAuthMode('signup')">S'inscrire</a>
+      <div style="display:flex;align-items:center;gap:8px;margin:14px 0 10px;">
+        <div style="flex:1;height:1px;background:var(--border);"></div>
+        <span style="font-size:10px;color:var(--text-faint,#3d5468);">ou sans mot de passe</span>
+        <div style="flex:1;height:1px;background:var(--border);"></div>
+      </div>
+      <button class="btn btn-full" onclick="sendMagicLinkJournal()" id="btn-magic"
+        style="background:none;border:1px solid rgba(79,163,199,.4);color:var(--accent);font-weight:600;">
+        ✉️ Recevoir un lien magique par email
+      </button>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:6px;line-height:1.5;text-align:center;">
+        Ton email ci-dessus → tu reçois un lien → un clic et tu es connecté.<br>
+        Marche aussi sans compte existant. <b>Ouvre le lien sur CET appareil.</b>
+      </div>
+      <div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text-muted)">
+        <a href="#" style="color:var(--accent-warm)" onclick="sendPasswordResetJournal();return false;">Mot de passe oublié ?</a>
+        <span style="margin:0 6px;">·</span>
+        <a href="#" style="color:var(--accent)" onclick="switchAuthMode('signup')">S'inscrire</a>
       </div>
     </div>
     <div id="auth-form-signup" style="display:none">
@@ -805,10 +833,14 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
     <input type="hidden" id="edit-session-id">
 
     <!-- ── Bloc 1 : Logistique ── -->
-    <div class="form-row">
+    <div class="form-row-3">
       <div class="form-group">
         <label class="form-label">Date</label>
         <input type="date" class="form-input" id="f-date" onchange="updateShomLink()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Heure</label>
+        <select class="form-select" id="f-session-hour"></select>
       </div>
       <div class="form-group">
         <label class="form-label">Durée (h)</label>
@@ -819,6 +851,7 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
       <label class="form-label">Spot</label>
       <select class="form-select" id="f-spot" onchange="handleSpotChange(this)">
         <option value="">— Choisir —</option>
+        <option value="Ilot Ténia">Ilot Ténia</option>
         <option value="Grand bac">Grand bac</option>
         <option value="Petit U">Petit U</option>
         <option value="Gros nem">Gros nem</option>
@@ -1236,7 +1269,10 @@ try {
         storageKey: 'surf-nc-auth',
         storage: window.localStorage,
         autoRefreshToken: true,
-        detectSessionInUrl: false
+        // true est INDISPENSABLE pour le lien magique et le reset de mot de
+        // passe : le lien email revient ici avec un token dans l'URL — à
+        // false il était silencieusement ignoré (même bug que sorties.html).
+        detectSessionInUrl: true
       }
     });
 
@@ -1248,6 +1284,55 @@ try {
 function switchAuthMode(mode) {
   document.getElementById('auth-form-login').style.display = mode === 'login' ? 'block' : 'none';
   document.getElementById('auth-form-signup').style.display = mode === 'signup' ? 'block' : 'none';
+}
+
+// Erreurs Supabase Auth en français actionnable (les messages anglais bruts
+// faisaient abandonner les copains — même helper que sorties.html)
+function _frAuthErrJ(e) {
+  var m = (e && e.message) || '';
+  if (/invalid login credentials/i.test(m)) return 'Email ou mot de passe incorrect. Essaie « Mot de passe oublié ? » ou le lien magique.';
+  if (/email not confirmed/i.test(m)) return 'Email pas encore confirmé — clique le lien reçu à l\'inscription (regarde les spams), ou utilise le lien magique.';
+  if (/rate limit|too many/i.test(m)) return 'Trop de tentatives — attends une minute puis réessaie.';
+  if (/already registered/i.test(m)) return 'Un compte existe déjà avec cet email — connecte-toi (ou « Mot de passe oublié ? »).';
+  if (/at least 6/i.test(m)) return 'Mot de passe trop court (6 caractères minimum).';
+  if (/network|fetch/i.test(m)) return 'Problème réseau — vérifie ta connexion et réessaie.';
+  return m || 'Erreur de connexion';
+}
+function _authMsg(kind, html) {
+  var err = document.getElementById('auth-error');
+  var info = document.getElementById('auth-info');
+  if (err) err.style.display = 'none';
+  if (info) info.style.display = 'none';
+  var el = kind === 'err' ? err : info;
+  if (el) { el.innerHTML = html; el.style.display = 'block'; }
+}
+
+// ── Lien magique : connexion sans mot de passe (crée le compte si besoin) ──
+async function sendMagicLinkJournal() {
+  var email = (document.getElementById('auth-email')?.value || '').trim();
+  if (!email || email.indexOf('@') < 1) { _authMsg('err', 'Saisis d\'abord ton email dans le champ ci-dessus.'); return; }
+  var btn = document.getElementById('btn-magic');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
+  try {
+    var res = await sb.auth.signInWithOtp({
+      email: email,
+      options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true }
+    });
+    if (res.error) throw res.error;
+    _authMsg('info', '📬 <b>Email envoyé à ' + email + '</b><br>Ouvre-le <b>sur cet appareil</b> et clique le lien : tu seras connecté automatiquement.<br><span style="opacity:.8">Rien au bout d\'une minute ? Regarde les <b>spams</b>.</span>');
+  } catch(e) { _authMsg('err', _frAuthErrJ(e)); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '✉️ Recevoir un lien magique par email'; } }
+}
+
+// ── Mot de passe oublié ──
+async function sendPasswordResetJournal() {
+  var email = (document.getElementById('auth-email')?.value || '').trim();
+  if (!email || email.indexOf('@') < 1) { _authMsg('err', 'Saisis d\'abord ton email dans le champ ci-dessus, puis reclique « Mot de passe oublié ? ».'); return; }
+  try {
+    var res = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (res.error) throw res.error;
+    _authMsg('info', '📬 <b>Email de réinitialisation envoyé à ' + email + '</b><br>Clique le lien <b>sur cet appareil</b> : la page te demandera ton nouveau mot de passe.<br><span style="opacity:.8">Pense aux <b>spams</b>.</span>');
+  } catch(e) { _authMsg('err', _frAuthErrJ(e)); }
 }
 
 async function doLogin() {
@@ -1275,7 +1360,9 @@ async function doLogin() {
       password: pass
     });
     if (error) {
-      showToast(error.message, 'error');
+      _authMsg('err', _frAuthErrJ(error));
+      showToast(_frAuthErrJ(error), 'error');
+      btn.textContent = 'Se connecter'; btn.disabled = false; // sinon bouton bloqué sur « … »
       return;
     }
 
@@ -1318,10 +1405,17 @@ async function doSignup() {
     console.log("📧 Tentative inscription pour:", email);
     const { data, error } = await sb.auth.signUp({ email, password: pass });
     console.log("✅ Réponse Supabase signup:", { data, error });
-    if (error) { showToast(error.message, 'error'); console.error("❌ Erreur signup:", error); return; }
+    if (error) { showToast(_frAuthErrJ(error), 'error'); console.error("❌ Erreur signup:", error); return; }
     if (data.user) {
-      await sb.from('profiles').upsert({ id: data.user.id, username, boards: [] });
-      showToast('Compte créé ! Connecte-toi.', 'success');
+      // Vérifier l'écriture du profil : si elle échoue (RLS/réseau), le compte
+      // existerait sans pseudo → l'utilisateur apparaîtrait en « a1b2c3d4 » partout.
+      var pRes = await sb.from('profiles').upsert({ id: data.user.id, username, boards: [] });
+      if (pRes && pRes.error) {
+        console.error('❌ Profil non créé:', pRes.error);
+        showToast('Compte créé mais pseudo NON enregistré (' + pRes.error.message + ') — réessaie dans Profil une fois connecté.', 'error');
+      } else {
+        showToast('Compte créé ! Connecte-toi.', 'success');
+      }
       switchAuthMode('login');
     }
   } catch(e) {
@@ -1377,8 +1471,23 @@ async function init() {
     await onLogin(session.user);
   }
   sb.auth.onAuthStateChange(async function(event, sess) {
+    if (event === 'PASSWORD_RECOVERY') {
+      // Arrivée via le lien « mot de passe oublié »
+      setTimeout(async function() {
+        var np = prompt('🔑 Choisis ton nouveau mot de passe (6 caractères minimum) :');
+        if (!np || np.length < 6) { showToast('Mot de passe trop court — réessaie via « Mot de passe oublié ? »', 'error'); return; }
+        var res = await sb.auth.updateUser({ password: np });
+        if (res.error) { showToast('❌ ' + _frAuthErrJ(res.error), 'error'); return; }
+        showToast('✓ Nouveau mot de passe enregistré — tu es connecté', 'success');
+      }, 300);
+    }
     if (event==='SIGNED_IN' && sess && !window._loginDone) {
-      window._loginDone=true; await onLogin(sess.user);
+      window._loginDone=true;
+      // Nettoyer le token du lien magique/recovery de l'URL
+      if (location.hash && /access_token|type=/.test(location.hash)) {
+        try { history.replaceState(null, '', location.pathname + location.search); } catch(e) {}
+      }
+      await onLogin(sess.user);
     } else if (event==='SIGNED_OUT') {
       window._loginDone=false; window._appInit=false;
       // Nettoyer les flags "Se souvenir de moi"
@@ -1730,7 +1839,7 @@ function openAddSession() {
       });
     }
   }, 100);
-  ['f-duration','f-spot','f-launch','f-hs','f-period','f-swell-dir','f-wind','f-wind-dir','f-tide','f-board','f-price','f-shared-with','f-obs'].forEach(id => {
+  ['f-duration','f-spot','f-launch','f-hs','f-period','f-swell-dir','f-wind','f-wind-dir','f-tide','f-board','f-price','f-shared-with','f-obs','f-nb-surfers','f-distance'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -1759,10 +1868,20 @@ function openAddSession() {
   selectedForecastAccuracy = 0;
   // Reset forecast strip
   _forecastStripCache = null;
-  // Heure session par défaut = maintenant + 30min arrondie
+  // Heure session par défaut = heure actuelle
   var defHour = new Date().getHours();
   var sessionHourSel = document.getElementById('f-session-hour');
-  if (sessionHourSel) sessionHourSel.value = String(defHour);
+  if (sessionHourSel) {
+    if (!sessionHourSel.options.length) {
+      for (var _h = 0; _h < 24; _h++) {
+        var _opt = document.createElement('option');
+        _opt.value = String(_h);
+        _opt.textContent = _h + 'h';
+        sessionHourSel.appendChild(_opt);
+      }
+    }
+    sessionHourSel.value = String(defHour);
+  }
   // Port selon launch point
   var tportEl = document.getElementById('tide-port');
   if (tportEl) tportEl.value = 'noumea';
@@ -1821,7 +1940,11 @@ var _SPOT_STATIONS = {
   'La roche percée':      { name:'Passe de Ouano',   lat:-21.91, lon:165.75 },
   'La Foa':               { name:'Passe de Ouano',   lat:-21.91, lon:165.75 },
   'Bourail':              { name:'Poé (Bourail)',     lat:-21.63, lon:165.38 },
-  'Ténia':                { name:'Ténia',             lat:-22.01, lon:165.94 },
+  // « Ténia » ET « Ilot Ténia » (nom canonique dans previsions.html) doivent
+  // TOUS DEUX résoudre vers les mêmes coordonnées — un mismatch de nom entre
+  // les deux pages faisait silencieusement retomber sur Dumbéa par défaut.
+  'Ténia':                { name:'Ilot Ténia',        lat:-22.01, lon:165.94 },
+  'Ilot Ténia':           { name:'Ilot Ténia',        lat:-22.01, lon:165.94 },
   // Côte est
   'Hienghène':            { name:'Passe de Hienghène', lat:-20.63, lon:164.96 },
   'Poindimié':            { name:'Passe de Touho',     lat:-20.79, lon:165.30 },
@@ -1839,19 +1962,45 @@ function _degToCardinal(deg) {
 
 // Lecture du spot configuré dans previsions.html (surf-spots-nc localStorage)
 // → donne les coords précises du point marin meteo.nc si l'utilisateur a configuré ce spot
+// Normalise un nom de spot pour comparaison tolérante : accents, casse, et
+// préfixes génériques ("Ilot ", "Passe de ", "Île ") qui diffèrent selon les
+// pages (ex: "Ténia" ici vs "Ilot Ténia" dans previsions.html) — un nom qui ne
+// matchait NI l'une NI l'autre convention retombait silencieusement sur le
+// spot par défaut (Dumbéa).
+function _normSpotName(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/^(ilot|île|ile|passe de|passe d')\s+/i, '').trim();
+}
+// Résolution station robuste : clé exacte → clé normalisée (accents/casse/
+// préfixe) → spot previsions.html (idem) → null. Centralise ce qui était
+// dupliqué et incohérent entre _autoFillConditions/handleSpotChange.
+function _lookupSpotStation(spotVal) {
+  if (!spotVal) return null;
+  if (_SPOT_STATIONS[spotVal]) return _SPOT_STATIONS[spotVal];
+  var norm = _normSpotName(spotVal);
+  var k = Object.keys(_SPOT_STATIONS).find(function(key){ return _normSpotName(key) === norm; });
+  if (k) return _SPOT_STATIONS[k];
+  return null;
+}
+
 function _findPrevSpot(spotName) {
   if (!spotName) return null;
   try {
     var prevSpots = JSON.parse(localStorage.getItem('surf-spots-nc') || '[]');
     var low = spotName.toLowerCase();
-    return prevSpots.find(function(s) {
-      return s.name && s.name.toLowerCase() === low;
-    }) || null;
+    var exact = prevSpots.find(function(s) { return s.name && s.name.toLowerCase() === low; });
+    if (exact) return exact;
+    var norm = _normSpotName(spotName);
+    return prevSpots.find(function(s) { return s.name && _normSpotName(s.name) === norm; }) || null;
   } catch(e) { return null; }
 }
 
 // Heure cible pour l'autofill : début de la 1ère plage marée, sinon 9h
 function _getSessionHour() {
+  try {
+    var sel = document.getElementById('f-session-hour');
+    if (sel && sel.value !== '') return parseInt(sel.value, 10);
+  } catch(e) {}
   try {
     if (typeof tideRanges !== 'undefined' && tideRanges.length > 0) {
       return Math.round(tideRanges[0].start);
@@ -1940,7 +2089,7 @@ async function _autoFillConditions(targetDate) {
   if (_spotCfg.lat && _spotCfg.lon) {
     _SPOT_STATIONS[spotVal] = { name: _spotCfg.label || spotVal, lat: _spotCfg.lat, lon: _spotCfg.lon };
   }
-  var station = _SPOT_STATIONS[spotVal] || null;
+  var station = _lookupSpotStation(spotVal);
 
   // ── Nouveau spot : demander les coordonnées si pas dans le mapping ──
   if (!station && spotVal && spotVal !== '__autre__') {
@@ -2440,11 +2589,26 @@ function editSession() {
   document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
   document.getElementById('f-obs').value = s.observations || '';
   if(document.getElementById('f-distance'))document.getElementById('f-distance').value=s.distance_nm||'';
+  if(document.getElementById('f-nb-surfers'))document.getElementById('f-nb-surfers').value=s.nb_surfers||'';
   // Marée interactive
   tideRanges = s.tide_ranges || [];
   var tp = document.getElementById('tide-port');
   if (tp) tp.value = s.tide_port || portFromLaunch(s.launch_point || '');
   setTimeout(function() { setupTideCanvas(); renderTideWidget(); }, 50);
+  // Heure session (pas stockée en base — ré-estime depuis les créneaux marée sauvés, sinon heure actuelle)
+  var editHourSel = document.getElementById('f-session-hour');
+  if (editHourSel) {
+    if (!editHourSel.options.length) {
+      for (var _eh = 0; _eh < 24; _eh++) {
+        var _eopt = document.createElement('option');
+        _eopt.value = String(_eh);
+        _eopt.textContent = _eh + 'h';
+        editHourSel.appendChild(_eopt);
+      }
+    }
+    editHourSel.value = String(tideRanges.length ? Math.round(tideRanges[0].start) : new Date().getHours());
+  }
+  updateFuelEstimate();
   // Fiabilité prévisions
   if (s.forecast_accuracy) setForecastAccuracy(s.forecast_accuracy);
   else { selectedForecastAccuracy = 0;
@@ -2841,6 +3005,7 @@ async function saveSession() {
       boat_id: document.getElementById('f-boat-id')?(document.getElementById('f-boat-id').value||null):null,
       spot: spotVal,
       distance_nm: document.getElementById('f-distance')?(parseFloat(document.getElementById('f-distance').value)||null):null,
+      nb_surfers: document.getElementById('f-nb-surfers')?(parseInt(document.getElementById('f-nb-surfers').value)||null):null,
       launch_point: document.getElementById('f-launch').value.trim(),
       context: document.getElementById('f-context').value,
       duration_h: parseFloat(document.getElementById('f-duration').value) || null,
@@ -3090,12 +3255,13 @@ function renderStats(sessions, el) {
           return (window._profileCache && window._profileCache[s.user_id]) || '?';
         }).join(', ');
         var stars = avgQ >= 1 ? ('★'.repeat(Math.round(avgQ)) + '<span style="opacity:.2">★</span>'.repeat(5-Math.round(avgQ))) : '—';
+        var namesShort = names.length < 40 ? names : names.slice(0, 38) + '…';
         return '<tr style="border-bottom:1px solid var(--border);">'
           +'<td style="padding:6px 4px;font-size:11px;color:var(--text-muted);">'+g.date.slice(5).replace('-','/')+'</td>'
           +'<td style="padding:6px 4px;font-size:11px;font-weight:500;">'+g.spot+'</td>'
-          +'<td style="padding:6px 4px;font-size:11px;color:var(--accent);">'+g.sessions.length+' surfeurs</td>'
+          +'<td style="padding:6px 4px;font-size:11px;color:var(--accent);">'+g.sessions.length+' surfeurs<br><span style="font-size:9px;opacity:.75;">'+namesShort+'</span></td>'
           +'<td style="padding:6px 4px;font-size:11px;color:var(--star);">'+stars+'</td>'
-          +'<td style="padding:6px 4px;font-size:10px;color:var(--text-muted);">'+(avgHs>0?avgHs.toFixed(1)+'m':''+(names.length<40?names:names.slice(0,38)+'…'))+'</td>'
+          +'<td style="padding:6px 4px;font-size:10px;color:var(--text-muted);">'+(avgHs>0?avgHs.toFixed(1)+'m':'—')+'</td>'
           +'</tr>';
       }).join('');
       return '<div class="card" style="margin-top:14px;">'
@@ -4048,10 +4214,13 @@ async function removeBoard(i) {
 
 async function saveProfile() {
   if (!currentProfile) return;
-  currentProfile.username = document.getElementById('profile-username-input').value.trim();
+  var newName = document.getElementById('profile-username-input').value.trim();
+  if (!newName) { showToast('Le pseudo ne peut pas être vide', 'error'); return; } // sinon crash username[0]
+  currentProfile.username = newName;
   var boatSel = document.getElementById('profile-boat-select');
   if (boatSel) currentProfile.default_boat_id = boatSel.value || null;
-  await saveProfileData();
+  var ok = await saveProfileData();
+  if (!ok) return; // l'erreur précise a déjà été affichée — ne pas mentir « sauvegardé »
   const initials = currentProfile.username[0].toUpperCase();
   document.getElementById('nav-avatar').textContent = initials;
   document.getElementById('profile-avatar-big').textContent = initials;
@@ -4060,8 +4229,16 @@ async function saveProfile() {
 }
 
 async function saveProfileData() {
-  if (!sb || !currentUser) return;
-  await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards, default_boat_id: currentProfile.default_boat_id || null });
+  if (!sb || !currentUser) return false;
+  // supabase-js ne lève pas d'exception sur refus RLS — il faut lire { error },
+  // sinon « Profil sauvegardé ! » s'affichait même quand rien n'était écrit.
+  var res = await sb.from('profiles').upsert({ id: currentUser.id, username: currentProfile.username, boards: currentProfile.boards, default_boat_id: currentProfile.default_boat_id || null });
+  if (res && res.error) {
+    console.error('[profil] Écriture refusée:', res.error);
+    showToast('❌ Profil NON sauvegardé : ' + (res.error.message || res.error.code), 'error');
+    return false;
+  }
+  return true;
 }
 
 // ══ UI HELPERS ══
@@ -4412,7 +4589,7 @@ function handleSpotChange(sel) {
   var coordsSpan = document.getElementById('spot-source-coords');
   if (linkDiv && sel.value && sel.value !== '__autre__') {
     linkDiv.style.display = 'block';
-    var station = _SPOT_STATIONS[sel.value];
+    var station = _lookupSpotStation(sel.value);
     var cfg = _getSpotSources ? _getSpotSources()[sel.value] : null;
     // Si le spot n'est pas dans le mapping, chercher dans les spots previsions.html
     var prevStation = (!station && !cfg) ? _findPrevSpot(sel.value) : null;
@@ -4446,6 +4623,9 @@ function getSpotValue() {
       }
       sel.value = custom;
       document.getElementById('f-spot-custom').style.display = 'none';
+      // Persister le nom localement : sans ça, l'option disparaissait au
+      // rechargement et il fallait retaper le spot à CHAQUE session.
+      _saveCustomSpotLocal(custom);
       return custom;
     }
     return '';
@@ -4465,22 +4645,40 @@ function setSpotValue(val) {
   document.getElementById('f-spot-custom').style.display = 'none';
 }
 
-// Synchronise le sélecteur f-spot avec les spots créés dans previsions.html (surf-spots-nc localStorage)
+function _saveCustomSpotLocal(name) {
+  if (!name) return;
+  try {
+    var list = JSON.parse(localStorage.getItem('journal-custom-spots') || '[]');
+    if (list.indexOf(name) < 0) { list.push(name); localStorage.setItem('journal-custom-spots', JSON.stringify(list)); }
+  } catch(e) {}
+}
+
+// Synchronise le sélecteur f-spot avec (1) les spots tapés ici précédemment
+// via « + Autre » (persistance same-device — sinon il fallait retaper le nom
+// à chaque session) et (2) les spots créés dans previsions.html.
+// previsions.html sync ses spots vers Supabase (table shared_spots) en plus du
+// localStorage local — on lit donc AUSSI cette source pour que le réglage d'un
+// spot fait sur UN appareil apparaisse sur les autres (localStorage seul ne
+// traverse jamais les appareils).
 function _populateCustomSpots() {
   var sel = document.getElementById('f-spot');
   if (!sel) return;
-  try {
-    var prevSpots = JSON.parse(localStorage.getItem('surf-spots-nc') || '[]');
-    var anchor = sel.querySelector('option[value="__autre__"]');
-    prevSpots.forEach(function(s) {
-      if (!s.name) return;
-      var exists = Array.from(sel.options).some(function(o){ return o.value === s.name; });
-      if (!exists) {
-        var opt = new Option(s.name, s.name);
-        sel.insertBefore(opt, anchor);
-      }
-    });
-  } catch(e) {}
+  var anchor = sel.querySelector('option[value="__autre__"]');
+  function addOpt(name) {
+    if (!name) return;
+    var exists = Array.from(sel.options).some(function(o){ return o.value === name; });
+    if (!exists) { var opt = new Option(name, name); sel.insertBefore(opt, anchor); }
+  }
+  try { JSON.parse(localStorage.getItem('journal-custom-spots') || '[]').forEach(addOpt); } catch(e) {}
+  try { JSON.parse(localStorage.getItem('surf-spots-nc') || '[]').forEach(function(s){ addOpt(s.name); }); } catch(e) {}
+  // Complément cross-appareil : spots partagés via Supabase (même table que
+  // previsions.html::_loadSpotsFromSupabase). Best-effort, ne bloque rien.
+  if (sb) {
+    sb.from('shared_spots').select('spots').eq('id', 'default').maybeSingle().then(function(res) {
+      if (!res || res.error || !res.data || !res.data.spots) return;
+      try { JSON.parse(res.data.spots).forEach(function(s){ addOpt(s.name); }); } catch(e) {}
+    }).catch(function(){});
+  }
 }
 
 // ══ SPOTS PAGE ══
@@ -5337,7 +5535,9 @@ function updateFuelEstimate() {
   if(!b||!b.conso_l_h||!dur){el.textContent='';return;}
   var L=Math.round(b.conso_l_h*dur),fP=FUEL_CFP[b.fuel_type||'essence']||185;
   var tot=Math.round(L*fP),perP=nb>0?Math.round(tot/nb):tot;
-  el.textContent='~'+L+' L · '+tot.toLocaleString('fr')+' CFP · '+perP.toLocaleString('fr')+' CFP/pers.';
+  el.textContent='~'+L+' L · '+tot.toLocaleString('fr')+' CFP · '+perP.toLocaleString('fr')+' CFP/pers. (suggéré ci-dessous ↓)';
+  var priceEl=document.getElementById('f-price');
+  if(priceEl && !priceEl.value) priceEl.value = perP;
 }
 
 async function loadBoatsPage() {

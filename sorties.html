@@ -502,6 +502,7 @@ nav a.back:hover{color:var(--text);}
       background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.3);color:var(--ok);white-space:nowrap;"
       title="Token meteo.nc actif">🔑 Token</div>
     <a href="https://thibsurf.github.io/surf-journal/previsions.html" class="back">🌊 Prévisions</a>
+    <a href="https://thibsurf.github.io/surf-journal/thibsurf_nav/" target="_blank" rel="noopener" class="back" title="Traceur GPS nautique (app séparée)">🧭 Nav</a>
     <div id="nav-user" style="display:none;align-items:center;gap:6px;">
       <div id="nav-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(79,163,199,.2);
         border:1.5px solid rgba(79,163,199,.4);display:flex;align-items:center;justify-content:center;
@@ -1380,35 +1381,47 @@ async function loadMeteoForSortie(s) {
     el.innerHTML = '<span class="meteo-loading">📅 Prévisions disponibles ~7 jours avant</span>';
     return;
   }
-  // Coords approximatives depuis le spot
-  let lat = -22.27, lon = 166.43;
-  const spotCoords = {
-    'dumbéa':[-22.215,166.285],'ténia':[-22.275,166.205],'boulari':[-22.415,166.325],
-    'ouano':[-21.855,165.790],'mato':[-22.105,166.165],'maître':[-22.335,166.41],
-    'signal':[-22.295,166.29],'amédée':[-22.478,166.467],'poé':[-21.633,165.383]
-  };
-  const spotLower = (s.spot || '').toLowerCase();
-  for (const k in spotCoords) if (spotLower.includes(k)) { lat = spotCoords[k][0]; lon = spotCoords[k][1]; break; }
+  // Coords via la table vérifiée (même résolution que le météogramme —
+  // avant, cette table locale avait Ténia/Dumbéa à ~30/15 km du bon point)
+  var coords = getCoordsForSpot(s.spot);
+  var lat = coords.lat, lon = coords.lon;
+  var hourIdx = s.time_start ? parseInt(s.time_start.split(':')[0]) : 9;
+  var dateStr = date.toISOString().split('T')[0];
 
   try {
-    const dateStr = date.toISOString().split('T')[0];
-    const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon
-      + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction'
-      + '&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
-    const urlW = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
-      + '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn'
-      + '&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
-    const [marine, wind] = await Promise.all([
-      fetch(url).then(r => r.json()), fetch(urlW).then(r => r.json())
-    ]);
-
-    const hourIdx = s.time_start ? parseInt(s.time_start.split(':')[0]) : 9;
-    const mh = marine.hourly || {}, wh = wind.hourly || {};
-    const hs = mh.swell_wave_height ? mh.swell_wave_height[hourIdx] : null;
-    const per = mh.swell_wave_period ? mh.swell_wave_period[hourIdx] : null;
-    const sDir = mh.swell_wave_direction ? mh.swell_wave_direction[hourIdx] : null;
-    const ws = wh.wind_speed_10m ? wh.wind_speed_10m[hourIdx] : null;
-    const wd = wh.wind_direction_10m ? wh.wind_direction_10m[hourIdx] : null;
+    // Tenter meteo.nc en priorité (comme le météogramme) — seulement si un
+    // token est déjà chargé, pour ne pas ralentir l'aperçu de la carte avec
+    // le flow complet de récupération de token.
+    var srcLabel = 'GFS · prévision', hs, per, sDir, ws, wd;
+    var ncTried = false;
+    if ((typeof _ncToken !== 'undefined' && _ncToken) || (typeof _isTokenValid === 'function' && localStorage.getItem('nc-token') && _isTokenValid(localStorage.getItem('nc-token')))) {
+      try {
+        var ncData = await fetchMeteoNC(lat, lon, dateStr);
+        if (ncData && ncData.hours && ncData.hours.length) {
+          ncTried = true;
+          var best = null, bestDiff = 99;
+          ncData.hours.forEach(function(h) { var d = Math.abs(h.h - hourIdx); if (d < bestDiff) { bestDiff = d; best = h; } });
+          if (best) { hs = best.hs; per = best.period; sDir = best.swellDir; ws = best.wind; wd = best.windDir; srcLabel = '🛰 meteo.nc'; }
+        }
+      } catch(e) {}
+    }
+    if (!ncTried) {
+      const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon
+        + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction'
+        + '&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
+      const urlW = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+        + '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn'
+        + '&start_date=' + dateStr + '&end_date=' + dateStr + '&timezone=Pacific%2FNoumea';
+      const [marine, wind] = await Promise.all([
+        fetch(url).then(r => r.json()), fetch(urlW).then(r => r.json())
+      ]);
+      const mh = marine.hourly || {}, wh = wind.hourly || {};
+      hs = mh.swell_wave_height ? mh.swell_wave_height[hourIdx] : null;
+      per = mh.swell_wave_period ? mh.swell_wave_period[hourIdx] : null;
+      sDir = mh.swell_wave_direction ? mh.swell_wave_direction[hourIdx] : null;
+      ws = wh.wind_speed_10m ? wh.wind_speed_10m[hourIdx] : null;
+      wd = wh.wind_direction_10m ? wh.wind_direction_10m[hourIdx] : null;
+    }
 
     var hsColor = hs == null ? '' : hs >= 1.5 ? 'color:#4fa3c7' : hs >= 0.8 ? 'color:#3dba8a' : 'color:var(--text-muted)';
     var dirArrow = function(deg) {
@@ -1418,7 +1431,7 @@ async function loadMeteoForSortie(s) {
     el.innerHTML = (hs ? '<div class="m-item"><span class="v" style="' + hsColor + '">🌊 ' + hs.toFixed(1) + 'm</span><span class="l">Houle' + (sDir !== null ? ' ' + dirArrow(sDir) : '') + '</span></div>' : '')
       + (per ? '<div class="m-item"><span class="v">⏱ ' + Math.round(per) + 's</span><span class="l">Période</span></div>' : '')
       + (ws ? '<div class="m-item"><span class="v' + (ws >= 20 ? '" style="color:var(--warm)' : '') + '">💨 ' + Math.round(ws) + 'kt</span><span class="l">Vent' + (wd !== null ? ' ' + dirArrow(wd) + ' ' + degCompass(wd) : '') + '</span></div>' : '')
-      + '<div class="meteo-source">GFS · prévision</div>'
+      + '<div class="meteo-source" title="' + escapeHtml(coords.name) + ' (' + lat.toFixed(2) + ', ' + lon.toFixed(2) + ')">' + srcLabel + '</div>'
       + '<a href="https://thibsurf.github.io/surf-journal/previsions.html" target="_blank" style="font-size:10px;color:var(--text-muted);text-decoration:none;align-self:center;">↗ NC</a>';
   } catch(e) {
     el.innerHTML = '<span class="meteo-loading">⚠ Impossible de charger</span>';
@@ -2393,31 +2406,62 @@ async function openMeteogram(sortieId) {
   }
 }
 
+// Table UNIQUE spot→coordonnées, valeurs vérifiées cohérentes avec
+// previsions.html::DEFAULT_SPOTS et index.html::_SPOT_STATIONS (cette session
+// a confirmé ces lat/lon précisément à plusieurs reprises). L'ancienne table
+// avait des coordonnées FAUSSES — Ténia à -22.275/166.205 au lieu de
+// -22.01/165.94 (~30 km d'écart !), Dumbéa décalée de ~15 km — la météo
+// affichée/partagée était donc réellement celle d'un autre point.
+var _SORTIE_SPOT_COORDS = {
+  'dumb':     [-22.35,  166.24,  'Passe de Dumbéa'],
+  'tenia':    [-22.01,  165.94,  'Ilot Ténia'],
+  'ténia':    [-22.01,  165.94,  'Ilot Ténia'],
+  'grand bac':[-22.35,  166.24,  'Passe de Dumbéa'],
+  'petit u':  [-22.35,  166.24,  'Passe de Dumbéa'],
+  'gros nem': [-22.35,  166.24,  'Passe de Dumbéa'],
+  'boulari':  [-22.50,  166.44,  'Passe de Boulari'],
+  'skatepark':[-22.50,  166.44,  'Passe de Boulari'],
+  'trois cailloux':[-22.50, 166.44, 'Passe de Boulari'],
+  'ouano':    [-21.91,  165.75,  'Passe de Ouano'],
+  'roche':    [-21.91,  165.75,  'Passe de Ouano'],
+  'mato':     [-22.69,  166.63,  'Passe de Mato'],
+  'maitre':   [-22.36,  166.38,  'Îlot Maître'],
+  'maître':   [-22.36,  166.38,  'Îlot Maître'],
+  'sainte marie': [-22.29, 166.46, 'Baie de Sainte Marie'],
+  'ste marie':    [-22.29, 166.46, 'Baie de Sainte Marie'],
+  'signal':   [-22.295, 166.29,  'Ilot Signal'],
+  'amedee':   [-22.478, 166.467, 'Ilot Amédée'],
+  'amédée':   [-22.478, 166.467, 'Ilot Amédée'],
+  'poé':      [-21.633, 165.383, 'Poé'],
+  'poe':      [-21.633, 165.383, 'Poé'],
+  'gouaro':   [-21.55,  165.42,  'Gouaro Bay'],
+  'larégnère':[-22.31,  166.30,  'Ilot Larégnère'],
+};
+
+// Résout un nom de spot → coordonnées, dans cet ordre : (1) table vérifiée
+// ci-dessus (correspondance partielle insensible à la casse/accents),
+// (2) spot personnalisé créé dans previsions.html (localStorage, même
+// appareil), (3) défaut Nouméa générique. Utilisée par le météogramme ET
+// l'aperçu météo de carte — avant, ces deux endroits avaient chacun leur
+// propre petite table, toutes deux fausses pour Ténia/Dumbéa.
 function getCoordsForSpot(spot) {
-  var spots = {
-    'dumb': [-22.215, 166.285, 'Passe de Dumbea'],
-    'tenia': [-22.275, 166.205, 'Ilot Tenia'],
-    'boulari': [-22.415, 166.325, 'Passe de Boulari'],
-    'ouano': [-21.855, 165.790, 'Passe de Ouano'],
-    'mato': [-22.105, 166.165, 'Passe de Mato'],
-    'maitre': [-22.335, 166.41, 'Ilot Maitre'],
-    'signal': [-22.295, 166.29, 'Ilot Signal'],
-    'amedee': [-22.478, 166.467, 'Ilot Amedee'],
-    'amédée': [-22.478, 166.467, 'Ilot Amedee'],
-    'poé': [-21.633, 165.383, 'Poe'],
-    'poe': [-21.633, 165.383, 'Poe'],
-    'gouaro': [-21.55, 165.42, 'Gouaro Bay'],
-    'roche': [-21.61, 165.43, 'Roche Percee'],
-    'larégnère': [-22.31, 166.30, 'Ilot Laregnere'],
-    'ténia': [-22.275, 166.205, 'Ilot Tenia'],
-    'dumbéa': [-22.215, 166.285, 'Passe de Dumbea']
-  };
   var spotLower = (spot || '').toLowerCase();
-  for (var k in spots) {
+  for (var k in _SORTIE_SPOT_COORDS) {
     if (spotLower.indexOf(k) >= 0) {
-      return { lat: spots[k][0], lon: spots[k][1], name: spots[k][2] };
+      var e = _SORTIE_SPOT_COORDS[k];
+      return { lat: e[0], lon: e[1], name: e[2] };
     }
   }
+  try {
+    var prevSpots = JSON.parse(localStorage.getItem('surf-spots-nc') || '[]');
+    var norm = spotLower.replace(/^(ilot|île|ile|passe de|passe d')\s+/i, '').trim();
+    var found = prevSpots.find(function(s) {
+      if (!s.name) return false;
+      var sl = s.name.toLowerCase();
+      return sl === spotLower || sl.replace(/^(ilot|île|ile|passe de|passe d')\s+/i, '').trim() === norm;
+    });
+    if (found) return { lat: found.lat, lon: found.lon, name: found.marineName || found.name };
+  } catch(e) {}
   return { lat: -22.27, lon: 166.43, name: spot || 'Spot inconnu' };
 }
 
@@ -4281,11 +4325,16 @@ function openQuickExpense(sortieId) {
     + 'background:var(--deep);border:1px solid rgba(123,108,246,.4);border-radius:14px;padding:18px;'
     + 'width:min(380px,96vw);max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.8);font-size:13px;';
 
-  // Payeurs possibles = participants avec un vrai user_id
-  var payers = participants.filter(function(p) { return !p.isGuest; });
+  // Payeurs possibles = TOUS les participants (inscrits + copropriétaires +
+  // invités). Un invité qui a physiquement payé (essence, mouillage…) doit
+  // pouvoir être désigné payeur pour que le tricount reste juste — avant,
+  // seuls les non-invités (et de fait, en pratique, surtout les
+  // copropriétaires) apparaissaient dans ce select.
   var myId = currentUser ? currentUser.id : null;
-  var payerOptions = payers.map(function(p) {
-    return '<option value="'+p.id+'"'+(p.isMe?' selected':'')+'>'+(p.isMe?'⭐ ':'')+'Tu paies : '+escapeHtml(p.name)+'</option>';
+  var payerOptions = participants.map(function(p) {
+    var tag = p.isMe ? '⭐ ' : (p.isGuest ? '👤 ' : (p.isOwner ? '⛵ ' : ''));
+    var label = p.isMe ? 'Toi' : escapeHtml(p.name);
+    return '<option value="'+p.id+'"'+(p.isMe?' selected':'')+'>'+tag+label+'</option>';
   }).join('');
 
   div.innerHTML = ''
