@@ -1764,8 +1764,10 @@ async function executeImportLogs(){
         useReimburseType=false;
         console.warn('[import] Type "reimburse" rejeté par la base. Fallback sur expense + marqueur note.', r.error.message);
       }else if(r.data&&r.data[0]){
-        // Supprimer le test
-        await sb.from('boat_fuel_logs').delete().eq('id',r.data[0].id);
+        // Supprimer le test — si le delete est refusé, une ligne __REIMBURSE_TEST__
+        // de 1 XPF resterait visible dans les logs : le signaler au moins en console
+        const rDel=await sb.from('boat_fuel_logs').delete().eq('id',r.data[0].id);
+        if(rDel&&rDel.error)console.warn('[import] ligne test non supprimée:',rDel.error.message);
       }
     }
   }
@@ -2983,8 +2985,10 @@ async function addLog(){
       let br=await sb.from('boat_fuel_logs').insert(bidonPayload);
       if(br.error&&/(bidon_id|bidon_cap|column|schema|cache)/i.test(br.error.message||'')){
         delete bidonPayload.bidon_id; delete bidonPayload.bidon_cap;
-        await sb.from('boat_fuel_logs').insert(bidonPayload);
+        br=await sb.from('boat_fuel_logs').insert(bidonPayload);
       }
+      // Le log principal est déjà passé — mais si la part bidon a échoué, le dire
+      if(br.error)toast('Log enregistré, mais part bidon refusée : '+br.error.message,'err');
     }
   }
 

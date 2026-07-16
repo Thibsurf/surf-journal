@@ -1857,15 +1857,27 @@ function saveSpots() {
   return _pushSpotsToSupabase();
 }
 
+var _spotsSyncWarned = false;
 async function _pushSpotsToSupabase() {
-  if (!_ensureSupabaseClient()) return;
+  if (!_ensureSupabaseClient()) return false;
   try {
-    await _tokenSbClient.from('shared_spots').upsert({
+    // supabase-js ne throw pas sur un refus RLS : contrôler {error} — sinon la
+    // sync cross-appareils des réglages de spots échoue en silence pour toujours
+    var res = await _tokenSbClient.from('shared_spots').upsert({
       id: 'default',
       spots: JSON.stringify(SPOTS),
       updated_at: new Date().toISOString()
     });
-  } catch(e) { console.warn('[Spots] Push Supabase échoué:', e && e.message); }
+    if (res && res.error) {
+      console.warn('[Spots] Push Supabase refusé:', res.error.message);
+      if (!_spotsSyncWarned) { // 1 seul avertissement par session (appels fréquents)
+        _spotsSyncWarned = true;
+        showToast('⚠ Réglages gardés sur CET appareil seulement (' + res.error.message + ')');
+      }
+      return false;
+    }
+    return true;
+  } catch(e) { console.warn('[Spots] Push Supabase échoué:', e && e.message); return false; }
 }
 
 async function _loadSpotsFromSupabase() {
@@ -2945,7 +2957,8 @@ async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir
 
   if (!toWrite.length) return;
   try {
-    await _tokenSbClient.from('meteo_cache').upsert(toWrite);
+    var res = await _tokenSbClient.from('meteo_cache').upsert(toWrite);
+    if (res && res.error) console.warn('[Cache] Refus serveur:', res.error.message);
   } catch(e) { console.warn('[Cache] Erreur:', e.message); }
 }
 
@@ -10175,12 +10188,13 @@ async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
           // N'écraser que si pas de données NC déjà en cache
           var mainGfs = gfsHours.find(function(r){ return Math.abs(r.h - 9) < 3; }) || gfsHours[0];
           if (mainGfs) {
-            await _tokenSbClient.from('meteo_cache').upsert({
+            var wRes = await _tokenSbClient.from('meteo_cache').upsert({
               id: cacheId, spot_name: spot.marineName||spot.name, lat: spot.lat, lon: spot.lon,
               data: { hs: mainGfs.hs, period: mainGfs.period, swellDir: mainGfs.swellDir,
                       windKt: mainGfs.windKt, windDir: mainGfs.windDir, source: 'gfs', hours: gfsHours },
               status: 'gfs', updated_at: new Date().toISOString()
             });
+            if (wRes && wRes.error) console.warn('[Cache GFS] Refus serveur:', wRes.error.message);
           }
         }
       } catch(e) { console.warn('[Cache GFS]', e.message); }

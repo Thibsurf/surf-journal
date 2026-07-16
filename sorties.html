@@ -1970,7 +1970,9 @@ async function addMitonOrder(sortieId) {
     at: new Date().toISOString()
   });
   try {
-    await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    // supabase-js ne LÈVE PAS d'exception sur un refus RLS — contrôler {error}
+    var res = await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Commande NON enregistrée : ' + res.error.message, 'err'); return; }
     input.value = '';
     await loadSorties();
     toast('Commande ajoutee', 'ok');
@@ -1984,7 +1986,8 @@ async function toggleMitonDone(sortieId, idx) {
   if (!orders[idx]) return;
   orders[idx].done = !orders[idx].done;
   try {
-    await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Non enregistré : ' + res.error.message, 'err'); return; }
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
 }
@@ -1997,7 +2000,8 @@ async function removeMitonOrder(sortieId, idx) {
   if (orders[idx].user_id !== currentUser.id) return;
   orders.splice(idx, 1);
   try {
-    await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Suppression NON enregistrée : ' + res.error.message, 'err'); return; }
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
 }
@@ -2191,7 +2195,8 @@ async function toggleCovoit(sortieId, driverId) {
     covoit[driverId].push(currentUser.id);
   }
   try {
-    await sb.from('sorties').update({ covoit_passengers: covoit }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ covoit_passengers: covoit }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Covoit NON enregistré : ' + res.error.message, 'err'); return; }
     toast(idx >= 0 ? 'Retiré du covoit' : 'Ajouté au covoit ✓', 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -2248,7 +2253,8 @@ async function postComment(sortieId) {
     created_at: new Date().toISOString()
   });
   try {
-    await sb.from('sorties').update({ comments: comments }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ comments: comments }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ Commentaire NON enregistré : ' + res.error.message, 'err'); return; }
     input.value = '';
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -2357,13 +2363,15 @@ async function saveFeedback() {
   };
 
   try {
-    await sb.from('sessions').insert(payload);
+    var rIns = await sb.from('sessions').insert(payload);
+    if (rIns && rIns.error) { toast('❌ Session NON créée : ' + rIns.error.message, 'err'); return; }
     // Marquer dans la sortie que cet user a donné son retour
     var feedbacks = (s.feedbacks || []);
     feedbacks = feedbacks.filter(function(f){ return f.user_id !== currentUser.id; });
     feedbacks.push({ user_id: currentUser.id, quality: _fbQuality, at: new Date().toISOString() });
-    await sb.from('sorties').update({ feedbacks: feedbacks }).eq('id', sortieId);
-    toast('Session créée dans ton journal ✓', 'ok');
+    var rFb = await sb.from('sorties').update({ feedbacks: feedbacks }).eq('id', sortieId);
+    if (rFb && rFb.error) toast('Session créée, mais retour non marqué sur la sortie (' + rFb.error.message + ')', 'err');
+    else toast('Session créée dans ton journal ✓', 'ok');
     closeModal('modal-feedback');
     await loadSorties();
   } catch(e) {
@@ -4611,7 +4619,8 @@ async function confirmAddUser(sortieId) {
   var current = (s.inscriptions || []).filter(function(i) { return i.user_id !== uid; });
   current.push({ user_id: uid, username: name, status: 'in', added_by: currentUser.id, created_at: new Date().toISOString() });
   try {
-    await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ ' + name + ' NON ajouté : ' + res.error.message, 'err'); return; }
     document.getElementById('add-user-dialog')?.remove();
     toast(name + ' ajouté ✓', 'ok');
     await loadSorties();
@@ -4645,7 +4654,8 @@ async function addGuest(sortieId) {
   current.push(guest);
 
   try {
-    await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
+    var res = await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
+    if (res && res.error) { toast('❌ ' + name + ' NON ajouté : ' + res.error.message, 'err'); return; }
     toast(guest.is_guest ? (name + ' ajouté comme invité ✓') : (name + ' ajouté — déjà lié à un compte, reconnu automatiquement ✓'), 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }

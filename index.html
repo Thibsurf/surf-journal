@@ -2014,7 +2014,7 @@ async function _saveDailyCache(date, lat, lon, spotName, data) {
   if (!sb) return;
   var id = date + '_' + lat.toFixed(3) + '_' + lon.toFixed(3);
   try {
-    await sb.from('meteo_cache').upsert({
+    var res = await sb.from('meteo_cache').upsert({
       id: id,
       spot_name: spotName,
       lat: lat,
@@ -2023,6 +2023,7 @@ async function _saveDailyCache(date, lat, lon, spotName, data) {
       status: data.source,
       updated_at: new Date().toISOString()
     }, { onConflict: 'id' });
+    if (res && res.error) { console.warn('[cache] Refus serveur:', res.error.message); return; }
     console.log('[cache] Sauvegardé ✅', id);
   } catch(e) { console.warn('[cache] Erreur save:', e && e.message); }
 }
@@ -3556,12 +3557,24 @@ async function applyAlias(text, userId) {
     local[norm] = userId;
     localStorage.setItem('surf-aliases', JSON.stringify(local));
   } catch(e) {}
-  // Sauvegarder dans Supabase si disponible
+  // Sauvegarder dans Supabase si disponible.
+  // delete+insert (PAS upsert) : la table aliases n'a pas de contrainte unique
+  // sur alias_text — l'upsert sans onConflict insérait un DOUBLON à chaque
+  // application, et son {error} éventuel était avalé (supabase-js ne throw pas).
+  // Même correctif que sorties.html::addAlias.
   if (sb) {
     try {
-      await sb.from('aliases').upsert({ alias_text: text, user_id: userId, created_by: currentUser.id });
-    } catch(e) { /* table peut ne pas exister */ }
+      var delRes = await sb.from('aliases').delete().eq('alias_text', text);
+      if (delRes && delRes.error) { console.warn('[alias] delete refusé:', delRes.error.message); }
+      var insRes = await sb.from('aliases').insert({ alias_text: text, user_id: userId, created_by: currentUser.id });
+      if (insRes && insRes.error) {
+        console.warn('[alias] insert refusé:', insRes.error.message);
+        showToast('⚠ Alias gardé sur CET appareil seulement (' + insRes.error.message + ')', 'error');
+        return false;
+      }
+    } catch(e) { console.warn('[alias]', e && e.message); }
   }
+  return true;
 }
 
 // Obtenir les co-navigateurs réels (après résolution des alias)
