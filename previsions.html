@@ -3965,75 +3965,187 @@ function renderCompare() {
   }).join('');
 }
 
-// ── Calibration automatique de minPwr depuis les sessions du journal ──────────
-// Une seule requête Supabase → groupe par mots-clés spot → P25 puissance observée
-async function calibrateFromJournal() {
+// ── Calibration automatique des scores depuis le journal ─────────────────────
+// Apprend les paramètres de score de CHAQUE spot depuis TOUTES les données du
+// journal, pondérées par les étoiles : les sessions ★≥4 définissent les
+// conditions idéales (directions houle/vent), les ★≥3 définissent les seuils
+// (Hs/période/puissance mini, tolérance au vent). Les champs réglés À LA MAIN
+// dans ⚙ (différents du défaut et non posés par une calibration précédente)
+// ne sont JAMAIS écrasés — traçés dans scoreParams._auto.fields.
+
+// Cache sessions partagé (calibration + stats du dialogue ⚙) — 10 min
+var _journalSessCache = { t: 0, rows: null };
+async function _fetchJournalSessions() {
+  if (_journalSessCache.rows && Date.now() - _journalSessCache.t < 10 * 60000) return _journalSessCache.rows;
+  _ensureSupabaseClient();
+  if (!_tokenSbClient) return null;
+  // RLS : anonyme → seulement les sessions partagées ; connecté dans le journal
+  // sur cet appareil (même origine → session Supabase partagée) → les siennes aussi.
+  var res = await _tokenSbClient.from('sessions')
+    .select('spot,hs,period,quality,wind_kts,wind_dir,swell_dir,date')
+    .limit(3000);
+  if (res.error || !res.data) return null;
+  _journalSessCache = { t: Date.now(), rows: res.data };
+  return res.data;
+}
+
+// "SSE (157°)" / "157°" / 157 / "SSO" (compas FR, O=Ouest) → degrés, sinon null
+var _CARD_DEG_PREV = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,
+  SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337,
+  SSW:202,SW:225,WSW:247,W:270,WNW:292,NW:315,NNW:337};
+function _dirToDeg(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number' && isFinite(v)) return ((v % 360) + 360) % 360;
+  var s = String(v).trim().toUpperCase();
+  var m = s.match(/\((\d{1,3})\s*°?\)/); if (m) return +m[1] % 360;
+  m = s.match(/^(\d{1,3})\s*°?$/);       if (m) return +m[1] % 360;
+  var card = s.replace(/[^A-Z]/g, '');
+  return _CARD_DEG_PREV[card] != null ? _CARD_DEG_PREV[card] : null;
+}
+
+function _circMeanDeg(list) { // [{deg,w}] → moyenne circulaire pondérée
+  var sx = 0, sy = 0;
+  list.forEach(function(e){ var r = e.deg * Math.PI / 180; sx += Math.cos(r) * (e.w || 1); sy += Math.sin(r) * (e.w || 1); });
+  if (!sx && !sy) return null;
+  return Math.round(((Math.atan2(sy, sx) * 180 / Math.PI) + 360) % 360);
+}
+function _quantSorted(sorted, q) {
+  if (!sorted.length) return null;
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+}
+
+// Analyse les sessions d'UN spot → { sugg: {param: valeur}, stats: {...} } ou null (<3 sessions)
+function _calibSpotFromSessions(spot, allSessions) {
+  var keywords = (spot.surfSpots && spot.surfSpots.length)
+    ? spot.surfSpots
+    : [(spot.sessionSpot) ? spot.sessionSpot : _spotKeyword(spot.name)];
+  var rows = allSessions.filter(function(s) {
+    var sl = (s.spot || '').toLowerCase();
+    return keywords.some(function(kw) { return kw && sl.includes(kw.toLowerCase()); });
+  });
+  if (rows.length < 3) return null;
+
+  var rated = rows.filter(function(s) { return s.quality >= 1; });
+  var good  = rated.filter(function(s) { return s.quality >= 4; });
+  var ok    = rated.filter(function(s) { return s.quality >= 3; });
+  // Base des seuils = sessions correctes (★≥3) si assez nombreuses, sinon toutes
+  var base = ok.length >= 3 ? ok : rows;
+
+  var sugg = {};
+  var stats = { n: rows.length, nRated: rated.length, nGood: good.length,
+    avgQ: rated.length ? +(rated.reduce(function(a,s){return a+s.quality;},0)/rated.length).toFixed(1) : null };
+
+  // Houle : seuils Hs / période / puissance depuis les sessions correctes
+  var withHsT = base.filter(function(s) { return s.hs > 0 && s.period > 0; });
+  if (withHsT.length >= 3) {
+    var pows = withHsT.map(function(s){ return 0.5*s.hs*s.hs*s.period; }).sort(function(a,b){return a-b;});
+    sugg.minPwr = Math.max(0.3, +(_quantSorted(pows, 0.25) * 0.75).toFixed(1));
+    var hss = withHsT.map(function(s){ return s.hs; }).sort(function(a,b){return a-b;});
+    sugg.minHs = Math.max(0.2, Math.min(1.5, +(_quantSorted(hss, 0.10) * 0.9).toFixed(1)));
+    var Ts = withHsT.map(function(s){ return s.period; }).sort(function(a,b){return a-b;});
+    sugg.minPeriod = Math.max(6, Math.min(14, Math.round(_quantSorted(Ts, 0.25))));
+    stats.hs = { min: hss[0], max: hss[hss.length-1], med: _quantSorted(hss, 0.5) };
+    stats.T = { med: _quantSorted(Ts, 0.5) };
+  }
+
+  // Vent : les seuils viennent de ce qui a RÉELLEMENT été surfé en correct —
+  // peu de vent est structurellement requis ici (nav, moutons, clapot)
+  var winds = base.filter(function(s){ return s.wind_kts != null && isFinite(+s.wind_kts); })
+                  .map(function(s){ return +s.wind_kts; }).sort(function(a,b){return a-b;});
+  if (winds.length >= 4) {
+    var p75 = _quantSorted(winds, 0.75), p90 = _quantSorted(winds, 0.90);
+    sugg.windCalmKt  = Math.max(8, Math.min(18, Math.round(p75 + 2)));
+    sugg.windMalusKt = Math.max(sugg.windCalmKt + 6, Math.min(30, Math.round(p90 + 5)));
+    stats.wind = { med: _quantSorted(winds, 0.5), p90: p90 };
+  }
+
+  // Directions idéales : moyenne circulaire des BONNES sessions (★≥4),
+  // pondérée par les étoiles (★5 pèse le double de ★3... ici w = ★-2)
+  var swDirs = good.map(function(s) {
+    var d = _dirToDeg(s.swell_dir); return d == null ? null : { deg: d, w: s.quality - 2 };
+  }).filter(Boolean);
+  if (swDirs.length >= 3) { sugg.swellDirIdeal = _circMeanDeg(swDirs); stats.swellDirN = swDirs.length; }
+
+  var wDirs = good.filter(function(s){ return s.wind_kts == null || +s.wind_kts >= 5; })
+    .map(function(s) {
+      var d = _dirToDeg(s.wind_dir);
+      // wind_dir journal = provenance ; windDirIdeal = destination → +180°
+      return d == null ? null : { deg: (d + 180) % 360, w: s.quality - 2 };
+    }).filter(Boolean);
+  if (wDirs.length >= 3) { sugg.windDirIdeal = _circMeanDeg(wDirs); stats.windDirN = wDirs.length; }
+
+  return { sugg: sugg, stats: stats };
+}
+
+// Applique les suggestions à un spot en respectant les réglages manuels.
+// Un champ est modifiable si : jamais réglé, OU égal au défaut, OU posé par
+// une calibration précédente (listé dans _auto.fields). Retourne le nb de
+// valeurs réellement modifiées.
+function _applyCalibToSpot(spot, calib) {
+  if (!calib || !Object.keys(calib.sugg).length) return 0;
+  var sp = spot.scoreParams ? Object.assign({}, spot.scoreParams) : {};
+  var prevAuto = (sp._auto && sp._auto.fields) ? sp._auto.fields.slice() : [];
+  var autoFields = [], changed = 0;
+  Object.keys(calib.sugg).forEach(function(f) {
+    var cur = sp[f];
+    var untouched = (cur == null) || (cur === _DEFAULT_SCORE[f]) || (prevAuto.indexOf(f) >= 0);
+    if (!untouched) return; // réglé à la main → intouchable
+    autoFields.push(f);
+    if (cur !== calib.sugg[f]) { sp[f] = calib.sugg[f]; changed++; }
+  });
+  if (!autoFields.length) return 0;
+  sp._auto = { date: new Date().toISOString().slice(0, 10),
+    n: calib.stats.n, nGood: calib.stats.nGood, fields: autoFields };
+  spot.scoreParams = Object.assign({}, _DEFAULT_SCORE, sp);
+  return changed;
+}
+
+// silent=true : mode automatique (boot) — pas de toasts d'erreur, pas de BSF relancé
+async function calibrateFromJournal(silent) {
   _ensureSupabaseClient();
   if (!_tokenSbClient) {
-    showToast('⚠ Supabase non disponible — ouvre le journal d\'abord');
+    if (!silent) showToast('⚠ Supabase non disponible — ouvre le journal d\'abord');
     return;
   }
   var btn = document.getElementById('bsf-calibrate');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  if (btn && !silent) { btn.disabled = true; btn.textContent = '⏳'; }
 
   try {
-    var res = await _tokenSbClient
-      .from('sessions')
-      .select('hs, period, spot')
-      .not('hs',     'is', null)
-      .not('period', 'is', null)
-      .gt('hs', 0).gt('period', 0)
-      .limit(3000);
-
-    if (res.error || !res.data || !res.data.length) {
-      showToast('⚠ Aucune session dans le journal — surfe d\'abord !');
+    var allSessions = await _fetchJournalSessions();
+    if (!allSessions || !allSessions.length) {
+      if (!silent) showToast('⚠ Aucune session visible — connecte-toi dans le journal sur cet appareil');
       return;
     }
-    var allSessions = res.data;
-    var calibrated = 0, skipped = 0;
-
+    var calibrated = 0, changed = 0, skipped = 0;
     SPOTS.forEach(function(spot) {
-      // Mêmes mots-clés que _loadSpotPwrRef
-      var keywords = (spot.surfSpots && spot.surfSpots.length)
-        ? spot.surfSpots
-        : [(spot.sessionSpot) ? spot.sessionSpot : _spotKeyword(spot.name)];
-
-      var matching = allSessions.filter(function(s) {
-        var sl = (s.spot || '').toLowerCase();
-        return keywords.some(function(kw) { return sl.includes(kw.toLowerCase()); });
-      });
-
-      if (matching.length < 3) { skipped++; return; } // pas assez de données
-
-      var pows = matching
-        .map(function(s) { return 0.5 * s.hs * s.hs * s.period; })
-        .filter(function(p) { return p > 0; })
-        .sort(function(a, b) { return a - b; });
-      if (!pows.length) { skipped++; return; }
-
-      var p25 = pows[Math.floor(pows.length * 0.25)];
-      var newMinPwr = Math.max(0.3, +(p25 * 0.75).toFixed(1));
-
-      if (!spot.scoreParams) spot.scoreParams = Object.assign({}, _DEFAULT_SCORE);
-      spot.scoreParams.minPwr = newMinPwr;
+      var calib = _calibSpotFromSessions(spot, allSessions);
+      if (!calib) { skipped++; return; }
+      changed += _applyCalibToSpot(spot, calib);
       calibrated++;
     });
 
     if (calibrated > 0) {
-      saveSpots();
+      if (changed > 0) saveSpots();
       loadScoreParams(SPOTS[currentSpot]);
-      var msg = '🎯 ' + calibrated + ' spot(s) calibré(s)';
-      if (skipped > 0) msg += ' · ' + skipped + ' sans données (configure les mots-clés dans ⚙)';
-      showToast(msg);
-      // Relancer BSF avec les nouveaux seuils
-      triggerBSF();
-    } else {
+      if (silent) {
+        if (changed > 0) {
+          console.info('[Calib] Scores recalibrés depuis le journal :', calibrated, 'spot(s),', changed, 'valeur(s)');
+          showToast('🎯 Scores affinés depuis le journal (' + calibrated + ' spot' + (calibrated>1?'s':'') + ')');
+        }
+      } else {
+        var msg = '🎯 ' + calibrated + ' spot(s) calibré(s) depuis ' + allSessions.length + ' sessions (étoiles comprises)';
+        if (skipped > 0) msg += ' · ' + skipped + ' sans données (mots-clés dans ⚙)';
+        showToast(msg);
+        triggerBSF(); // relancer avec les nouveaux seuils
+      }
+    } else if (!silent) {
       showToast('⚠ Aucun spot avec ≥3 sessions — configure les mots-clés spot dans ⚙ Réglages spot');
     }
   } catch(e) {
-    showToast('⚠ Erreur calibration : ' + e.message);
+    if (!silent) showToast('⚠ Erreur calibration : ' + e.message);
+    else console.warn('[Calib] échec silencieux :', e && e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🎯 Calibrer'; }
+    if (btn && !silent) { btn.disabled = false; btn.textContent = '🎯 Calibrer'; }
   }
 }
 
@@ -4270,6 +4382,10 @@ var _DEFAULT_SCORE = {
   minHs: 0.4, maxHs: 4.0, minPeriod: 8, minPwr: 1,
   swellDirIdeal: 120, windDirIdeal: 270,
   onshoreLimit: 45, offshoreMin: 135,
+  // Spots à accès bateau : peu de vent est un critère en soi (navigation,
+  // moutons dans le lagon, clapot sur le plan d'eau), quelle que soit la
+  // direction. windCalmKt = seuil d'apparition des moutons (~12-14kt).
+  windCalmKt: 13,
   windMalusKt: 22, gustMalusKt: 30  // NC : alizé 18-20kt normal → seuils relevés
 };
 var SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE);
@@ -4338,6 +4454,20 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
     else if(diffWind > 120) { score = Math.max(0, score - 1); details.push('Vent défav. '+compass(wDir)); }
   }
 
+  // Malus vent PLAT (indépendant de la direction) : sur ces spots à accès
+  // bateau, le vent dégrade tout — navigation, moutons dans le lagon, clapot
+  // sur la vague. Deux paliers : moutons (windCalmKt, ~13kt) puis vent fort
+  // (windMalusKt). S'additionne aux effets directionnels ci-dessous.
+  var _calmKt = SCORE_PARAMS.windCalmKt || 13;
+  if(ws && ws > _calmKt) {
+    score = Math.max(0, score - 1);
+    details.push('Moutons/clapot ('+Math.round(ws)+'kt &gt; '+_calmKt+'kt)');
+    if(ws > SCORE_PARAMS.windMalusKt) {
+      score = Math.max(0, score - 1);
+      details.push('Vent fort — nav difficile');
+    }
+  }
+
   // Effet du vent (onshore/offshore relatif à la houle)
   if(ws && wDir != null && swDir != null) {
     // Angle entre vent et direction de propagation de la houle
@@ -4358,8 +4488,9 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
         details.push('Onshore modéré ('+Math.round(ws)+'kt)');
       }
     } else if(angleDiff > SCORE_PARAMS.offshoreMin) {
-      // Offshore: bonus si vent léger-modéré
-      if(ws >= 5 && ws <= 15) {
+      // Offshore: bonus seulement si le plan d'eau reste propre (≤ seuil
+      // moutons) — offshore fort = vague peignée mais lagon/navigation dégradés
+      if(ws >= 5 && ws <= _calmKt) {
         score = Math.min(5, score + 1);
         details.push('Offshore idéal ('+Math.round(ws)+'kt)');
       } else if(ws > 20) {
@@ -9853,6 +9984,75 @@ function _pastCell(label, value, color) {
     +'</div>';
 }
 
+// Remplit le bloc 📊 du dialogue ⚙ : stats des sessions du journal pour ce
+// spot (étoiles comprises), suggestions calculées vs valeurs actuelles, et
+// bouton d'application — les stats sont ainsi LIÉES aux réglages pour affiner.
+async function _fillJournalStatsBox(spot) {
+  var rows = null;
+  try { rows = await _fetchJournalSessions(); } catch(e) {}
+  var el = document.getElementById('ss-journal-stats');
+  if (!el) return; // dialogue refermé entre-temps
+  if (!rows || !rows.length) {
+    el.innerHTML = '📊 <b>Journal</b> : aucune session visible depuis cette page.'
+      + '<br><span style="color:var(--faint);">Connecte-toi dans le journal sur cet appareil pour utiliser tes sessions privées.</span>';
+    return;
+  }
+  var calib = _calibSpotFromSessions(spot, rows);
+  if (!calib) {
+    el.innerHTML = '📊 <b>Journal</b> : moins de 3 sessions trouvées pour ce spot.'
+      + '<br><span style="color:var(--faint);">Vérifie les mots-clés 🏄 ci-dessus — ils doivent correspondre aux noms de spots du journal.</span>';
+    return;
+  }
+  var st = calib.stats, su = calib.sugg;
+  var p = SCORE_PARAMS;
+  var lines = [];
+  lines.push('📊 <b style="color:var(--text);">Journal : ' + st.n + ' session' + (st.n>1?'s':'')
+    + (st.avgQ != null ? ' · ★ moy ' + String(st.avgQ).replace('.', ',') : '')
+    + (st.nGood ? ' · ' + st.nGood + ' très bonne' + (st.nGood>1?'s':'') + ' (★≥4)' : '') + '</b>');
+  if (st.hs) lines.push('🌊 Bonnes sessions : Hs ' + st.hs.min.toFixed(1) + '–' + st.hs.max.toFixed(1) + 'm (méd ' + st.hs.med.toFixed(1) + 'm)'
+    + (st.T ? ' · période méd ' + Math.round(st.T.med) + 's' : ''));
+  if (st.wind) lines.push('💨 Vent surfé : méd ' + Math.round(st.wind.med) + 'kt · P90 ' + Math.round(st.wind.p90) + 'kt'
+    + ' <span style="color:var(--faint);">(peu de vent = nav + plan d\'eau propres)</span>');
+  // Suggestions vs valeurs actuelles — n'affiche que les écarts
+  var diffs = [];
+  var FIELD_LBL = { minHs:'Hs min', minPeriod:'Période min', minPwr:'Puissance min',
+    windCalmKt:'Seuil moutons', windMalusKt:'Vent fort', swellDirIdeal:'Houle idéale', windDirIdeal:'Vent idéal' };
+  Object.keys(su).forEach(function(f) {
+    var cur = p[f] != null ? p[f] : _DEFAULT_SCORE[f];
+    if (cur === su[f]) return;
+    var fmt = function(v){ return (f==='swellDirIdeal'||f==='windDirIdeal') ? degToCompass(v)+' ('+v+'°)' : v; };
+    diffs.push(FIELD_LBL[f] + ' : ' + fmt(cur) + ' → <b style="color:var(--accent);">' + fmt(su[f]) + '</b>');
+  });
+  if (diffs.length) {
+    lines.push('<span style="color:var(--text);">🎯 Suggestions journal :</span> ' + diffs.join(' · '));
+  } else {
+    lines.push('<span style="color:var(--ok);">✓ Réglages déjà alignés sur le journal</span>');
+  }
+  if (p._auto && p._auto.date) {
+    lines.push('<span style="color:var(--faint);">Calibré auto le ' + p._auto.date.split('-').reverse().join('/')
+      + ' depuis ' + p._auto.n + ' sessions — un champ modifié à la main ici ne sera plus recalibré.</span>');
+  }
+  el.innerHTML = lines.join('<br>')
+    + (diffs.length
+      ? '<button id="ss-apply-calib" style="display:block;width:100%;margin-top:8px;background:rgba(79,163,199,.12);'
+        + 'border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:6px;padding:7px;'
+        + 'cursor:pointer;font-size:11px;font-weight:600;">🎯 Appliquer les suggestions du journal</button>'
+      : '');
+  var applyBtn = document.getElementById('ss-apply-calib');
+  if (applyBtn) applyBtn.onclick = function() {
+    var changed = _applyCalibToSpot(spot, calib);
+    if (changed > 0) {
+      saveSpots();
+      loadScoreParams();
+      showToast('🎯 ' + changed + ' paramètre' + (changed>1?'s':'') + ' affiné' + (changed>1?'s':'') + ' depuis le journal ✓');
+      showSpotSettings(true); // rouvrir avec les nouvelles valeurs
+      loadForecast(currentSpot);
+    } else {
+      showToast('Rien à changer — les champs restants ont été réglés à la main (protégés)');
+    }
+  };
+}
+
 function showSpotSettings(forceOpen) {
   var ex = document.getElementById('spot-settings-dialog');
   if (ex) { if (!forceOpen) { ex.remove(); return; } ex.remove(); }
@@ -9955,6 +10155,12 @@ function showSpotSettings(forceOpen) {
     +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;'
     +'letter-spacing:.5px;margin-bottom:10px;">🏄 Score surf — paramètres pour ce spot</div>'
 
+    // Stats du journal pour CE spot — rempli en asynchrone, sert à affiner les
+    // paramètres ci-dessous avec les vraies sessions (étoiles comprises)
+    +'<div id="ss-journal-stats" style="background:var(--glass);border:1px solid var(--border);'
+    +'border-radius:8px;padding:9px 10px;margin-bottom:12px;font-size:10px;color:var(--muted);'
+    +'line-height:1.7;">📊 Journal : chargement des sessions… ⏳</div>'
+
     // Hs
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'
     +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Hs min (m)</div>'
@@ -9965,15 +10171,19 @@ function showSpotSettings(forceOpen) {
     +'<input type="number" id="ss-minPeriod" value="'+p.minPeriod+'" min="4" max="20" step="1" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
     +'padding:6px;color:var(--text);font-size:11px;"></div></div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'
-    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Vent malus (kt)</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;" title="Au-dessus : malus moutons/clapot/navigation, quelle que soit la direction">Seuil moutons (kt)</div>'
+    +'<input type="number" id="ss-calm" value="'+(p.windCalmKt||13)+'" min="5" max="25" step="1" '
+    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
+    +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div>'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Vent fort (kt)</div>'
     +'<input type="number" id="ss-wind" value="'+p.windMalusKt+'" min="5" max="40" step="1" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
-    +'padding:6px;color:var(--text);font-size:11px;"></div>'
-    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Rafales malus (kt)</div>'
+    +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div>'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Rafales (kt)</div>'
     +'<input type="number" id="ss-gust" value="'+p.gustMalusKt+'" min="5" max="50" step="1" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
-    +'padding:6px;color:var(--text);font-size:11px;"></div></div>'
+    +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div></div>'
 
     // Directions compas — version mini inline
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
@@ -10037,6 +10247,9 @@ function showSpotSettings(forceOpen) {
     +'</div>';
 
   document.body.appendChild(div);
+
+  // Stats journal (async) — lie les vraies sessions aux réglages ci-dessous
+  _fillJournalStatsBox(spot);
 
   // Boutons source houle
   div.querySelectorAll('.ss-src-btn').forEach(function(btn) {
@@ -10115,6 +10328,7 @@ function showSpotSettings(forceOpen) {
         minHs:     +document.getElementById('ss-minHs').value     || 0.4,
         minPeriod: +document.getElementById('ss-minPeriod').value || 8,
         minPwr:    p.minPwr != null ? p.minPwr : _DEFAULT_SCORE.minPwr,
+        windCalmKt:  +document.getElementById('ss-calm').value    || 13,
         windMalusKt: +document.getElementById('ss-wind').value    || 18,
         gustMalusKt: +document.getElementById('ss-gust').value    || 25,
         swellDirIdeal: +document.getElementById('ss-swell').value    || 120,
@@ -10123,6 +10337,13 @@ function showSpotSettings(forceOpen) {
         onshoreLimit: p.onshoreLimit || 45,
         offshoreMin: p.offshoreMin || 135,
       };
+      // Traçabilité calibration auto : un champ modifié À LA MAIN ici sort de la
+      // liste _auto.fields → la calibration journal ne l'écrasera plus jamais.
+      if (p._auto && p._auto.fields) {
+        newScore._auto = Object.assign({}, p._auto, {
+          fields: p._auto.fields.filter(function(f) { return newScore[f] === p[f]; })
+        });
+      }
       saveScoreParams(newScore);
       await saveSpots();
       div.remove();
@@ -10210,6 +10431,8 @@ function showScoreSettings() {
 
     // ── SECTION VENT ──
     +'<div style="font-size:10px;font-weight:700;color:#e8a057;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">💨 Vent</div>'
+    +sliderRow('Seuil moutons/clapot (kt)','windCalmKt',(p.windCalmKt!=null?p.windCalmKt:13),5,25,1,' kt')
+    +'<div style="font-size:9px;color:var(--faint);margin:-6px 0 10px;">Au-dessus : malus quelle que soit la direction (navigation, moutons, clapot)</div>'
     +sliderRow('Vent max avant malus (kt)','windMalusKt',p.windMalusKt,5,30,1,' kt')
     +sliderRow('Rafales max (kt)','gustMalusKt',p.gustMalusKt,10,40,1,' kt')
 
@@ -10303,12 +10526,22 @@ function showScoreSettings() {
     div.remove(); loadForecast(currentSpot); showToast('Score réinitialisé');
   };
   document.getElementById('sc-save').onclick=function(){
+    var before=Object.assign({},SCORE_PARAMS);
     SCORE_PARAMS.minHs=+document.getElementById('sc-minHs').value;
     SCORE_PARAMS.minPeriod=+document.getElementById('sc-minPeriod').value;
+    SCORE_PARAMS.minPwr=+document.getElementById('sc-minPwr').value;
+    SCORE_PARAMS.windCalmKt=+document.getElementById('sc-windCalmKt').value;
     SCORE_PARAMS.windMalusKt=+document.getElementById('sc-windMalusKt').value;
     SCORE_PARAMS.gustMalusKt=+document.getElementById('sc-gustMalusKt').value;
     SCORE_PARAMS.swellDirIdeal=+document.getElementById('hid-swell').value;
     SCORE_PARAMS.windDirIdeal=+document.getElementById('hid-wind').value;
+    // Un champ modifié à la main sort de _auto.fields → la calibration journal
+    // ne l'écrasera plus (même protection que le dialogue ⚙ Réglages spot).
+    if(SCORE_PARAMS._auto&&SCORE_PARAMS._auto.fields){
+      SCORE_PARAMS._auto=Object.assign({},SCORE_PARAMS._auto,{
+        fields:SCORE_PARAMS._auto.fields.filter(function(f){return SCORE_PARAMS[f]===before[f];})
+      });
+    }
     saveScoreParams(p);
     div.remove(); loadForecast(currentSpot); showToast('Score sauvegardé pour '+SPOTS[currentSpot].name);
   };
@@ -11751,6 +11984,18 @@ function ensoRender() {
     _loadTokenFromWorker().then(function(t){ _onToken(t, 'worker'); }).catch(function(){});
     _loadTokenFromSupabase().then(function(t){ _onToken(t, 'supabase'); }).catch(function(){});
   }
+
+  // Calibration automatique des scores depuis le journal (étoiles comprises) —
+  // silencieuse, au plus 1×/20h, décalée pour laisser passer le boot réseau.
+  // Les scores restent ainsi à jour "par défaut" sans toucher au bouton 🎯.
+  setTimeout(function() {
+    try {
+      var last = +localStorage.getItem('journal-calib-last') || 0;
+      if (Date.now() - last < 20 * 3600 * 1000) return;
+      localStorage.setItem('journal-calib-last', String(Date.now()));
+      calibrateFromJournal(true);
+    } catch(e) {}
+  }, 6000);
 })();
 </script>
 <script>
