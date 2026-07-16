@@ -1061,6 +1061,7 @@ var currentFilter = 'upcoming';
 var currentShareMsg = '';
 var _editingId = null;
 var _editInscriptions = [];
+var _editOpenedAt = null; // horodatage d'ouverture du dialogue d'édition (anti-écrasement)
 var _editCovoitPax = {};
 var _editBoatOwners = [];
 
@@ -1520,7 +1521,24 @@ async function saveSortie() {
   btn.disabled = true; btn.textContent = '⏳ Enregistrement…';
   try {
     if (typeof _editingId !== 'undefined' && _editingId) {
-      // Mode édition — inclure inscriptions et covoiturage modifiés
+      // Mode édition — inclure inscriptions et covoiturage modifiés.
+      // Anti-écrasement : quelqu'un a pu s'inscrire PENDANT que le dialogue
+      // était ouvert — ces inscriptions (créées après _editOpenedAt et
+      // inconnues de l'éditeur, donc pas des retraits volontaires) sont
+      // préservées en les fusionnant depuis l'état frais.
+      try {
+        var freshIns = await sb.from('sorties').select('inscriptions').eq('id', _editingId).maybeSingle();
+        if (freshIns && freshIns.data && Array.isArray(freshIns.data.inscriptions)) {
+          var editKeys = {};
+          _editInscriptions.forEach(function(i){ editKeys[i.is_guest ? ('g:'+(i.guest_id||i.username)) : ('u:'+i.user_id)] = 1; });
+          freshIns.data.inscriptions.forEach(function(i) {
+            var k = i.is_guest ? ('g:'+(i.guest_id||i.username)) : ('u:'+i.user_id);
+            if (!editKeys[k] && i.created_at && _editOpenedAt && i.created_at > _editOpenedAt) {
+              _editInscriptions.push(i); // arrivé pendant l'édition → on le garde
+            }
+          });
+        }
+      } catch(e) {}
       payload.inscriptions    = _editInscriptions;
       payload.covoit_passengers = _editCovoitPax;
       payload.boat_owners     = _editBoatOwners;
@@ -1620,14 +1638,30 @@ async function updateStatus(sortieId, status) {
   await saveInscription(sortieId, inscription);
 }
 
+// ── Anti-écrasement concurrent ────────────────────────────────────────────
+// Les champs de sortie sont des TABLEAUX JSONB entiers (inscriptions, expenses,
+// comments, miton_orders, covoit_passengers, feedbacks) : écrire depuis l'état
+// local — potentiellement vieux de plusieurs minutes — écrasait tout ce que les
+// copains avaient fait entre-temps (« dernier écrivain gagne »). Ce helper
+// RELIT la valeur fraîche juste avant d'écrire et applique le delta dessus :
+// la fenêtre de course passe de minutes à quelques millisecondes.
+// mutate(freshVal) → nouvelle valeur, ou null/undefined pour annuler sans écrire.
+async function _sortieFieldUpdate(sortieId, field, mutate) {
+  var fresh = await sb.from('sorties').select(field).eq('id', sortieId).maybeSingle();
+  if (fresh && fresh.error) return { error: fresh.error };
+  var next = mutate(fresh && fresh.data ? fresh.data[field] : null);
+  if (next === null || next === undefined) return { aborted: true };
+  var upd = {}; upd[field] = next;
+  var res = await sb.from('sorties').update(upd).eq('id', sortieId);
+  return res || {};
+}
+
 async function saveInscription(sortieId, inscription) {
-  const s = allSorties.find(x => x.id === sortieId);
-  if (!s) return;
-  const current = (s.inscriptions || []).filter(i => i.user_id !== currentUser.id);
-  current.push(inscription);
   try {
-    const { error } = await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
-    if (error) throw error;
+    var res = await _sortieFieldUpdate(sortieId, 'inscriptions', function(cur) {
+      return (cur || []).filter(i => i.user_id !== currentUser.id).concat([inscription]);
+    });
+    if (res && res.error) { toast('❌ Inscription NON enregistrée : ' + res.error.message, 'err'); return; }
     toast(inscription.status === 'in' ? 'Inscription confirmée ✓' : inscription.status === 'maybe' ? 'Noté : peut-être' : 'Noté : tu ne peux pas', 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -1960,18 +1994,17 @@ async function addMitonOrder(sortieId) {
   if (!input) return;
   var what = input.value.trim();
   if (!what) return;
-  var s = allSorties.find(x => x.id === sortieId);
-  var orders = (s.miton_orders || []).slice();
-  orders.push({
+  var order = {
     user_id: currentUser.id,
     username: currentProfile.username || 'Surfeur',
     what: what,
     done: false,
     at: new Date().toISOString()
-  });
+  };
   try {
-    // supabase-js ne LÈVE PAS d'exception sur un refus RLS — contrôler {error}
-    var res = await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    var res = await _sortieFieldUpdate(sortieId, 'miton_orders', function(cur) {
+      return (cur || []).concat([order]);
+    });
     if (res && res.error) { toast('❌ Commande NON enregistrée : ' + res.error.message, 'err'); return; }
     input.value = '';
     await loadSorties();
@@ -1982,11 +2015,19 @@ async function addMitonOrder(sortieId) {
 async function toggleMitonDone(sortieId, idx) {
   var s = allSorties.find(x => x.id === sortieId);
   if (!s) return;
-  var orders = (s.miton_orders || []).slice();
-  if (!orders[idx]) return;
-  orders[idx].done = !orders[idx].done;
+  var stale = (s.miton_orders || [])[idx];
+  if (!stale) return;
   try {
-    var res = await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    // Identifier la commande par (user_id, at) — l'index local peut avoir bougé
+    // si quelqu'un a ajouté/supprimé entre-temps
+    var res = await _sortieFieldUpdate(sortieId, 'miton_orders', function(cur) {
+      cur = (cur || []).slice();
+      var i = cur.findIndex(function(o){ return o.user_id === stale.user_id && o.at === stale.at; });
+      if (i < 0) return null; // disparue entre-temps → ne rien écraser
+      cur[i] = Object.assign({}, cur[i], { done: !cur[i].done });
+      return cur;
+    });
+    if (res && res.aborted) { toast('Commande modifiée entre-temps — liste rechargée', 'err'); await loadSorties(); return; }
     if (res && res.error) { toast('❌ Non enregistré : ' + res.error.message, 'err'); return; }
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -1995,12 +2036,17 @@ async function toggleMitonDone(sortieId, idx) {
 async function removeMitonOrder(sortieId, idx) {
   var s = allSorties.find(x => x.id === sortieId);
   if (!s) return;
-  var orders = (s.miton_orders || []).slice();
-  if (!orders[idx]) return;
-  if (orders[idx].user_id !== currentUser.id) return;
-  orders.splice(idx, 1);
+  var stale = (s.miton_orders || [])[idx];
+  if (!stale) return;
+  if (stale.user_id !== currentUser.id) return;
   try {
-    var res = await sb.from('sorties').update({ miton_orders: orders }).eq('id', sortieId);
+    var res = await _sortieFieldUpdate(sortieId, 'miton_orders', function(cur) {
+      cur = (cur || []).slice();
+      var i = cur.findIndex(function(o){ return o.user_id === stale.user_id && o.at === stale.at; });
+      if (i < 0) return null; // déjà supprimée
+      cur.splice(i, 1);
+      return cur;
+    });
     if (res && res.error) { toast('❌ Suppression NON enregistrée : ' + res.error.message, 'err'); return; }
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -2181,23 +2227,26 @@ function buildCovoitBox(sortie) {
 
 async function toggleCovoit(sortieId, driverId) {
   if (!currentUser) return;
-  var s = allSorties.find(x => x.id === sortieId);
-  if (!s) return;
-  var covoit = s.covoit_passengers || {};
-  if (!covoit[driverId]) covoit[driverId] = [];
-  var idx = covoit[driverId].indexOf(currentUser.id);
-  if (idx >= 0) covoit[driverId].splice(idx, 1);
-  else {
-    // Retirer des autres voitures (un passager dans une seule voiture)
-    Object.keys(covoit).forEach(function(did) {
-      covoit[did] = covoit[did].filter(function(u) { return u !== currentUser.id; });
-    });
-    covoit[driverId].push(currentUser.id);
-  }
+  var wasIn = false;
   try {
-    var res = await sb.from('sorties').update({ covoit_passengers: covoit }).eq('id', sortieId);
+    // Le toggle est décidé sur l'état FRAIS (pas la copie locale) : sinon deux
+    // copains qui cliquent en même temps s'effaçaient mutuellement des voitures
+    var res = await _sortieFieldUpdate(sortieId, 'covoit_passengers', function(cur) {
+      var covoit = cur ? JSON.parse(JSON.stringify(cur)) : {};
+      if (!covoit[driverId]) covoit[driverId] = [];
+      wasIn = covoit[driverId].indexOf(currentUser.id) >= 0;
+      if (wasIn) covoit[driverId] = covoit[driverId].filter(function(u) { return u !== currentUser.id; });
+      else {
+        // Retirer des autres voitures (un passager dans une seule voiture)
+        Object.keys(covoit).forEach(function(did) {
+          covoit[did] = covoit[did].filter(function(u) { return u !== currentUser.id; });
+        });
+        covoit[driverId].push(currentUser.id);
+      }
+      return covoit;
+    });
     if (res && res.error) { toast('❌ Covoit NON enregistré : ' + res.error.message, 'err'); return; }
-    toast(idx >= 0 ? 'Retiré du covoit' : 'Ajouté au covoit ✓', 'ok');
+    toast(wasIn ? 'Retiré du covoit' : 'Ajouté au covoit ✓', 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
 }
@@ -2244,16 +2293,16 @@ async function postComment(sortieId) {
   if (!input) return;
   var text = input.value.trim();
   if (!text) return;
-  var s = allSorties.find(x => x.id === sortieId);
-  var comments = (s.comments || []).slice();
-  comments.push({
+  var comment = {
     user_id: currentUser.id,
     username: currentProfile.username || 'Surfeur',
     text: text,
     created_at: new Date().toISOString()
-  });
+  };
   try {
-    var res = await sb.from('sorties').update({ comments: comments }).eq('id', sortieId);
+    var res = await _sortieFieldUpdate(sortieId, 'comments', function(cur) {
+      return (cur || []).concat([comment]);
+    });
     if (res && res.error) { toast('❌ Commentaire NON enregistré : ' + res.error.message, 'err'); return; }
     input.value = '';
     await loadSorties();
@@ -2365,11 +2414,11 @@ async function saveFeedback() {
   try {
     var rIns = await sb.from('sessions').insert(payload);
     if (rIns && rIns.error) { toast('❌ Session NON créée : ' + rIns.error.message, 'err'); return; }
-    // Marquer dans la sortie que cet user a donné son retour
-    var feedbacks = (s.feedbacks || []);
-    feedbacks = feedbacks.filter(function(f){ return f.user_id !== currentUser.id; });
-    feedbacks.push({ user_id: currentUser.id, quality: _fbQuality, at: new Date().toISOString() });
-    var rFb = await sb.from('sorties').update({ feedbacks: feedbacks }).eq('id', sortieId);
+    // Marquer dans la sortie que cet user a donné son retour (sur l'état frais)
+    var rFb = await _sortieFieldUpdate(sortieId, 'feedbacks', function(cur) {
+      return (cur || []).filter(function(f){ return f.user_id !== currentUser.id; })
+        .concat([{ user_id: currentUser.id, quality: _fbQuality, at: new Date().toISOString() }]);
+    });
     if (rFb && rFb.error) toast('Session créée, mais retour non marqué sur la sortie (' + rFb.error.message + ')', 'err');
     else toast('Session créée dans ton journal ✓', 'ok');
     closeModal('modal-feedback');
@@ -3937,6 +3986,7 @@ function openEditModal(sortieId) {
   var s = allSorties.find(function(x) { return x.id === sortieId; });
   if (!s) return;
   _editingId = sortieId;
+  _editOpenedAt = new Date().toISOString(); // pour préserver les inscriptions arrivées PENDANT l'édition
 
   // Initialiser l'état participants depuis la sortie
   _editInscriptions = (s.inscriptions || []).map(function(i) { return Object.assign({}, i); });
@@ -4616,10 +4666,11 @@ async function confirmAddUser(sortieId) {
   var name = profileCache[uid] || uid.slice(0,8);
   var s = allSorties.find(function(x) { return x.id === sortieId; });
   if (!s) return;
-  var current = (s.inscriptions || []).filter(function(i) { return i.user_id !== uid; });
-  current.push({ user_id: uid, username: name, status: 'in', added_by: currentUser.id, created_at: new Date().toISOString() });
+  var entry = { user_id: uid, username: name, status: 'in', added_by: currentUser.id, created_at: new Date().toISOString() };
   try {
-    var res = await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
+    var res = await _sortieFieldUpdate(sortieId, 'inscriptions', function(cur) {
+      return (cur || []).filter(function(i) { return i.user_id !== uid; }).concat([entry]);
+    });
     if (res && res.error) { toast('❌ ' + name + ' NON ajouté : ' + res.error.message, 'err'); return; }
     document.getElementById('add-user-dialog')?.remove();
     toast(name + ' ajouté ✓', 'ok');
@@ -4647,14 +4698,13 @@ async function addGuest(sortieId) {
     created_at: new Date().toISOString()
   };
 
-  var current = (s.inscriptions || []).filter(function(i) {
-    if (guest.is_guest) return !(i.is_guest && i.username === name); // évite doublons par prénom
-    return i.user_id !== guest.user_id; // déjà lié à un compte réel : évite le doublon par compte
-  });
-  current.push(guest);
-
   try {
-    var res = await sb.from('sorties').update({ inscriptions: current }).eq('id', sortieId);
+    var res = await _sortieFieldUpdate(sortieId, 'inscriptions', function(cur) {
+      return (cur || []).filter(function(i) {
+        if (guest.is_guest) return !(i.is_guest && i.username === name); // évite doublons par prénom
+        return i.user_id !== guest.user_id; // déjà lié à un compte réel : évite le doublon par compte
+      }).concat([guest]);
+    });
     if (res && res.error) { toast('❌ ' + name + ' NON ajouté : ' + res.error.message, 'err'); return; }
     toast(guest.is_guest ? (name + ' ajouté comme invité ✓') : (name + ' ajouté — déjà lié à un compte, reconnu automatiquement ✓'), 'ok');
     await loadSorties();
@@ -4699,9 +4749,10 @@ async function addExpenseFromDialog(sortieId) {
     created_at: new Date().toISOString()
   };
 
-  var expenses = (s.expenses || []).concat([expense]);
   try {
-    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    var res = await _sortieFieldUpdate(sortieId, 'expenses', function(cur) {
+      return (cur || []).concat([expense]);
+    });
     if (res && res.error) { toast('❌ Dépense NON enregistrée : ' + res.error.message, 'err'); return; }
     _tricountAllSorties = null;
     document.getElementById('quick-expense-dialog')?.remove();
@@ -4824,9 +4875,10 @@ async function addFreeExpense() {
     created_at: new Date().toISOString()
   };
 
-  var expenses = (target.expenses || []).concat([expense]);
   try {
-    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', target.id);
+    var res = await _sortieFieldUpdate(target.id, 'expenses', function(cur) {
+      return (cur || []).concat([expense]);
+    });
     if (res && res.error) { toast('❌ Dépense NON enregistrée : ' + res.error.message, 'err'); return; }
     _tricountAllSorties = null; // forcer le rechargement de l'historique complet
     toast(amt.toLocaleString('fr') + ' CFP enregistré ✓', 'ok');
@@ -4870,9 +4922,10 @@ async function addExpense(sortieId) {
     created_at: new Date().toISOString()
   };
   if (!expense.splits.length) expense.splits = [currentUser.id];
-  var expenses = (s.expenses || []).concat([expense]);
   try {
-    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    var res = await _sortieFieldUpdate(sortieId, 'expenses', function(cur) {
+      return (cur || []).concat([expense]);
+    });
     if (res && res.error) { toast('❌ Dépense NON enregistrée : ' + res.error.message, 'err'); return; }
     _tricountAllSorties = null;
     toast(amt.toLocaleString('fr') + ' CFP ajouté ✓', 'ok');
@@ -4885,11 +4938,24 @@ async function addExpense(sortieId) {
 async function deleteExpense(sortieId, idx) {
   var s = allSorties.find(function(x) { return x.id === sortieId; });
   if (!s) return;
+  var stale = (s.expenses || [])[idx];
+  if (!stale) return;
   if (!confirm('Supprimer cette dépense ?')) return;
-  var expenses = (s.expenses || []).slice();
-  expenses.splice(idx, 1);
   try {
-    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', sortieId);
+    // Identifier la dépense par son id (ou signature) sur l'état FRAIS — un
+    // splice(idx) sur la copie locale pouvait supprimer la MAUVAISE dépense
+    // si quelqu'un en avait ajouté/retiré une entre-temps
+    var res = await _sortieFieldUpdate(sortieId, 'expenses', function(cur) {
+      cur = (cur || []).slice();
+      var i = cur.findIndex(function(e) {
+        return (stale.id && e.id === stale.id)
+          || (!stale.id && e.created_at === stale.created_at && e.amount === stale.amount && e.label === stale.label);
+      });
+      if (i < 0) return null; // déjà supprimée entre-temps
+      cur.splice(i, 1);
+      return cur;
+    });
+    if (res && res.aborted) { toast('Dépense déjà supprimée — liste rechargée', 'err'); await loadSorties(); renderTricount(); return; }
     if (res && res.error) { toast('❌ Suppression refusée : ' + res.error.message, 'err'); return; }
     _tricountAllSorties = null;
     await loadSorties();
@@ -5087,9 +5153,10 @@ async function _recordReimbursement(fromId, fromName, toId, toName, amt) {
     is_reimbursement: true,
     created_at: new Date().toISOString()
   };
-  var expenses = (target.expenses || []).concat([expense]);
   try {
-    var res = await sb.from('sorties').update({ expenses: expenses }).eq('id', target.id);
+    var res = await _sortieFieldUpdate(target.id, 'expenses', function(cur) {
+      return (cur || []).concat([expense]);
+    });
     if (res && res.error) { toast('❌ Remboursement NON enregistré : ' + res.error.message, 'err'); return; }
     _tricountAllSorties = null;
     toast('Remboursement enregistré ✓', 'ok');
