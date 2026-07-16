@@ -578,27 +578,29 @@ nav a.back:hover{color:var(--text);}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;" id="tricount-summary-grid"></div>
 
       <!-- Dépense libre (hors sortie) -->
-      <details style="margin-bottom:16px;">
+      <details style="margin-bottom:16px;" ontoggle="if(this.open)_renderFreePeopleChips()">
         <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#a99ff8;padding:8px 12px;background:rgba(123,108,246,.07);border:1px solid rgba(123,108,246,.2);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px;">
-          ➕ Ajouter une dépense hors sortie / Remboursement
+          ➕ Dépense hors sortie <span style="font-weight:400;opacity:.75;">(dette externe, pas liée à une sortie précise)</span>
         </summary>
         <div style="padding:12px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:0 0 8px 8px;border-top:none;">
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
             <button type="button" onclick="tcFreePreset('⛽ Essence',5000)" style="background:rgba(169,159,248,.1);border:1px solid rgba(169,159,248,.25);color:#a99ff8;border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer;">⛽ Essence</button>
             <button type="button" onclick="tcFreePreset('🍔 Repas',1500)" style="background:rgba(169,159,248,.1);border:1px solid rgba(169,159,248,.25);color:#a99ff8;border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer;">🍔 Repas</button>
             <button type="button" onclick="tcFreePreset('⚓ Mouillage',2000)" style="background:rgba(169,159,248,.1);border:1px solid rgba(169,159,248,.25);color:#a99ff8;border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer;">⚓ Mouillage</button>
-            <button type="button" onclick="openManualReimbursement()" style="background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.2);color:#3dba8a;border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer;">💸 Remboursement A→B</button>
             <button type="button" onclick="openAliasManager()" style="background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.2);color:#4fa3c7;border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer;">🔗 Alias de noms</button>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
             <input type="text" id="tc-free-label" placeholder="Description" style="background:var(--mid);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
             <input type="number" id="tc-free-amount" placeholder="Montant CFP" min="0" step="100" style="background:var(--mid);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;">
           </div>
-          <div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">
-            ℹ️ Dépense rattachée à la sortie la plus récente — visible dans le bilan ⚖️.<br>
-            Pour un <b>remboursement direct</b> entre deux personnes, clique <b>💸 Remboursement A→B</b>.
+          <div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-bottom:6px;">👥 Qui est concerné par cette dépense ?</div>
+          <div id="tc-free-people-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;"></div>
+          <div style="font-size:10px;color:var(--text-faint);margin-bottom:10px;">
+            Toi paies, le montant est partagé entre les personnes cochées ci-dessus (décoche tout le monde sauf 1 pour une dépense perso, non partagée).<br>
+            Pour un <b>remboursement direct</b> entre deux personnes (solder une dette existante), clique <b>💸 Remboursement A→B</b> ci-dessous.
           </div>
-          <button onclick="addFreeExpense()" style="width:100%;background:rgba(123,108,246,.2);border:1px solid rgba(123,108,246,.4);color:#a99ff8;border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;">✓ Enregistrer</button>
+          <button onclick="addFreeExpense()" style="width:100%;background:rgba(123,108,246,.2);border:1px solid rgba(123,108,246,.4);color:#a99ff8;border-radius:6px;padding:8px;cursor:pointer;font-weight:600;font-size:12px;margin-bottom:8px;">✓ Enregistrer la dépense</button>
+          <button type="button" onclick="openManualReimbursement()" style="width:100%;background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.2);color:#3dba8a;border-radius:6px;font-size:11px;padding:6px 8px;cursor:pointer;">💸 Remboursement A→B (solder une dette)</button>
         </div>
       </details>
 
@@ -2615,7 +2617,6 @@ function drawMeteogramV2(sortie, data, tide, coords, sourceLabel) {
   var D = {
     spot:     sortie.spot || coords.name || 'Spot',
     date:     sortie.date_start || '',
-    rating:   0,
     hours:    pts.map(function(p){ return Math.round(p.h || 0) + 'h'; }),
     houle:    pts.map(function(p){ return +(p.hs || 0); }),
     houleDir: pts.map(function(p){ return +(p.swellDir || 0); }),
@@ -2729,13 +2730,6 @@ function mg_drawHeader(ctx,D,C,x,y,w,h) {
   var ds=dt?dt.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'';
   if(ds) ds=ds[0].toUpperCase()+ds.slice(1);
   ctx.fillStyle=C.muted;mg_sf(ctx,500,25,'DM Sans'); ctx.fillText(ds,px,py+140);
-
-  // Stars
-  var r=D.rating||0, ss=28, sy=py+180;
-  for(var i=0;i<5;i++){
-    ctx.fillStyle=i<Math.round(r)?'#E8A057':'rgba(255,255,255,.15)';
-   mg_sf(ctx,400,ss,'sans-serif'); ctx.fillText(i<Math.round(r)?'★':'☆',px+i*(ss+4),sy);
-  }
 
   // ── 4 STAT CELLS ──
   var cH2=80, cY=y+h-cH2-20, n=D.hours.length;
@@ -3037,12 +3031,38 @@ function mg_drawTide(ctx,D,C,x,y,w,h){
   }
   ctx.textAlign='left';
 
-  var lv=(D.maree||[]).map(function(p){return p.v;});
+  // Mappe les heures sur le MÊME espace de colonnes que le tableau Houle & Vent
+  // juste au-dessus (xP dans mg_drawSwellWind : colonnes à largeur égale indexées
+  // sur D.hours, pas une échelle 0-24h continue) — sinon la marée et les heures
+  // du tableau du dessus dérivent visuellement dès que les créneaux ne couvrent
+  // pas exactement 0h→24h (cas courant : bulletin ~6h-19h).
+  var hrs=(D.hours||[]).map(function(s){ return parseFloat(String(s).replace('h','')); });
+  // La marée est calculée sur 0h→24h complet mais le bulletin au-dessus peut ne
+  // couvrir qu'une partie de la journée — restreindre à cette fenêtre, sinon les
+  // points hors-plage s'écrasent tous sur la colonne 0/n-1 (courbe en accordéon).
+  var maree=(hrs.length && D.maree && D.maree.length)
+    ? D.maree.filter(function(p){ return p.h>=hrs[0] && p.h<=hrs[hrs.length-1]; })
+    : (D.maree||[]);
+  if(maree.length<2) maree=D.maree||[]; // fenêtre trop étroite → repli sur tout
+
+  var lv=maree.map(function(p){return p.v;});
   if(!lv.length) return;
   var minL=Math.min.apply(null,lv), maxL=Math.max.apply(null,lv);
   var rng=maxL-minL, pad=rng*.18; minL-=pad; maxL+=pad; rng=maxL-minL;
 
-  function xT(h2){ return iX+(h2/24)*iW; }
+  function xT(h2){
+    if(!hrs.length) return iX+(h2/24)*iW; // repli si le tableau du dessus n'a pas de données
+    var col;
+    if(h2<=hrs[0]) col=0;
+    else if(h2>=hrs[hrs.length-1]) col=hrs.length-1;
+    else {
+      col=hrs.length-1;
+      for(var k=0;k<hrs.length-1;k++){
+        if(h2>=hrs[k]&&h2<=hrs[k+1]){ col=k+(h2-hrs[k])/((hrs[k+1]-hrs[k])||1); break; }
+      }
+    }
+    return iX+(col+.5)/hrs.length*iW;
+  }
   function yT(v){ return cT+cH-((v-minL)/rng)*cH; }
 
   // Grid + Y labels
@@ -3069,26 +3089,26 @@ function mg_drawTide(ctx,D,C,x,y,w,h){
   var tg=ctx.createLinearGradient(0,cT,0,cT+cH);
   tg.addColorStop(0,'rgba(92,184,224,.45)'); tg.addColorStop(1,'rgba(92,184,224,.03)');
   ctx.fillStyle=tg; ctx.beginPath();
-  ctx.moveTo(xT(D.maree[0].h),cT+cH);
-  mg_bzTide(ctx,D.maree,xT,yT);
-  ctx.lineTo(xT(D.maree[D.maree.length-1].h),cT+cH); ctx.closePath(); ctx.fill();
+  ctx.moveTo(xT(maree[0].h),cT+cH);
+  mg_bzTide(ctx,maree,xT,yT);
+  ctx.lineTo(xT(maree[maree.length-1].h),cT+cH); ctx.closePath(); ctx.fill();
   ctx.strokeStyle='#5cb8e0'; ctx.lineWidth=3; ctx.lineJoin='round';
-  ctx.beginPath(); mg_bzTide(ctx,D.maree,xT,yT); ctx.stroke();
+  ctx.beginPath(); mg_bzTide(ctx,maree,xT,yT); ctx.stroke();
   ctx.restore();
 
   // High/low markers — smart label placement
   var markers=[];
-  for(var i=1;i<D.maree.length-1;i++){
-    var pv=D.maree[i-1].v, cv=D.maree[i].v, nv=D.maree[i+1].v;
+  for(var i=1;i<maree.length-1;i++){
+    var pv=maree[i-1].v, cv=maree[i].v, nv=maree[i+1].v;
     var isH=cv>=pv&&cv>=nv, isL=cv<=pv&&cv<=nv;
     if(!isH&&!isL) continue;
     // Skip duplicates (sinusoid may have two very close extrema)
     var skip=false;
     for(var j=0;j<markers.length;j++){
-      if(markers[j].isH===isH && Math.abs(xT(D.maree[i].h)-markers[j].dx)<iW*.12){skip=true;break;}
+      if(markers[j].isH===isH && Math.abs(xT(maree[i].h)-markers[j].dx)<iW*.12){skip=true;break;}
     }
     if(skip) continue;
-    markers.push({i:i, isH:isH, dx:xT(D.maree[i].h), dy:mg_clamp(yT(cv),cT+12,cT+cH-12), cv:cv});
+    markers.push({i:i, isH:isH, dx:xT(maree[i].h), dy:mg_clamp(yT(cv),cT+12,cT+cH-12), cv:cv});
   }
 
   markers.forEach(function(m,mi){
@@ -3098,7 +3118,7 @@ function mg_drawTide(ctx,D,C,x,y,w,h){
     ctx.strokeStyle=C.bg; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(m.dx,m.dy,8,0,Math.PI*2); ctx.stroke();
 
     // Time string
-    var hh=Math.floor(D.maree[m.i].h), mm=Math.round((D.maree[m.i].h-hh)*60);
+    var hh=Math.floor(maree[m.i].h), mm=Math.round((maree[m.i].h-hh)*60);
     var ts=hh+'h'+(mm<10?'0'+mm:mm>0?mm:'');
     var lvStr=m.cv.toFixed(2)+'m';
 
@@ -3134,7 +3154,11 @@ function mg_drawTide(ctx,D,C,x,y,w,h){
   ctx.strokeStyle='rgba(255,255,255,.1)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(iX,xAY); ctx.lineTo(iX+iW,xAY); ctx.stroke();
   ctx.fillStyle=C.muted;mg_sf(ctx,500,19,'DM Sans'); ctx.textAlign='center';
-  for(var h2=0;h2<=24;h2+=3) ctx.fillText(h2+'h',xT(h2),xAY+26);
+  // Mêmes libellés que les colonnes du tableau Houle & Vent au-dessus (plutôt
+  // qu'un balayage 0/3/6…24h fixe) pour un alignement vertical garanti, y
+  // compris quand hrs ne clampe pas sur les mêmes points (bulletin partiel).
+  if(hrs.length) for(var hi=0;hi<hrs.length;hi++) ctx.fillText(D.hours[hi],iX+(hi+.5)/hrs.length*iW,xAY+26);
+  else for(var h2=0;h2<=24;h2+=3) ctx.fillText(h2+'h',xT(h2),xAY+26);
   ctx.textAlign='left';
 }
 
@@ -3230,7 +3254,7 @@ function mg_drawSession(ctx,D,C,x,y,w,h){
     {l:'DÉPART → RETOUR', v:D.boat.depart+' → '+D.boat.retour},
     {l:'PLACES',          v:D.boat.places+' surfeurs'},
     {l:'RENDEZ-VOUS',     v:D.boat.meeting||'—'},
-    {l:'CONDITIONS',      v:'★ '+(D.rating||0).toFixed(1)+'/5'},
+    {l:'SOURCE MÉTÉO',    v:D.source==='meteo.nc'?'🛰 meteo.nc':D.source==='demo'?'⚠ démo':'🌐 '+(D.source||'GFS')},
   ];
   var cw2=(w-88)/2;
   [[0,1],[2,3]].forEach(function(pair,ri){
@@ -3253,7 +3277,7 @@ function mg_drawSession(ctx,D,C,x,y,w,h){
 ═══════════════════════════════════════════ */
 function mg_drawFooter(ctx,D,C,x,y,w){
   ctx.fillStyle=C.muted;mg_sf(ctx,400,19,'DM Sans'); ctx.textAlign='center';
-  ctx.fillText('thibsurf.github.io/surf-journal  ·  GFS / meteo.nc',x+w/2,y+24);
+  ctx.fillText('thibsurf.github.io/surf-journal  ·  '+(D.source||'GFS'),x+w/2,y+24);
   ctx.fillStyle='rgba(255,255,255,.1)';mg_sf(ctx,400,17,'DM Sans');
   ctx.fillText('Généré le '+new Date().toLocaleDateString('fr-FR'),x+w/2,y+48);
   ctx.textAlign='left';
@@ -4262,6 +4286,7 @@ function renderTricount() {
         + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
         + '<span style="font-size:11px;font-weight:600;color:'+(isRemb?'#3dba8a':'var(--text)')+';">'
         + escapeHtml(e.label||'Dépense') + '</span>'
+        + (e.is_free ? '<span style="font-size:9px;color:#a99ff8;background:rgba(169,159,248,.15);border-radius:8px;padding:1px 6px;font-weight:700;" title="Dette externe, sans lien avec cette sortie — juste stockée ici techniquement">🔗 hors sortie</span>' : '')
         + '<span style="font-size:12px;font-weight:700;color:'+(isRemb?'#3dba8a':'var(--accent)')+';">'
         + escapeHtml(payerName) + ' +' + amt.toLocaleString('fr') + ' CFP</span>'
         + '</div>'
@@ -4296,6 +4321,8 @@ function renderTricount() {
       + (currentUser ? '<button type="button" onclick="openQuickExpense(\''+s.id+'\')" style="width:100%;margin-top:8px;padding:7px;background:rgba(123,108,246,.1);border:1px solid rgba(123,108,246,.25);color:#a99ff8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;">+ Dépense</button>' : '')
       + '</div>';
   }).join('') || '<div class="empty"><div class="empty-icon">💰</div><div class="empty-title">Aucune sortie récente</div></div>';
+
+  _renderFreePeopleChips();
 }
 
 // Modal rapide ajout dépense depuis la carte sortie
@@ -4625,14 +4652,71 @@ function tcFreePreset(label, amount) {
   else if (a) { a.value = ''; a.focus(); }
 }
 
+// Tous les participants connus (inscrits + copropriétaires) sur l'historique
+// complet dispo (pas seulement les 60 derniers jours) — source commune pour le
+// sélecteur de personnes d'une dépense hors sortie ET le picker de remboursement.
+function _tcGetAllKnownPeople() {
+  var people = {};
+  var byId = {};
+  (_tricountAllSorties || []).forEach(function(s) { byId[s.id] = s; });
+  (allSorties || []).forEach(function(s) { byId[s.id] = s; });
+  Object.values(byId).forEach(function(s) {
+    (s.inscriptions || []).forEach(function(i) {
+      var pid = i.is_guest ? (i.guest_id || (i.username ? ('guest-' + i.username) : null)) : i.user_id;
+      if (!pid) return;
+      var resolved = aliasMap[pid.toLowerCase()] || pid;
+      people[resolved] = i.username || profileCache[resolved] || resolved.slice(0, 8);
+    });
+    (s.boat_owners || []).forEach(function(uid) {
+      if (uid && !people[uid]) people[uid] = profileCache[uid] || uid.slice(0, 8);
+    });
+  });
+  return people;
+}
+
+// Sélection courante du formulaire "dépense hors sortie" — un Set d'ids cochés,
+// ré-initialisé après chaque enregistrement réussi.
+var _tcFreeSelected = null;
+
+function _renderFreePeopleChips() {
+  var wrap = document.getElementById('tc-free-people-chips');
+  if (!wrap) return;
+  var people = _tcGetAllKnownPeople();
+  if (!_tcFreeSelected) _tcFreeSelected = new Set(currentUser ? [currentUser.id] : []);
+  var ids = Object.keys(people);
+  if (!ids.length) {
+    wrap.innerHTML = '<span style="font-size:11px;color:var(--text-faint);font-style:italic;">Aucun participant connu — inscris-toi à une sortie d\'abord pour pouvoir les choisir ici.</span>';
+    return;
+  }
+  wrap.innerHTML = ids.map(function(id) {
+    var on = _tcFreeSelected.has(id);
+    var isMe = currentUser && id === currentUser.id;
+    return '<button type="button" onclick="_tcToggleFreePerson(\'' + id + '\')" style="background:'
+      + (on ? 'rgba(169,159,248,.25)' : 'rgba(255,255,255,.03)') + ';border:1px solid '
+      + (on ? 'rgba(169,159,248,.5)' : 'var(--border)') + ';color:' + (on ? '#c9c2fb' : 'var(--text-muted)')
+      + ';border-radius:12px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:' + (on ? '700' : '400') + ';">'
+      + (on ? '✓ ' : '') + escapeHtml(people[id]) + (isMe ? ' (toi)' : '') + '</button>';
+  }).join('');
+}
+
+function _tcToggleFreePerson(id) {
+  if (!_tcFreeSelected) _tcFreeSelected = new Set(currentUser ? [currentUser.id] : []);
+  if (_tcFreeSelected.has(id)) _tcFreeSelected.delete(id); else _tcFreeSelected.add(id);
+  _renderFreePeopleChips();
+}
+
 async function addFreeExpense() {
   if (!currentUser) { toast('Connecte-toi', 'err'); return; }
   var lbl = document.getElementById('tc-free-label')?.value.trim();
   var amt = parseFloat(document.getElementById('tc-free-amount')?.value);
   if (!lbl) { toast('Décris la dépense', 'err'); return; }
   if (!amt || amt <= 0) { toast('Montant invalide', 'err'); return; }
+  var splitIds = _tcFreeSelected ? Array.from(_tcFreeSelected) : [];
+  if (!splitIds.length) { toast('Choisis au moins une personne concernée (👥 ci-dessus)', 'err'); return; }
 
-  // Attacher à la sortie la plus récente disponible
+  // Stockage technique : rattachée à la sortie la plus récente (les dépenses
+  // sont stockées en JSONB par sortie) — mais le partage réel est déterminé par
+  // les personnes cochées ci-dessus, pas par les inscrits de cette sortie-là.
   var target = allSorties.slice().sort(function(a, b) {
     return parseLocalDate(b.date_start) - parseLocalDate(a.date_start);
   })[0];
@@ -4644,14 +4728,10 @@ async function addFreeExpense() {
     payer_name: (currentProfile && currentProfile.username) || 'Surfeur',
     amount: amt,
     label: lbl,
-    // user_id OU guest_id : les invités n'ont pas de user_id — l'ancien mapping
-    // produisait des `undefined` dans splits (part perdue + crash de l'Équilibre)
-    splits: (target.inscriptions || []).filter(function(i) { return i.status === 'in'; })
-      .map(function(i) { return i.is_guest ? i.guest_id : i.user_id; }).filter(Boolean),
+    splits: splitIds,
     is_free: true,
     created_at: new Date().toISOString()
   };
-  if (!expense.splits.length) expense.splits = [currentUser.id];
 
   var expenses = (target.expenses || []).concat([expense]);
   try {
@@ -4661,6 +4741,8 @@ async function addFreeExpense() {
     toast(amt.toLocaleString('fr') + ' CFP enregistré ✓', 'ok');
     document.getElementById('tc-free-label').value = '';
     document.getElementById('tc-free-amount').value = '';
+    _tcFreeSelected = new Set(currentUser ? [currentUser.id] : []);
+    _renderFreePeopleChips();
     await loadSorties();
     renderTricount();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -4838,18 +4920,8 @@ function openManualReimbursement() {
   if (!currentUser) { toast('Connecte-toi', 'err'); return; }
   var ex = document.getElementById('manual-remb-form'); if (ex) { ex.remove(); return; }
 
-  // Récupérer tous les participants connus dans les sorties
-  var people = {};
-  allSorties.forEach(function(s) {
-    (s.inscriptions || []).forEach(function(i) {
-      var pid = i.is_guest ? (i.guest_id || ('guest-'+i.username)) : i.user_id;
-      var name = i.username || profileCache[i.user_id] || pid.slice(0,8);
-      if (pid) people[pid] = name;
-    });
-    (s.boat_owners||[]).forEach(function(uid) {
-      if (!people[uid]) people[uid] = profileCache[uid] || uid.slice(0,8);
-    });
-  });
+  // Tous les participants connus (historique complet, pas seulement 60j)
+  var people = _tcGetAllKnownPeople();
   var opts = Object.entries(people).map(function(e){ return '<option value="'+e[0]+'">'+escapeHtml(e[1])+'</option>'; }).join('');
 
   var div = document.createElement('div');
