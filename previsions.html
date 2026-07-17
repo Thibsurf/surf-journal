@@ -3153,7 +3153,9 @@ async function loadForecast(i) {
       for (var xd = -2; xd <= 5; xd++) {
         if (xd === 0) continue;
         var xDate = new Date(todayNC.getTime() + xd * 864e5);
-        extraDays.push(xDate.toISOString().split('T')[0]);
+        // Date LOCALE (pas toISOString = UTC !) : avant 11h NC, toute la
+        // fenêtre marée du widget glissait d'un jour (même bug qu'initMaree)
+        extraDays.push(xDate.getFullYear() + '-' + String(xDate.getMonth()+1).padStart(2,'0') + '-' + String(xDate.getDate()).padStart(2,'0'));
       }
       
       // ncGet (worker → fallback direct rpcache) et non ncFetch : sans token local,
@@ -3544,9 +3546,11 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     var _wGstFromGFS = !gotNcGusts; // true seulement si 0 rafale NC disponible
   } else if(omMarine&&omMarine.hourly&&omMarine.hourly.time&&omWind&&omWind.hourly){
     var h=omMarine.hourly,wh=omWind.hourly;
-    // OM timestamps = heure locale NC (grâce à &timezone=Pacific/Noumea)
-    // Comparer directement avec now
-    var ni=h.time.findIndex(function(t){return new Date(t+'Z').getTime()+11*3600000>=now.getTime()-3600000;}); 
+    // OM timestamps = GMT (&timezone=GMT dans omMarineUrl/omWindUrl) → new
+    // Date(t+'Z') est le VRAI epoch UTC. Comparer vrai-à-vrai avec now :
+    // l'ancien « +11h » (croyance erronée d'heures locales, cf. ancien
+    // commentaire) faisait démarrer la fenêtre GFS ~12h DANS LE PASSÉ.
+    var ni=h.time.findIndex(function(t){return new Date(t+'Z').getTime()>=now.getTime()-3600000;});
     if(ni<0)ni=0;
     for(var i=ni;i<h.time.length;i+=3){
       var odt2=new Date(h.time[i]+'Z'); // UTC
@@ -10134,7 +10138,9 @@ async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
   try {
     var dayStr = (function(s){ var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; })(date);
     // Utiliser l'API archive pour les dates > 10 jours (forecast ne couvre pas assez loin dans le passé)
-    var today = new Date().toISOString().split('T')[0];
+    // Date LOCALE (toISOString = date UTC → daysAgo décalé de 1 avant 11h NC)
+    var _tn = new Date();
+    var today = _tn.getFullYear() + '-' + String(_tn.getMonth()+1).padStart(2,'0') + '-' + String(_tn.getDate()).padStart(2,'0');
     var daysAgo = Math.round((new Date(today) - new Date(date)) / 86400000);
     var windApiBase = daysAgo > 10
       ? 'https://archive-api.open-meteo.com/v1/archive'

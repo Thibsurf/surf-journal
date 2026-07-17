@@ -1817,14 +1817,14 @@ function openAddSession() {
   selectedQuality = 0; selectedMoves = [];
   document.getElementById('modal-add-title').textContent = 'Nouvelle session';
   document.getElementById('edit-session-id').value = '';
-  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f-date').value = _localDayStr();
   // Écouter les changements de date
   setTimeout(function(){
     var dateEl = document.getElementById('f-date');
     if (dateEl && !dateEl._autoFillBound) {
       dateEl._autoFillBound = true;
       dateEl.addEventListener('change', function() {
-        var today = new Date().toISOString().split('T')[0];
+        var today = _localDayStr();
         var hint = document.getElementById('autofill-hint');
         var _daysDiff = (new Date(today) - new Date(this.value)) / 86400000;
         if (_daysDiff <= 30) {
@@ -2009,6 +2009,14 @@ function _getSessionHour() {
   return 9;
 }
 
+// Date calendaire LOCALE en YYYY-MM-DD — ne JAMAIS utiliser toISOString() pour
+// ça : c'est la date UTC, donc HIER pendant les 11 premières heures de chaque
+// journée NC (UTC+11).
+function _localDayStr(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 // Sauvegarde les conditions meteo.nc du jour dans meteo_cache Supabase
 async function _saveDailyCache(date, lat, lon, spotName, data) {
   if (!sb) return;
@@ -2160,7 +2168,7 @@ async function _autoFillConditions(targetDate) {
 
   var lat = station.lat, lon = station.lon;
   var _srcPref = _spotCfg.source || 'worker';
-  var today = new Date().toISOString().split('T')[0];
+  var today = _localDayStr();
   var _isHistory = targetDate && targetDate < today;
 
   if (stInfoEl) {
@@ -2475,7 +2483,7 @@ function _refreshForecastStrip() {
 
   // Obtenir la date de la session sélectionnée
   var dateEl = document.getElementById('f-date');
-  var sessionDate = dateEl ? dateEl.value : new Date().toISOString().slice(0, 10);
+  var sessionDate = dateEl ? dateEl.value : _localDayStr();
   // Heure de LA SESSION (tideRanges / défaut), pas l'heure actuelle de l'horloge —
   // sinon un formulaire ouvert le soir pour une session du matin pointait sur le
   // mauvais créneau.
@@ -2828,7 +2836,7 @@ function renderTideWidget() {
 
   // Lien SHOM
   var portMap = { noumea: 'NOUMEA_NUMBO', tomo: 'TOMO_NOUVELLE_CALEDONIE', bourail: 'BOURAIL', thio: 'THIO' };
-  var date = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
+  var date = document.getElementById('f-date').value || _localDayStr();
   var shom = document.getElementById('shom-link');
   if (shom) shom.href = 'https://maree.shom.fr/harbor/' + (portMap[port] || 'NOUMEA_NUMBO') + '/hlt/0?date=' + date;
 }
@@ -4363,7 +4371,7 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 function updateShomLink() {
   var port = (document.getElementById('shom-port') || {value:'NOUMEA_NUMBO'}).value;
   var dateEl = document.getElementById('f-date');
-  var date = dateEl && dateEl.value ? dateEl.value : new Date().toISOString().split('T')[0];
+  var date = dateEl && dateEl.value ? dateEl.value : _localDayStr();
   var portNames = { NOUMEA_NUMBO: 'Nouméa', TOMO_NOUVELLE_CALEDONIE: 'Tomo' };
   var url = 'https://maree.shom.fr/harbor/' + port + '/hlt/0?date=' + date + '&utc=11';
   var link = document.getElementById('shom-link');
@@ -5447,7 +5455,7 @@ async function exportSessionsCSV() {
         s.is_shared?'oui':'non', s.created_at||''
       ]);
     });
-    var date = new Date().toISOString().slice(0,10);
+    var date = _localDayStr();
     downloadCSV('sessions_' + date + '.csv', out);
     setExportStatus('✓ ' + rows.length + ' sessions exportées', true);
   } catch(e) {
@@ -5470,7 +5478,7 @@ async function exportBoatsCSV() {
         b.tank_l||'', b.nb_places||'', b.notes||'', b.created_at||''
       ]);
     });
-    var date = new Date().toISOString().slice(0,10);
+    var date = _localDayStr();
     downloadCSV('bateaux_' + date + '.csv', out);
     setExportStatus('✓ ' + boats.length + ' bateaux exportés', true);
   } catch(e) {
@@ -5516,7 +5524,7 @@ async function exportFuelLogsCSV() {
         conso, prixL, coutTotal, nbSurf, coutPers
       ]);
     });
-    var date = new Date().toISOString().slice(0,10);
+    var date = _localDayStr();
     downloadCSV('carburant_' + date + '.csv', out);
     setExportStatus('✓ ' + sessions.length + ' logs carburant exportés', true);
   } catch(e) {

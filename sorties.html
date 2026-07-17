@@ -1290,6 +1290,14 @@ function parseLocalDate(str) {
   return new Date(+parts[0], +parts[1] - 1, +parts[2]);
 }
 
+// Date calendaire LOCALE en YYYY-MM-DD — ne JAMAIS utiliser toISOString() pour
+// ça : c'est la date UTC, donc HIER pendant les 11 premières heures de chaque
+// journée NC (UTC+11).
+function _localDayStr(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function formatSortieDate(s) {
   const opts = { weekday: 'long', day: 'numeric', month: 'long' };
   const d1 = parseLocalDate(s.date_start);
@@ -1396,7 +1404,11 @@ async function loadMeteoForSortie(s) {
   var coords = getCoordsForSpot(s.spot);
   var lat = coords.lat, lon = coords.lon;
   var hourIdx = s.time_start ? parseInt(s.time_start.split(':')[0]) : 9;
-  var dateStr = date.toISOString().split('T')[0];
+  // s.date_start est DÉJÀ le YYYY-MM-DD voulu — l'ancien
+  // date.toISOString().split('T')[0] repassait par UTC : minuit local NC
+  // = 13h UTC la VEILLE → l'aperçu météo de la carte demandait
+  // systématiquement les prévisions du MAUVAIS jour (J-1)
+  var dateStr = s.date_start;
 
   try {
     // Tenter meteo.nc en priorité (comme le météogramme) — seulement si un
@@ -1576,7 +1588,7 @@ function resetForm() {
   Array.from(document.getElementById('f-owners').options).forEach(function(o){o.selected=false;});
   ['f-opt-chasse','f-opt-peche','f-opt-snorkel','f-opt-paddle','f-opt-apero'].forEach(id => document.getElementById(id).checked = false);
   document.getElementById('f-return-constraint').value = 'flexible';
-  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f-date').value = _localDayStr(); // date LOCALE (toISOString = hier avant 11h NC)
   document.getElementById('f-places').value = 4;
   document.getElementById('f-boards').value = 1;
 }
@@ -2318,8 +2330,8 @@ function buildReminder() {
   if (!el) return;
   var now = new Date();
   var tomorrow = new Date(now.getTime() + 86400000);
-  var tomorrowStr = tomorrow.toISOString().split('T')[0];
-  var todayStr = now.toISOString().split('T')[0];
+  var tomorrowStr = _localDayStr(tomorrow);
+  var todayStr = _localDayStr(now);
 
   // Sorties de demain où l'utilisateur n'a pas répondu
   var tomorrowSorties = allSorties.filter(function(s) {
@@ -5209,7 +5221,7 @@ async function init() {
   updateNavUser();
   await loadSorties();
   loadSpotsList();
-  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f-date').value = _localDayStr(); // date LOCALE (toISOString = hier avant 11h NC)
   // Rafraîchir le token toutes les 15min
   setInterval(_loadNcToken, 15 * 60 * 1000);
   // Rafraîchir le badge token toutes les 60s pour détecter l'expiration en temps réel
