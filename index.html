@@ -3779,7 +3779,9 @@ async function openUserProfile(userId) {
   // Moyenne hebdo normalisée sur les 60 derniers jours
   var now = new Date();
   var cutoff = new Date(now.getTime() - 60*864e5);
-  var recentSessions = sessions.filter(function(s){ return new Date(s.date) >= cutoff; });
+  // 'T00:00:00' force le parsing en heure LOCALE — new Date('YYYY-MM-DD') nu
+  // est parsé UTC minuit (= 11h plus tôt en NC), décalant la frontière du filtre
+  var recentSessions = sessions.filter(function(s){ return new Date(s.date + 'T00:00:00') >= cutoff; });
   var weeksSpan = 60 / 7; // ~8.57 semaines
   var sessionsPerWeek = (recentSessions.length / weeksSpan).toFixed(1);
   var hoursPerWeek = (recentSessions.reduce(function(a,x){return a+(x.duration_h||0);},0) / weeksSpan).toFixed(1);

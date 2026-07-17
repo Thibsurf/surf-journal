@@ -3802,6 +3802,14 @@ async function _fetchSpotFcRaw(spot) {
     ncGet('/tide?id=' + (spot.tideId || '9881852'),
           'tide?id=' + (spot.tideId || '9881852'))
   ]);
+  // ⚠ Z abusif : sans ce vote, parseTideEventMs croyait le « Z » (heures LOCALES
+  // NC étiquetées UTC par rpcache) → marée décalée de +11h dans les scores du
+  // Comparateur et du Best Session Finder (_tideAdj sur la mauvaise phase)
+  if (ncTideRaw) {
+    var _nowNCf = new Date(Date.now() + 11*3600000);
+    var _dsF = _nowNCf.getUTCFullYear() + '-' + String(_nowNCf.getUTCMonth()+1).padStart(2,'0') + '-' + String(_nowNCf.getUTCDate()).padStart(2,'0');
+    ncTideRaw = _tideNormalizeDay(ncTideRaw, _dsF);
+  }
 
   var dateMs=[], hs=[], T=[], swDir=[], ws=[], wg=[], wDir=[], pwr=[];
   var now = new Date();
@@ -4542,24 +4550,33 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
     }
   });
 
-  // ── Hover : utiliser getValueForPixel pour un mapping pixel→index exact ─
-  cv.addEventListener('mousemove',function(e){
-    var chart=charts[id]; if(!chart||!chart.chartArea) return;
-    var ca=chart.chartArea;
-    if(e.offsetX < ca.left || e.offsetX > ca.right) return;
-    // Chart.js v4 : scales.x.getValueForPixel retourne l'index réel
-    var xScale = chart.scales.x;
-    var idx = Math.round(xScale.getValueForPixel(e.offsetX));
-    idx = Math.max(0, Math.min(n-1, idx));
-    _chartHoverIdx = idx;
-    updateHsHover(idx);
-    ['c-period','c-wind','c-power'].forEach(function(cid){if(charts[cid])charts[cid].draw();});
-  });
-  cv.addEventListener('mouseleave',function(){
-    _chartHoverIdx = -1;
-    // On garde les dernières valeurs affichées — ne pas effacer au mouseleave
-    ['c-period','c-wind','c-power'].forEach(function(cid){if(charts[cid])charts[cid].draw();});
-  });
+  // ── Hover : listeners attachés UNE seule fois (même pattern que la courbe
+  // de marée) — le canvas persiste entre les renderForecast : sans garde ils
+  // s'EMPILAIENT à chaque refresh (hover de plus en plus lourd) avec un n
+  // périmé en closure (clamp d'index faux après changement de spot/jeu de
+  // données). n est relu via cv._hsN, remis à jour à chaque render.
+  cv._hsN = n;
+  if(!cv._hoverBound){
+    cv._hoverBound = true;
+    cv.addEventListener('mousemove',function(e){
+      var chart=charts[id]; if(!chart||!chart.chartArea) return;
+      var nn = cv._hsN || 0; if(!nn) return;
+      var ca=chart.chartArea;
+      if(e.offsetX < ca.left || e.offsetX > ca.right) return;
+      // Chart.js v4 : scales.x.getValueForPixel retourne l'index réel
+      var xScale = chart.scales.x;
+      var idx = Math.round(xScale.getValueForPixel(e.offsetX));
+      idx = Math.max(0, Math.min(nn-1, idx));
+      _chartHoverIdx = idx;
+      updateHsHover(idx);
+      ['c-period','c-wind','c-power'].forEach(function(cid){if(charts[cid])charts[cid].draw();});
+    });
+    cv.addEventListener('mouseleave',function(){
+      _chartHoverIdx = -1;
+      // On garde les dernières valeurs affichées — ne pas effacer au mouseleave
+      ['c-period','c-wind','c-power'].forEach(function(cid){if(charts[cid])charts[cid].draw();});
+    });
+  }
 }
 
 function updateHsHover(i){
@@ -6558,31 +6575,38 @@ function mkChart(id,labels,datasets,unit,isBar){
     tipEl.style.cssText = 'min-height:18px;margin-top:4px;font-size:10px;color:var(--muted);transition:opacity .1s;';
     wrap.parentElement && wrap.parentElement.appendChild(tipEl);
   }
-  // Mousemove synchronisé avec tous les autres graphes
-  cv.addEventListener('mousemove', function(e) {
-    var chart = charts[id]; if(!chart||!chart.chartArea) return;
-    var ca = chart.chartArea;
-    var n = labels.length;
-    var idx = Math.round((e.offsetX - ca.left) / (ca.right - ca.left) * (n-1));
-    idx = Math.max(0, Math.min(n-1, idx));
-    _chartHoverIdx = idx;
-    // Mettre à jour le hover Hs aussi
-    updateHsHover(idx);
-    // Tooltip local
-    _chartHoverTooltip(id, idx);
-    // Redessiner tous les graphiques pour le crosshair
-    ['c-period','c-wind','c-power'].forEach(function(cid) {
-      if(charts[cid]) charts[cid].draw();
+  // Mousemove synchronisé avec tous les autres graphes — attaché UNE seule
+  // fois (le canvas persiste : sans garde, un listener de plus s'empilait à
+  // chaque renderForecast, avec labels.length périmé en closure). Le nombre
+  // de points est relu via cv._hoverN, remis à jour à chaque render.
+  cv._hoverN = labels.length;
+  if(!cv._hoverBound) {
+    cv._hoverBound = true;
+    cv.addEventListener('mousemove', function(e) {
+      var chart = charts[id]; if(!chart||!chart.chartArea) return;
+      var ca = chart.chartArea;
+      var n = cv._hoverN || 0; if(!n) return;
+      var idx = Math.round((e.offsetX - ca.left) / (ca.right - ca.left) * (n-1));
+      idx = Math.max(0, Math.min(n-1, idx));
+      _chartHoverIdx = idx;
+      // Mettre à jour le hover Hs aussi
+      updateHsHover(idx);
+      // Tooltip local
+      _chartHoverTooltip(id, idx);
+      // Redessiner tous les graphiques pour le crosshair
+      ['c-period','c-wind','c-power'].forEach(function(cid) {
+        if(charts[cid]) charts[cid].draw();
+      });
     });
-  });
-  cv.addEventListener('mouseleave', function() {
-    _chartHoverIdx = -1;
-    var tipEl = document.getElementById(id+'-tooltip');
-    if(tipEl) tipEl.style.opacity = '0';
-    ['c-period','c-wind','c-power'].forEach(function(cid) {
-      if(charts[cid]) charts[cid].draw();
+    cv.addEventListener('mouseleave', function() {
+      _chartHoverIdx = -1;
+      var tipEl = document.getElementById(id+'-tooltip');
+      if(tipEl) tipEl.style.opacity = '0';
+      ['c-period','c-wind','c-power'].forEach(function(cid) {
+        if(charts[cid]) charts[cid].draw();
+      });
     });
-  });
+  }
 }
 
 // ---
@@ -9801,13 +9825,19 @@ async function initMaree() {
   var days = [];
   for(var di=-2; di<=1; di++) {
     var dDate = new Date(now.getTime() + di*864e5);
-    days.push(dDate.toISOString().split('T')[0]);
+    // Date LOCALE (pas toISOString = UTC !) : le matin avant 11h NC, la version
+    // UTC décalait toute la fenêtre d'un jour (on demandait J-3→J0 au lieu de J-2→J+1)
+    days.push(dDate.getFullYear() + '-' + String(dDate.getMonth()+1).padStart(2,'0') + '-' + String(dDate.getDate()).padStart(2,'0'));
   }
   var dayResults = await Promise.all(days.map(function(ds){
     return ncFetch(BASE_T+'&date='+ds).catch(function(){return null;});
   }));
   var mergedHT = [], mergedLT = [];
-  dayResults.forEach(function(r){
+  dayResults.forEach(function(r, ri){
+    // ⚠ Z abusif : sans le vote, renderTideCurve croyait le « Z » comme du vrai
+    // UTC → tout l'onglet Marée & Pêche décalé de +11h (ce flux avait échappé
+    // au correctif appliqué au widget/forecast)
+    if (r) r = _tideNormalizeDay(r, days[ri]);
     if(r && r.properties && r.properties.tide) {
       mergedHT = mergedHT.concat(r.properties.tide.high_tide||[]);
       mergedLT = mergedLT.concat(r.properties.tide.low_tide||[]);

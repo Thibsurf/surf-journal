@@ -4226,6 +4226,20 @@ function renderTricount() {
       + '</div>'
     : '';
 
+  // Rappel copropriétaires : les DEUX tricounts sont volontairement séparés —
+  // ici le partage entre participants des sorties (invités compris), Fuel Pro =
+  // le tricount PRIVÉ du bateau entre coproprios (essence, entretien, jauge).
+  var isBoatOwner = currentUser && allSorties.some(function(s) {
+    return (s.boat_owners || []).indexOf(currentUser.id) >= 0;
+  });
+  var ownerBanner = isBoatOwner
+    ? '<div style="background:rgba(232,196,74,.07);border:1px solid rgba(232,196,74,.25);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--text-muted);">'
+      + '⛵ <b style="color:#e8c44a;">Copropriétaire ?</b> Les frais du bateau entre coproprios (essence, entretien) ont leur tricount privé séparé : '
+      + '<a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" style="color:#e8c44a;font-weight:700;">⛽ Marine Fuel Pro →</a>'
+      + '<br><span style="font-size:10px;color:var(--text-faint);">Ici : ce qui se partage avec les participants des sorties (invités compris).</span>'
+      + '</div>'
+    : '';
+
   grid.innerHTML = '<div class="tricount-card" style="grid-column:1/-1;">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
     + '<div class="tricount-title">⚖️ Équilibre général</div>'
@@ -4236,6 +4250,7 @@ function renderTricount() {
     + 'Dépenses : <b style="color:var(--text);">' + totalExpenses.toLocaleString('fr') + ' CFP</b>'
     + (totalReimb > 0 ? ' <span style="color:#3dba8a;font-size:11px;margin-left:8px;">✓ ' + totalReimb.toLocaleString('fr') + ' CFP remboursés</span>' : '')
     + '</div>'
+    + ownerBanner
     + guestBanner
     + (people.length ? people.map(function(p) {
         var isMe = currentUser && p.id === currentUser.id;
