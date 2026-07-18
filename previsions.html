@@ -7007,6 +7007,7 @@ function _startObsLiveRefresh() {
 function addObsMarkersToMap(map) {
   if (_obsMarkersLayer) { map.removeLayer(_obsMarkersLayer); _obsMarkersLayer = null; }
   _obsMarkersLayer = L.layerGroup();
+  _obsMarkerPairs = []; // reconstruit à chaque (ré)ajout — consommé par le refresh live 10 min
   OBS_STATIONS.forEach(function(s, idx) {
     var mlat = s.dlat || s.lat, mlon = s.dlon || s.lon;
     var m = L.marker([mlat, mlon], {
@@ -7029,10 +7030,12 @@ function addObsMarkersToMap(map) {
       if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
     _obsMarkersLayer.addLayer(m);
+    _obsMarkerPairs.push({ s: s, m: m });
     // Stagger fetches: 200ms between each to avoid hammering the API
     if (_ncToken) setTimeout(function() { _fetchObsWind(s, m); }, idx * 200);
   });
   _obsMarkersLayer.addTo(map);
+  _startObsLiveRefresh(); // données live : re-fetch toutes les 10 min tant que l'onglet Carte est actif
 }
 
 // Marégraphes retirés — positions terrestres non fiables
