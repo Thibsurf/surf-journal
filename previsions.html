@@ -473,7 +473,19 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <div class="section-label" style="margin-bottom:0;" title="P ≈ ½·Hs²·T — même formule que la colonne « Energy » de Windguru (affichée en kJ chez eux)">⚡ Puissance (kW/m · ½Hs²T, formule Windguru)</div>
       <div id="pwr-ref-status" style="font-size:9px;color:var(--muted);line-height:1.4;"></div>
     </div>
-    <div style="position:relative;height:180px;width:100%;"><canvas id="c-power" style="display:block;height:180px;"></canvas></div>
+    <div style="position:relative;height:180px;width:100%;"><canvas id="c-power" style="display:block;height:180px;cursor:crosshair;"></canvas></div>
+    <!-- Détails du survol : synchronisé avec le widget du dessus (vecteurs satellite + readout suivent) -->
+    <div id="pwr-hover-info" style="min-height:16px;margin-top:6px;border-top:1px solid var(--border);padding-top:5px;font-size:10.5px;color:var(--muted);">
+      ← Survolez : détail du créneau (le widget du dessus suit) · cliquez : le widget bascule sur ce jour
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;font-size:8.5px;color:var(--faint);line-height:1.6;">
+      <span title="P = ½·Hs²·T : l'énergie transportée par le train de houle — le meilleur prédicteur « ça vaut le coup ou pas »"><b style="color:var(--muted);">P = ½·Hs²·T</b></span>
+      <span><span style="color:#4fa3c7;">▮</span> &lt;1 minuscule</span>
+      <span><span style="color:#3dba8a;">▮</span> 1–5 surfable</span>
+      <span><span style="color:#e8a057;">▮</span> 5–15 bon</span>
+      <span><span style="color:#a99ff8;">▮</span> &gt;15 costaud</span>
+      <span>· lignes tiretées = tes repères perso (sessions du journal sur ce spot)</span>
+    </div>
   </div>
 
   <details id="wg-arome-card" class="card" style="margin-bottom:12px;padding:0;overflow:hidden;display:none;"
@@ -2586,6 +2598,50 @@ function setHsSrc(src, skipRedraw) {
   }
 }
 
+// ── Synchro Puissance ↔ widget global (survol = vecteurs/readout, clic = jour) ──
+function _gwSyncFromPower(idx, click) {
+  if (typeof _gwSetHover !== 'function' || typeof _gwActiveData !== 'function') return;
+  var d = _gwActiveData();
+  if (!d || !d.dates || !d.dates[idx]) return;
+  if (click && typeof _gwGroupDays === 'function' && typeof _gwSetDay === 'function') {
+    var days = _gwGroupDays(d);
+    var tgt = d.dates[idx];
+    for (var di = 0; di < Math.min(days.length, 5); di++) {
+      var idxs = _gwGridIdxs(d, days[di]);
+      if (!idxs || !idxs.length) continue;
+      var ref = d.dates[idxs[0]];
+      if (idxs.indexOf(idx) >= 0 ||
+          (ref && ref.getUTCDate() === tgt.getUTCDate() && ref.getUTCMonth() === tgt.getUTCMonth())) {
+        if (di !== _gwDayIdx) _gwSetDay(di);
+        break;
+      }
+    }
+  }
+  _gwSetHover(idx);
+}
+
+// Détail du créneau survolé sous la figure Puissance (valeur + composition + repère perso)
+function _pwrHoverInfo(idx) {
+  var el = document.getElementById('pwr-hover-info'); if (!el) return;
+  var d = (_currentHsSrc === 'om' && _omFcastData) ? _omFcastData : _fcastData;
+  if (!d || !d.pwr) return;
+  var p = d.pwr[idx], hs = d.sw1h[idx], T = d.sw1t[idx], lbl = (d.lbl && d.lbl[idx]) || '';
+  if (p == null) { el.innerHTML = '<b style="color:var(--text);">' + lbl + '</b> · puissance indisponible sur ce créneau'; return; }
+  var band = p < 1 ? ['minuscule', '#4fa3c7'] : p < 5 ? ['surfable', '#3dba8a'] : p < 15 ? ['bon', '#e8a057'] : ['costaud', '#a99ff8'];
+  var refTxt = '';
+  var ref = window._spotPwrRef;
+  if (ref && ref.p25 != null) {
+    refTxt = p < ref.p25 ? ' · sous ton P25 (' + ref.p25 + ') — historiquement trop faible pour toi ici'
+      : (ref.p75 != null && p > ref.p75) ? ' · au-dessus de ton P75 (' + ref.p75 + ') — costaud pour ce spot'
+      : ' · dans ta plage habituelle (P25 ' + ref.p25 + (ref.p75 != null ? '–P75 ' + ref.p75 : '') + ')';
+  }
+  el.innerHTML = '<b style="color:var(--text);">' + lbl + '</b> · '
+    + '<b style="color:' + band[1] + ';font-size:12px;">' + (+p).toFixed(1) + ' kW/m</b>'
+    + ' <span style="color:' + band[1] + ';">(' + band[0] + ')</span>'
+    + (hs != null && T != null ? ' <span style="color:var(--faint);">= ½ × ' + (+hs).toFixed(1) + 'm² × ' + Math.round(T) + 's</span>' : '')
+    + '<span style="color:var(--faint);">' + refTxt + '</span>';
+}
+
 // ─── Construction graphiques secondaires (période, vent, puissance) ──────────
 // Centralisé ici pour que le crosshair soit toujours actif
 function _addChartHover(cv, id, n) {
@@ -2606,10 +2662,25 @@ function _addChartHover(cv, id, n) {
     _chartHoverIdx = idx;
     updateHsHover(idx);
     _chartHoverTooltip(id, idx);
+    if (id === 'c-power') { _gwSyncFromPower(idx, false); _pwrHoverInfo(idx); }
     ['c-period','c-wind','c-power','c-hs'].forEach(function(cid) {
       if(charts[cid]) charts[cid].draw();
     });
   });
+  if (id === 'c-power') {
+    cv.addEventListener('click', function(e) {
+      var chart = charts[id]; if(!chart||!chart.chartArea) return;
+      var ca = chart.chartArea;
+      if(e.offsetX < ca.left || e.offsetX > ca.right) return;
+      var idx = chart.scales.x && chart.scales.x.getValueForPixel
+        ? Math.round(chart.scales.x.getValueForPixel(e.offsetX))
+        : Math.round((e.offsetX - ca.left) / (ca.right - ca.left) * (n-1));
+      idx = Math.max(0, Math.min(n-1, idx));
+      _gwSyncFromPower(idx, true); // clic = le widget bascule sur ce jour + ce créneau
+      var gw = document.getElementById('gw-widget');
+      if (gw && gw.style.display !== 'none') gw.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
   cv.addEventListener('mouseleave', function() {
     _chartHoverIdx = -1;
     var tipEl = document.getElementById(id+'-tooltip');
@@ -6817,6 +6888,7 @@ async function _loadAromeWidget(wgId) {
     + '<span><span style="color:#3dba8a;font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
     + '<span><span style="color:#4fa3c7;font-weight:700;">━</span> AROME 2.5</span>'
     + '<span><span style="color:#e8a057;font-weight:700;">╌</span> meteo.nc/GFS (tableau)</span>'
+    + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé (cache)</span>'
     + '</div>'
     + '<div id="arome-cmp-wrap" style="width:100%;"><canvas id="arome-cmp"></canvas></div>'
     + '</div>';
@@ -6861,8 +6933,33 @@ async function _renderAromeCompare(j) {
     if (j.WINDSPD[i] != null) aro.push({ ms: j.init * 1000 + hh * 3600000, kt: j.WINDSPD[i] });
   });
   var now = Date.now(), t0 = now - 24 * 36e5, t1 = now + 48 * 36e5;
+  // 4. Passé meteo.nc depuis le CACHE (meteo_cache, hier + aujourd'hui) —
+  // affiché en POINTS sans courbe : ce sont des prévisions archivées, pas une
+  // série continue ; on les compare aux mesures pour juger le modèle a posteriori
+  var cachePts = [];
+  try {
+    if (typeof _ensureSupabaseClient === 'function' && _ensureSupabaseClient()) {
+      var s0 = SPOTS[currentSpot];
+      var la = s0.lat.toFixed(3), lo = s0.lon.toFixed(3);
+      var dayIds = [new Date(now - 864e5), new Date(now)].map(function(dd) {
+        return dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0') + '-' + String(dd.getDate()).padStart(2, '0') + '_' + la + '_' + lo;
+      });
+      var cRes = await _tokenSbClient.from('meteo_cache').select('id,data').in('id', dayIds);
+      if (cRes && cRes.data) cRes.data.forEach(function(row) {
+        var hrs = row.data && row.data.hours;
+        if (!hrs) return;
+        var p = row.id.split('_')[0].split('-');
+        hrs.forEach(function(hhh) {
+          if (hhh && hhh.windKt != null && hhh.h != null) {
+            var ms = new Date(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)).getTime();
+            if (ms <= now) cachePts.push({ ms: ms, kt: hhh.windKt });
+          }
+        });
+      });
+    }
+  } catch(e) {}
   function clip(a) { return a.filter(function(p) { return p.ms >= t0 && p.ms <= t1; }); }
-  obs = clip(obs); page = clip(page); aro = clip(aro);
+  obs = clip(obs); page = clip(page); aro = clip(aro); cachePts = clip(cachePts);
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
   if (!el2 || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
   var W = el2.clientWidth || 600, H = 130;
@@ -6913,6 +7010,9 @@ async function _renderAromeCompare(j) {
   drawLine(page, 'rgba(232,160,87,.85)', 1.6, [5, 4]);
   drawLine(aro, 'rgba(79,163,199,.95)', 2);
   drawLine(obs, 'rgba(61,186,138,.95)', 2.2);
+  // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
+  ctx.strokeStyle = 'rgba(232,160,87,.9)'; ctx.lineWidth = 1.3;
+  cachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.4, 0, Math.PI * 2); ctx.stroke(); });
   // Points sur les mesures (réelles)
   ctx.fillStyle = '#3dba8a';
   obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.6, 0, Math.PI * 2); ctx.fill(); });
