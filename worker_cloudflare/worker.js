@@ -248,6 +248,58 @@ export default {
         });
       }
 
+      // ── /arome — AROME 2.5 km NC (Météo-France) via l'API interne windguru ──
+      // 2 étapes : forecast_spot (params du run modèle 94) puis forecast.
+      // Le Referer windguru.cz suffit ; cache edge 2h par spot (le modèle
+      // tourne 4×/jour). Réponse réduite aux champs utiles.
+      if (url.pathname === "/arome") {
+        const spot = url.searchParams.get("spot");
+        if (!spot || !/^\d+$/.test(spot)) return json({ error: "missing/invalid spot" }, 400);
+        const cache = caches.default;
+        const cacheKey = new Request("https://surf-nc-cache/arome-" + spot);
+        let hit = await cache.match(cacheKey);
+        if (hit) {
+          return new Response(hit.body, {
+            status: 200,
+            headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },
+          });
+        }
+        const WG = "https://www.windguru.cz/int/iapi.php";
+        const H = { Referer: "https://www.windguru.cz/", "User-Agent": "Mozilla/5.0 (compatible; SurfNC/1.0)" };
+        const sres = await fetch(WG + "?q=forecast_spot&id_spot=" + spot, { headers: H });
+        if (!sres.ok) return json({ error: "spot fetch " + sres.status }, 502);
+        const sj = await sres.json();
+        const tab = sj.tabs && sj.tabs[0];
+        const m94 = tab && (tab.id_model_arr || []).find(x => String(x.id_model) === "94");
+        if (!m94) return json({ error: "AROME_NOT_AVAILABLE" }, 404);
+        const fres = await fetch(
+          WG + "?q=forecast&id_model=94&rundef=" + encodeURIComponent(m94.rundef)
+            + "&initstr=" + m94.initstr + "&id_spot=" + spot
+            + "&WGCACHEABLE=21600&cachefix=" + encodeURIComponent(m94.cachefix),
+          { headers: H }
+        );
+        if (!fres.ok) return json({ error: "forecast fetch " + fres.status }, 502);
+        const fj = await fres.json();
+        const f = fj.fcst || {};
+        const sp0 = sj.spots ? Object.values(sj.spots)[0] : null;
+        const out = {
+          ok: true, spot: Number(spot),
+          spotname: sp0 ? sp0.spotname : null,
+          init: fj.wgmodel ? fj.wgmodel.initstamp : null,
+          model: "AROME 2.5 km NC (Météo-France) · données via windguru.cz",
+          hours: f.hours || [], WINDSPD: f.WINDSPD || [], GUST: f.GUST || [],
+          WINDDIR: f.WINDDIR || [], TMP: f.TMP || [], APCP1: f.APCP1 || [], TCDC: f.TCDC || [],
+        };
+        const body = JSON.stringify(out);
+        await cache.put(cacheKey, new Response(body, {
+          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200" },
+        }));
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },
+        });
+      }
+
       // ── /proxy — proxy HTML meteo.nc (scraping rafales) ────────────────────
       if (url.pathname === "/proxy") {
         const target = url.searchParams.get("url");

@@ -600,6 +600,28 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     </div>
   </div>
 
+  <!-- Puissance : remontée juste sous le graphe principal — c'est LA figure
+       croisée avec les stats perso (lignes de référence issues du journal) -->
+  <div class="card" style="margin-bottom:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
+      <div class="section-label" style="margin-bottom:0;" title="P ≈ ½·Hs²·T — même formule que la colonne « Energy » de Windguru (affichée en kJ chez eux)">⚡ Puissance (kW/m · ½Hs²T, formule Windguru)</div>
+      <div id="pwr-ref-status" style="font-size:9px;color:var(--muted);line-height:1.4;"></div>
+    </div>
+    <div style="position:relative;height:180px;width:100%;"><canvas id="c-power" style="display:block;height:180px;"></canvas></div>
+  </div>
+
+  <!-- AROME 2.5 NC (Météo-France) via le widget officiel Windguru — chargé
+       UNIQUEMENT à l'ouverture du volet, pour les spots avec un id windguru -->
+  <details id="wg-arome-card" class="card" style="margin-bottom:12px;padding:0;overflow:hidden;display:none;"
+    ontoggle="if(this.open&&this._wgId)_loadAromeWidget(this._wgId)">
+    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:12px 16px;background:rgba(255,255,255,.02);">
+      <span style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;">🌀 AROME 2.5 km — <span id="wg-arome-spot"></span></span>
+      <span style="font-size:9px;color:var(--faint);">modèle Météo-France haute résolution · fenêtre J+2</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted);">▾</span>
+    </summary>
+    <div id="wg-arome-body" style="padding:8px 10px;min-height:60px;"></div>
+  </details>
+
   <!-- Autres graphiques — Rose en évidence, puis charts -->
   <div class="g2" style="margin-bottom:12px;">
 
@@ -638,14 +660,6 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       </div>
     </div>
 
-  </div>
-
-  <div class="card" style="margin-bottom:12px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
-      <div class="section-label" style="margin-bottom:0;">⚡ Puissance (kW/m)</div>
-      <div id="pwr-ref-status" style="font-size:9px;color:var(--muted);line-height:1.4;"></div>
-    </div>
-    <div style="position:relative;height:180px;width:100%;"><canvas id="c-power" style="display:block;height:180px;"></canvas></div>
   </div>
 
   <!-- Cache météo (passé + aujourd'hui + à venir) -->
@@ -2991,6 +3005,7 @@ async function _saveForecastDays(spot, dates, sw1h, sw1t, sw1d, wSpd, wGst, wDir
 
 async function loadForecast(i) {
   loadScoreParams();
+  if (typeof updateAromeCard === 'function') updateAromeCard(); // carte AROME suit le spot actif
 
   const s = SPOTS[i];
   if (!s) {
@@ -6694,6 +6709,113 @@ function windStationDotIcon() {
 }
 
 // Icône vent live — flèche + kt en badge sous le cercle (pas de superposition)
+// ── AROME 2.5 km NC — table maison (données via worker /arome ← windguru) ──
+// Le modèle AROME 2.5 km Nouvelle-Calédonie (Météo-France) est récupéré en
+// JSON par le worker (/arome?spot=<id windguru>, cache 2h) et rendu ici dans
+// une table compacte au design du site — plus de widget iframe. Ids windguru
+// OFFICIELS connus (spots créés par windguru pour la NC), sinon spot.wgId (⚙).
+function _wgIdForSpot(s) {
+  if (!s) return null;
+  if (s.wgId) return s.wgId;
+  var n = ((s.name || '') + ' ' + (s.marineName || '')).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (n.indexOf('tenia') >= 0) return 6476;
+  if (n.indexOf('dumbe') >= 0) return 208760;   // Passe de Dumbéa (officiel)
+  if (n.indexOf('ouano') >= 0) return 208762;
+  if (n.indexOf('maitre') >= 0) return 207051;
+  if (n.indexOf('poe') >= 0) return 208763;
+  if (n.indexOf('vata') >= 0) return 208755;
+  if (n.indexOf('noumea') >= 0) return 4164;
+  return null;
+}
+var _wgLoadedFor = null;
+function updateAromeCard() {
+  var card = document.getElementById('wg-arome-card'); if (!card) return;
+  var s = SPOTS[currentSpot];
+  var wgId = _wgIdForSpot(s);
+  if (!wgId) { card.style.display = 'none'; card._wgId = null; return; }
+  card.style.display = 'block';
+  card._wgId = wgId;
+  var lbl = document.getElementById('wg-arome-spot'); if (lbl) lbl.textContent = s.name;
+  if (card.open && _wgLoadedFor !== wgId) _loadAromeWidget(wgId);
+}
+async function _loadAromeWidget(wgId) {
+  if (_wgLoadedFor === wgId) return;
+  var body = document.getElementById('wg-arome-body'); if (!body) return;
+  _wgLoadedFor = wgId;
+  body.innerHTML = '<div class="loading" style="padding:14px;"><div class="spin"></div> AROME 2.5 km…</div>';
+  var j = null;
+  try {
+    var ctrl = new AbortController(); var tt = setTimeout(function(){ ctrl.abort(); }, 12000);
+    var r = await fetch(_NC_WORKER + '/arome?spot=' + wgId, { signal: ctrl.signal });
+    clearTimeout(tt);
+    if (r.ok) j = await r.json();
+  } catch(e) {}
+  if (!j || !j.ok || !j.hours || !j.hours.length || !j.init) {
+    _wgLoadedFor = null; // permettre une nouvelle tentative
+    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;">⚠ AROME indisponible pour ce spot — '
+      + '<a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);">voir sur windguru ↗</a></div>';
+    return;
+  }
+  var CPTS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  function windCol(kt){ return kt<7?'rgba(61,186,138,.22)':kt<12?'rgba(232,196,74,.20)':kt<17?'rgba(232,168,87,.25)':kt<23?'rgba(232,135,74,.30)':'rgba(224,92,92,.35)'; }
+  // Créneaux 2h à partir de maintenant-1h
+  var nowMs = Date.now(), cols = [];
+  for (var i = 0; i < j.hours.length; i += 2) {
+    var ms = j.init * 1000 + j.hours[i] * 3600000;
+    if (ms < nowMs - 3600000) continue;
+    cols.push({ i: i, ms: ms });
+  }
+  if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;">Run AROME épuisé — prochain run sous peu.</div>'; return; }
+  // Bande jours (colspan) + lignes heure/vent/rafales/dir/pluie/T°
+  var dayCells = [], curKey = null, span = 0, dayLbls = [];
+  cols.forEach(function(c) {
+    var nc = new Date(c.ms + 11 * 3600000);
+    var key = nc.getUTCDate() + '/' + (nc.getUTCMonth() + 1);
+    if (key !== curKey) { if (curKey !== null) dayCells.push({ k: curKey, n: span }); curKey = key; span = 0; }
+    span++;
+    dayLbls.push(String(nc.getUTCHours()).padStart(2, '0') + 'h');
+  });
+  dayCells.push({ k: curKey, n: span });
+  var DAYS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  function td(html, style) { return '<td style="padding:3px 4px;text-align:center;border-left:1px solid rgba(255,255,255,.04);white-space:nowrap;' + (style || '') + '">' + html + '</td>'; }
+  var h = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:10px;color:var(--text);min-width:100%;">';
+  h += '<tr>' + '<td style="padding:3px 6px;color:var(--faint);font-size:9px;">jour</td>' + dayCells.map(function(d) {
+    var parts = d.k.split('/');
+    var dObj = new Date(new Date().getFullYear(), +parts[1] - 1, +parts[0]);
+    return '<td colspan="' + d.n + '" style="padding:3px;text-align:center;font-weight:700;color:var(--accent);border-left:2px solid rgba(79,163,199,.35);background:rgba(79,163,199,.06);">' + DAYS_FR[dObj.getDay()] + ' ' + d.k + '</td>';
+  }).join('') + '</tr>';
+  h += '<tr><td style="padding:3px 6px;color:var(--faint);font-size:9px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
+  h += '<tr><td style="padding:3px 6px;color:var(--muted);">💨 kt</td>' + cols.map(function(c) {
+    var v = j.WINDSPD[c.i];
+    return td(v != null ? '<b>' + Math.round(v) + '</b>' : '—', v != null ? 'background:' + windCol(v) + ';' : '');
+  }).join('') + '</tr>';
+  h += '<tr><td style="padding:3px 6px;color:var(--muted);">raf.</td>' + cols.map(function(c) {
+    var v = j.GUST[c.i];
+    return td(v != null ? Math.round(v) : '—', v != null ? 'color:#e8874a;background:' + windCol(v) + ';' : '');
+  }).join('') + '</tr>';
+  h += '<tr><td style="padding:3px 6px;color:var(--muted);">dir</td>' + cols.map(function(c) {
+    var d = j.WINDDIR[c.i];
+    if (d == null) return td('—');
+    return td('<span style="display:inline-block;transform:rotate(' + Math.round(d) + 'deg);">↓</span><br><span style="font-size:8px;color:var(--faint);">' + CPTS[Math.round(d / 22.5) % 16] + '</span>');
+  }).join('') + '</tr>';
+  h += '<tr><td style="padding:3px 6px;color:var(--muted);">🌧 mm</td>' + cols.map(function(c) {
+    // cumul 2h (pas horaire du modèle)
+    var v = 0, any = false;
+    [c.i, c.i + 1].forEach(function(k) { if (j.APCP1[k] != null) { v += j.APCP1[k]; any = true; } });
+    if (!any || v < 0.05) return td('<span style="color:rgba(255,255,255,.12);">·</span>');
+    return td('<b style="color:#7dd3fc;">' + (v < 10 ? v.toFixed(1) : Math.round(v)) + '</b>', 'background:rgba(125,211,252,.10);');
+  }).join('') + '</tr>';
+  h += '<tr><td style="padding:3px 6px;color:var(--muted);">🌡 °C</td>' + cols.map(function(c) {
+    var v = j.TMP[c.i];
+    return td(v != null ? Math.round(v) + '°' : '—', 'color:var(--faint);');
+  }).join('') + '</tr>';
+  h += '</table></div>';
+  var initNC = new Date(j.init * 1000 + 11 * 3600000);
+  h += '<div style="font-size:9px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '') + ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a></div>';
+  body.innerHTML = h;
+}
+
 function windArrowIcon(deg, kt) {
   var col = kt < 7 ? '#3dba8a' : kt < 17 ? '#e8c44a' : kt < 28 ? '#e8874a' : '#e05c5c';
   var ktStr = Math.round(kt) + '';
@@ -6833,7 +6955,16 @@ function _fetchObsWind(s, m) {
     if (dir === null || dir === undefined) return;
     // Mettre à jour l'icône
     m.setIcon(windArrowIcon(dir, spd));
-    // Tooltip
+    // Tooltip — avec l'ÂGE réel de la mesure (données live, rafraîchies 10 min)
+    var ageStr = '';
+    if (last.time) {
+      var ageMin = Math.round((Date.now() - new Date(last.time).getTime()) / 60000);
+      if (ageMin >= 0 && ageMin < 600) {
+        var fresh = ageMin <= 20;
+        ageStr = '<div style="font-size:9px;margin-top:3px;color:' + (fresh ? '#3dba8a' : '#e8a057') + ';">'
+          + (fresh ? '🟢' : '🟠') + ' mesure il y a ' + (ageMin < 60 ? ageMin + ' min' : Math.round(ageMin/60) + ' h') + '</div>';
+      }
+    }
     var CPTS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
     var cpt = CPTS[Math.round(dir / 22.5) % 16];
     var col = spd < 7 ? '#3dba8a' : spd < 17 ? '#e8c44a' : spd < 28 ? '#e8874a' : '#e05c5c';
@@ -6846,11 +6977,31 @@ function _fetchObsWind(s, m) {
       + (gst ? '<span style="font-size:10px;color:#e8874a;margin-left:4px;">raf.' + Math.round(gst) + '</span>' : '')
       + '</div>'
       + '<div style="font-size:11px;color:#aac8e0;margin-top:2px;">' + cpt + ' &nbsp;' + Math.round(dir) + '°</div>'
-      + '<a href="' + s.meteoUrl + '" target="_blank" style="display:block;margin-top:5px;font-size:9px;color:#4fa3c7;text-decoration:none;">↗ meteo.nc</a>'
+      + ageStr
+      + '<div style="font-size:8.5px;color:#8fb4d4;margin-top:3px;">📊 clic : historique 48 h</div>'
+      + '<a href="' + s.meteoUrl + '" target="_blank" style="display:block;margin-top:4px;font-size:9px;color:#4fa3c7;text-decoration:none;">↗ meteo.nc</a>'
       + '</div>'
     );
   })
   .catch(function(e) { console.warn('[MapObs] fetch error', s.name, e); });
+}
+
+// ── Rafraîchissement LIVE des stations de la carte (10 min) ────────────────
+// Les flèches/kt des marqueurs n'étaient chargées qu'UNE fois : les données
+// devenaient silencieusement périmées si l'onglet Carte restait ouvert.
+var _obsMarkerPairs = [];
+var _obsLiveTimer = null;
+function _startObsLiveRefresh() {
+  if (_obsLiveTimer) return;
+  _obsLiveTimer = setInterval(function() {
+    if (document.visibilityState !== 'visible') return;
+    var tabMap = document.getElementById('tab-map');
+    if (!tabMap || !tabMap.classList.contains('active')) return; // onglet inactif → ne pas marteler l'API
+    if (!_ncToken || !_obsMarkerPairs.length) return;
+    _obsMarkerPairs.forEach(function(p, i) {
+      setTimeout(function() { _fetchObsWind(p.s, p.m); }, i * 200);
+    });
+  }, 10 * 60000);
 }
 
 function addObsMarkersToMap(map) {
@@ -10429,6 +10580,13 @@ function showSpotSettings(forceOpen) {
     +marineOptions+'</select>'
     +'<div style="font-size:9px;color:var(--faint);margin-top:3px;">Passe ou spot marin meteo.nc dont on lit les prévisions houle et vent. Choisir la passe la plus proche du spot.</div>'
     +'</div>'
+    // Id spot Windguru → active la carte AROME 2.5 NC en haut de page
+    +'<div style="margin-bottom:14px;">'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🌀 Id spot Windguru <span style="color:var(--faint);font-size:9px;">(carte AROME 2.5 — optionnel)</span></div>'
+    +'<input id="ss-wgid" type="number" value="'+(_wgIdForSpot(spot)||'')+'" placeholder="ex: 6476 (Ilot Ténia)" '
+    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:11px;box-sizing:border-box;">'
+    +'<div style="font-size:9px;color:var(--faint);margin-top:3px;">Le nombre après « s= » dans l\'URL du spot windguru.cz. Vide = pas de carte AROME pour ce spot.</div>'
+    +'</div>'
     // Source houle
     +'<div style="margin-bottom:16px;">'
     +'<div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Source houle par défaut</div>'
@@ -10614,6 +10772,8 @@ function showSpotSettings(forceOpen) {
       spot.marineName= marineObj ? marineObj.name : (spot.marineName||'');
       spot._marineManual = !!newMarine; // flagué manuellement → le dragend ne l'écrasera plus
       spot.hsSrc     = newHsSrc;
+      var wgEl = document.getElementById('ss-wgid');
+      if (wgEl) { spot.wgId = parseInt(wgEl.value) || null; if (typeof updateAromeCard === 'function') { _wgLoadedFor = null; updateAromeCard(); } }
       var sessionHourEl = document.getElementById('ss-session-hour');
       if (sessionHourEl) spot.sessionHour = parseInt(sessionHourEl.value) || 7;
       var sessionSpotEl = document.getElementById('ss-session-spot');
