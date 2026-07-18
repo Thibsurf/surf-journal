@@ -18,9 +18,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'"/>
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<!-- html2canvas (180 Ko) : chargé À LA DEMANDE par generateMeteogram/_gwCapture
+     (elles ont chacune leur injection+retry intégrés). Plotly (3,6 Mo !) :
+     chargé À LA DEMANDE à l'ouverture de l'onglet ENSO — le télécharger au boot
+     pénalisait chaque visite mobile pour un onglet occasionnel. -->>
 <style>
 :root {
   --ocean:#0a1628;--deep:#0d1f3c;--mid:#1a3a5c;--surface:#1e2d42;
@@ -93,10 +95,13 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
 
 /* STAT CARDS */
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:1.25rem;}
-.sc{background:var(--glass);border:1px solid var(--border);border-radius:var(--r);padding:.9rem;}
-.sc-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;}
-.sc-val{font-size:1.4rem;font-weight:600;font-family:var(--font-d);line-height:1.1;}
-.sc-sub{font-size:10px;color:var(--faint);margin-top:2px;}
+.sc{background:linear-gradient(160deg,rgba(79,163,199,.07),var(--glass) 55%);
+  border:1px solid var(--border);border-left:3px solid rgba(79,163,199,.45);
+  border-radius:var(--r);padding:.8rem .9rem;transition:border-color .2s;}
+.sc:hover{border-left-color:var(--accent);}
+.sc-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;font-weight:600;}
+.sc-val{font-size:1.55rem;font-weight:700;font-family:var(--font-d);line-height:1.05;}
+.sc-sub{font-size:10px;color:var(--faint);margin-top:3px;}
 
 /* FORECAST TABLE */
 .tscroll{overflow-x:auto;}
@@ -463,6 +468,14 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 
   <!-- Conditions actuelles -->
+  <!-- « Mesures instantanées » clarifiées : ces cartes = MODÈLE à l'heure en
+       cours (prévision la plus proche de maintenant) ; les MESURES réelles de
+       station sont dans l'encart 📡 Vent obs. juste en dessous -->
+  <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+    <span class="section-label" style="margin:0;">⏱ Maintenant</span>
+    <span style="font-size:9px;color:var(--faint);background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:1px 8px;">prévision modèle · heure en cours</span>
+    <span style="font-size:9px;color:var(--faint);">· mesures réelles → 📡 Vent obs. ci-dessous</span>
+  </div>
   <div id="current-cond" class="stats-row">
     <div class="loading"><div class="spin"></div> Chargement…</div>
   </div>
@@ -1936,7 +1949,12 @@ function showTab(name, btn) {
   document.getElementById('tab-'+name).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
-  if(name==='map' && !mapInited){ initMap(); mapInited=true; }
+  if(name==='map' && !mapInited){
+    initMap(); mapInited=true;
+    // Historique 48h (vent/temp/pression/précip par station) : ouvert d'office —
+    // il existait mais restait invisible derrière un petit bouton toggle
+    if(typeof _obsHistoryOpen!=='undefined' && !_obsHistoryOpen && typeof toggleObsHistory==='function') toggleObsHistory();
+  }
   if(name==='windy') {
     var wIframe = document.getElementById('windy-frame');
     if(wIframe && wIframe.dataset.src && !wIframe.src) wIframe.src = wIframe.dataset.src;
@@ -1945,7 +1963,16 @@ function showTab(name, btn) {
   else if(name==='maree') { loadOpenMeteoMeteo(); }
   if(name==='compare') { if(!_compareInited){ initCompare(); } else { renderCompare(); } }
   if(name==='synop') { loadSynopImage(); loadBaroData(); }
-  if(name==='enso' && !_ensoInited) { _ensoInited=true; ensoLoadData(); }
+  if(name==='enso' && !_ensoInited) {
+    _ensoInited=true;
+    // Plotly (3,6 Mo) chargé seulement maintenant — ensoRender poll window.Plotly
+    if(!window.Plotly && !document.querySelector('script[src*="plotly"]')){
+      var _pl=document.createElement('script');
+      _pl.src='https://cdn.plot.ly/plotly-2.35.2.min.js'; _pl.charset='utf-8';
+      document.head.appendChild(_pl);
+    }
+    ensoLoadData();
+  }
 
   // Resize tous les charts Chart.js et Plotly après changement d'onglet
   // (les canvas ont height=0 quand leur onglet est caché → resize nécessaire)
@@ -3532,7 +3559,12 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       rows.forEach(function(d,i){
         var tms=new Date(d.time).getTime();
         var wh3=omWind.hourly;
-        var idx=wh3.time.findIndex(function(ot){return Math.abs(new Date(ot).getTime()-tms)<5400000;});
+        // ⚠ '+Z' OBLIGATOIRE : les timestamps OM sont en GMT SANS suffixe —
+        // new Date(ot) nu les parsait en heure LOCALE NC → décalage constant
+        // de 11h → le match ±1h30 ne réussissait JAMAIS → nuages, PLUIE,
+        // température et rafales-fallback restaient null dès que meteo.nc
+        // était actif (la pluie ne « marchait » qu'en mode GFS pur)
+        var idx=wh3.time.findIndex(function(ot){return Math.abs(new Date(ot+'Z').getTime()-tms)<5400000;});
         if(idx<0) return;
         if(wGst[i]===null&&wh3.wind_gusts_10m[idx]!==null) wGst[i]=Math.round(wh3.wind_gusts_10m[idx]);
         if(wh3.cloud_cover&&wh3.cloud_cover[idx]!=null) cld[i]=Math.round(wh3.cloud_cover[idx]);
@@ -6836,6 +6868,14 @@ function addObsMarkersToMap(map) {
       direction: 'top', offset: [0, -18],
       className: 'leaflet-obs-tooltip',
       permanent: false
+    });
+    // Clic sur une station → son historique 48h dans le panneau sous la carte
+    m.on('click', function() {
+      if (typeof _obsHistoryOpen !== 'undefined' && !_obsHistoryOpen && typeof toggleObsHistory === 'function') toggleObsHistory();
+      var sel = document.getElementById('obs-hist-sel');
+      if (sel) { sel.value = String(idx); loadObsHistory(); }
+      var panel = document.getElementById('obs-history-panel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
     _obsMarkersLayer.addLayer(m);
     // Stagger fetches: 200ms between each to avoid hammering the API
@@ -12051,7 +12091,7 @@ var _ensoPlotlyRetries = 0;
 function ensoRender() {
   if (!_ensoData || !_ensoData.length) return;
   if (!window.Plotly) {
-    if (_ensoPlotlyRetries++ < 20) { setTimeout(ensoRender, 500); } // max 10s
+    if (_ensoPlotlyRetries++ < 60) { setTimeout(ensoRender, 500); } // max 30s (Plotly 3,6 Mo chargé à la demande sur mobile lent)
     return;
   }
   _ensoPlotlyRetries = 0;
