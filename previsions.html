@@ -1866,6 +1866,12 @@ var SPOTS = (function() {
           spot.surfSpots = ['Grand bac','Gros nem','Petit U'];
           spot.sessionSpot = spot.surfSpots[0];
         }
+        // Migration ciblée : Ténia était livré avec Phare Amédée (~74 km) comme
+        // station d'obs — Bourake (~18 km) est la bonne. On ne touche qu'à cette
+        // valeur héritée précise ; tout autre choix utilisateur est respecté.
+        if (spot.name === 'Ilot Ténia' && spot.obsId === '9881836') {
+          spot.obsId = '9880904'; spot.obsName = 'Bourake';
+        }
         // Snap automatique : si coords très proches d'un marine point ET pas déplacé manuellement
         if (spot.marineId && !spot._posUserDefined) {
           var ref = MARINE_SPOTS.find(function(m){ return m.id === spot.marineId; });
@@ -3450,10 +3456,9 @@ async function _loadObsWind(spot) {
     return Math.sqrt(dLat * dLat + dLon * dLon);
   }
   var byDist = OBS_STATIONS.slice().sort(function(a, b) { return distKm(a) - distKm(b); });
-  // Garde-fou : si la station configurée est LOIN (>40 km) et qu'une station
-  // existe bien plus près, l'ordre distance prime — cas historique : Ténia
-  // était calé sur Phare Amédée (~74 km) alors que Bourake est à ~18 km
-  if (primary && distKm(primary) > 40 && distKm(byDist[0]) < distKm(primary) * 0.6) primary = null;
+  // Les RÉGLAGES priment TOUJOURS : la station configurée dans ⚙ est utilisée
+  // telle quelle (ex : Passe de Dumbéa → Phare Amédée par choix). L'ordre
+  // distance ne sert que de repli si elle ne rapporte pas de vent.
   var ordered = primary ? [primary].concat(byDist.filter(function(s){ return s !== primary; })) : byDist;
   var firstData = null, firstStation = primary || ordered[0] || null;
   for (var k = 0; k < Math.min(5, ordered.length); k++) {
@@ -5859,37 +5864,6 @@ function _gwDrawVectors(fi) {
     //  les labels de queue se superposaient aux lettres N/E/S/O)
   });
 
-  // Vecteur VENT AROME en discret (fine flèche pointillée) quand le créneau
-  // survolé tombe dans la fenêtre J+2 du modèle — comparaison directe sur la
-  // photo avec le vent meteo.nc/GFS (orange plein)
-  if (typeof _aromeData !== 'undefined' && _aromeData && _aromeData.init && _aromeData.hours && _aromeData.hours.length) {
-    var slotTrue = (d.dates[fi] instanceof Date ? d.dates[fi].getTime() : d.dates[fi]) - 11 * 3600000;
-    var bi = -1, bdf = Infinity;
-    _aromeData.hours.forEach(function(hh, i2) {
-      var ams = _aromeData.init * 1000 + hh * 3600000;
-      var df2 = Math.abs(ams - slotTrue);
-      if (df2 < bdf) { bdf = df2; bi = i2; }
-    });
-    if (bi >= 0 && bdf <= 90 * 60000 && _aromeData.WINDDIR[bi] != null && _aromeData.WINDSPD[bi] != null) {
-      var aDeg = _aromeData.WINDDIR[bi], aKt = _aromeData.WINDSPD[bi];
-      var aRad = (aDeg - 90) * Math.PI / 180;
-      var aLen = Math.max(R * 0.28, Math.max(Math.min(aKt / 25, 1), .3) * R * 0.78);
-      var asx = cx + aLen * Math.cos(aRad), asy = cy + aLen * Math.sin(aRad);
-      var aex = cx + 8 * Math.cos(aRad), aey = cy + 8 * Math.sin(aRad);
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath(); ctx.moveTo(asx, asy); ctx.lineTo(aex, aey);
-      ctx.strokeStyle = 'rgba(159,200,235,.75)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round'; ctx.stroke();
-      ctx.setLineDash([]);
-      var aAng = Math.atan2(aey - asy, aex - asx);
-      ctx.beginPath();
-      ctx.moveTo(aex, aey);
-      ctx.lineTo(aex - 6 * Math.cos(aAng - 0.42), aey - 6 * Math.sin(aAng - 0.42));
-      ctx.lineTo(aex - 6 * Math.cos(aAng + 0.42), aey - 6 * Math.sin(aAng + 0.42));
-      ctx.closePath(); ctx.fillStyle = 'rgba(159,200,235,.75)'; ctx.fill();
-      infoHtml += '<span style="color:rgba(159,200,235,.9);text-shadow:0 1px 2px rgba(0,0,0,.9);">🌀 ' + Math.round(aKt) + 'kt ' + compass(aDeg) + '</span>';
-    }
-  }
-
   // Disque central propre par-dessus les pointes convergentes (comme la rose)
   if (arrows.length) {
     ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 2*Math.PI);
@@ -6832,12 +6806,24 @@ function _wgIdForSpot(s) {
   return null;
 }
 var _wgLoadedFor = null;
-var _aromeData = null; // dernier jeu AROME chargé — consommé par la vue satellite (vecteur discret)
+var _aromeData = null; // dernier jeu AROME chargé (purgé quand le spot n'a pas de correspondance)
 function updateAromeCard() {
   var card = document.getElementById('wg-arome-card'); if (!card) return;
   var s = SPOTS[currentSpot];
   var wgId = _wgIdForSpot(s);
-  if (!wgId) { card.style.display = 'none'; card._wgId = null; _aromeData = null; return; }
+  if (!wgId) {
+    // Pas de correspondance windguru pour ce spot : carte visible mais honnête —
+    // message clair + chemin pour l'activer (champ « Id spot Windguru » dans ⚙),
+    // et on purge l'état pour ne jamais afficher les données d'un autre spot
+    card.style.display = 'block'; card._wgId = null; _aromeData = null; _wgLoadedFor = null;
+    var lbl0 = document.getElementById('wg-arome-spot'); if (lbl0) lbl0.textContent = s ? s.name : '';
+    var b0 = document.getElementById('wg-arome-body');
+    if (b0) b0.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;line-height:1.5;">'
+      + 'Pas de correspondance AROME/windguru connue pour ce spot.<br>'
+      + '<span style="color:var(--faint);">Pour l\'activer : ⚙ Réglages du spot → « Id spot Windguru » '
+      + '(le numéro dans l\'URL windguru.cz du spot le plus proche, ex : 6476 = Ilot Ténia).</span></div>';
+    return;
+  }
   card.style.display = 'block';
   card._wgId = wgId;
   var lbl = document.getElementById('wg-arome-spot'); if (lbl) lbl.textContent = s.name;
@@ -6918,6 +6904,7 @@ async function _loadAromeWidget(wgId) {
     return td(v != null ? Math.round(v) + '°' : '—', 'color:var(--faint);');
   }).join('') + '</tr>';
   h += '</table></div>';
+  h += '<div id="arome-hover-bar" style="min-height:15px;margin-top:5px;font-size:10px;color:var(--muted);">← Survolez une colonne : détail du créneau + comparaison meteo.nc</div>';
   var initNC = new Date(j.init * 1000 + 11 * 3600000);
   h += '<div style="font-size:9px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '') + ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a></div>';
   // Comparatif vent : mesures station (passé) vs AROME vs meteo.nc/GFS (48h)
@@ -6934,8 +6921,16 @@ async function _loadAromeWidget(wgId) {
     + '</div>';
   body.innerHTML = h;
   _aromeData = j;
-  window._aromeCols = cols.map(function(c) { return c.ms; });
-  // Survol d'une COLONNE → surlignage + la vue satellite du widget suit le créneau
+  // Détail par colonne pour le bandeau de survol (mêmes calculs que les cellules)
+  window._aromeColInfo = cols.map(function(c) {
+    var rain = 0, anyR = false;
+    [c.i, c.i + 1].forEach(function(k) { if (j.APCP1[k] != null) { rain += j.APCP1[k]; anyR = true; } });
+    return { ms: c.ms, kt: j.WINDSPD[c.i], gust: j.GUST[c.i], dir: j.WINDDIR[c.i],
+             tmp: j.TMP[c.i], cloud: (j.TCDC && j.TCDC[c.i] != null) ? j.TCDC[c.i] : null,
+             rain: anyR ? rain : null };
+  });
+  // Survol d'une COLONNE → surlignage + bandeau de détail sous le tableau
+  // (la vue satellite du widget n'est pas visible à cette hauteur de page)
   var tbl = body.querySelector('table');
   if (tbl) {
     tbl.addEventListener('mousemove', function(e) {
@@ -6946,23 +6941,57 @@ async function _loadAromeWidget(wgId) {
       tbl._hlCi = ci;
       tbl.querySelectorAll('td.arome-hl').forEach(function(x) { x.classList.remove('arome-hl'); });
       tbl.querySelectorAll('td[data-ci="' + ci + '"]').forEach(function(x) { x.classList.add('arome-hl'); });
-      if (window._aromeCols && window._aromeCols[ci] != null) _gwSetHoverByMs(window._aromeCols[ci]);
+      if (window._aromeColInfo && window._aromeColInfo[ci]) _aromeHoverInfo(window._aromeColInfo[ci]);
+    });
+    tbl.addEventListener('mouseleave', function() {
+      tbl._hlCi = -1;
+      tbl.querySelectorAll('td.arome-hl').forEach(function(x) { x.classList.remove('arome-hl'); });
+      var bar = document.getElementById('arome-hover-bar');
+      if (bar) bar.innerHTML = '← Survolez une colonne : détail du créneau + comparaison meteo.nc';
     });
   }
   _renderAromeCompare(j); // async — remplit le canvas quand l'historique station arrive
 }
 
-// Créneau du widget le plus proche d'un instant vrai-UTC → _gwSetHover
-function _gwSetHoverByMs(msTrue) {
-  if (typeof _gwActiveData !== 'function' || typeof _gwSetHover !== 'function') return;
-  var d = _gwActiveData(); if (!d || !d.dates || !d.dates.length) return;
-  var best = -1, bd = Infinity;
-  d.dates.forEach(function(dt, i) {
-    var tms = (dt instanceof Date ? dt.getTime() : dt) - 11 * 3600000; // faux-local → vrai UTC
-    var df = Math.abs(tms - msTrue);
-    if (df < bd) { bd = df; best = i; }
-  });
-  if (best >= 0 && bd < 3 * 3600000) _gwSetHover(best);
+// Bandeau sous le tableau AROME : détail du créneau survolé + valeur du tableau
+// meteo.nc/GFS au même instant (±95 min, créneaux 3h vs colonnes 2h) avec écart
+function _aromeHoverInfo(info) {
+  var bar = document.getElementById('arome-hover-bar'); if (!bar) return;
+  var DAYS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var CPTS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  var nc = new Date(info.ms + 11 * 3600000);
+  var parts = ['<b style="color:var(--text);">' + DAYS_FR[nc.getUTCDay()] + ' '
+    + String(nc.getUTCDate()).padStart(2, '0') + '/' + String(nc.getUTCMonth() + 1).padStart(2, '0')
+    + ' · ' + String(nc.getUTCHours()).padStart(2, '0') + 'h</b>'];
+  if (info.kt != null) {
+    var w = '💨 <b style="color:var(--accent);">' + Math.round(info.kt) + ' kt</b>';
+    if (info.gust != null) w += ' <span style="color:#e8874a;">(raf. ' + Math.round(info.gust) + ')</span>';
+    if (info.dir != null) w += ' ' + CPTS[Math.round(info.dir / 22.5) % 16];
+    parts.push(w);
+  }
+  if (info.rain != null && info.rain >= 0.05) parts.push('🌧 <b style="color:#7dd3fc;">' + (info.rain < 10 ? info.rain.toFixed(1) : Math.round(info.rain)) + ' mm</b>/2h');
+  if (info.cloud != null) parts.push('☁ ' + Math.round(info.cloud) + '%');
+  if (info.tmp != null) parts.push('🌡 ' + Math.round(info.tmp) + '°');
+  // Valeur du tableau du haut (meteo.nc ou GFS selon le mode) au même instant
+  try {
+    var isOm = (typeof _currentHsSrc !== 'undefined' && _currentHsSrc === 'om');
+    var fd = (isOm && typeof _omFcastData !== 'undefined' && _omFcastData) ? _omFcastData
+           : (typeof _fcastData !== 'undefined' ? _fcastData : null);
+    if (fd && fd.dates && fd.wSpd) {
+      var bi = -1, bd = Infinity;
+      fd.dates.forEach(function(d, i) {
+        var ms = (d instanceof Date ? d.getTime() : d) - 11 * 3600000; // faux-local → vrai UTC
+        var df = Math.abs(ms - info.ms);
+        if (df < bd) { bd = df; bi = i; }
+      });
+      if (bi >= 0 && bd <= 95 * 60000 && fd.wSpd[bi] != null) {
+        var pk = fd.wSpd[bi], ec = (info.kt != null) ? Math.round(info.kt - pk) : null;
+        parts.push('<span style="color:#e8a057;">' + (isOm ? 'GFS' : 'meteo.nc') + ' : <b>' + Math.round(pk) + ' kt</b>'
+          + (ec != null ? ' <span style="color:var(--faint);">(AROME ' + (ec >= 0 ? '+' : '') + ec + ')</span>' : '') + '</span>');
+      }
+    }
+  } catch(e) {}
+  bar.innerHTML = parts.join(' <span style="color:rgba(255,255,255,.15);">·</span> ');
 }
 
 // Mini-graphe comparatif : -24h de MESURES de la station associée au spot,
