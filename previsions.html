@@ -302,6 +302,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 @keyframes cycloneSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 
 /* ── Onglet Animations : coupes SVG animées ─────────────────────────────── */
+.arome-hl{background:rgba(79,163,199,.18)!important;box-shadow:inset 0 0 0 1px rgba(79,163,199,.45);}
 .anim-card{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;}
 .anim-title{font-size:11px;font-weight:700;margin-bottom:7px;}
 .anim-title span{font-weight:400;color:var(--muted);font-size:9.5px;margin-left:6px;}
@@ -467,7 +468,15 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     </div>
   </div>
 
-  <!-- 2ᵉ FIGURE PRINCIPALE (après le widget houle/marée) : Puissance + AROME -->
+  <!-- 2ᵉ FIGURE PRINCIPALE (après le widget houle/marée) : AROME puis Puissance -->
+  <div id="wg-arome-card" class="card" style="margin-bottom:12px;padding:0;overflow:hidden;display:none;">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 6px;flex-wrap:wrap;">
+      <span style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;">🌀 AROME 2.5 km — <span id="wg-arome-spot"></span></span>
+      <span style="font-size:9px;color:var(--faint);">Météo-France haute résolution · J+2 · survol = vue satellite du widget</span>
+    </div>
+    <div id="wg-arome-body" style="padding:2px 10px 8px;min-height:60px;"></div>
+  </div>
+
   <div class="card" style="margin-bottom:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
       <div class="section-label" style="margin-bottom:0;" title="P ≈ ½·Hs²·T — même formule que la colonne « Energy » de Windguru (affichée en kJ chez eux)">⚡ Puissance (kW/m · ½Hs²T, formule Windguru)</div>
@@ -487,16 +496,6 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <span>· lignes tiretées = tes repères perso (sessions du journal sur ce spot)</span>
     </div>
   </div>
-
-  <details id="wg-arome-card" class="card" style="margin-bottom:12px;padding:0;overflow:hidden;display:none;"
-    ontoggle="if(this.open&&this._wgId)_loadAromeWidget(this._wgId)">
-    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:12px 16px;background:rgba(255,255,255,.02);">
-      <span style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;">🌀 AROME 2.5 km — <span id="wg-arome-spot"></span></span>
-      <span style="font-size:9px;color:var(--faint);">modèle Météo-France haute résolution · fenêtre J+2</span>
-      <span style="margin-left:auto;font-size:11px;color:var(--muted);">▾</span>
-    </summary>
-    <div id="wg-arome-body" style="padding:8px 10px;min-height:60px;"></div>
-  </details>
 
   <!-- Conditions actuelles -->
   <!-- « Mesures instantanées » clarifiées : ces cartes = MODÈLE à l'heure en
@@ -1841,7 +1840,7 @@ function nearestObs(lat,lon) {
 
 var DEFAULT_SPOTS = [
   { name:'Passe de Dumbéa',  lat:-22.35, lon:166.24, wg:'https://www.windguru.cz/208760', tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881822', marineName:'Passe de Dumbéa' },
-  { name:'Ilot Ténia',       lat:-22.01, lon:165.94, wg:'https://www.windguru.cz/6476',   tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9880324', marineName:'Ténia', surfSpots:['Grand bac','Gros nem','Petit U'] },
+  { name:'Ilot Ténia',       lat:-22.01, lon:165.94, wg:'https://www.windguru.cz/6476',   tideId:'9881852', tideName:'Nouméa',  obsId:'9880904', obsName:'Bourake',       marineId:'9880324', marineName:'Ténia', surfSpots:['Grand bac','Gros nem','Petit U'] },
   { name:'Passe de Boulari', lat:-22.50, lon:166.44, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881826', marineName:'Passe de Boulari'},
   { name:'Passe de Ouano',   lat:-21.91, lon:165.75, wg:null,                              tideId:'9881852', tideName:'Bourake', obsId:'9880904', obsName:'Bourake',       marineId:'9880323', marineName:'Passe de Ouano'  },
   { name:'Passe de Mato',    lat:-22.69, lon:166.63, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881827', marineName:'Passe de Mato'   },
@@ -3446,10 +3445,15 @@ async function _loadObsWind(spot) {
   var primary = spot.obsId
     ? OBS_STATIONS.find(function(st){ return st.spotId === spot.obsId || st.id === spot.obsId; })
     : null;
-  var byDist = OBS_STATIONS.slice().sort(function(a, b) {
-    return (Math.pow(a.lat - spot.lat, 2) + Math.pow(a.lon - spot.lon, 2))
-         - (Math.pow(b.lat - spot.lat, 2) + Math.pow(b.lon - spot.lon, 2));
-  });
+  function distKm(st) {
+    var dLat = (st.lat - spot.lat) * 111, dLon = (st.lon - spot.lon) * 111 * Math.cos(spot.lat * Math.PI / 180);
+    return Math.sqrt(dLat * dLat + dLon * dLon);
+  }
+  var byDist = OBS_STATIONS.slice().sort(function(a, b) { return distKm(a) - distKm(b); });
+  // Garde-fou : si la station configurée est LOIN (>40 km) et qu'une station
+  // existe bien plus près, l'ordre distance prime — cas historique : Ténia
+  // était calé sur Phare Amédée (~74 km) alors que Bourake est à ~18 km
+  if (primary && distKm(primary) > 40 && distKm(byDist[0]) < distKm(primary) * 0.6) primary = null;
   var ordered = primary ? [primary].concat(byDist.filter(function(s){ return s !== primary; })) : byDist;
   var firstData = null, firstStation = primary || ordered[0] || null;
   for (var k = 0; k < Math.min(5, ordered.length); k++) {
@@ -5855,6 +5859,37 @@ function _gwDrawVectors(fi) {
     //  les labels de queue se superposaient aux lettres N/E/S/O)
   });
 
+  // Vecteur VENT AROME en discret (fine flèche pointillée) quand le créneau
+  // survolé tombe dans la fenêtre J+2 du modèle — comparaison directe sur la
+  // photo avec le vent meteo.nc/GFS (orange plein)
+  if (typeof _aromeData !== 'undefined' && _aromeData && _aromeData.init && _aromeData.hours && _aromeData.hours.length) {
+    var slotTrue = (d.dates[fi] instanceof Date ? d.dates[fi].getTime() : d.dates[fi]) - 11 * 3600000;
+    var bi = -1, bdf = Infinity;
+    _aromeData.hours.forEach(function(hh, i2) {
+      var ams = _aromeData.init * 1000 + hh * 3600000;
+      var df2 = Math.abs(ams - slotTrue);
+      if (df2 < bdf) { bdf = df2; bi = i2; }
+    });
+    if (bi >= 0 && bdf <= 90 * 60000 && _aromeData.WINDDIR[bi] != null && _aromeData.WINDSPD[bi] != null) {
+      var aDeg = _aromeData.WINDDIR[bi], aKt = _aromeData.WINDSPD[bi];
+      var aRad = (aDeg - 90) * Math.PI / 180;
+      var aLen = Math.max(R * 0.28, Math.max(Math.min(aKt / 25, 1), .3) * R * 0.78);
+      var asx = cx + aLen * Math.cos(aRad), asy = cy + aLen * Math.sin(aRad);
+      var aex = cx + 8 * Math.cos(aRad), aey = cy + 8 * Math.sin(aRad);
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(asx, asy); ctx.lineTo(aex, aey);
+      ctx.strokeStyle = 'rgba(159,200,235,.75)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round'; ctx.stroke();
+      ctx.setLineDash([]);
+      var aAng = Math.atan2(aey - asy, aex - asx);
+      ctx.beginPath();
+      ctx.moveTo(aex, aey);
+      ctx.lineTo(aex - 6 * Math.cos(aAng - 0.42), aey - 6 * Math.sin(aAng - 0.42));
+      ctx.lineTo(aex - 6 * Math.cos(aAng + 0.42), aey - 6 * Math.sin(aAng + 0.42));
+      ctx.closePath(); ctx.fillStyle = 'rgba(159,200,235,.75)'; ctx.fill();
+      infoHtml += '<span style="color:rgba(159,200,235,.9);text-shadow:0 1px 2px rgba(0,0,0,.9);">🌀 ' + Math.round(aKt) + 'kt ' + compass(aDeg) + '</span>';
+    }
+  }
+
   // Disque central propre par-dessus les pointes convergentes (comme la rose)
   if (arrows.length) {
     ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 2*Math.PI);
@@ -6797,15 +6832,17 @@ function _wgIdForSpot(s) {
   return null;
 }
 var _wgLoadedFor = null;
+var _aromeData = null; // dernier jeu AROME chargé — consommé par la vue satellite (vecteur discret)
 function updateAromeCard() {
   var card = document.getElementById('wg-arome-card'); if (!card) return;
   var s = SPOTS[currentSpot];
   var wgId = _wgIdForSpot(s);
-  if (!wgId) { card.style.display = 'none'; card._wgId = null; return; }
+  if (!wgId) { card.style.display = 'none'; card._wgId = null; _aromeData = null; return; }
   card.style.display = 'block';
   card._wgId = wgId;
   var lbl = document.getElementById('wg-arome-spot'); if (lbl) lbl.textContent = s.name;
-  if (card.open && _wgLoadedFor !== wgId) _loadAromeWidget(wgId);
+  // Toujours visible (plus de volet) → chargement direct au changement de spot
+  if (_wgLoadedFor !== wgId) _loadAromeWidget(wgId);
 }
 async function _loadAromeWidget(wgId) {
   if (_wgLoadedFor === wgId) return;
@@ -6846,35 +6883,37 @@ async function _loadAromeWidget(wgId) {
   });
   dayCells.push({ k: curKey, n: span });
   var DAYS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-  function td(html, style) { return '<td style="padding:3px 4px;text-align:center;border-left:1px solid rgba(255,255,255,.04);white-space:nowrap;' + (style || '') + '">' + html + '</td>'; }
+  var _tdCi = -1; // index de colonne courant, incrémenté par rangée via _tdReset
+  function _tdReset() { _tdCi = -1; }
+  function td(html, style) { _tdCi++; return '<td data-ci="' + _tdCi + '" style="padding:3px 4px;text-align:center;border-left:1px solid rgba(255,255,255,.04);white-space:nowrap;' + (style || '') + '">' + html + '</td>'; }
   var h = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:10px;color:var(--text);min-width:100%;">';
   h += '<tr>' + '<td style="padding:3px 6px;color:var(--faint);font-size:9px;">jour</td>' + dayCells.map(function(d) {
     var parts = d.k.split('/');
     var dObj = new Date(new Date().getFullYear(), +parts[1] - 1, +parts[0]);
     return '<td colspan="' + d.n + '" style="padding:3px;text-align:center;font-weight:700;color:var(--accent);border-left:2px solid rgba(79,163,199,.35);background:rgba(79,163,199,.06);">' + DAYS_FR[dObj.getDay()] + ' ' + d.k + '</td>';
   }).join('') + '</tr>';
-  h += '<tr><td style="padding:3px 6px;color:var(--faint);font-size:9px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
-  h += '<tr><td style="padding:3px 6px;color:var(--muted);">💨 kt</td>' + cols.map(function(c) {
+  _tdReset(); h += '<tr><td style="padding:3px 6px;color:var(--faint);font-size:9px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
+  _tdReset(); h += '<tr><td style="padding:3px 6px;color:var(--muted);">💨 kt</td>' + cols.map(function(c) {
     var v = j.WINDSPD[c.i];
     return td(v != null ? '<b>' + Math.round(v) + '</b>' : '—', v != null ? 'background:' + windCol(v) + ';' : '');
   }).join('') + '</tr>';
-  h += '<tr><td style="padding:3px 6px;color:var(--muted);">raf.</td>' + cols.map(function(c) {
+  _tdReset(); h += '<tr><td style="padding:3px 6px;color:var(--muted);">raf.</td>' + cols.map(function(c) {
     var v = j.GUST[c.i];
     return td(v != null ? Math.round(v) : '—', v != null ? 'color:#e8874a;background:' + windCol(v) + ';' : '');
   }).join('') + '</tr>';
-  h += '<tr><td style="padding:3px 6px;color:var(--muted);">dir</td>' + cols.map(function(c) {
+  _tdReset(); h += '<tr><td style="padding:3px 6px;color:var(--muted);">dir</td>' + cols.map(function(c) {
     var d = j.WINDDIR[c.i];
     if (d == null) return td('—');
     return td('<span style="display:inline-block;transform:rotate(' + Math.round(d) + 'deg);">↓</span><br><span style="font-size:8px;color:var(--faint);">' + CPTS[Math.round(d / 22.5) % 16] + '</span>');
   }).join('') + '</tr>';
-  h += '<tr><td style="padding:3px 6px;color:var(--muted);">🌧 mm</td>' + cols.map(function(c) {
+  _tdReset(); h += '<tr><td style="padding:3px 6px;color:var(--muted);">🌧 mm</td>' + cols.map(function(c) {
     // cumul 2h (pas horaire du modèle)
     var v = 0, any = false;
     [c.i, c.i + 1].forEach(function(k) { if (j.APCP1[k] != null) { v += j.APCP1[k]; any = true; } });
     if (!any || v < 0.05) return td('<span style="color:rgba(255,255,255,.12);">·</span>');
     return td('<b style="color:#7dd3fc;">' + (v < 10 ? v.toFixed(1) : Math.round(v)) + '</b>', 'background:rgba(125,211,252,.10);');
   }).join('') + '</tr>';
-  h += '<tr><td style="padding:3px 6px;color:var(--muted);">🌡 °C</td>' + cols.map(function(c) {
+  _tdReset(); h += '<tr><td style="padding:3px 6px;color:var(--muted);">🌡 °C</td>' + cols.map(function(c) {
     var v = j.TMP[c.i];
     return td(v != null ? Math.round(v) + '°' : '—', 'color:var(--faint);');
   }).join('') + '</tr>';
@@ -6891,9 +6930,39 @@ async function _loadAromeWidget(wgId) {
     + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé (cache)</span>'
     + '</div>'
     + '<div id="arome-cmp-wrap" style="width:100%;"><canvas id="arome-cmp"></canvas></div>'
+    + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour lire les 3 valeurs au même instant</div>'
     + '</div>';
   body.innerHTML = h;
+  _aromeData = j;
+  window._aromeCols = cols.map(function(c) { return c.ms; });
+  // Survol d'une COLONNE → surlignage + la vue satellite du widget suit le créneau
+  var tbl = body.querySelector('table');
+  if (tbl) {
+    tbl.addEventListener('mousemove', function(e) {
+      var t = e.target && e.target.closest ? e.target.closest('td[data-ci]') : null;
+      if (!t) return;
+      var ci = +t.getAttribute('data-ci');
+      if (tbl._hlCi === ci) return;
+      tbl._hlCi = ci;
+      tbl.querySelectorAll('td.arome-hl').forEach(function(x) { x.classList.remove('arome-hl'); });
+      tbl.querySelectorAll('td[data-ci="' + ci + '"]').forEach(function(x) { x.classList.add('arome-hl'); });
+      if (window._aromeCols && window._aromeCols[ci] != null) _gwSetHoverByMs(window._aromeCols[ci]);
+    });
+  }
   _renderAromeCompare(j); // async — remplit le canvas quand l'historique station arrive
+}
+
+// Créneau du widget le plus proche d'un instant vrai-UTC → _gwSetHover
+function _gwSetHoverByMs(msTrue) {
+  if (typeof _gwActiveData !== 'function' || typeof _gwSetHover !== 'function') return;
+  var d = _gwActiveData(); if (!d || !d.dates || !d.dates.length) return;
+  var best = -1, bd = Infinity;
+  d.dates.forEach(function(dt, i) {
+    var tms = (dt instanceof Date ? dt.getTime() : dt) - 11 * 3600000; // faux-local → vrai UTC
+    var df = Math.abs(tms - msTrue);
+    if (df < bd) { bd = df; best = i; }
+  });
+  if (best >= 0 && bd < 3 * 3600000) _gwSetHover(best);
 }
 
 // Mini-graphe comparatif : -24h de MESURES de la station associée au spot,
@@ -6962,60 +7031,108 @@ async function _renderAromeCompare(j) {
   obs = clip(obs); page = clip(page); aro = clip(aro); cachePts = clip(cachePts);
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
   if (!el2 || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
-  var W = el2.clientWidth || 600, H = 130;
+  var W = el2.clientWidth || 600, H = 210; // agrandi : lisibilité avant tout
   var dpr = window.devicePixelRatio || 1;
-  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.cursor = 'crosshair';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-  var allKt = [12].concat(obs.map(function(p){return p.kt;}), page.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}));
-  var maxKt = Math.max.apply(null, allKt) * 1.18;
-  var padL = 24, padR = 4, padT = 6, padB = 16;
+  var allKt = [12].concat(obs.map(function(p){return p.kt;}), page.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}));
+  var maxKt = Math.max.apply(null, allKt) * 1.15;
+  var padL = 26, padR = 6, padT = 10, padB = 18;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
   function Y(kt) { return padT + (1 - kt / maxKt) * (H - padT - padB); }
-  // Fond passé (mesures) légèrement teinté
-  ctx.fillStyle = 'rgba(61,186,138,.045)';
-  ctx.fillRect(X(t0), padT, X(now) - X(t0), H - padT - padB);
-  // Grille horizontale 5 kt
-  ctx.textAlign = 'right'; ctx.font = '8px DM Sans,sans-serif';
-  for (var g = 0; g <= maxKt; g += 5) {
-    var gy = Y(g);
-    ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
-    ctx.fillStyle = 'rgba(122,148,170,.8)'; ctx.fillText(g + '', padL - 3, gy + 3);
+  obs.sort(function(a,b){return a.ms-b.ms;}); page.sort(function(a,b){return a.ms-b.ms;}); aro.sort(function(a,b){return a.ms-b.ms;});
+
+  function draw(hoverMs) {
+    ctx.clearRect(0, 0, W, H);
+    // Fond passé (mesures) légèrement teinté
+    ctx.fillStyle = 'rgba(61,186,138,.05)';
+    ctx.fillRect(X(t0), padT, X(now) - X(t0), H - padT - padB);
+    // Grille horizontale 5 kt
+    ctx.textAlign = 'right'; ctx.font = '9px DM Sans,sans-serif';
+    for (var g = 0; g <= maxKt; g += 5) {
+      var gy = Y(g);
+      ctx.strokeStyle = g === 0 ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.055)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
+      ctx.fillStyle = 'rgba(122,148,170,.85)'; ctx.fillText(g + '', padL - 4, gy + 3);
+    }
+    // Minuits locaux + libellés jour
+    ctx.textAlign = 'center';
+    var d0 = new Date(t0); d0.setHours(24, 0, 0, 0);
+    for (var ms = d0.getTime(); ms < t1; ms += 864e5) {
+      ctx.strokeStyle = 'rgba(255,255,255,.09)';
+      ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
+      var dd = new Date(ms + 36e5);
+      ctx.fillStyle = 'rgba(122,148,170,.9)';
+      ctx.fillText(dd.getDate() + '/' + (dd.getMonth() + 1), X(Math.min(ms + 432e5, t1 - 216e5)), H - 5);
+    }
+    // Ligne « maintenant »
+    ctx.strokeStyle = 'rgba(253,224,104,.75)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(X(now), padT); ctx.lineTo(X(now), H - padB); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(253,224,104,.9)'; ctx.fillText('maintenant', Math.min(Math.max(X(now), padL + 30), W - 38), padT + 2);
+    // Courbes LISSÉES (quadratiques par points milieux — les créneaux 3h de
+    // meteo.nc faisaient des lignes brisées « pâté »)
+    function drawSmooth(pts, col, width, dash) {
+      if (pts.length < 2) return;
+      ctx.strokeStyle = col; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      if (dash) ctx.setLineDash(dash);
+      ctx.beginPath();
+      ctx.moveTo(X(pts[0].ms), Y(pts[0].kt));
+      for (var i = 1; i < pts.length - 1; i++) {
+        var mx = (X(pts[i].ms) + X(pts[i + 1].ms)) / 2, my = (Y(pts[i].kt) + Y(pts[i + 1].kt)) / 2;
+        ctx.quadraticCurveTo(X(pts[i].ms), Y(pts[i].kt), mx, my);
+      }
+      ctx.lineTo(X(pts[pts.length - 1].ms), Y(pts[pts.length - 1].kt));
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    drawSmooth(page, 'rgba(232,160,87,.9)', 1.8, [6, 4]);
+    // marqueurs sur les créneaux réels meteo.nc (3h) — la courbe est interpolée
+    ctx.fillStyle = 'rgba(232,160,87,.9)';
+    page.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
+    drawSmooth(aro, 'rgba(79,163,199,.95)', 2.2);
+    drawSmooth(obs, 'rgba(61,186,138,.95)', 2.4);
+    // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
+    ctx.strokeStyle = 'rgba(232,160,87,.9)'; ctx.lineWidth = 1.4;
+    cachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.6, 0, Math.PI * 2); ctx.stroke(); });
+    // Points sur les mesures (réelles)
+    ctx.fillStyle = '#3dba8a';
+    obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.7, 0, Math.PI * 2); ctx.fill(); });
+    // Curseur de survol
+    if (hoverMs != null) {
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(X(hoverMs), padT); ctx.lineTo(X(hoverMs), H - padB); ctx.stroke();
+    }
   }
-  // Minuits locaux + libellés jour
-  ctx.textAlign = 'center';
-  var d0 = new Date(t0); d0.setHours(24, 0, 0, 0);
-  for (var ms = d0.getTime(); ms < t1; ms += 864e5) {
-    ctx.strokeStyle = 'rgba(255,255,255,.08)';
-    ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
-    var dd = new Date(ms + 36e5);
-    ctx.fillStyle = 'rgba(122,148,170,.9)';
-    ctx.fillText(dd.getDate() + '/' + (dd.getMonth() + 1), X(ms + 432e5), H - 4);
+  draw(null);
+
+  // Valeurs au survol : curseur + lecture des séries au plus proche (±90 min)
+  function nearest(pts, ms, tol) {
+    var best = null, bd = tol || 90 * 60000;
+    pts.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
+    return best;
   }
-  // Ligne « maintenant »
-  ctx.strokeStyle = 'rgba(253,224,104,.75)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.4;
-  ctx.beginPath(); ctx.moveTo(X(now), padT); ctx.lineTo(X(now), H - padB); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = 'rgba(253,224,104,.9)'; ctx.fillText('maintenant', Math.min(X(now), W - 34), padT + 7);
-  function drawLine(pts, col, width, dash) {
-    if (pts.length < 2) return;
-    ctx.strokeStyle = col; ctx.lineWidth = width; ctx.lineJoin = 'round';
-    if (dash) ctx.setLineDash(dash);
-    ctx.beginPath();
-    pts.sort(function(a, b) { return a.ms - b.ms; }).forEach(function(p, i) {
-      if (i === 0) ctx.moveTo(X(p.ms), Y(p.kt)); else ctx.lineTo(X(p.ms), Y(p.kt));
-    });
-    ctx.stroke(); ctx.setLineDash([]);
-  }
-  drawLine(page, 'rgba(232,160,87,.85)', 1.6, [5, 4]);
-  drawLine(aro, 'rgba(79,163,199,.95)', 2);
-  drawLine(obs, 'rgba(61,186,138,.95)', 2.2);
-  // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
-  ctx.strokeStyle = 'rgba(232,160,87,.9)'; ctx.lineWidth = 1.3;
-  cachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.4, 0, Math.PI * 2); ctx.stroke(); });
-  // Points sur les mesures (réelles)
-  ctx.fillStyle = '#3dba8a';
-  obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.6, 0, Math.PI * 2); ctx.fill(); });
+  cv.onmousemove = function(e) {
+    var rect = cv.getBoundingClientRect();
+    var ms = t0 + (e.clientX - rect.left - padL) / (W - padL - padR) * (t1 - t0);
+    if (ms < t0 || ms > t1) return;
+    draw(ms);
+    var ro = document.getElementById('arome-cmp-readout');
+    if (ro) {
+      var dNC = new Date(ms);
+      var lbl = String(dNC.getDate()).padStart(2, '0') + '/' + (dNC.getMonth() + 1) + ' ' + String(dNC.getHours()).padStart(2, '0') + 'h' + String(dNC.getMinutes()).padStart(2, '0');
+      var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pPage = nearest(page, ms, 105 * 60000), pCache = nearest(cachePts, ms);
+      ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
+        + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> kt</span>' : '')
+        + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> kt</span>' : '')
+        + (pPage ? ' · <span style="color:#e8a057;">meteo.nc <b>' + Math.round(pPage.kt) + '</b> kt</span>' : '')
+        + (!pPage && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> kt</span>' : '');
+    }
+  };
+  cv.onmouseleave = function() {
+    draw(null);
+    var ro = document.getElementById('arome-cmp-readout');
+    if (ro) ro.innerHTML = '← Survolez pour lire les 3 valeurs au même instant';
+  };
 }
 
 function windArrowIcon(deg, kt) {
@@ -7476,7 +7593,8 @@ async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
       var ids = [];
       for (var di = 1; di <= 7; di++) {
         var d = new Date(today.getTime() - di * 86400000);
-        var ds = d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+        // date LOCALE (getUTC* décalait les 7 ids d'un jour avant 11h NC)
+        var ds = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
         ids.push(ds+'_'+spot.lat.toFixed(3)+'_'+spot.lon.toFixed(3));
       }
       var {data: cacheRows} = await _tokenSbClient.from('meteo_cache').select('id,data,status').in('id', ids);
@@ -7632,7 +7750,12 @@ function renderObsHistoryChart(s, h) {
   var statsEl = document.getElementById('obs-hist-stats');
   var param   = window._obsParam || 'wind';
 
-  var recent = h.slice(-48);
+  // VRAIES dernières 48 HEURES — l'ancien slice(-48) prenait les 48 dernières
+  // ENTRÉES : avec des relevés aux 10 min ça ne couvrait que ~8 h, d'où des
+  // « 48h » qui ne correspondaient pas aux heures affichées
+  var cut48 = Date.now() - 48 * 3600000;
+  var recent = h.filter(function(e) { return e && e.time && new Date(e.time).getTime() >= cut48; });
+  if (!recent.length) recent = h.slice(-48); // repli si champ time absent
   if (!recent.length) {
     chartEl.innerHTML = '<div style="color:var(--faint);font-size:11px;padding:16px;text-align:center;">Pas de données disponibles</div>';
     return;
