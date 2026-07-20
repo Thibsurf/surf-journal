@@ -3898,10 +3898,33 @@ async function _fetchBomWw3(spot) {
 // ECMWF évalué et écarté : aucune couverture pour la NC sur Open-Meteo (ewam et
 // ecmwf_wam025 renvoient tous deux du null pour cette zone, vérifié en direct).
 var SWELL_MODELS = [
-  { key: 'nc',  label: 'meteo.nc',  col: 'rgba(61,186,138,.95)',  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie' },
+  { key: 'nc',  label: 'meteo.nc',  col: 'rgba(61,186,138,.95)',  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
   { key: 'gfs', label: 'GFS',       col: 'rgba(79,163,199,.95)',  desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
-  { key: 'bom', label: 'BOM WW3',   col: 'rgba(232,160,87,.95)',  desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' }
+  { key: 'bom', label: 'BOM WW3',   col: 'rgba(232,160,87,.95)',  desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
+  { key: 'mf',  label: 'MF global', col: 'rgba(167,159,248,.95)', desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' }
 ];
+// Météo-France global (MFWAM) — distinct de « meteo.nc » : ce dernier est le
+// bulletin officiel régionalisé NC, celui-ci le modèle vague global brut,
+// utile pour voir l'effet de la régionalisation meteo.nc sur la houle brute.
+async function _fetchMeteoFranceWave(spot) {
+  var ctrl = new AbortController();
+  var tt = setTimeout(function(){ ctrl.abort(); }, 8000);
+  try {
+    var url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + spot.lat + '&longitude=' + spot.lon
+      + '&hourly=swell_wave_height,swell_wave_period&models=meteofrance_wave&forecast_days=7&timezone=GMT';
+    var r = await fetch(url, { signal: ctrl.signal });
+    var j = await r.json();
+    if (!j || !j.hourly || !j.hourly.time) return [];
+    var h = j.hourly, pts = [];
+    for (var i = 0; i < h.time.length; i++) {
+      var hs = h.swell_wave_height[i], t = h.swell_wave_period[i];
+      if (hs == null) continue;
+      pts.push({ ms: Date.parse(h.time[i] + 'Z'), h: hs, t: t });
+    }
+    return pts;
+  } catch (e) { console.warn('[MF wave]', e && e.message); return []; }
+  finally { clearTimeout(tt); }
+}
 async function _renderSwellCompare() {
   var card = document.getElementById('swell-cmp-card');
   var cv = document.getElementById('swell-cmp');
@@ -3920,11 +3943,12 @@ async function _renderSwellCompare() {
   if (ncPts.length < 2 && omPts.length < 2) { card.style.display = 'none'; return; } // rien à comparer
   card.style.display = 'block';
   var _spotForBom = SPOTS[currentSpot];
-  var bomPts = await _fetchBomWw3(_spotForBom);
-  // Le spot a pu changer pendant l'attente réseau BOM → abandonner un rendu obsolète
+  var _extra = await Promise.all([_fetchBomWw3(_spotForBom), _fetchMeteoFranceWave(_spotForBom)]);
+  var bomPts = _extra[0], mfPts = _extra[1];
+  // Le spot a pu changer pendant l'attente réseau → abandonner un rendu obsolète
   if (SPOTS[currentSpot] !== _spotForBom) return;
 
-  var series = { nc: ncPts, gfs: omPts, bom: bomPts };
+  var series = { nc: ncPts, gfs: omPts, bom: bomPts, mf: mfPts };
   var activeModels = SWELL_MODELS.filter(function(m) { return series[m.key].length >= 2; });
   if (!activeModels.length) { card.style.display = 'none'; return; }
 
