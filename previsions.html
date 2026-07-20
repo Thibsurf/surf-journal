@@ -238,7 +238,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .shom-body{padding:8px;background:#fff;border-radius:0 0 var(--r) var(--r);}
 
 /* Score colors */
-.s0{color:#3d5468;} .s1{color:#7a94aa;} .s2{color:#4fa3c7;} .s3{color:#3dba8a;} .s4{color:#e8a057;} .s5{color:#7b6cf6;}
+.s0{color:#5c4a52;} .s1{color:#c1654a;} .s2{color:#e8a057;} .s3{color:#e8c44a;} .s4{color:#3dba8a;} .s5{color:#7b6cf6;}
 
 /* Obs + marées encarts */
 #obs-wrap,#tide-enc-wrap{min-height:52px;}
@@ -4461,7 +4461,7 @@ function renderBestSessions(sessions) {
     wrap.innerHTML = '<div style="color:var(--faint);font-size:11px;padding:8px;">Aucun créneau trouvé</div>';
     return;
   }
-  var cols   = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
+  var cols   = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
   var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
 
   // Liste compacte dans un seul bloc
@@ -4650,7 +4650,7 @@ function showCompare(mode, btn) {
 
 function renderCompare() {
   var wrap = document.getElementById('compare-cards'); if (!wrap) return;
-  var cols   = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
+  var cols   = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
   var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
 
   var rows = SPOTS.map(function(spot, idx){
@@ -5269,7 +5269,7 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
 
   score = Math.max(0, Math.min(5, Math.round(score)));
   var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
-  var cols = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
+  var cols = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
   return { score:score, label:labels[score], col:cols[score], details:details };
 }
 
