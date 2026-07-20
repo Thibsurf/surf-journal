@@ -482,7 +482,10 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <button id="swell-mode-2" onclick="_setSwellMode('secondary')" title="Houle secondaire : 2ᵉ train de houle, souvent partiellement voire pas disponible selon les modèles" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;">Houle 2</button>
       </div>
     </div>
-    <div id="swell-cmp-now" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+      <div id="swell-cmp-now" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:180px;"></div>
+      <div id="swell-cmp-rose" style="width:92px;height:92px;flex-shrink:0;" title="Direction de la houle (d'où elle vient) au créneau lu — suit le survol du graphe"></div>
+    </div>
     <div style="position:relative;width:100%;"><canvas id="swell-cmp" style="width:100%;display:block;cursor:crosshair;"></canvas></div>
     <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles</div>
   </div>
@@ -694,11 +697,6 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 
   <!-- Historique 7 jours — statistiques agrégées depuis meteo_cache -->
-  <div class="card" id="sec-weekly-stats" style="margin-bottom:12px;display:none;">
-    <div class="section-label" style="margin-bottom:8px;">📈 Historique 7 jours — <span id="weekly-stats-spot" style="color:var(--accent);"></span></div>
-    <div id="weekly-stats-body"><div style="color:var(--faint);font-size:11px;">Chargement…</div></div>
-  </div>
-
   <!-- Cache météo (passé + aujourd'hui + à venir) -->
   <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden;">
     <button onclick="togglePastConditions()" id="past-toggle-btn"
@@ -709,6 +707,11 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <span id="past-toggle-arrow" style="transition:.2s;">▼</span>
     </button>
     <div id="past-conditions-panel" style="display:none;padding:14px 16px;border-top:1px solid var(--border);">
+      <!-- Historique 7 jours — statistiques agrégées depuis ce même cache -->
+      <div id="sec-weekly-stats" style="margin-bottom:14px;display:none;">
+        <div class="section-label" style="margin-bottom:8px;">📈 Historique 7 jours — <span id="weekly-stats-spot" style="color:var(--accent);"></span></div>
+        <div id="weekly-stats-body"><div style="color:var(--faint);font-size:11px;">Chargement…</div></div>
+      </div>
       <div id="past-nc-unavail-note" style="display:none;margin-bottom:10px;padding:7px 10px;
            background:rgba(232,160,87,.08);border-left:3px solid rgba(232,160,87,.4);border-radius:4px;
            font-size:11px;color:rgba(232,160,87,.9);">
@@ -3855,6 +3858,10 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   try { renderGlobalWidget(); } catch(e) { console.warn('[WidgetGlobal]', e); }
   try { _renderSwellCompare().catch(function(e){ console.warn('[SwellCompare]', e); }); } catch(e) { console.warn('[SwellCompare]', e); }
   try { _renderWeeklyStats().catch(function(e){ console.warn('[WeeklyStats]', e); }); } catch(e) { console.warn('[WeeklyStats]', e); }
+  // Le comparatif vent AROME a pu se dessiner AVANT que _ncFcastData/_omFcastData
+  // n'arrivent (updateAromeCard part dès le début de loadForecast) → le
+  // redessiner maintenant que les séries du tableau sont disponibles.
+  try { if (_aromeData) _renderAromeCompare(_aromeData); } catch(e) { console.warn('[AromeCompare re-render]', e); }
 
   // Cache BSF (mise à jour quand les marées multi-jours arrivent aussi)
   var _bsfFc = _buildFcObject(spot, _fcastData, _ncTideCache);
@@ -3924,7 +3931,7 @@ async function _fetchMeteoFranceWave(spot) {
   var tt = setTimeout(function(){ ctrl.abort(); }, 8000);
   try {
     var url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + spot.lat + '&longitude=' + spot.lon
-      + '&hourly=swell_wave_height,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period'
+      + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction'
       + '&models=meteofrance_wave&forecast_days=10&timezone=GMT';
     var r = await fetch(url, { signal: ctrl.signal });
     var j = await r.json();
@@ -3932,8 +3939,8 @@ async function _fetchMeteoFranceWave(spot) {
     var h = j.hourly, primary = [], secondary = [];
     for (var i = 0; i < h.time.length; i++) {
       var ms = Date.parse(h.time[i] + 'Z');
-      if (h.swell_wave_height[i] != null) primary.push({ ms: ms, h: h.swell_wave_height[i], t: h.swell_wave_period[i] });
-      if (h.secondary_swell_wave_height && h.secondary_swell_wave_height[i] != null) secondary.push({ ms: ms, h: h.secondary_swell_wave_height[i], t: h.secondary_swell_wave_period && h.secondary_swell_wave_period[i] });
+      if (h.swell_wave_height[i] != null) primary.push({ ms: ms, h: h.swell_wave_height[i], t: h.swell_wave_period[i], dir: h.swell_wave_direction && h.swell_wave_direction[i] });
+      if (h.secondary_swell_wave_height && h.secondary_swell_wave_height[i] != null) secondary.push({ ms: ms, h: h.secondary_swell_wave_height[i], t: h.secondary_swell_wave_period && h.secondary_swell_wave_period[i], dir: h.secondary_swell_wave_direction && h.secondary_swell_wave_direction[i] });
     }
     return { primary: primary, secondary: secondary };
   } catch (e) { console.warn('[MF wave]', e && e.message); return { primary: [], secondary: [] }; }
@@ -3960,8 +3967,8 @@ async function _fetchEcmwfWave(spot) {
     var initMs = f.initstamp * 1000, primary = [], secondary = [];
     for (var i = 0; i < f.hours.length; i++) {
       var ms = initMs + f.hours[i] * 3600000;
-      if (f.SWELL1[i] != null) primary.push({ ms: ms, h: f.SWELL1[i], t: f.SWPER1 && f.SWPER1[i] });
-      if (f.SWELL2 && f.SWELL2[i] != null) secondary.push({ ms: ms, h: f.SWELL2[i], t: f.SWPER2 && f.SWPER2[i] });
+      if (f.SWELL1[i] != null) primary.push({ ms: ms, h: f.SWELL1[i], t: f.SWPER1 && f.SWPER1[i], dir: f.SWDIR1 && f.SWDIR1[i] });
+      if (f.SWELL2 && f.SWELL2[i] != null) secondary.push({ ms: ms, h: f.SWELL2[i], t: f.SWPER2 && f.SWPER2[i], dir: f.SWDIR2 && f.SWDIR2[i] });
     }
     return { primary: primary, secondary: secondary };
   } catch (e) { console.warn('[ECMWF wave]', e && e.message); return { primary: [], secondary: [] }; }
@@ -3990,12 +3997,12 @@ function _swellToPts(d, comp) {
   // pas nativement (cf. sw2Native) — pas une vraie houle secondaire modélisée,
   // on ne la propose pas dans le comparatif pour ne pas induire en erreur.
   if (comp === 2 && d.sw2Native === false) return [];
-  var hArr = comp === 2 ? d.sw2h : d.sw1h, tArr = comp === 2 ? d.sw2t : d.sw1t;
+  var hArr = comp === 2 ? d.sw2h : d.sw1h, tArr = comp === 2 ? d.sw2t : d.sw1t, dArr = comp === 2 ? d.sw2d : d.sw1d;
   var pts = [];
   d.dates.forEach(function(dt, i) {
     var hs = hArr && hArr[i];
     if (hs == null) return;
-    pts.push({ ms: dt.getTime() - 11 * 3600000, h: hs, t: tArr && tArr[i] });
+    pts.push({ ms: dt.getTime() - 11 * 3600000, h: hs, t: tArr && tArr[i], dir: dArr && dArr[i] });
   });
   return pts;
 }
@@ -4062,11 +4069,46 @@ function _drawSwellCompare() {
     }).join('');
   }
 
+  // Rose des houles : un vecteur coloré par modèle actif, direction de
+  // PROPAGATION (même convention que svgArrow() ailleurs dans l'app : dir stockée
+  // = provenance météo, +180° pour la flèche « où ça va »). Suit le survol du
+  // graphe comme renderNowRow().
+  function _drawSwellRose(atMs) {
+    var el = document.getElementById('swell-cmp-rose');
+    if (!el) return;
+    if (!activeModels.length) { el.innerHTML = ''; return; }
+    var cx = 46, cy = 46, R = 34;
+    var svg = '<svg width="92" height="92" viewBox="0 0 92 92">';
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.12)" stroke-width="1"/>';
+    [['N', 0], ['E', 90], ['S', 180], ['O', 270]].forEach(function(c) {
+      var rad = (c[1] - 90) * Math.PI / 180;
+      var lx = cx + (R + 9) * Math.cos(rad), ly = cy + (R + 9) * Math.sin(rad);
+      svg += '<text x="' + lx + '" y="' + (ly + 3) + '" text-anchor="middle" font-size="8" fill="rgba(122,148,170,.7)" font-family="DM Sans,sans-serif">' + c[0] + '</text>';
+    });
+    var any = false;
+    activeModels.forEach(function(m) {
+      var p = nearest(series[m.key], atMs, 4 * 3600000);
+      if (!p || p.dir == null) return;
+      any = true;
+      var propDeg = (p.dir + 180) % 360;
+      var rad = (propDeg - 90) * Math.PI / 180;
+      var len = R - 6;
+      var x2 = cx + len * Math.cos(rad), y2 = cy + len * Math.sin(rad);
+      var x1 = cx - len * 0.3 * Math.cos(rad), y1 = cy - len * 0.3 * Math.sin(rad);
+      svg += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + m.col + '" stroke-width="2.2" stroke-linecap="round"/>';
+      var ah = 5;
+      svg += '<polygon points="' + x2 + ',' + y2 + ' ' + (x2 - ah * Math.cos(rad - 0.4)) + ',' + (y2 - ah * Math.sin(rad - 0.4)) + ' ' + (x2 - ah * Math.cos(rad + 0.4)) + ',' + (y2 - ah * Math.sin(rad + 0.4)) + '" fill="' + m.col + '"/>';
+    });
+    svg += '</svg>';
+    el.innerHTML = any ? svg : '<div style="font-size:8.5px;color:var(--faint);text-align:center;padding-top:36px;">Direction indisponible</div>';
+  }
+
   if (!activeModels.length) {
     var W0 = (cv.parentElement && cv.parentElement.clientWidth) || 600;
     cv.width = W0; cv.height = 210; cv.style.width = W0 + 'px'; cv.style.height = '210px';
     var ctx0 = cv.getContext('2d'); ctx0.clearRect(0, 0, W0, 210);
     renderNowRow(Date.now());
+    _drawSwellRose(Date.now());
     var ro0 = document.getElementById('swell-cmp-readout');
     if (ro0) ro0.innerHTML = 'Pas de houle ' + (comp === 'secondary' ? 'secondaire' : 'primaire') + ' disponible pour ce spot.';
     return;
@@ -4156,6 +4198,7 @@ function _drawSwellCompare() {
   }
   draw(null);
   renderNowRow(Date.now());
+  _drawSwellRose(Date.now());
 
   cv.onmousemove = function(e) {
     var rect = cv.getBoundingClientRect();
@@ -4163,6 +4206,7 @@ function _drawSwellCompare() {
     if (ms < t0 || ms > t1) return;
     draw(ms);
     renderNowRow(ms);
+    _drawSwellRose(ms);
     var ro = document.getElementById('swell-cmp-readout');
     if (ro) {
       var dNC = new Date(ms + 11 * 36e5);
@@ -4184,6 +4228,7 @@ function _drawSwellCompare() {
   cv.onmouseleave = function() {
     draw(null);
     renderNowRow(Date.now());
+    _drawSwellRose(Date.now());
     var ro = document.getElementById('swell-cmp-readout');
     if (ro) ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles';
   };
@@ -7419,13 +7464,14 @@ async function _loadAromeWidget(wgId) {
   h += '<div id="arome-hover-bar" style="min-height:15px;margin-top:5px;font-size:10px;color:var(--muted);">← Survolez une colonne : détail du créneau + comparaison meteo.nc</div>';
   var initNC = new Date(j.init * 1000 + 11 * 3600000);
   h += '<div style="font-size:9px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '') + ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a></div>';
-  // Comparatif vent : mesures station (passé) vs AROME vs meteo.nc/GFS (48h)
+  // Comparatif vent : mesures station (passé) vs AROME vs meteo.nc vs GFS (48h)
   h += '<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:8px;">'
     + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;font-size:9px;color:var(--muted);margin-bottom:4px;">'
     + '<b style="color:var(--text);font-size:10px;">🆚 Vent : mesuré vs modèles</b>'
     + '<span><span style="color:#3dba8a;font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
     + '<span><span style="color:#4fa3c7;font-weight:700;">━</span> AROME 2.5</span>'
-    + '<span><span style="color:#e8a057;font-weight:700;">╌</span> meteo.nc/GFS (tableau)</span>'
+    + '<span><span style="color:#e8a057;font-weight:700;">╌</span> meteo.nc</span>'
+    + '<span><span style="color:#a99ff8;font-weight:700;">╌</span> GFS</span>'
     + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé (cache)</span>'
     + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé (cache)</span>'
     + '</div>'
@@ -7446,23 +7492,33 @@ async function _loadAromeWidget(wgId) {
   // (la vue satellite du widget n'est pas visible à cette hauteur de page)
   var tbl = body.querySelector('table');
   if (tbl) {
+    // Exposé pour que le graphe comparatif (_renderAromeCompare, plus bas) puisse
+    // resurligner la même colonne quand on survole SON curseur à lui — lien
+    // bidirectionnel table ↔ graphe demandé par l'utilisateur.
+    window._aromeSetTableCol = function(ci) {
+      if (tbl._hlCi === ci) return;
+      tbl._hlCi = ci;
+      tbl.querySelectorAll('td.arome-hl').forEach(function(x) { x.classList.remove('arome-hl'); });
+      if (ci != null) {
+        tbl.querySelectorAll('td[data-ci="' + ci + '"]').forEach(function(x) { x.classList.add('arome-hl'); });
+        if (window._aromeColInfo && window._aromeColInfo[ci]) _aromeHoverInfo(window._aromeColInfo[ci]);
+      }
+    };
     var colSel = function(e) {
       var t = e.target && e.target.closest ? e.target.closest('td[data-ci]') : null;
       if (!t) return;
       var ci = +t.getAttribute('data-ci');
-      if (tbl._hlCi === ci) return;
-      tbl._hlCi = ci;
-      tbl.querySelectorAll('td.arome-hl').forEach(function(x) { x.classList.remove('arome-hl'); });
-      tbl.querySelectorAll('td[data-ci="' + ci + '"]').forEach(function(x) { x.classList.add('arome-hl'); });
-      if (window._aromeColInfo && window._aromeColInfo[ci]) _aromeHoverInfo(window._aromeColInfo[ci]);
+      window._aromeSetTableCol(ci);
+      // Déplace aussi le curseur du graphe comparatif sur ce créneau
+      if (window._aromeCmpCursorTo && cols[ci]) window._aromeCmpCursorTo(cols[ci].ms);
     };
     tbl.addEventListener('mousemove', colSel);
     tbl.addEventListener('click', colSel); // mobile : tap sur une colonne
     tbl.addEventListener('mouseleave', function() {
-      tbl._hlCi = -1;
-      tbl.querySelectorAll('td.arome-hl').forEach(function(x) { x.classList.remove('arome-hl'); });
+      window._aromeSetTableCol(null);
       var bar = document.getElementById('arome-hover-bar');
       if (bar) bar.innerHTML = '← Survolez une colonne : détail du créneau + comparaison meteo.nc';
+      if (window._aromeCmpCursorTo) window._aromeCmpCursorTo(null);
     });
   }
   _renderAromeCompare(j); // async — remplit le canvas quand l'historique station arrive
@@ -7583,13 +7639,21 @@ async function _renderAromeCompare(j) {
   } catch(e) {}
   var stEl = document.getElementById('arome-cmp-st');
   if (stEl) stEl.textContent = stName ? '(' + stName + ')' : '(station indispo)';
-  // 2. Prévision du tableau (dates « faux local » +11h → vrai UTC)
-  var page = [];
+  // 2. Prévisions du tableau — meteo.nc ET GFS séparément et TOUJOURS les deux
+  // quand disponibles (avant : une seule série suivant le toggle Hs actif, donc
+  // meteo.nc disparaissait dès que le toggle était sur GFS — signalé par
+  // l'utilisateur). Dates « faux local » +11h → vrai UTC, cf. convention partout.
+  var pageNc = [], pageGfs = [];
   try {
-    var fd = (_currentHsSrc === 'om' && _omFcastData) ? _omFcastData : _fcastData;
-    if (fd && fd.dates) fd.dates.forEach(function(d, i) {
+    if (_ncFcastData && _ncFcastData.dates) _ncFcastData.dates.forEach(function(d, i) {
       var ms = (d instanceof Date ? d.getTime() : d) - 11 * 3600000;
-      if (fd.wSpd && fd.wSpd[i] != null) page.push({ ms: ms, kt: fd.wSpd[i] });
+      if (_ncFcastData.wSpd && _ncFcastData.wSpd[i] != null) pageNc.push({ ms: ms, kt: _ncFcastData.wSpd[i] });
+    });
+  } catch(e) {}
+  try {
+    if (_omFcastData && _omFcastData.dates) _omFcastData.dates.forEach(function(d, i) {
+      var ms = (d instanceof Date ? d.getTime() : d) - 11 * 3600000;
+      if (_omFcastData.wSpd && _omFcastData.wSpd[i] != null) pageGfs.push({ ms: ms, kt: _omFcastData.wSpd[i] });
     });
   } catch(e) {}
   // 3. AROME
@@ -7633,19 +7697,19 @@ async function _renderAromeCompare(j) {
   aromeCachePts.forEach(function(p) { if (p.ms < t0) t0 = p.ms; });
   t0 = Math.max(t0, now - 8 * 24 * 36e5);
   function clip(a) { return a.filter(function(p) { return p.ms >= t0 && p.ms <= t1; }); }
-  obs = clip(obs); page = clip(page); aro = clip(aro); cachePts = clip(cachePts); aromeCachePts = clip(aromeCachePts);
+  obs = clip(obs); pageNc = clip(pageNc); pageGfs = clip(pageGfs); aro = clip(aro); cachePts = clip(cachePts); aromeCachePts = clip(aromeCachePts);
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
   if (!el2 || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
   var W = el2.clientWidth || 600, H = 210; // agrandi : lisibilité avant tout
   var dpr = window.devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.cursor = 'crosshair';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-  var allKt = [12].concat(obs.map(function(p){return p.kt;}), page.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}));
+  var allKt = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}));
   var maxKt = Math.max.apply(null, allKt) * 1.15;
   var padL = 26, padR = 6, padT = 10, padB = 18;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
   function Y(kt) { return padT + (1 - kt / maxKt) * (H - padT - padB); }
-  obs.sort(function(a,b){return a.ms-b.ms;}); page.sort(function(a,b){return a.ms-b.ms;}); aro.sort(function(a,b){return a.ms-b.ms;});
+  obs.sort(function(a,b){return a.ms-b.ms;}); pageNc.sort(function(a,b){return a.ms-b.ms;}); pageGfs.sort(function(a,b){return a.ms-b.ms;}); aro.sort(function(a,b){return a.ms-b.ms;});
 
   function draw(hoverMs) {
     ctx.clearRect(0, 0, W, H);
@@ -7690,10 +7754,13 @@ async function _renderAromeCompare(j) {
       ctx.lineTo(X(pts[pts.length - 1].ms), Y(pts[pts.length - 1].kt));
       ctx.stroke(); ctx.setLineDash([]);
     }
-    drawSmooth(page, 'rgba(232,160,87,.9)', 1.8, [6, 4]);
-    // marqueurs sur les créneaux réels meteo.nc (3h) — la courbe est interpolée
+    drawSmooth(pageNc, 'rgba(232,160,87,.9)', 1.8, [6, 4]);
+    drawSmooth(pageGfs, 'rgba(169,159,248,.9)', 1.8, [6, 4]);
+    // marqueurs sur les créneaux réels (3h) — les courbes sont interpolées
     ctx.fillStyle = 'rgba(232,160,87,.9)';
-    page.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
+    pageNc.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
+    ctx.fillStyle = 'rgba(169,159,248,.9)';
+    pageGfs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
     drawSmooth(aro, 'rgba(79,163,199,.95)', 2.2);
     drawSmooth(obs, 'rgba(61,186,138,.95)', 2.4);
     // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
@@ -7719,29 +7786,42 @@ async function _renderAromeCompare(j) {
     pts.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
     return best;
   }
+  function updateReadout(ms) {
+    var ro = document.getElementById('arome-cmp-readout');
+    if (!ro) return;
+    if (ms == null) { ro.innerHTML = '← Survolez pour lire les valeurs au même instant'; return; }
+    var dNC = new Date(ms + 11 * 36e5); // affichage heure NC (convention +11h/getUTC*)
+    var lbl = String(dNC.getUTCDate()).padStart(2, '0') + '/' + (dNC.getUTCMonth() + 1) + ' ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h' + String(dNC.getUTCMinutes()).padStart(2, '0');
+    var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pNc = nearest(pageNc, ms, 105 * 60000), pGfs = nearest(pageGfs, ms, 105 * 60000), pCache = nearest(cachePts, ms), pAroCache = nearest(aromeCachePts, ms);
+    ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
+      + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> kt</span>' : '')
+      + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> kt</span>' : '')
+      + (!pAro && pAroCache ? ' · <span style="color:#4fa3c7;">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> kt</span>' : '')
+      + (pNc ? ' · <span style="color:#e8a057;">meteo.nc <b>' + Math.round(pNc.kt) + '</b> kt</span>' : '')
+      + (!pNc && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> kt</span>' : '')
+      + (pGfs ? ' · <span style="color:#a99ff8;">GFS <b>' + Math.round(pGfs.kt) + '</b> kt</span>' : '');
+  }
+  function findNearestColIdx(ms) {
+    if (!window._aromeColInfo) return null;
+    var best = null, bd = 90 * 60000;
+    window._aromeColInfo.forEach(function(c, idx) { var df = Math.abs(c.ms - ms); if (df < bd) { bd = df; best = idx; } });
+    return best;
+  }
   cv.onmousemove = function(e) {
     var rect = cv.getBoundingClientRect();
     var ms = t0 + (e.clientX - rect.left - padL) / (W - padL - padR) * (t1 - t0);
     if (ms < t0 || ms > t1) return;
     draw(ms);
-    var ro = document.getElementById('arome-cmp-readout');
-    if (ro) {
-      var dNC = new Date(ms + 11 * 36e5); // affichage heure NC (convention +11h/getUTC*)
-      var lbl = String(dNC.getUTCDate()).padStart(2, '0') + '/' + (dNC.getUTCMonth() + 1) + ' ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h' + String(dNC.getUTCMinutes()).padStart(2, '0');
-      var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pPage = nearest(page, ms, 105 * 60000), pCache = nearest(cachePts, ms), pAroCache = nearest(aromeCachePts, ms);
-      ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
-        + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> kt</span>' : '')
-        + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> kt</span>' : '')
-        + (!pAro && pAroCache ? ' · <span style="color:#4fa3c7;">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> kt</span>' : '')
-        + (pPage ? ' · <span style="color:#e8a057;">meteo.nc <b>' + Math.round(pPage.kt) + '</b> kt</span>' : '')
-        + (!pPage && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> kt</span>' : '');
-    }
+    updateReadout(ms);
+    if (window._aromeSetTableCol) window._aromeSetTableCol(findNearestColIdx(ms));
   };
   cv.onmouseleave = function() {
     draw(null);
-    var ro = document.getElementById('arome-cmp-readout');
-    if (ro) ro.innerHTML = '← Survolez pour lire les 3 valeurs au même instant';
+    updateReadout(null);
+    if (window._aromeSetTableCol) window._aromeSetTableCol(null);
   };
+  // Lien table AROME → graphe : appelé par colSel() dans _loadAromeWidget()
+  window._aromeCmpCursorTo = function(ms) { draw(ms); updateReadout(ms); };
   // Mobile : le doigt déplace le curseur (le scroll vertical reste possible)
   cv.ontouchstart = cv.ontouchmove = function(ev) {
     if (ev.touches && ev.touches[0]) cv.onmousemove({ clientX: ev.touches[0].clientX });
@@ -13493,6 +13573,9 @@ function ensoRender() {
     var el = document.getElementById(id);
     if (!el) return;
     if (el.tagName === 'DETAILS' && !el.open) el.open = true; // ex: tableau replié sur mobile
+    // Historique 7 jours vit maintenant dans l'accordéon Cache météo (replié par défaut)
+    var panel = document.getElementById('past-conditions-panel');
+    if (panel && panel.contains(el) && panel.style.display === 'none') togglePastConditions();
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     var m = document.getElementById('quick-nav-menu');
     if (m) m.classList.remove('open');
