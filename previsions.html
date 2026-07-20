@@ -608,17 +608,21 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <!-- Toggle source -->
         <div style="display:flex;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;">
           <div style="display:flex;background:rgba(255,255,255,.05);border-radius:20px;border:1px solid var(--border);padding:2px;gap:2px;">
-            <button id="btn-src-nc" onclick="setHsSrc('nc')" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;">🛰 meteo.nc</button>
-            <button id="btn-src-om" onclick="setHsSrc('om')" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;">🌐 GFS</button>
+            <button id="btn-src-nc" onclick="setHsSrc('nc')" title="Données officielles Météo-France Nouvelle-Calédonie (meteo.nc) — plus précises localement, nécessitent un token." style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;">🛰 meteo.nc</button>
+            <button id="btn-src-om" onclick="setHsSrc('om')" title="Modèle GFS (NOAA) via Open-Meteo — résolution plus grossière, mais accessible sans token." style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;">🌐 GFS</button>
           </div>
         </div>
       </div>
 
       <div style="display:flex;gap:10px;align-items:center;font-size:9px;color:var(--muted);">
-        <span><span style="display:inline-block;width:10px;height:10px;background:#1a5f8a;border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Houle 1</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#6ab4d4;border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Houle 2</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:rgba(232,160,87,.55);border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Mer vent</span>
-        <span><span style="display:inline-block;width:12px;height:2px;background:rgba(255,255,255,.4);vertical-align:middle;margin-right:2px;"></span>Hs tot.</span>
+        <span style="cursor:help;" title="Houle primaire : la houle dominante, celle qui vient de la plus grosse tempête lointaine — c'est elle qui donne la taille et la période des vagues qui déferlent.">
+          <span style="display:inline-block;width:10px;height:10px;background:#1a5f8a;border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Houle 1 ⓘ</span>
+        <span style="cursor:help;" title="Houle secondaire : une 2ᵉ houle plus faible venant d'une direction/période différente — peut se combiner à la houle 1 (plus gros pics) ou la brouiller (mer croisée).">
+          <span style="display:inline-block;width:10px;height:10px;background:#6ab4d4;border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Houle 2 ⓘ</span>
+        <span style="cursor:help;" title="Mer du vent (« wind sea ») : vagues courtes générées localement par le vent, période courte — dégradent souvent la qualité de la vague si fortes.">
+          <span style="display:inline-block;width:10px;height:10px;background:rgba(232,160,87,.55);border-radius:2px;vertical-align:middle;margin-right:2px;"></span>Mer vent ⓘ</span>
+        <span style="cursor:help;" title="Hauteur significative totale (Hs) : combinaison de toutes les houles + mer du vent — la hauteur de vague réellement ressentie.">
+          <span style="display:inline-block;width:12px;height:2px;background:rgba(255,255,255,.4);vertical-align:middle;margin-right:2px;"></span>Hs tot. ⓘ</span>
       </div>
     </div>
     <div id="chart-day-nav" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;"></div>
@@ -3761,7 +3765,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   setHsSrc(_currentHsSrc, true); // skipRedraw=true
   // Désactiver le bouton NC si pas de données meteo.nc
   var btnNc=document.getElementById('btn-src-nc');
-  if(btnNc) { btnNc.style.opacity=useNC?'1':'0.4'; btnNc.title=useNC?'':'Données meteo.nc non disponibles pour ce spot'; }
+  if(btnNc) { btnNc.style.opacity=useNC?'1':'0.4'; btnNc.title=useNC?'Données officielles Météo-France Nouvelle-Calédonie (meteo.nc) — plus précises localement, nécessitent un token.':'Données meteo.nc non disponibles pour ce spot'; }
 
   // Indicateur source dans le nav
   var lastUpEl = document.getElementById('last-update');
@@ -4142,8 +4146,8 @@ function renderBestSessions(sessions) {
     + 'border-radius:var(--r);overflow:hidden;">' + rows + '</div>';
 }
 
-// Clique sur une carte BSF → switch spot + scroll vers le bon créneau
-function bsfSelectSpot(spotIdx, startMs) {
+// Clique sur une carte BSF → switch spot + positionne le curseur du widget sur le créneau + scroll
+async function bsfSelectSpot(spotIdx, startMs) {
   if (spotIdx < 0 || spotIdx >= SPOTS.length) return;
   // Sélectionne le spot
   currentSpot = spotIdx;
@@ -4153,10 +4157,24 @@ function bsfSelectSpot(spotIdx, startMs) {
   var sp = SPOTS[spotIdx];
   if (sp && sp.hsSrc) { _currentHsSrc = sp.hsSrc; updateHsToggleUI(); }
   _recenterSpotMap(spotIdx);
-  loadForecast(spotIdx);
-  // Scroll vers l'encart principal
-  var cond = document.getElementById('current-cond');
-  if (cond) setTimeout(function(){ cond.scrollIntoView({behavior:'smooth', block:'start'}); }, 200);
+  await loadForecast(spotIdx);
+  // Curseur sur le créneau choisi (idx le plus proche de startMs dans les données actives) —
+  // réutilise _gwSyncFromPower, déjà branché sur le clic du graphique Puissance.
+  try {
+    var d = _gwActiveData();
+    if (d && d.dates && d.dates.length && startMs) {
+      var bestIdx = 0, bestDiff = Infinity;
+      for (var i = 0; i < d.dates.length; i++) {
+        var diff = Math.abs(d.dates[i].getTime() - startMs);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+      if (bestDiff < 3 * 3600000) _gwSyncFromPower(bestIdx, true);
+    }
+  } catch (e) { console.warn('[bsfSelectSpot] sync curseur', e && e.message); }
+  // Scroll vers le widget (là où le curseur apparaît), repli sur l'encart principal
+  var gw = document.getElementById('gw-widget');
+  var target = (gw && gw.style.display !== 'none') ? gw : document.getElementById('current-cond');
+  if (target) setTimeout(function(){ target.scrollIntoView({behavior:'smooth', block:'start'}); }, 150);
 }
 
 // ════════════════════════════════════════════════════════════════════════
