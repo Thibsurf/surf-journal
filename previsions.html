@@ -42,7 +42,7 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
 .logo{font-family:var(--font-d);font-size:1.05rem;color:var(--text);margin-right:auto;}
 .logo span{color:var(--accent);}
 .nav-tab{background:none;border:none;cursor:pointer;color:var(--muted);font-family:var(--font-b);
-  font-size:12px;padding:5px 10px;border-radius:var(--rs);transition:all .2s;}
+  font-size:12px;padding:5px 10px;border-radius:var(--rs);transition:all .2s;white-space:nowrap;flex-shrink:0;}
 .nav-tab:hover{color:var(--text);background:var(--glass);}
 .nav-tab.active{color:var(--accent);}
 #last-update{font-size:11px;color:var(--faint);}
@@ -225,7 +225,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 #windy-frame{width:100%;height:420px;border-radius:0 0 var(--r) var(--r);display:block;border:none;}
 .windy-layer-btns{display:flex;gap:5px;flex-wrap:wrap;}
 .wbtn{padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:none;
-  color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--font-b);transition:all .2s;}
+  color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--font-b);transition:all .2s;white-space:nowrap;}
 .wbtn.active{background:rgba(79,163,199,.15);border-color:var(--accent);color:var(--accent);}
 
 /* SHOM */
@@ -1428,9 +1428,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <div style="font-size:10px;color:var(--faint);" id="tide-source-lbl">Courbe: interpolation cosinus entre PM/BM meteo.nc (SHOM officiel) · chargement...</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;">
-        <button onclick="tideShift(-1)" style="background:var(--glass);border:1px solid var(--border);color:var(--muted);padding:4px 12px;border-radius:var(--rs);cursor:pointer;font-size:13px;">&#9664;</button>
+        <button onclick="tideShift(-1)" style="background:var(--glass);border:1px solid var(--border);color:var(--muted);min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--rs);cursor:pointer;font-size:13px;">&#9664;</button>
         <span id="tide-curve-date" style="font-size:12px;color:var(--accent);min-width:120px;text-align:center;font-weight:500;"></span>
-        <button onclick="tideShift(1)" style="background:var(--glass);border:1px solid var(--border);color:var(--muted);padding:4px 12px;border-radius:var(--rs);cursor:pointer;font-size:13px;">&#9654;</button>
+        <button onclick="tideShift(1)" style="background:var(--glass);border:1px solid var(--border);color:var(--muted);min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--rs);cursor:pointer;font-size:13px;">&#9654;</button>
       </div>
     </div>
     <div style="position:relative;height:220px;">
@@ -6768,7 +6768,8 @@ function addMapLegend(map) {
       +'<div style="display:flex;align-items:center;gap:6px;margin-top:2px;">'
       +'<svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0"><circle cx="9" cy="9" r="8" fill="rgba(6,16,30,0.88)" stroke="#e8c44a" stroke-width="1.5"/><g transform="rotate(0,9,9)"><line x1="9" y1="14" x2="9" y2="5" stroke="#e8c44a" stroke-width="1.8" stroke-linecap="round"/><polygon points="9,3 7,7 9,5 11,7" fill="#e8c44a"/></g><text x="9" y="12" text-anchor="middle" font-size="4" font-family="monospace" fill="#e8c44a" font-weight="700">kt</text></svg>'
       +'Station vent obs.</div>'
-      +'<div style="font-size:9px;color:rgba(160,195,220,0.5);margin-top:3px;padding-top:3px;border-top:1px solid rgba(79,163,199,.15);">Flèche = direction du vent</div>';
+      +'<div style="font-size:9px;color:rgba(160,195,220,0.5);margin-top:3px;padding-top:3px;border-top:1px solid rgba(79,163,199,.15);">Flèche = direction du vent</div>'
+      +'<div style="font-size:9px;color:rgba(160,195,220,0.5);margin-top:2px;">Pluie non disponible ici → onglet 🌊 Windy</div>';
     L.DomEvent.disableClickPropagation(d);
     return d;
   };
@@ -6835,17 +6836,23 @@ async function _loadAromeWidget(wgId) {
   var body = document.getElementById('wg-arome-body'); if (!body) return;
   _wgLoadedFor = wgId;
   body.innerHTML = '<div class="loading" style="padding:14px;"><div class="spin"></div> AROME 2.5 km…</div>';
-  var j = null;
+  var j = null, errCode = null;
   try {
     var ctrl = new AbortController(); var tt = setTimeout(function(){ ctrl.abort(); }, 12000);
     var r = await fetch(_NC_WORKER + '/arome?spot=' + wgId, { signal: ctrl.signal });
     clearTimeout(tt);
-    if (r.ok) j = await r.json();
+    var jr = await r.json().catch(function(){ return null; });
+    if (r.ok) j = jr; else errCode = jr && jr.error;
   } catch(e) {}
   if (!j || !j.ok || !j.hours || !j.hours.length || !j.init) {
     _wgLoadedFor = null; // permettre une nouvelle tentative
     _aromeData = null; window._aromeColInfo = null; // jamais de données d'un autre spot
-    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;">⚠ AROME indisponible pour ce spot — '
+    // Message honnête : distinguer « ce spot n'a pas AROME chez Windguru » (limite
+    // fournisseur, pas un bug) d'une vraie panne réseau/run en cours.
+    var msg = errCode === 'AROME_NOT_AVAILABLE'
+      ? 'AROME non configuré pour ce spot chez Windguru (limite du fournisseur, pas un bug de l\'app).'
+      : '⚠ AROME indisponible pour l\'instant (erreur réseau ou run en cours) — réessaie plus tard.';
+    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;">' + msg + ' '
       + '<a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);">voir sur windguru ↗</a></div>';
     return;
   }
@@ -10380,7 +10387,7 @@ async function initMaree() {
   renderTwilightAndOrbit(now.getFullYear(), now.getMonth()+1, now.getDate());
   drawFishingScore();
   var spot = SPOTS[currentSpot] || SPOTS[0];
-  var BASE_T = 'https://rpcache.meteo.nc/internet2018client/2.0/tide?id='+(spot.tideId||'9881852');
+  var tideId = spot.tideId || '9881852';
   var days = [];
   for(var di=-2; di<=1; di++) {
     var dDate = new Date(now.getTime() + di*864e5);
@@ -10388,15 +10395,16 @@ async function initMaree() {
     // UTC décalait toute la fenêtre d'un jour (on demandait J-3→J0 au lieu de J-2→J+1)
     days.push(dDate.getFullYear() + '-' + String(dDate.getMonth()+1).padStart(2,'0') + '-' + String(dDate.getDate()).padStart(2,'0'));
   }
+  // _fetchTideDay() (worker → fallback direct rpcache, valide la couverture de date,
+  // normalise le Z abusif en interne) au lieu d'un ncFetch() direct qui exige un
+  // token local : sans token valide, les 4 jours échouaient silencieusement et la
+  // courbe « Marée & Pêche » basculait sur l'harmonique (aplatie) même pour aujourd'hui
+  // — même bug déjà corrigé dans tideShift() et le widget principal, oublié ici.
   var dayResults = await Promise.all(days.map(function(ds){
-    return ncFetch(BASE_T+'&date='+ds).catch(function(){return null;});
+    return _fetchTideDay(tideId, ds).catch(function(){return null;});
   }));
   var mergedHT = [], mergedLT = [];
-  dayResults.forEach(function(r, ri){
-    // ⚠ Z abusif : sans le vote, renderTideCurve croyait le « Z » comme du vrai
-    // UTC → tout l'onglet Marée & Pêche décalé de +11h (ce flux avait échappé
-    // au correctif appliqué au widget/forecast)
-    if (r) r = _tideNormalizeDay(r, days[ri]);
+  dayResults.forEach(function(r){
     if(r && r.properties && r.properties.tide) {
       mergedHT = mergedHT.concat(r.properties.tide.high_tide||[]);
       mergedLT = mergedLT.concat(r.properties.tide.low_tide||[]);
