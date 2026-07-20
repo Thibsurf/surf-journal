@@ -3739,7 +3739,11 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     }
   }
   _fcastData={lbl,sw1h,sw2h,wndH,totH,sw1t,sw1d,sw2d,sw2t,wSpd,wGst,wDir,sst,pwr,dates,cld,rain,cldL,cldM,cldH,tAir,
-    wGstFromGFS: useNC ? (typeof _wGstFromGFS!=='undefined' ? _wGstFromGFS : !!(omWind&&omWind.hourly)) : false};
+    wGstFromGFS: useNC ? (typeof _wGstFromGFS!=='undefined' ? _wGstFromGFS : !!(omWind&&omWind.hourly)) : false,
+    // sw2Native=false → sw2h est un résidu calculé (Hs-H1-Hvent), pas une vraie
+    // houle secondaire modélisée par meteo.nc. Utilisé par le comparatif houle
+    // pour ne pas afficher meteo.nc comme s'il avait une houle 2 fiable.
+    sw2Native: useNC ? !!(typeof _sk !== 'undefined' && _sk && _sk.h) : false};
   // Sauvegarder séparément les données NC pour le toggle
   // (reset si ce spot n'a pas de données NC — sinon le toggle/widget afficherait
   //  les données meteo.nc du spot précédent)
@@ -3924,27 +3928,56 @@ async function _fetchMeteoFranceWave(spot) {
   finally { clearTimeout(tt); }
 }
 
-// ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global) ──
+// ECMWF (IFS-WAM, id_model=118 chez Windguru) — PAS listé dans id_model_arr
+// pour les spots NC (leur curation par spot ne l'inclut pas), mais la requête
+// directe par id_model répond quand même avec de vraies données (vérifié :
+// SWELL1/SWPER1/SWELL2/SWPER2 cohérents, 9 km, ~14,75 j d'horizon). CORS ouvert
+// (access-control-allow-origin:*) et un Referer non-windguru fonctionne (testé :
+// seul un Referer VIDE renvoie 401) → appel direct client, pas de worker.
+async function _fetchEcmwfWave(spot) {
+  var wgId = typeof _wgIdForSpot === 'function' ? _wgIdForSpot(spot) : null;
+  if (!wgId) return { primary: [], secondary: [] };
+  var ctrl = new AbortController();
+  var tt = setTimeout(function(){ ctrl.abort(); }, 10000);
+  try {
+    var r = await fetch('https://www.windguru.cz/int/iapi.php?q=forecast&id_model=118&id_spot=' + wgId, { signal: ctrl.signal });
+    if (!r.ok) return { primary: [], secondary: [] };
+    var j = await r.json();
+    var f = j && j.fcst;
+    if (!f || !f.hours || !f.SWELL1 || !f.initstamp) return { primary: [], secondary: [] };
+    var initMs = f.initstamp * 1000, primary = [], secondary = [];
+    for (var i = 0; i < f.hours.length; i++) {
+      var ms = initMs + f.hours[i] * 3600000;
+      if (f.SWELL1[i] != null) primary.push({ ms: ms, h: f.SWELL1[i], t: f.SWPER1 && f.SWPER1[i] });
+      if (f.SWELL2 && f.SWELL2[i] != null) secondary.push({ ms: ms, h: f.SWELL2[i], t: f.SWPER2 && f.SWPER2[i] });
+    }
+    return { primary: primary, secondary: secondary };
+  } catch (e) { console.warn('[ECMWF wave]', e && e.message); return { primary: [], secondary: [] }; }
+  finally { clearTimeout(tt); }
+}
+
+// ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global / ECMWF) ──
 // _ncFcastData et _omFcastData sont TOUJOURS peuplés en parallèle (cf. commentaire
 // « Toujours peupler _omFcastData... même si useNC=true, on veut pouvoir comparer »
 // plus haut) — donc les deux séries sont disponibles indépendamment du toggle
 // affiché sur l'histogramme Hs. Convention dates : mêmes objets Date « NC en UTC »
 // que partout ailleurs (true UTC = .getTime() - 11h), cf. _renderAromeCompare.
-// ECMWF évalué et écarté : aucune couverture houle pour la NC — ni sur Open-Meteo
-// (ewam/ecmwf_wam025 → null), ni sur Windguru (leur IFS-HRES id_model=117 = vent
-// seul, wave:false ; leur seul modèle houle est id 83 = GFS-Wave, déjà couvert
-// par notre série GFS via Open-Meteo — aucune valeur ajoutée à l'intégrer).
 var SWELL_MODELS = [
-  { key: 'nc',  label: 'meteo.nc',  col: 'rgba(61,186,138,.95)',  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
-  { key: 'gfs', label: 'GFS',       col: 'rgba(79,163,199,.95)',  desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
-  { key: 'bom', label: 'BOM WW3',   col: 'rgba(232,160,87,.95)',  desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
-  { key: 'mf',  label: 'MF global', col: 'rgba(167,159,248,.95)', desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' }
+  { key: 'nc',    label: 'meteo.nc',  col: 'rgba(61,186,138,.95)',  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
+  { key: 'gfs',   label: 'GFS',       col: 'rgba(79,163,199,.95)',  desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
+  { key: 'bom',   label: 'BOM WW3',   col: 'rgba(232,160,87,.95)',  desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
+  { key: 'mf',    label: 'MF global', col: 'rgba(167,159,248,.95)', desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' },
+  { key: 'ecmwf', label: 'ECMWF',     col: 'rgba(224,92,92,.95)',   desc: 'ECMWF IFS-WAM (via Windguru, id_model 118) — grille 0,09° (~9 km), le plus fin des modèles globaux ici' }
 ];
 var _swellMode = 'primary'; // 'primary' | 'secondary'
 var _swellCache = null;     // { nc:{primary,secondary}, gfs:{...}, bom:{...}, mf:{...} } — repeuplé par fetch, redessiné sans réseau au toggle
 
 function _swellToPts(d, comp) {
   if (!d || !d.dates) return [];
+  // Houle 2 meteo.nc = résidu calculé (Hs-H1-Hvent) quand le flux ne l'expose
+  // pas nativement (cf. sw2Native) — pas une vraie houle secondaire modélisée,
+  // on ne la propose pas dans le comparatif pour ne pas induire en erreur.
+  if (comp === 2 && d.sw2Native === false) return [];
   var hArr = comp === 2 ? d.sw2h : d.sw1h, tArr = comp === 2 ? d.sw2t : d.sw1t;
   var pts = [];
   d.dates.forEach(function(dt, i) {
@@ -3964,9 +3997,9 @@ async function _renderSwellCompare() {
   if (ncData.primary.length < 2 && gfsData.primary.length < 2) { card.style.display = 'none'; return; }
   card.style.display = 'block';
   var _spotForFetch = SPOTS[currentSpot];
-  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch)]);
+  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch), _fetchEcmwfWave(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
-  _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1] };
+  _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2] };
   _drawSwellCompare();
 }
 
