@@ -620,7 +620,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 
   <!-- HISTOGRAMME Hs EMPILÉ -->
-  <div class="card" style="margin-bottom:12px;">
+  <div class="card" id="sec-hs" style="margin-bottom:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <div class="section-label" style="margin-bottom:0;">🌊 Hs — <span id="hs-spot-lbl" style="color:var(--accent);"></span></div>
@@ -2003,6 +2003,12 @@ function showTab(name, btn) {
   document.getElementById('tab-'+name).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
+  // Menu flottant de navigation rapide : pertinent seulement sur la longue page Prévisions
+  var _qnFab = document.getElementById('quick-nav-fab');
+  if (_qnFab) {
+    _qnFab.classList.toggle('show', name === 'forecast');
+    if (name !== 'forecast') { var _qnM = document.getElementById('quick-nav-menu'); if (_qnM) _qnM.classList.remove('open'); }
+  }
   if(name==='map' && !mapInited){
     initMap(); mapInited=true;
     // Historique 48h (vent/temp/pression/précip par station) : ouvert d'office —
@@ -13356,6 +13362,54 @@ function ensoRender() {
       navigator.serviceWorker.register('/surf-journal/sw.js');
     });
   }
+</script>
+
+<!-- Menu flottant de navigation rapide — page « Prévisions » uniquement (longue
+     page, plusieurs sections) ; masqué sur les autres onglets via showTab(). -->
+<style>
+  #quick-nav-fab{position:fixed;right:16px;bottom:20px;width:46px;height:46px;border-radius:50%;
+    background:rgba(13,31,60,.92);border:1px solid rgba(79,163,199,.4);color:var(--accent);
+    font-size:20px;cursor:pointer;z-index:900;box-shadow:0 4px 16px rgba(0,0,0,.4);
+    display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
+  #quick-nav-fab.show{display:flex;}
+  #quick-nav-menu{position:fixed;right:16px;bottom:74px;z-index:900;display:none;
+    background:var(--deep);border:1px solid var(--border);border-radius:var(--r);
+    padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:170px;}
+  #quick-nav-menu.open{display:block;}
+  #quick-nav-menu button{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;
+    color:var(--text);font-family:var(--font-b);font-size:12px;padding:8px 10px;border-radius:var(--rs);
+    cursor:pointer;text-align:left;}
+  #quick-nav-menu button:hover{background:var(--glass);}
+</style>
+<button id="quick-nav-fab" class="show" onclick="_toggleQuickNav()" title="Navigation rapide" aria-label="Navigation rapide">🧭</button>
+<div id="quick-nav-menu">
+  <button onclick="_quickNavTo('bsf-wrap')">🏄 Meilleurs créneaux</button>
+  <button onclick="_quickNavTo('gw-widget')">📊 Widget météo</button>
+  <button onclick="_quickNavTo('swell-cmp-card')">🆚 Comparatif houle</button>
+  <button onclick="_quickNavTo('wg-arome-card')">🌀 AROME / Puissance</button>
+  <button onclick="_quickNavTo('sec-nav')">⚓ Navigation</button>
+  <button onclick="_quickNavTo('sec-hs')">🌊 Houle détail</button>
+  <button onclick="_quickNavTo('table-detail-wrap')">📋 Tableau horaire</button>
+</div>
+<script>
+  function _toggleQuickNav() {
+    var m = document.getElementById('quick-nav-menu');
+    if (m) m.classList.toggle('open');
+  }
+  function _quickNavTo(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (el.tagName === 'DETAILS' && !el.open) el.open = true; // ex: tableau replié sur mobile
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var m = document.getElementById('quick-nav-menu');
+    if (m) m.classList.remove('open');
+  }
+  // Fermer le menu si on clique ailleurs sur la page
+  document.addEventListener('click', function(e) {
+    var m = document.getElementById('quick-nav-menu'), fab = document.getElementById('quick-nav-fab');
+    if (!m || !m.classList.contains('open')) return;
+    if (!m.contains(e.target) && e.target !== fab) m.classList.remove('open');
+  });
 </script>
 </body>
 </html>
