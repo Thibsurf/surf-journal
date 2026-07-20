@@ -6977,6 +6977,7 @@ async function _loadAromeWidget(wgId) {
     + '<span><span style="color:#4fa3c7;font-weight:700;">━</span> AROME 2.5</span>'
     + '<span><span style="color:#e8a057;font-weight:700;">╌</span> meteo.nc/GFS (tableau)</span>'
     + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé (cache)</span>'
+    + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé (cache)</span>'
     + '</div>'
     + '<div id="arome-cmp-wrap" style="width:100%;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour lire les 3 valeurs au même instant</div>'
@@ -7015,6 +7016,58 @@ async function _loadAromeWidget(wgId) {
     });
   }
   _renderAromeCompare(j); // async — remplit le canvas quand l'historique station arrive
+  _saveAromeSnapshot(SPOTS[currentSpot], j).catch(function(e){ console.warn('[arome cache]', e && e.message); });
+}
+
+// Archive le run AROME courant dans meteo_cache (même table que le cache
+// meteo.nc/GFS, même clé « date_lat_lon ») pour permettre au comparatif vent de
+// remonter plus loin dans le passé au fil des jours — sans créer de nouvelle
+// table (pas d'accès service-role depuis le client). Read-modify-write ciblé sur
+// un champ dédié (aromeKt/aromeGst) : on ne touche jamais aux champs meteo.nc
+// existants d'une ligne, donc une écriture concurrente ne peut qu'être écrasée
+// puis réécrite au prochain chargement — pas de corruption, au pire un cache
+// manqué ponctuel.
+async function _saveAromeSnapshot(spot, j) {
+  if (!spot || !j || !j.hours || !j.hours.length || !j.init || !_ensureSupabaseClient()) return;
+  var byDate = {}; // dateStr NC → { h → {kt, gst} }
+  j.hours.forEach(function(hh, i) {
+    var kt = j.WINDSPD[i], gst = j.GUST[i];
+    if (kt == null && gst == null) return;
+    var ms = j.init * 1000 + hh * 3600000;
+    var nc = new Date(ms + 11 * 3600000);
+    var ds = nc.getUTCFullYear() + '-' + String(nc.getUTCMonth() + 1).padStart(2, '0') + '-' + String(nc.getUTCDate()).padStart(2, '0');
+    if (!byDate[ds]) byDate[ds] = {};
+    byDate[ds][nc.getUTCHours()] = { kt: kt != null ? Math.round(kt) : null, gst: gst != null ? Math.round(gst) : null };
+  });
+  var dates = Object.keys(byDate);
+  if (!dates.length) return;
+  var latS = spot.lat.toFixed(3), lonS = spot.lon.toFixed(3);
+  var ids = dates.map(function(ds) { return ds + '_' + latS + '_' + lonS; });
+  var existing = {};
+  try {
+    var { data: ex } = await _tokenSbClient.from('meteo_cache').select('id,spot_name,lat,lon,data,status').in('id', ids);
+    if (ex) ex.forEach(function(r) { existing[r.id] = r; });
+  } catch (e) { return; }
+  var toWrite = [];
+  dates.forEach(function(ds) {
+    var id = ds + '_' + latS + '_' + lonS;
+    var row = existing[id];
+    var data = (row && row.data) ? row.data : {};
+    var hours = (data.hours || []).slice();
+    var byHour = {}; hours.forEach(function(hr, idx) { if (hr && hr.h != null) byHour[hr.h] = idx; });
+    Object.keys(byDate[ds]).forEach(function(hStr) {
+      var h = +hStr, v = byDate[ds][hStr];
+      if (byHour[h] != null) { hours[byHour[h]].aromeKt = v.kt; hours[byHour[h]].aromeGst = v.gst; }
+      else hours.push({ h: h, aromeKt: v.kt, aromeGst: v.gst });
+    });
+    data.hours = hours;
+    toWrite.push({
+      id: id, spot_name: (row && row.spot_name) || spot.marineName || spot.name,
+      lat: (row && row.lat != null) ? row.lat : spot.lat, lon: (row && row.lon != null) ? row.lon : spot.lon,
+      data: data, status: (row && row.status) || 'gfs'
+    });
+  });
+  if (toWrite.length) { try { await _tokenSbClient.from('meteo_cache').upsert(toWrite); } catch (e) {} }
 }
 
 // Bandeau sous le tableau AROME : détail du créneau survolé + valeur du tableau
@@ -7095,40 +7148,49 @@ async function _renderAromeCompare(j) {
     if (j.WINDSPD[i] != null) aro.push({ ms: j.init * 1000 + hh * 3600000, kt: j.WINDSPD[i] });
   });
   var now = Date.now(), t0 = now - 24 * 36e5, t1 = now + 48 * 36e5;
-  // 4. Passé meteo.nc depuis le CACHE (meteo_cache, hier + aujourd'hui) —
-  // affiché en POINTS sans courbe : ce sont des prévisions archivées, pas une
-  // série continue ; on les compare aux mesures pour juger le modèle a posteriori
-  var cachePts = [];
+  // 4. Passé depuis le CACHE (meteo_cache, jusqu'à 8 jours en arrière) — affiché
+  // en POINTS sans courbe : ce sont des prévisions archivées, pas une série
+  // continue ; on les compare aux mesures pour juger les modèles a posteriori.
+  // aromeKt/aromeGst : archivés par _saveAromeSnapshot() à chaque chargement du
+  // widget AROME — la fenêtre affichée s'étend automatiquement en arrière au fil
+  // des jours à mesure que l'historique s'accumule (sans backfill rétroactif).
+  var cachePts = [], aromeCachePts = [];
   try {
     if (typeof _ensureSupabaseClient === 'function' && _ensureSupabaseClient()) {
       var s0 = SPOTS[currentSpot];
       var la = s0.lat.toFixed(3), lo = s0.lon.toFixed(3);
-      var dayIds = [new Date(now - 864e5), new Date(now)].map(function(dd) {
-        return dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0') + '-' + String(dd.getDate()).padStart(2, '0') + '_' + la + '_' + lo;
-      });
+      var dayIds = [];
+      for (var dback = 0; dback <= 8; dback++) {
+        var dd0 = new Date(now - dback * 864e5);
+        dayIds.push(dd0.getFullYear() + '-' + String(dd0.getMonth() + 1).padStart(2, '0') + '-' + String(dd0.getDate()).padStart(2, '0') + '_' + la + '_' + lo);
+      }
       var cRes = await _tokenSbClient.from('meteo_cache').select('id,data').in('id', dayIds);
       if (cRes && cRes.data) cRes.data.forEach(function(row) {
         var hrs = row.data && row.data.hours;
         if (!hrs) return;
         var p = row.id.split('_')[0].split('-');
         hrs.forEach(function(hhh) {
-          if (hhh && hhh.windKt != null && hhh.h != null) {
-            var ms = new Date(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)).getTime();
-            if (ms <= now) cachePts.push({ ms: ms, kt: hhh.windKt });
-          }
+          if (!hhh || hhh.h == null) return;
+          var ms = new Date(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)).getTime();
+          if (ms > now) return;
+          if (hhh.windKt != null) cachePts.push({ ms: ms, kt: hhh.windKt });
+          if (hhh.aromeKt != null) aromeCachePts.push({ ms: ms, kt: hhh.aromeKt });
         });
       });
     }
   } catch(e) {}
+  // Étendre la fenêtre affichée en arrière si de l'historique AROME existe au-delà de -24h
+  aromeCachePts.forEach(function(p) { if (p.ms < t0) t0 = p.ms; });
+  t0 = Math.max(t0, now - 8 * 24 * 36e5);
   function clip(a) { return a.filter(function(p) { return p.ms >= t0 && p.ms <= t1; }); }
-  obs = clip(obs); page = clip(page); aro = clip(aro); cachePts = clip(cachePts);
+  obs = clip(obs); page = clip(page); aro = clip(aro); cachePts = clip(cachePts); aromeCachePts = clip(aromeCachePts);
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
   if (!el2 || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
   var W = el2.clientWidth || 600, H = 210; // agrandi : lisibilité avant tout
   var dpr = window.devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.cursor = 'crosshair';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-  var allKt = [12].concat(obs.map(function(p){return p.kt;}), page.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}));
+  var allKt = [12].concat(obs.map(function(p){return p.kt;}), page.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}));
   var maxKt = Math.max.apply(null, allKt) * 1.15;
   var padL = 26, padR = 6, padT = 10, padB = 18;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
@@ -7187,6 +7249,9 @@ async function _renderAromeCompare(j) {
     // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
     ctx.strokeStyle = 'rgba(232,160,87,.9)'; ctx.lineWidth = 1.4;
     cachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.6, 0, Math.PI * 2); ctx.stroke(); });
+    // Passé AROME (cache) : POINTS CREUX bleu AROME, mêmes principes
+    ctx.strokeStyle = 'rgba(79,163,199,.9)'; ctx.lineWidth = 1.4;
+    aromeCachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.6, 0, Math.PI * 2); ctx.stroke(); });
     // Points sur les mesures (réelles)
     ctx.fillStyle = '#3dba8a';
     obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.7, 0, Math.PI * 2); ctx.fill(); });
@@ -7213,10 +7278,11 @@ async function _renderAromeCompare(j) {
     if (ro) {
       var dNC = new Date(ms + 11 * 36e5); // affichage heure NC (convention +11h/getUTC*)
       var lbl = String(dNC.getUTCDate()).padStart(2, '0') + '/' + (dNC.getUTCMonth() + 1) + ' ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h' + String(dNC.getUTCMinutes()).padStart(2, '0');
-      var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pPage = nearest(page, ms, 105 * 60000), pCache = nearest(cachePts, ms);
+      var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pPage = nearest(page, ms, 105 * 60000), pCache = nearest(cachePts, ms), pAroCache = nearest(aromeCachePts, ms);
       ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
         + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> kt</span>' : '')
         + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> kt</span>' : '')
+        + (!pAro && pAroCache ? ' · <span style="color:#4fa3c7;">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> kt</span>' : '')
         + (pPage ? ' · <span style="color:#e8a057;">meteo.nc <b>' + Math.round(pPage.kt) + '</b> kt</span>' : '')
         + (!pPage && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> kt</span>' : '');
     }
