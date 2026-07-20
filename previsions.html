@@ -70,6 +70,9 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
   .logo-suffix{display:none;}
   #data-source-badge .ds-txt{display:none;}
   #data-source-badge{padding:2px 6px;}
+  /* Graphe d'ensemble : scrollable horizontalement au lieu d'écraser 5 jours
+     dans la largeur de l'écran (cf. largeur fixe calculée en JS, _gwDrawOverview) */
+  .gw-chart-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 }
 
 /* LAYOUT */
@@ -5557,10 +5560,28 @@ function renderGlobalWidget() {
   _gwRenderDayNav(days);
   _gwRenderGrid(d, days[_gwDayIdx]);
   _gwDrawOverview();
+  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width:680px)').matches) {
+    _gwScrollToDefault(d, days);
+  }
   _gwSetHover(_gwDefaultGi(d, days[_gwDayIdx]));
   _gwBindEvents();
   var spot = SPOTS[currentSpot];
   if (spot) _gwUpdateSatThumb(spot.lat, spot.lon);
+}
+
+// Défilement initial du graphe mobile sur le créneau « maintenant » (ou ~11h les
+// autres jours) — appelé uniquement depuis renderGlobalWidget() (changement de
+// spot/jour), jamais depuis _gwSetHover()/_gwDrawOverview() pour ne pas reprendre
+// la main sur un scroll manuel de l'utilisateur à chaque survol.
+function _gwScrollToDefault(d, days) {
+  var cv = document.getElementById('gw-overview');
+  var wrapEl = cv && cv.parentElement;
+  if (!wrapEl || !_gwOvGeom || _gwDayIdx >= days.length) return;
+  var defGi = _gwDefaultGi(d, days[_gwDayIdx]);
+  var k = _gwOvGeom.gis.indexOf(defGi);
+  if (k < 0) return;
+  var targetX = _gwOvGeom.padL + (k + 0.5) * _gwOvGeom.span;
+  wrapEl.scrollLeft = Math.max(0, targetX - wrapEl.clientWidth * 0.25);
 }
 
 function _gwRenderDayNav(days) {
@@ -5628,7 +5649,20 @@ function _gwDrawOverview() {
   var gis = []; days.forEach(function(dy){ gis = gis.concat(dy.indices); });
   if (gis.length < 2) return;
 
-  var W = cv.offsetWidth || 600, H = cv.offsetHeight || 224;
+  // Mobile : largeur fixe par créneau au lieu d'écraser 5 jours dans ~360px
+  // (illisible) — le graphe devient scrollable horizontalement (cf. .gw-chart-wrap
+  // en @media max-width:680px), avec un défilement initial sur « maintenant »
+  // géré séparément dans renderGlobalWidget() (jamais ici, appelé aussi au survol).
+  var _gwIsMobileW = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width:680px)').matches);
+  var W;
+  if (_gwIsMobileW) {
+    W = Math.max((cv.parentElement && cv.parentElement.clientWidth) || 300, gis.length * 26);
+    cv.style.width = W + 'px';
+  } else {
+    cv.style.width = '';
+    W = cv.offsetWidth || 600;
+  }
+  var H = cv.offsetHeight || 224;
   var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
   cv.width = W*dpr; cv.height = H*dpr;
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
