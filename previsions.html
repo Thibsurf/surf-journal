@@ -10955,7 +10955,12 @@ function showSpotSettings(forceOpen) {
     {id:'9880352', name:'Koumac / Bourail'},
     {id:'9880804', name:'Lifou'},
   ];
-  var OBS_LIST = OBS_STATIONS.map(function(s){ return {id: s.id, name: s.name}; });
+  // spotId (pas id) : c'est le format stocké dans spot.obsId (cf. _loadObsWind).
+  // Phare Amédée et Bourake ont un id API ≠ spotId (2 identifiants meteo.nc pour
+  // la même station) — utiliser .id ici désynchronisait la présélection du menu
+  // ⚙ (aucune option ne matchait spot.obsId) et pouvait écraser silencieusement
+  // la bonne station à l'enregistrement si l'utilisateur sauvegardait sans y toucher.
+  var OBS_LIST = OBS_STATIONS.map(function(s){ return {id: s.spotId || s.id, name: s.name}; });
 
   var curTide = spot.tideId || '9881852';
   var curObs  = spot.obsId  || '9881836';
