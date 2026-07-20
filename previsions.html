@@ -694,6 +694,12 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 
   </div>
 
+  <!-- Historique 7 jours — statistiques agrégées depuis meteo_cache -->
+  <div class="card" id="sec-weekly-stats" style="margin-bottom:12px;display:none;">
+    <div class="section-label" style="margin-bottom:8px;">📈 Historique 7 jours — <span id="weekly-stats-spot" style="color:var(--accent);"></span></div>
+    <div id="weekly-stats-body"><div style="color:var(--faint);font-size:11px;">Chargement…</div></div>
+  </div>
+
   <!-- Cache météo (passé + aujourd'hui + à venir) -->
   <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden;">
     <button onclick="togglePastConditions()" id="past-toggle-btn"
@@ -3849,6 +3855,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   _gwDayIdx = 0;
   try { renderGlobalWidget(); } catch(e) { console.warn('[WidgetGlobal]', e); }
   try { _renderSwellCompare().catch(function(e){ console.warn('[SwellCompare]', e); }); } catch(e) { console.warn('[SwellCompare]', e); }
+  try { _renderWeeklyStats().catch(function(e){ console.warn('[WeeklyStats]', e); }); } catch(e) { console.warn('[WeeklyStats]', e); }
 
   // Cache BSF (mise à jour quand les marées multi-jours arrivent aussi)
   var _bsfFc = _buildFcObject(spot, _fcastData, _ncTideCache);
@@ -4184,6 +4191,84 @@ function _drawSwellCompare() {
   cv.ontouchstart = cv.ontouchmove = function(ev) {
     if (ev.touches && ev.touches[0]) cv.onmousemove({ clientX: ev.touches[0].clientX });
   };
+}
+
+// ─── Historique 7 jours — statistiques depuis meteo_cache ────────────────────
+// Réutilise le cache déjà écrit par _saveForecastDays() à chaque consultation
+// (pas un archivage automatique en continu : un jour n'apparaît que s'il a été
+// visité pendant que sa prévision était live — d'où le compteur « X/7 archivés »
+// et la mention explicite en pied de carte pour ne pas laisser croire à des
+// mesures officielles indépendantes).
+async function _renderWeeklyStats() {
+  var card = document.getElementById('sec-weekly-stats');
+  var body = document.getElementById('weekly-stats-body');
+  if (!card || !body) return;
+  if (typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) { card.style.display = 'none'; return; }
+  var spot = SPOTS[currentSpot];
+  var lblEl = document.getElementById('weekly-stats-spot');
+  if (lblEl) lblEl.textContent = spot.name;
+  var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
+  var ids = [];
+  for (var d = 0; d <= 6; d++) {
+    var dd = new Date(Date.now() - d * 864e5);
+    ids.push(dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0') + '-' + String(dd.getDate()).padStart(2, '0') + '_' + la + '_' + lo);
+  }
+  try {
+    var res = await _tokenSbClient.from('meteo_cache').select('id,data').in('id', ids);
+    var rows = res && res.data;
+    if (!rows || !rows.length) { card.style.display = 'none'; return; }
+    function avg(a) { return a.length ? a.reduce(function(s, v) { return s + v; }, 0) / a.length : null; }
+    var days = [];
+    rows.forEach(function(row) {
+      var ds = row.id.split('_')[0];
+      var hrs = row.data && row.data.hours;
+      var hsVals = [], windVals = [];
+      if (hrs && hrs.length) {
+        hrs.forEach(function(h) { if (h.hs != null) hsVals.push(h.hs); if (h.windKt != null) windVals.push(h.windKt); });
+      } else {
+        if (row.data && row.data.hs != null) hsVals.push(row.data.hs);
+        if (row.data && row.data.windKt != null) windVals.push(row.data.windKt);
+      }
+      if (!hsVals.length && !windVals.length) return;
+      days.push({
+        ds: ds,
+        hsAvg: avg(hsVals), hsMax: hsVals.length ? Math.max.apply(null, hsVals) : null,
+        windAvg: avg(windVals)
+      });
+    });
+    if (!days.length) { card.style.display = 'none'; return; }
+    days.sort(function(a, b) { return a.ds < b.ds ? -1 : 1; });
+    card.style.display = 'block';
+    var allHs = days.map(function(dy){ return dy.hsAvg; }).filter(function(v){ return v != null; });
+    var allWind = days.map(function(dy){ return dy.windAvg; }).filter(function(v){ return v != null; });
+    var wkHs = avg(allHs), wkWind = avg(allWind);
+    var maxHs = Math.max.apply(null, days.map(function(dy){ return dy.hsMax || 0; }));
+
+    var DAY_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+    function fmtDay(ds) { var p = ds.split('-'); var dt = new Date(+p[0], +p[1] - 1, +p[2]); return DAY_FR[dt.getDay()] + ' ' + p[2] + '/' + p[1]; }
+
+    var barsHtml = days.map(function(dy) {
+      var h = dy.hsMax ? Math.max(4, Math.round(dy.hsMax / (maxHs || 1) * 44)) : 4;
+      return '<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0;">'
+        + '<div style="font-size:9px;color:var(--faint);">' + (dy.hsAvg != null ? dy.hsAvg.toFixed(1) : '—') + 'm</div>'
+        + '<div style="width:60%;height:' + h + 'px;background:rgba(79,163,199,.55);border-radius:3px 3px 0 0;"></div>'
+        + '<div style="font-size:8.5px;color:var(--faint);white-space:nowrap;">' + fmtDay(dy.ds) + '</div>'
+        + '</div>';
+    }).join('');
+
+    body.innerHTML =
+      '<div class="stats-row" style="margin-bottom:12px;">'
+      + '<div class="sc"><div class="sc-label">Houle moy.</div><div class="sc-val">' + (wkHs != null ? wkHs.toFixed(1) : '—') + '<span style="font-size:.6em;">m</span></div></div>'
+      + '<div class="sc"><div class="sc-label">Vent moy.</div><div class="sc-val">' + (wkWind != null ? Math.round(wkWind) : '—') + '<span style="font-size:.6em;">kt</span></div></div>'
+      + '<div class="sc"><div class="sc-label">Houle max</div><div class="sc-val">' + (maxHs ? maxHs.toFixed(1) : '—') + '<span style="font-size:.6em;">m</span></div></div>'
+      + '<div class="sc"><div class="sc-label">Jours archivés</div><div class="sc-val">' + days.length + '<span style="font-size:.6em;">/7</span></div></div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:flex-end;gap:4px;height:80px;">' + barsHtml + '</div>'
+      + '<div style="font-size:9px;color:var(--faint);margin-top:8px;">Basé sur les prévisions archivées à chaque consultation (meteo.nc/GFS) — pas un historique de mesures officielles indépendant ; les jours non consultés n\'apparaissent pas.</div>';
+  } catch (e) {
+    console.warn('[weekly stats]', e && e.message);
+    card.style.display = 'none';
+  }
 }
 
 // Rafales : Open-Meteo (modèle GFS), labelisées "Open-Meteo" dans l'UI.
@@ -13397,6 +13482,7 @@ function ensoRender() {
   <button onclick="_quickNavTo('wg-arome-card')">🌀 AROME / Puissance</button>
   <button onclick="_quickNavTo('sec-nav')">⚓ Navigation</button>
   <button onclick="_quickNavTo('sec-hs')">🌊 Houle détail</button>
+  <button onclick="_quickNavTo('sec-weekly-stats')">📈 Historique 7 jours</button>
   <button onclick="_quickNavTo('table-detail-wrap')">📋 Tableau horaire</button>
 </div>
 <script>
