@@ -708,8 +708,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     </div>
   </div>
 
-  <!-- Tableau détaillé -->
-  <div class="card">
+  <!-- Tableau détaillé — replié par défaut sur mobile (JS ci-dessous), ouvert par défaut ailleurs -->
+  <details class="card" id="table-detail-wrap" open>
+  <summary style="cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:8px;">📋 Détails horaires — météo &amp; tableau complet</summary>
     <!-- Encart météo meteo.nc -->
     <div class="card" style="margin-bottom:12px;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -731,7 +732,8 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <div class="tscroll" id="table-wrap">
       <div class="loading"><div class="spin"></div> Chargement…</div>
     </div>
-  </div>
+  </details>
+  <script>(function(){var d=document.getElementById('table-detail-wrap'); if(d && window.matchMedia('(max-width:680px)').matches) d.removeAttribute('open');})();</script>
 
 </div>
 </div>
