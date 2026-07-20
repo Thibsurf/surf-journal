@@ -473,10 +473,17 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 
   <!-- Comparatif houle multi-modèles (meteo.nc vs GFS Open-Meteo) — sous le widget météo -->
   <div class="card" id="swell-cmp-card" style="margin-bottom:12px;display:none;">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-      <div class="section-label" style="margin-bottom:0;" title="Compare la houle primaire prévue par les modèles disponibles pour ce spot — utile pour juger de leur accord/désaccord sur les prochains jours.">🆚 Houle — comparatif modèles</div>
-      <span id="swell-cmp-legend" style="display:flex;gap:10px;flex-wrap:wrap;font-size:9px;color:var(--muted);"></span>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div class="section-label" style="margin-bottom:0;" title="Compare la houle prévue par les modèles disponibles pour ce spot — utile pour juger de leur accord/désaccord sur les prochains jours.">🆚 Houle — comparatif modèles</div>
+        <span id="swell-cmp-legend" style="display:flex;gap:10px;flex-wrap:wrap;font-size:9px;color:var(--muted);"></span>
+      </div>
+      <div style="display:flex;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;">
+        <button id="swell-mode-1" onclick="_setSwellMode('primary')" title="Houle primaire : le train de houle dominant" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:rgba(79,163,199,.2);color:#4fa3c7;font-weight:600;transition:all .2s;">Houle 1</button>
+        <button id="swell-mode-2" onclick="_setSwellMode('secondary')" title="Houle secondaire : 2ᵉ train de houle, souvent partiellement voire pas disponible selon les modèles" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:9px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;">Houle 2</button>
+      </div>
     </div>
+    <div id="swell-cmp-now" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
     <div style="position:relative;width:100%;"><canvas id="swell-cmp" style="width:100%;display:block;cursor:crosshair;"></canvas></div>
     <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles</div>
   </div>
@@ -542,8 +549,8 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   </div>
 
 
-  <!-- ⚓ Encart Navigation --> 
-  <div class="card" style="margin-bottom:12px;padding:12px 14px;">
+  <!-- ⚓ Encart Navigation -->
+  <div class="card" id="sec-nav" style="margin-bottom:12px;padding:12px 14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
       <div class="section-label" style="margin-bottom:0;">⚓ Navigation — <span id="nav-spot-lbl" style="color:var(--accent);"></span></div>
       <span id="nav-source-lbl" style="font-size:9px;color:var(--faint);"></span>
@@ -3173,9 +3180,9 @@ async function loadForecast(i) {
     var omMarineUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + s.lat + '&longitude=' + s.lon
       + '&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period'
       + ',wind_wave_height,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period,sea_surface_temperature'
-      + '&models=ncep_gfswave025&forecast_days=7&timezone=GMT';
+      + '&models=ncep_gfswave025&forecast_days=10&timezone=GMT';
     var omWindUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + s.lat + '&longitude=' + s.lon
-      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,temperature_2m&wind_speed_unit=kn&forecast_days=7&timezone=GMT';
+      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,temperature_2m&wind_speed_unit=kn&forecast_days=10&timezone=GMT';
 
     // ─── FETCH (parallèle + rendu progressif — BONUS 3) ──────────────────────
     // Token non IP-bound : marine/météo en direct rpcache (ncFetch) ; marées/obs via ncGet
@@ -3751,7 +3758,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     for(var oi=omNi;oi<omH.time.length;oi+=3){
       var omUtc=new Date(omH.time[oi]+'Z');
       var odt=new Date(omUtc.getTime()+11*3600000); // heure NC en UTC
-      if((odt-omNow)/864e5>5.5) break;
+      if((odt-omNow)/864e5>9.5) break; // aligné sur forecast_days=10 (était 5.5j, capé sans raison vs les 10j réellement dispo)
       omDates.push(odt);
       var omHH=String(odt.getUTCHours()).padStart(2,'0')+'h';
       var prevOmDt = omDates.length>1 ? omDates[omDates.length-2] : null;
@@ -3843,7 +3850,11 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 // descendante, lon 100→300 croissante), sorties 3h, ~10 j d'horizon glissant.
 // CORS ouvert (access-control-allow-origin:*), donc appel direct client — pas
 // besoin de passer par le worker. Format de réponse OPeNDAP .ascii (texte, pas
-// JSON) : parsing dédié ci-dessous.
+// JSON) : parsing dédié ci-dessous. sig_ht_sw1/mn_dir_sw1 = houle primaire
+// SPÉCIFIQUEMENT (pas sig_wav_ht qui est la hauteur TOTALE houle+mer du vent —
+// utiliser ce dernier aurait biaisé la comparaison vs les autres modèles qui
+// donnent tous de la houle primaire pure). Pas de houle secondaire dans ce flux
+// WW3 (aucune variable sw2 exposée par le serveur).
 var BOM_WW3_BASE = 'https://ocean-thredds01.spc.int/thredds/dodsC/POP/model/regional/bom/forecast/hourly/wavewatch3_latest/latest_merged.nc';
 async function _fetchBomWw3(spot) {
   var ctrl = new AbortController();
@@ -3856,7 +3867,7 @@ async function _fetchBomWw3(spot) {
     var epochM = dasText.match(/seconds since (\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{1,2}):(\d{1,2})/);
     if (!epochM) throw new Error('epoch introuvable');
     var epochMs = Date.UTC(+epochM[1], +epochM[2]-1, +epochM[3], +epochM[4], +epochM[5], +epochM[6]);
-    var vars = ['sig_wav_ht', 'pk_wav_per', 'mn_wav_dir'];
+    var vars = ['sig_ht_sw1', 'pk_wav_per', 'mn_dir_sw1'];
     var url = BOM_WW3_BASE + '.ascii?time[0:1:80],' + vars.map(function(v) {
       return v + '[0:1:80][' + latIdx + ':1:' + latIdx + '][' + lonIdx + ':1:' + lonIdx + ']';
     }).join(',');
@@ -3874,35 +3885,21 @@ async function _fetchBomWw3(spot) {
       return out;
     }
     var times = parseFlat('time');
-    var hs = parseGrid('sig_wav_ht'), per = parseGrid('pk_wav_per'), dir = parseGrid('mn_wav_dir');
+    var hs = parseGrid('sig_ht_sw1'), per = parseGrid('pk_wav_per'), dir = parseGrid('mn_dir_sw1');
     var pts = [];
     for (var i = 0; i < times.length; i++) {
       if (hs[i] == null || isNaN(hs[i])) continue;
       pts.push({ ms: epochMs + times[i] * 1000, h: hs[i], t: per[i], dir: dir[i] });
     }
-    return pts;
+    return { primary: pts, secondary: [] }; // pas de houle secondaire dans ce flux WW3
   } catch (e) {
     console.warn('[BOM WW3]', e && e.message);
-    return [];
+    return { primary: [], secondary: [] };
   } finally {
     clearTimeout(tt);
   }
 }
 
-// ─── Comparatif houle multi-modèles (meteo.nc vs GFS vs BOM WW3) ────────────
-// _ncFcastData et _omFcastData sont TOUJOURS peuplés en parallèle (cf. commentaire
-// « Toujours peupler _omFcastData... même si useNC=true, on veut pouvoir comparer »
-// plus haut) — donc les deux séries sont disponibles indépendamment du toggle
-// affiché sur l'histogramme Hs. Convention dates : mêmes objets Date « NC en UTC »
-// que partout ailleurs (true UTC = .getTime() - 11h), cf. _renderAromeCompare.
-// ECMWF évalué et écarté : aucune couverture pour la NC sur Open-Meteo (ewam et
-// ecmwf_wam025 renvoient tous deux du null pour cette zone, vérifié en direct).
-var SWELL_MODELS = [
-  { key: 'nc',  label: 'meteo.nc',  col: 'rgba(61,186,138,.95)',  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
-  { key: 'gfs', label: 'GFS',       col: 'rgba(79,163,199,.95)',  desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
-  { key: 'bom', label: 'BOM WW3',   col: 'rgba(232,160,87,.95)',  desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
-  { key: 'mf',  label: 'MF global', col: 'rgba(167,159,248,.95)', desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' }
-];
 // Météo-France global (MFWAM) — distinct de « meteo.nc » : ce dernier est le
 // bulletin officiel régionalisé NC, celui-ci le modèle vague global brut,
 // utile pour voir l'effet de la régionalisation meteo.nc sur la houle brute.
@@ -3911,60 +3908,128 @@ async function _fetchMeteoFranceWave(spot) {
   var tt = setTimeout(function(){ ctrl.abort(); }, 8000);
   try {
     var url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + spot.lat + '&longitude=' + spot.lon
-      + '&hourly=swell_wave_height,swell_wave_period&models=meteofrance_wave&forecast_days=7&timezone=GMT';
+      + '&hourly=swell_wave_height,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period'
+      + '&models=meteofrance_wave&forecast_days=10&timezone=GMT';
     var r = await fetch(url, { signal: ctrl.signal });
     var j = await r.json();
-    if (!j || !j.hourly || !j.hourly.time) return [];
-    var h = j.hourly, pts = [];
+    if (!j || !j.hourly || !j.hourly.time) return { primary: [], secondary: [] };
+    var h = j.hourly, primary = [], secondary = [];
     for (var i = 0; i < h.time.length; i++) {
-      var hs = h.swell_wave_height[i], t = h.swell_wave_period[i];
-      if (hs == null) continue;
-      pts.push({ ms: Date.parse(h.time[i] + 'Z'), h: hs, t: t });
+      var ms = Date.parse(h.time[i] + 'Z');
+      if (h.swell_wave_height[i] != null) primary.push({ ms: ms, h: h.swell_wave_height[i], t: h.swell_wave_period[i] });
+      if (h.secondary_swell_wave_height && h.secondary_swell_wave_height[i] != null) secondary.push({ ms: ms, h: h.secondary_swell_wave_height[i], t: h.secondary_swell_wave_period && h.secondary_swell_wave_period[i] });
     }
-    return pts;
-  } catch (e) { console.warn('[MF wave]', e && e.message); return []; }
+    return { primary: primary, secondary: secondary };
+  } catch (e) { console.warn('[MF wave]', e && e.message); return { primary: [], secondary: [] }; }
   finally { clearTimeout(tt); }
 }
+
+// ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global) ──
+// _ncFcastData et _omFcastData sont TOUJOURS peuplés en parallèle (cf. commentaire
+// « Toujours peupler _omFcastData... même si useNC=true, on veut pouvoir comparer »
+// plus haut) — donc les deux séries sont disponibles indépendamment du toggle
+// affiché sur l'histogramme Hs. Convention dates : mêmes objets Date « NC en UTC »
+// que partout ailleurs (true UTC = .getTime() - 11h), cf. _renderAromeCompare.
+// ECMWF évalué et écarté : aucune couverture houle pour la NC — ni sur Open-Meteo
+// (ewam/ecmwf_wam025 → null), ni sur Windguru (leur IFS-HRES id_model=117 = vent
+// seul, wave:false ; leur seul modèle houle est id 83 = GFS-Wave, déjà couvert
+// par notre série GFS via Open-Meteo — aucune valeur ajoutée à l'intégrer).
+var SWELL_MODELS = [
+  { key: 'nc',  label: 'meteo.nc',  col: 'rgba(61,186,138,.95)',  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
+  { key: 'gfs', label: 'GFS',       col: 'rgba(79,163,199,.95)',  desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
+  { key: 'bom', label: 'BOM WW3',   col: 'rgba(232,160,87,.95)',  desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
+  { key: 'mf',  label: 'MF global', col: 'rgba(167,159,248,.95)', desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' }
+];
+var _swellMode = 'primary'; // 'primary' | 'secondary'
+var _swellCache = null;     // { nc:{primary,secondary}, gfs:{...}, bom:{...}, mf:{...} } — repeuplé par fetch, redessiné sans réseau au toggle
+
+function _swellToPts(d, comp) {
+  if (!d || !d.dates) return [];
+  var hArr = comp === 2 ? d.sw2h : d.sw1h, tArr = comp === 2 ? d.sw2t : d.sw1t;
+  var pts = [];
+  d.dates.forEach(function(dt, i) {
+    var hs = hArr && hArr[i];
+    if (hs == null) return;
+    pts.push({ ms: dt.getTime() - 11 * 3600000, h: hs, t: tArr && tArr[i] });
+  });
+  return pts;
+}
+
 async function _renderSwellCompare() {
   var card = document.getElementById('swell-cmp-card');
   var cv = document.getElementById('swell-cmp');
   if (!card || !cv) return;
-  function toPts(d) {
-    if (!d || !d.dates) return [];
-    var pts = [];
-    d.dates.forEach(function(dt, i) {
-      var hs = d.sw1h && d.sw1h[i], t = d.sw1t && d.sw1t[i];
-      if (hs == null) return;
-      pts.push({ ms: dt.getTime() - 11 * 3600000, h: hs, t: t });
-    });
-    return pts;
-  }
-  var ncPts = toPts(_ncFcastData), omPts = toPts(_omFcastData);
-  if (ncPts.length < 2 && omPts.length < 2) { card.style.display = 'none'; return; } // rien à comparer
+  var ncData = { primary: _swellToPts(_ncFcastData, 1), secondary: _swellToPts(_ncFcastData, 2) };
+  var gfsData = { primary: _swellToPts(_omFcastData, 1), secondary: _swellToPts(_omFcastData, 2) };
+  if (ncData.primary.length < 2 && gfsData.primary.length < 2) { card.style.display = 'none'; return; }
   card.style.display = 'block';
-  var _spotForBom = SPOTS[currentSpot];
-  var _extra = await Promise.all([_fetchBomWw3(_spotForBom), _fetchMeteoFranceWave(_spotForBom)]);
-  var bomPts = _extra[0], mfPts = _extra[1];
-  // Le spot a pu changer pendant l'attente réseau → abandonner un rendu obsolète
-  if (SPOTS[currentSpot] !== _spotForBom) return;
+  var _spotForFetch = SPOTS[currentSpot];
+  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch)]);
+  if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
+  _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1] };
+  _drawSwellCompare();
+}
 
-  var series = { nc: ncPts, gfs: omPts, bom: bomPts, mf: mfPts };
+function _setSwellMode(mode) {
+  _swellMode = mode;
+  var b1 = document.getElementById('swell-mode-1'), b2 = document.getElementById('swell-mode-2');
+  if (b1) { b1.style.background = mode === 'primary' ? 'rgba(79,163,199,.2)' : 'none'; b1.style.color = mode === 'primary' ? '#4fa3c7' : 'var(--muted)'; }
+  if (b2) { b2.style.background = mode === 'secondary' ? 'rgba(79,163,199,.2)' : 'none'; b2.style.color = mode === 'secondary' ? '#4fa3c7' : 'var(--muted)'; }
+  _drawSwellCompare();
+}
+
+// Redessine depuis _swellCache (pas de requête réseau) — appelé au chargement
+// des données ET à chaque bascule houle primaire/secondaire.
+function _drawSwellCompare() {
+  var card = document.getElementById('swell-cmp-card');
+  var cv = document.getElementById('swell-cmp');
+  if (!card || !cv || !_swellCache) return;
+  var comp = _swellMode === 'secondary' ? 'secondary' : 'primary';
+  var series = {}; SWELL_MODELS.forEach(function(m) { series[m.key] = (_swellCache[m.key] && _swellCache[m.key][comp]) || []; });
   var activeModels = SWELL_MODELS.filter(function(m) { return series[m.key].length >= 2; });
-  if (!activeModels.length) { card.style.display = 'none'; return; }
 
-  // Légende dynamique (uniquement les modèles réellement dispo pour ce spot),
-  // avec résolution/source au survol — répond au « préciser les résolutions »
   var legEl = document.getElementById('swell-cmp-legend');
   if (legEl) {
     legEl.innerHTML = activeModels.map(function(m) {
       return '<span style="cursor:help;" title="' + m.desc + '"><span style="color:' + m.col + ';font-weight:700;">━</span> ' + m.label + ' ⓘ</span>';
+    }).join('') || '<span style="color:var(--faint);">Aucun modèle avec de la houle ' + (comp === 'secondary' ? 'secondaire' : 'primaire') + ' pour ce spot</span>';
+  }
+
+  function nearest(pts, ms, tol) {
+    var best = null, bd = tol || 3 * 3600000;
+    pts.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
+    return best;
+  }
+  // Rangée « valeurs actuelles » (toujours visible, répond au besoin de voir la
+  // période sans avoir à survoler) — se met à jour aussi au survol du graphe.
+  function renderNowRow(atMs) {
+    var el = document.getElementById('swell-cmp-now');
+    if (!el) return;
+    if (!activeModels.length) { el.innerHTML = ''; return; }
+    el.innerHTML = activeModels.map(function(m) {
+      var p = nearest(series[m.key], atMs, 4 * 3600000);
+      return '<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.03);border:1px solid ' + m.col.replace(',.95)', ',.25)') + ';border-radius:8px;padding:3px 8px;">'
+        + '<span style="width:7px;height:7px;border-radius:50%;background:' + m.col + ';flex-shrink:0;"></span>'
+        + '<b style="color:var(--text);font-size:11px;">' + (p ? p.h.toFixed(1) + 'm' : '—') + '</b>'
+        + (p && p.t ? '<span style="color:var(--faint);font-size:10px;">' + Math.round(p.t) + 's</span>' : '')
+        + '<span style="color:var(--faint);font-size:9px;">' + m.label + '</span>'
+        + '</span>';
     }).join('');
+  }
+
+  if (!activeModels.length) {
+    var W0 = (cv.parentElement && cv.parentElement.clientWidth) || 600;
+    cv.width = W0; cv.height = 210; cv.style.width = W0 + 'px'; cv.style.height = '210px';
+    var ctx0 = cv.getContext('2d'); ctx0.clearRect(0, 0, W0, 210);
+    renderNowRow(Date.now());
+    var ro0 = document.getElementById('swell-cmp-readout');
+    if (ro0) ro0.innerHTML = 'Pas de houle ' + (comp === 'secondary' ? 'secondaire' : 'primaire') + ' disponible pour ce spot.';
+    return;
   }
 
   var allPts = [].concat.apply([], activeModels.map(function(m){ return series[m.key]; }));
   var t0 = Math.min.apply(null, allPts.map(function(p){ return p.ms; }));
   var t1 = Math.max.apply(null, allPts.map(function(p){ return p.ms; }));
-  if (t1 <= t0) { card.style.display = 'none'; return; }
 
   var W = (cv.parentElement && cv.parentElement.clientWidth) || 600, H = 210;
   var dpr = window.devicePixelRatio || 1;
@@ -3977,32 +4042,45 @@ async function _renderSwellCompare() {
 
   function drawSmooth(pts, col) {
     if (pts.length < 2) return;
-    ctx.strokeStyle = col; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(X(pts[0].ms), Y(pts[0].h));
+    // Remplissage doux sous la courbe (lisibilité, un peu plus "pro" qu'un simple trait)
+    ctx.beginPath(); ctx.moveTo(X(pts[0].ms), H - padB);
+    ctx.lineTo(X(pts[0].ms), Y(pts[0].h));
     for (var i = 1; i < pts.length - 1; i++) {
       var mx = (X(pts[i].ms) + X(pts[i + 1].ms)) / 2, my = (Y(pts[i].h) + Y(pts[i + 1].h)) / 2;
       ctx.quadraticCurveTo(X(pts[i].ms), Y(pts[i].h), mx, my);
     }
     ctx.lineTo(X(pts[pts.length - 1].ms), Y(pts[pts.length - 1].h));
+    ctx.lineTo(X(pts[pts.length - 1].ms), H - padB); ctx.closePath();
+    // Remplissage : dérivé de la couleur de la ligne à faible opacité
+    var rgbm = col.match(/rgba?\(([\d.]+),([\d.]+),([\d.]+)/);
+    if (rgbm) { ctx.fillStyle = 'rgba(' + rgbm[1] + ',' + rgbm[2] + ',' + rgbm[3] + ',.05)'; ctx.fill(); }
+    // Ligne
+    ctx.strokeStyle = col; ctx.lineWidth = 2.3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(X(pts[0].ms), Y(pts[0].h));
+    for (var j = 1; j < pts.length - 1; j++) {
+      var mx2 = (X(pts[j].ms) + X(pts[j + 1].ms)) / 2, my2 = (Y(pts[j].h) + Y(pts[j + 1].h)) / 2;
+      ctx.quadraticCurveTo(X(pts[j].ms), Y(pts[j].h), mx2, my2);
+    }
+    ctx.lineTo(X(pts[pts.length - 1].ms), Y(pts[pts.length - 1].h));
     ctx.stroke();
+    // Points discrets sur les créneaux réels (texture, repères de confiance)
+    ctx.fillStyle = col;
+    pts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.h), 1.6, 0, Math.PI * 2); ctx.fill(); });
   }
 
   function draw(hoverMs) {
     ctx.clearRect(0, 0, W, H);
-    // Bandes jour alternées (lisibilité, même langage visuel que le reste du site)
     var mid0 = Math.ceil((t0 + 11 * 36e5) / 864e5) * 864e5 - 11 * 36e5;
     var bandI = 0;
     for (var bms = mid0 - 864e5; bms < t1; bms += 864e5, bandI++) {
       if (bandI % 2 !== 0) {
-        ctx.fillStyle = 'rgba(255,255,255,.015)';
+        ctx.fillStyle = 'rgba(255,255,255,.018)';
         ctx.fillRect(Math.max(padL, X(bms)), padT, Math.min(X(bms + 864e5), W - padR) - Math.max(padL, X(bms)), H - padT - padB);
       }
     }
-    // Titre axe Y
-    ctx.save(); ctx.translate(10, H / 2); ctx.rotate(-Math.PI / 2);
+    ctx.save(); ctx.translate(11, H / 2); ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center'; ctx.font = '9px DM Sans,sans-serif'; ctx.fillStyle = 'rgba(122,148,170,.7)';
-    ctx.fillText('Houle (m)', 0, 0); ctx.restore();
-    // Grille horizontale
+    ctx.fillText('Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), 0, 0); ctx.restore();
     ctx.textAlign = 'right'; ctx.font = '9px DM Sans,sans-serif';
     var hStep = maxH > 4 ? 1 : 0.5;
     for (var g = 0; g <= maxH; g += hStep) {
@@ -4011,7 +4089,6 @@ async function _renderSwellCompare() {
       ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
       ctx.fillStyle = 'rgba(122,148,170,.85)'; ctx.fillText((hStep < 1 ? g.toFixed(1) : g) + '', padL - 5, gy + 3);
     }
-    // Repères jour NC
     ctx.textAlign = 'center';
     for (var ms = mid0; ms < t1; ms += 864e5) {
       ctx.strokeStyle = 'rgba(255,255,255,.09)';
@@ -4020,7 +4097,6 @@ async function _renderSwellCompare() {
       ctx.fillStyle = 'rgba(122,148,170,.9)';
       ctx.fillText(dd.getUTCDate() + '/' + (dd.getUTCMonth() + 1), Math.min(X(ms) + 30, W - 24), H - 6);
     }
-    // Ligne « maintenant »
     var nowMs = Date.now();
     if (nowMs >= t0 && nowMs <= t1) {
       ctx.strokeStyle = 'rgba(253,224,104,.75)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.4;
@@ -4034,17 +4110,14 @@ async function _renderSwellCompare() {
     }
   }
   draw(null);
+  renderNowRow(Date.now());
 
-  function nearest(pts, ms) {
-    var best = null, bd = 3 * 3600000;
-    pts.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
-    return best;
-  }
   cv.onmousemove = function(e) {
     var rect = cv.getBoundingClientRect();
     var ms = t0 + (e.clientX - rect.left - padL) / (W - padL - padR) * (t1 - t0);
     if (ms < t0 || ms > t1) return;
     draw(ms);
+    renderNowRow(ms);
     var ro = document.getElementById('swell-cmp-readout');
     if (ro) {
       var dNC = new Date(ms + 11 * 36e5);
@@ -4065,6 +4138,7 @@ async function _renderSwellCompare() {
   };
   cv.onmouseleave = function() {
     draw(null);
+    renderNowRow(Date.now());
     var ro = document.getElementById('swell-cmp-readout');
     if (ro) ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles';
   };
