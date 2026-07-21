@@ -4264,11 +4264,34 @@ function loadProfilePage() {
   }
 }
 
+// Normalise un nom de planche pour détecter les doublons malgré des variantes
+// de casse/espaces/tirets (ex: "Pyzel – Power Tiger" vs "Pyzel - PowerTiger"
+// doivent être reconnus comme la même planche).
+function _normBoardKey(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+
 function renderBoardsList() {
   const boards = currentProfile?.boards || [];
-  document.getElementById('profile-boards-list').innerHTML = boards.map((b,i) => `
+  // Fusion silencieuse des doublons existants (ex: ancienne saisie en double
+  // avec tiret/espace différents) — ne s'exécute que si un vrai doublon est
+  // détecté, donc sans effet sur un appel répété une fois nettoyé.
+  if (boards.length) {
+    var seen = {}, deduped = [], removed = [];
+    boards.forEach(function(b) {
+      var k = _normBoardKey(b);
+      if (!k || seen[k]) { if (k) removed.push(b); return; }
+      seen[k] = true; deduped.push(b);
+    });
+    if (deduped.length !== boards.length) {
+      currentProfile.boards = deduped;
+      saveProfileData();
+      if (typeof showToast === 'function') showToast('🧹 Planche(s) en double fusionnée(s) : ' + removed.join(', '), 'success');
+    }
+  }
+  document.getElementById('profile-boards-list').innerHTML = (currentProfile?.boards || []).map((b,i) => `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-      <span style="flex:1;font-size:13px;color:var(--text);">${b}</span>
+      <span style="flex:1;font-size:13px;color:var(--text);">${escapeHtml(b)}</span>
       <button class="btn btn-sm btn-danger" onclick="removeBoard(${i})">✕</button>
     </div>
   `).join('') || '<div style="font-size:13px;color:var(--text-faint);margin-bottom:8px;">Aucune planche enregistrée</div>';
@@ -4277,7 +4300,14 @@ function renderBoardsList() {
 async function addBoard() {
   const val = document.getElementById('new-board-input').value.trim();
   if (!val || !currentProfile) return;
-  currentProfile.boards = [...(currentProfile.boards || []), val];
+  var existing = (currentProfile.boards || []);
+  var key = _normBoardKey(val);
+  if (existing.some(function(b) { return _normBoardKey(b) === key; })) {
+    if (typeof showToast === 'function') showToast('Cette planche est déjà enregistrée', 'error');
+    document.getElementById('new-board-input').value = '';
+    return;
+  }
+  currentProfile.boards = [...existing, val];
   document.getElementById('new-board-input').value = '';
   renderBoardsList();
   await saveProfileData();
