@@ -1574,6 +1574,17 @@ async function onLogin(user) {
   console.log("✅ onLogin terminé, dashboard affiché");
   // Mettre à jour le badge token dès que l'utilisateur est connecté
   setTimeout(checkTokenAndWorkerStatus, 500);
+
+  // Retour du lien profond « vote fiabilité houle » (previsions.html) : rouvre
+  // directement la session concernée. On nettoie l'URL ensuite pour ne pas
+  // rouvrir la même session à chaque rafraîchissement de la page.
+  try {
+    var _openId = new URLSearchParams(location.search).get('openSession');
+    if (_openId) {
+      history.replaceState(null, '', location.pathname);
+      setTimeout(function() { openDetail(_openId); }, 200);
+    }
+  } catch (e) {}
 }
 
 // ══ SESSIONS ══
@@ -3164,6 +3175,85 @@ function escapeHtml(v) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// ═══════════════════════════════════════════════════════════════
+// FIABILITÉ HOULE PAR MODÈLE — lecture/agrégation côté Journal
+// ═══════════════════════════════════════════════════════════════
+// Le vote lui-même se fait sur previsions.html (seule page qui a le fetch
+// BOM/Windguru/Open-Meteo) via un lien profond ; ici on lit le résultat
+// (colonne Supabase sessions.model_reliability si dispo, sinon repli
+// localStorage partagé même origine — cf. même mécanisme côté previsions.html)
+// et on décide si une session est dans la fenêtre où la comparaison a un sens.
+var MODEL_RELIABILITY_LABELS = {
+  nc:    { label: 'meteo.nc',  col: '#3dba8a' },
+  gfs:   { label: 'GFS',       col: '#4fa3c7' },
+  bom:   { label: 'BOM WW3',   col: '#e8a057' },
+  mf:    { label: 'MF global', col: '#a99ff8' },
+  ecmwf: { label: 'ECMWF',     col: '#e05c5c' }
+};
+// Fenêtre où la comparaison multi-modèles a une chance d'avoir des données :
+// testé en conditions réelles (voir previsions.html, _renderVoteUI) — les
+// fetches BOM/Windguru/Open-Meteo utilisés pour le comparatif ne couvrent QUE
+// la fenêtre de prévision en cours (~à partir d'aujourd'hui), pas d'archive
+// historique dédiée. "Hier" est déjà à la limite ; au-delà, aucun modèle n'a
+// de données. On reste volontairement large ici (2j) : previsions.html vérifie
+// lui-même au créneau précis et affiche "indisponible" proprement si un modèle
+// donné n'a finalement rien pour cette date — ne bloque jamais faussement.
+var MODEL_RELIABILITY_WINDOW_DAYS = 2;
+
+function _isRecentForModelVote(dateStr) {
+  if (!dateStr) return false;
+  var d = new Date(dateStr + 'T00:00:00');
+  var diffDays = (Date.now() - d.getTime()) / 86400000;
+  return diffDays >= -1 && diffDays <= MODEL_RELIABILITY_WINDOW_DAYS;
+}
+
+function getModelReliability(session) {
+  if (session && session.model_reliability) return session.model_reliability;
+  try {
+    var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
+    return store[session && session.id] || null;
+  } catch (e) { return null; }
+}
+
+// Construit l'URL du lien profond vers previsions.html, pré-rempli pour
+// voter en contexte (courbes visibles) sur la session concernée.
+function _modelVoteUrl(session) {
+  var spot = session.spot || (session.spots && session.spots[0]) || '';
+  var p = new URLSearchParams({ voteSession: session.id, voteSpot: spot, voteDate: session.date });
+  return 'previsions.html?' + p.toString();
+}
+
+// Section HTML "Fiabilité houle" pour le détail d'une session (uniquement
+// pertinent pour ses propres sessions, cf. appel conditionné à isOwn).
+function _renderModelReliabilitySection(s) {
+  var vote = getModelReliability(s);
+  if (vote && vote.votedModel) {
+    var info = MODEL_RELIABILITY_LABELS[vote.votedModel];
+    return '<div class="detail-item" style="grid-column:1/-1;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.15);border-radius:8px;padding:8px 10px;">'
+      + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
+      + '<div class="detail-value" style="color:' + (info ? info.col : 'var(--accent)') + ';">' + escapeHtml(info ? info.label : vote.votedModel) + '</div>'
+      + '<a href="' + _modelVoteUrl(s) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
+      + '</div>';
+  }
+  if (vote && vote.votedModel === null) {
+    return '<div class="detail-item" style="grid-column:1/-1;">'
+      + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
+      + '<div class="detail-value" style="color:var(--text-muted);font-size:12px;">Aucun modèle jugé fiable pour cette session</div>'
+      + '<a href="' + _modelVoteUrl(s) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
+      + '</div>';
+  }
+  if (_isRecentForModelVote(s.date)) {
+    return '<div class="detail-item" style="grid-column:1/-1;">'
+      + '<a href="' + _modelVoteUrl(s) + '" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);text-decoration:none;background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.25);border-radius:8px;padding:6px 10px;">'
+      + '🌊 Quel modèle de houle a été le plus fiable pour cette session ? →</a>'
+      + '</div>';
+  }
+  return '<div class="detail-item" style="grid-column:1/-1;">'
+    + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
+    + '<div class="detail-value" style="color:var(--text-faint);font-size:11px;font-style:italic;" title="Les prévisions archivées par modèle ne sont conservées que ~' + MODEL_RELIABILITY_WINDOW_DAYS + ' jours — au-delà, la comparaison n\'est plus fiable.">Indisponible (session trop ancienne)</div>'
+    + '</div>';
+}
+
 async function openDetail(id) {
   const s = allSessions.find(x => x.id === id) || (await (async () => {
     const { data } = await sb.from('sessions').select('*').eq('id', id).single();
@@ -3209,12 +3299,13 @@ async function openDetail(id) {
     <div class="detail-grid">
       ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? '· '+escapeHtml(s.swell_dir) : ''}</div></div>` : ''}
       ${s.period ? `<div class="detail-item"><div class="detail-label">Période</div><div class="detail-value">${s.period}s</div></div>` : ''}
-      ${s.wind_kts !== null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+escapeHtml(s.wind_dir) : ''}</div></div>` : ''}
+      ${s.wind_kts != null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+escapeHtml(s.wind_dir) : ''}</div></div>` : ''}
       ${s.tide ? `<div class="detail-item"><div class="detail-label">Marée</div><div class="detail-value">${escapeHtml(s.tide)}</div></div>` : ''}
       ${s.board ? `<div class="detail-item"><div class="detail-label">Planche</div><div class="detail-value">${escapeHtml(s.board)}</div></div>` : ''}
       ${s.launch_point ? `<div class="detail-item"><div class="detail-label">Mise à l'eau</div><div class="detail-value">${escapeHtml(s.launch_point)}</div></div>` : ''}
       ${s.price_cfp ? `<div class="detail-item"><div class="detail-label">Prix bateau</div><div class="detail-value">${s.price_cfp.toLocaleString('fr')} CFP</div></div>` : ''}
       ${s.shared_with && s.shared_with.length ? `<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">Surfeurs</div><div class="detail-value">${escapeHtml(s.shared_with.join(', '))}</div></div>` : ''}
+      ${(isOwn && s.hs) ? _renderModelReliabilitySection(s) : ''}
     </div>
     ${s.observations ? `<div style="margin-top:1rem;padding:12px 14px;background:var(--glass);border-radius:var(--radius-sm);font-size:13px;color:var(--text);line-height:1.7;">${escapeHtml(s.observations)}</div>` : ''}
     ${isOwn ? `<div style="margin-top:1rem;text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteSession('${s.id}')">Supprimer</button></div>` : ''}
@@ -3508,6 +3599,47 @@ function renderStats(sessions, el) {
         +'<div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">Sur '+total+' sessions évaluées · Moyenne: <b style="color:var(--accent);">'+avg.toFixed(1)+'/5</b></div>'
         +bars
         +'</div>';
+    })()}
+    ${(function(){
+      // Fiabilité HOULE par modèle — distinct de la jauge 1-5 ci-dessus : ici on
+      // demande lequel des 5 modèles comparés (meteo.nc/GFS/BOM/MF/ECMWF) était
+      // le plus proche du réel, session par session (voté sur previsions.html,
+      // cf. _renderModelReliabilitySection). On distingue explicitement les
+      // sessions "non éligibles" (trop anciennes ou sans houle notée) plutôt que
+      // de les ignorer silencieusement, sinon le % par modèle serait trompeur.
+      var counts = { nc:0, gfs:0, bom:0, mf:0, ecmwf:0 };
+      var noneCount = 0, votedTotal = 0, eligibleUnvoted = 0, notEligible = 0;
+      sessions.forEach(function(s) {
+        var vote = getModelReliability(s);
+        if (vote && vote.votedModel) { counts[vote.votedModel] = (counts[vote.votedModel] || 0) + 1; votedTotal++; return; }
+        if (vote && Object.prototype.hasOwnProperty.call(vote, 'votedModel') && vote.votedModel === null) { noneCount++; votedTotal++; return; }
+        if (s.hs && _isRecentForModelVote(s.date)) { eligibleUnvoted++; } else { notEligible++; }
+      });
+      if (votedTotal < 1) return ''; // rien à montrer tant qu'aucun vote n'existe
+      var barsHoule = Object.keys(MODEL_RELIABILITY_LABELS).map(function(k) {
+        var n = counts[k] || 0, pct = votedTotal ? (n / votedTotal * 100) : 0;
+        var info = MODEL_RELIABILITY_LABELS[k];
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">'
+          + '<span style="min-width:78px;color:var(--text-muted);">' + info.label + '</span>'
+          + '<div style="flex:1;height:14px;background:var(--glass);border-radius:3px;overflow:hidden;">'
+          + '<div style="height:100%;width:' + pct + '%;background:' + info.col + ';"></div>'
+          + '</div>'
+          + '<span style="min-width:40px;text-align:right;font-size:10px;color:var(--text-muted);">' + n + ' (' + Math.round(pct) + '%)</span>'
+          + '</div>';
+      }).join('')
+      + (noneCount ? '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">'
+          + '<span style="min-width:78px;color:var(--text-muted);">Aucun</span>'
+          + '<div style="flex:1;height:14px;background:var(--glass);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + (noneCount/votedTotal*100) + '%;background:var(--text-faint);"></div></div>'
+          + '<span style="min-width:40px;text-align:right;font-size:10px;color:var(--text-muted);">' + noneCount + ' (' + Math.round(noneCount/votedTotal*100) + '%)</span>'
+          + '</div>' : '');
+      return '<div class="card" style="margin-top:14px;">'
+        + '<div class="section-title" style="margin-bottom:4px;">🌊 Modèle de houle le plus fiable</div>'
+        + '<div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">Sur ' + votedTotal + ' session(s) évaluée(s)'
+        + (eligibleUnvoted ? ' · <span style="color:var(--accent);">' + eligibleUnvoted + ' à évaluer</span> (récentes, pas encore votées)' : '')
+        + (notEligible ? ' · ' + notEligible + ' non applicable(s) (hors fenêtre ' + MODEL_RELIABILITY_WINDOW_DAYS + 'j ou sans houle notée)' : '')
+        + '</div>'
+        + barsHoule
+        + '</div>';
     })()}
   `;
   clearTimeout(window._statsT);

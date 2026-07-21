@@ -491,6 +491,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     </div>
     <div style="position:relative;width:100%;"><canvas id="swell-cmp" style="width:100%;display:block;cursor:crosshair;"></canvas></div>
     <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles</div>
+    <div id="swell-cmp-vote" style="display:none;margin-top:10px;padding:10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;"></div>
   </div>
 
   <!-- 2ᵉ FIGURE PRINCIPALE (après le widget houle/marée) : AROME puis Puissance -->
@@ -4036,6 +4037,148 @@ function _swellToPts(d, comp) {
   return pts;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// FIABILITÉ HOULE PAR MODÈLE — vote depuis une session du Journal
+// ═══════════════════════════════════════════════════════════════
+// Le Journal (index.html) n'a pas accès directement au comparatif houle
+// (fetch BOM/Windguru/Open-Meteo, tout ce code) : plutôt que de dupliquer
+// cette logique, on arrive ici via un lien profond (?voteSession=...) qui
+// pré-sélectionne le bon spot et positionne le curseur sur la date/heure de
+// la session, pour voter EN CONTEXTE (on voit les courbes avant de choisir).
+//
+// Stockage : colonne Supabase sessions.model_reliability (jsonb) si elle
+// existe, sinon repli localStorage (même origine que index.html, donc lu des
+// deux côtés) — on n'a pas les droits pour créer la colonne nous-mêmes
+// (clé anon uniquement). _hasModelReliabilityColumn() sonde une fois par
+// session de page et se souvient du résultat.
+var _modelRelColOk = null;
+async function _hasModelReliabilityColumn() {
+  if (_modelRelColOk !== null) return _modelRelColOk;
+  if (typeof sb === 'undefined' || !sb) { _modelRelColOk = false; return false; }
+  try {
+    var r = await sb.from('sessions').select('model_reliability').limit(1);
+    _modelRelColOk = !r.error;
+  } catch (e) { _modelRelColOk = false; }
+  return _modelRelColOk;
+}
+async function saveModelReliability(sessionId, vote) {
+  if (typeof sb !== 'undefined' && sb && await _hasModelReliabilityColumn()) {
+    try {
+      var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sessionId);
+      if (!r.error) return true;
+    } catch (e) {}
+  }
+  try {
+    var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
+    store[sessionId] = vote;
+    localStorage.setItem('model-reliability', JSON.stringify(store));
+    return true;
+  } catch (e) { return false; }
+}
+
+// Contexte de vote actif, peuplé par _initSwellVoteFromUrl() si l'URL contient
+// ?voteSession=<id>&voteSpot=<nom>&voteDate=YYYY-MM-DD[&voteHour=H]
+var _pendingVote = null;
+
+function _initSwellVoteFromUrl() {
+  try {
+    var p = new URLSearchParams(location.search);
+    var sid = p.get('voteSession'), spot = p.get('voteSpot'), date = p.get('voteDate');
+    if (!sid || !spot || !date) return;
+    var hour = p.get('voteHour'); hour = (hour !== null && hour !== '') ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 12;
+    // Date+heure NC (UTC+11) explicite → ms UTC réel, comparable aux séries (mêmes unités que _swellToPts).
+    var targetMs = new Date(date + 'T' + String(hour).padStart(2, '0') + ':00:00+11:00').getTime();
+    if (isNaN(targetMs)) return;
+    var spotIdx = _findSpotIdxForName(spot);
+    if (spotIdx < 0) return;
+    _pendingVote = { sessionId: sid, spotName: spot, dateStr: date, targetMs: targetMs };
+    bsfSelectSpot(spotIdx, targetMs).then(function() {
+      // _renderSwellCompare() est déclenché ailleurs (pas attendu par bsfSelectSpot) —
+      // on patiente que _swellCache soit prêt avant de positionner le curseur + afficher le vote.
+      var tries = 0;
+      var iv = setInterval(function() {
+        tries++;
+        if (_swellCache) {
+          clearInterval(iv);
+          if (window._swellCmpCursorTo) window._swellCmpCursorTo(targetMs);
+          _renderVoteUI();
+          var card = document.getElementById('swell-cmp-card');
+          if (card) setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+        } else if (tries > 40) { clearInterval(iv); } // ~10s, abandon silencieux
+      }, 250);
+    });
+  } catch (e) { console.warn('[voteFromUrl]', e && e.message); }
+}
+
+// Cherche l'index SPOTS correspondant à un nom de spot venant du Journal —
+// soit le point de prévision lui-même (SPOTS[i].name), soit un des surfSpots
+// qui lui sont rattachés (ex: "Gros nem" → point "Ilot Ténia").
+function _findSpotIdxForName(name) {
+  var norm = _normVoteSpotName(name);
+  for (var i = 0; i < SPOTS.length; i++) {
+    if (_normVoteSpotName(SPOTS[i].name) === norm) return i;
+    if (SPOTS[i].surfSpots && SPOTS[i].surfSpots.some(function(s) { return _normVoteSpotName(s) === norm; })) return i;
+  }
+  return -1;
+}
+function _normVoteSpotName(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/^(ilot|île|ile|passe de|passe d')\s+/i, '').trim();
+}
+
+function _renderVoteUI() {
+  var box = document.getElementById('swell-cmp-vote');
+  if (!box || !_pendingVote) return;
+  var comp = _swellMode === 'secondary' ? 'secondary' : 'primary';
+  // Un modèle n'est proposé que s'il a un point à MOINS de 4h de l'heure de la
+  // session — avoir des données quelque part dans sa plage (souvent seulement
+  // à partir de « maintenant ») ne veut pas dire qu'il couvre ce créneau précis
+  // (repéré en testant une session d'hier : les 5 modèles semblaient "actifs"
+  // alors qu'aucun n'avait réellement de point proche → vote trompeur évité ici).
+  var active = SWELL_MODELS.filter(function(m) {
+    var pts = _swellCache && _swellCache[m.key] && _swellCache[m.key][comp];
+    if (!pts || !pts.length) return false;
+    return pts.some(function(p) { return Math.abs(p.ms - _pendingVote.targetMs) < 4 * 3600000; });
+  });
+  if (!active.length) {
+    box.style.display = 'block';
+    box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">🌊 Aucun modèle n\'a de données proches de l\'heure de cette session ('
+      + _pendingVote.dateStr.split('-').reverse().join('/') + ') — comparaison indisponible pour cette date.</div>';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px;">🎯 Quel modèle a été le plus fiable pour ta session du ' + _pendingVote.dateStr.split('-').reverse().join('/') + ' ?</div>'
+    + '<div style="font-size:9.5px;color:var(--muted);margin-bottom:8px;">Regarde les courbes ci-dessus au moment de ta session, puis choisis celle qui correspondait le mieux à ce que tu as observé à l\'eau.</div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;">'
+    + active.map(function(m) {
+        return '<button onclick="_castModelVote(\'' + m.key + '\')" style="background:none;border:1px solid ' + m.col.replace(',.95)', ',.5)') + ';color:' + m.col + ';font-size:11px;padding:5px 12px;border-radius:16px;cursor:pointer;font-weight:600;">' + m.label + '</button>';
+      }).join('')
+    + '<button onclick="_castModelVote(null)" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:5px 12px;border-radius:16px;cursor:pointer;">Aucun / Je ne sais pas</button>'
+    + '</div>'
+    + '<div id="swell-cmp-vote-status" style="margin-top:6px;font-size:10px;color:var(--muted);"></div>';
+}
+
+async function _castModelVote(modelKey) {
+  if (!_pendingVote) return;
+  var statusEl = document.getElementById('swell-cmp-vote-status');
+  if (statusEl) statusEl.textContent = 'Enregistrement…';
+  var comp = _swellMode === 'secondary' ? 'secondary' : 'primary';
+  var predictions = {};
+  SWELL_MODELS.forEach(function(m) {
+    var pts = _swellCache && _swellCache[m.key] && _swellCache[m.key][comp];
+    if (!pts || !pts.length) return;
+    var best = null, bd = 4 * 3600000;
+    pts.forEach(function(p) { var df = Math.abs(p.ms - _pendingVote.targetMs); if (df < bd) { bd = df; best = p; } });
+    if (best) predictions[m.key] = { h: best.h, t: best.t, dir: best.dir };
+  });
+  var vote = { votedModel: modelKey, votedAt: new Date().toISOString(), swellMode: comp, spot: _pendingVote.spotName, date: _pendingVote.dateStr, predictions: predictions };
+  var ok = await saveModelReliability(_pendingVote.sessionId, vote);
+  var modelLbl = modelKey ? (SWELL_MODELS.find(function(m) { return m.key === modelKey; }) || {}).label : 'Aucun';
+  if (statusEl) statusEl.innerHTML = ok
+    ? '✓ Enregistré : <b style="color:var(--accent);">' + escapeHtml(modelLbl || '—') + '</b> · <a href="index.html?openSession=' + encodeURIComponent(_pendingVote.sessionId) + '" style="color:var(--accent);">← Retour au Journal</a>'
+    : '⚠ Échec de l\'enregistrement, réessaie.';
+}
+
 async function _renderSwellCompare() {
   var card = document.getElementById('swell-cmp-card');
   var cv = document.getElementById('swell-cmp');
@@ -4279,6 +4422,26 @@ function _drawSwellCompare() {
   cv.ontouchstart = cv.ontouchmove = function(ev) {
     if (ev.touches && ev.touches[0]) cv.onmousemove({ clientX: ev.touches[0].clientX });
   };
+  // Positionnement programmatique du curseur (lien profond depuis le Journal,
+  // cf. _initSwellVoteFromUrl) — même principe que window._aromeCmpCursorTo.
+  window._swellCmpCursorTo = function(ms) {
+    if (ms == null) { cv.onmouseleave(); return; }
+    draw(ms); renderNowRow(ms); _drawSwellRose(ms);
+    var ro2 = document.getElementById('swell-cmp-readout');
+    if (ro2) {
+      var dNC2 = new Date(ms + 11 * 36e5);
+      var lbl2 = String(dNC2.getUTCDate()).padStart(2, '0') + '/' + (dNC2.getUTCMonth() + 1) + ' ' + String(dNC2.getUTCHours()).padStart(2, '0') + 'h';
+      var parts2 = ['<b style="color:var(--text);">' + lbl2 + '</b>'];
+      activeModels.forEach(function(m) {
+        var p = nearest(series[m.key], ms);
+        if (p) parts2.push('<span style="color:' + m.col + ';">' + m.label + ' <b>' + p.h.toFixed(1) + 'm</b>' + (p.t ? ' ' + Math.round(p.t) + 's' : '') + '</span>');
+      });
+      ro2.innerHTML = parts2.join(' · ');
+    }
+  };
+  // Le vote dépend des modèles actifs pour le mode houle 1/2 courant — redessiné
+  // ici aussi (appelé à chaque render, pas seulement au premier chargement).
+  _renderVoteUI();
 }
 
 // ─── Historique 7 jours — statistiques depuis meteo_cache ────────────────────
@@ -13781,6 +13944,13 @@ function ensoRender() {
       calibrateFromJournal(true);
     } catch(e) {}
   }, 6000);
+
+  // Lien profond depuis le Journal (?voteSession=...) : bascule sur le bon
+  // spot + positionne le curseur, une fois le boot normal bien lancé (évite
+  // de courir après le chargement du token qui relance loadForecast(currentSpot)).
+  if (location.search.indexOf('voteSession=') >= 0) {
+    setTimeout(function() { try { _initSwellVoteFromUrl(); } catch(e) { console.warn('[voteFromUrl]', e && e.message); } }, 900);
+  }
 })();
 </script>
 <script>
