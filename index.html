@@ -9,11 +9,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Surf NC">
-<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=3">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png?v=3">
+<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=4">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png?v=4">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
-<link rel="shortcut icon" href="icons/icon-192x192.png?v=3">
+<link rel="shortcut icon" href="icons/icon-192x192.png?v=4">
 <link rel="stylesheet" href="pwa.css">
 <title>Coups de surf NC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -234,6 +234,10 @@ nav {
 
 /* ── STATS ── */
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+/* Paires de graphes (Chart.js) côte à côte sur desktop — passe à 1 colonne
+   sous 600px (cf. media query plus bas), sinon débordement horizontal en
+   PWA/mobile (chaque carte ~342px, 2 côte à côte = 714px sur un écran 375px). */
+.stats-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 .stat-card {
   background: var(--glass);
   border: 1px solid var(--border);
@@ -399,6 +403,7 @@ nav {
   .session-card { grid-template-columns: auto 1fr; }
   .session-right { display: none; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
+  .stats-2col { grid-template-columns: 1fr; }
   nav { padding: 0 1rem; }
   .container, .container-wide { padding: 1.5rem 1rem; }
   .nav-menu-btns {
@@ -3535,7 +3540,7 @@ function renderStats(sessions, el) {
       <div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value">${avgQ.toFixed(1)} <span style="color:var(--star);font-size:1rem;">★</span></div></div>
       <div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">${tubes.length}</div><div class="stat-sub">${Math.round(tubes.length/sessions.length*100)}%</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+    <div class="stats-2col">
       <div class="card">
         <div class="section-title" style="margin-bottom:10px;">Sessions par mois</div>
         <div class="chart-wrap" style="height:180px;"><canvas id="stat-month-chart" role="img" aria-label="Sessions par mois"></canvas></div>
@@ -5222,7 +5227,7 @@ function showSpotDetail(spotName) {
     '</div>' +
 
     // Puissance & qualité dans le temps
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+    '<div class="stats-2col">' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">⚡ Puissance Hs²·T par session</div>' +
         '<div style="position:relative;height:160px;"><canvas id="spot-power-chart"></canvas></div></div>' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">★ Qualité dans le temps</div>' +
@@ -5230,7 +5235,7 @@ function showSpotDetail(spotName) {
     '</div>' +
 
     // Vents & saisons
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+    '<div class="stats-2col">' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">🌬️ Qualité par direction vent</div>' +
         '<div style="position:relative;height:160px;"><canvas id="spot-wind-chart"></canvas></div></div>' +
       '<div class="card"><div class="section-title" style="margin-bottom:8px;">📆 Saisonnalité (qualité/mois)</div>' +
