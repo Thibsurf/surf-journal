@@ -1665,10 +1665,11 @@ function renderCrewView() {
     // Couleur avatar déterministe
     var hue = name.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0) % 360;
 
-    html += '<div class="card" style="cursor:pointer;transition:all .2s;" onclick="showCrewDetail(\''+name.replace(/'/g,"\\'")+'\')">'
+    var looksLikeSpot = typeof _lookupSpotStation === 'function' && !!_lookupSpotStation(name);
+    html += '<div class="card" style="cursor:pointer;transition:all .2s;'+(looksLikeSpot?'border-color:rgba(232,160,87,.5);':'')+'" onclick="showCrewDetail(\''+name.replace(/'/g,"\\'")+'\')">'
       + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
       + '<div style="width:38px;height:38px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:hsl('+hue+',60%,70%);flex-shrink:0;">'+initials+'</div>'
-      + '<div><div style="font-weight:600;font-size:14px;">'+name+'</div>'
+      + '<div><div style="font-weight:600;font-size:14px;">'+escapeHtml(name)+(looksLikeSpot?' <span title="Ce nom correspond à un spot connu — erreur de saisie possible (champ Surfeurs au lieu du champ Spot) ?" style="cursor:help;font-size:11px;">⚠️</span>':'')+'</div>'
       + '<div style="font-size:10px;color:var(--text-muted);">Dernière session : '+lastStr+'</div></div></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;">'
       + '<div style="background:var(--glass);border-radius:6px;padding:6px 4px;"><div style="font-size:16px;font-weight:700;color:var(--accent);">'+n+'</div><div style="font-size:9px;color:var(--text-muted);">sessions</div></div>'
@@ -1724,13 +1725,60 @@ function showCrewDetail(name) {
     var hdr = document.createElement('div');
     hdr.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);';
     var hue = name.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0)%360;
+    var nameEsc = name.replace(/'/g,"\\'");
     hdr.innerHTML = '<button onclick="filterSessions(\'crew\',document.querySelector(\'.tab[onclick*=crew]\'))" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;padding:0;">←</button>'
       + '<div style="width:30px;height:30px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:hsl('+hue+',60%,70%);">'
       + name.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase()+'</div>'
-      + '<span style="font-weight:600;">'+name+'</span>'
-      + '<span style="font-size:11px;color:var(--text-muted);">'+c.length+' session(s) en commun</span>';
+      + '<span style="font-weight:600;">'+escapeHtml(name)+'</span>'
+      + '<span style="font-size:11px;color:var(--text-muted);">'+c.length+' session(s) en commun</span>'
+      + '<span style="margin-left:auto;display:flex;gap:4px;">'
+      + '<button onclick="renameCrewMember(\''+nameEsc+'\')" title="Corriger le nom (ex: faute de frappe)" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;">✏️</button>'
+      + '<button onclick="removeCrewMember(\''+nameEsc+'\')" title="Retirer (ex: nom de spot saisi par erreur)" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;">🗑️</button>'
+      + '</span>';
     el.insertBefore(hdr, el.firstChild);
   }
+}
+
+// Corrige un nom mal orthographié dans shared_with sur TOUTES les sessions
+// de l'utilisateur (ex: "Jonhatan" → "Johnatan") — la donnée est saisie
+// librement en texte, il n'y a pas d'autre moyen de la corriger que côté client.
+async function renameCrewMember(oldName) {
+  var newName = prompt('Renommer "' + oldName + '" en :', oldName);
+  if (newName === null) return;
+  newName = newName.trim();
+  if (!newName || newName === oldName) return;
+  var toUpdate = (allSessions || []).filter(function(s) {
+    return s.shared_with && s.shared_with.some(function(x) { return x.trim() === oldName; });
+  });
+  if (!toUpdate.length) return;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < toUpdate.length; i++) {
+    var s = toUpdate[i];
+    var newShared = s.shared_with.map(function(x) { return x.trim() === oldName ? newName : x; });
+    var res = await sb.from('sessions').update({ shared_with: newShared }).eq('id', s.id);
+    if (res && res.error) fail++; else { s.shared_with = newShared; ok++; }
+  }
+  showToast(fail ? ('⚠ ' + ok + ' session(s) renommée(s), ' + fail + ' échec(s)') : ('✓ "' + oldName + '" renommé en "' + newName + '" (' + ok + ' session' + (ok > 1 ? 's' : '') + ')'), fail ? 'error' : 'success');
+  filterSessions('crew', document.querySelector('.tab[onclick*=crew]'));
+}
+
+// Retire un nom de shared_with sur toutes les sessions (ex: nom de spot
+// saisi par erreur dans le champ "Surfeurs" au lieu du champ "Spot").
+async function removeCrewMember(name) {
+  if (!confirm('Retirer "' + name + '" de toutes tes sessions ?\n\n(Utile si c\'était une erreur de saisie, ex: un nom de spot au lieu d\'un surfeur.)')) return;
+  var toUpdate = (allSessions || []).filter(function(s) {
+    return s.shared_with && s.shared_with.some(function(x) { return x.trim() === name; });
+  });
+  if (!toUpdate.length) return;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < toUpdate.length; i++) {
+    var s = toUpdate[i];
+    var newShared = s.shared_with.filter(function(x) { return x.trim() !== name; });
+    var res = await sb.from('sessions').update({ shared_with: newShared }).eq('id', s.id);
+    if (res && res.error) fail++; else { s.shared_with = newShared; ok++; }
+  }
+  showToast(fail ? ('⚠ ' + ok + ' session(s) mise(s) à jour, ' + fail + ' échec(s)') : ('✓ "' + name + '" retiré de ' + ok + ' session(s)'), fail ? 'error' : 'success');
+  filterSessions('crew', document.querySelector('.tab[onclick*=crew]'));
 }
 
 function renderDashStats(sessions) {
