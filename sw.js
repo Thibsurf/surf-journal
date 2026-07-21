@@ -30,6 +30,20 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+// Clic sur une notification (ex: alerte BMS depuis previsions.html) → focus
+// l'onglet/PWA déjà ouvert, sinon en ouvre un nouveau sur les prévisions.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow('/surf-journal/previsions.html');
+    })
+  );
+});
+
 self.addEventListener('fetch', event => {
   // Ne pas intercepter les requêtes non-GET ni les APIs externes
   if (event.request.method !== 'GET') return;

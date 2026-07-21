@@ -12440,6 +12440,15 @@ async function updateNavBMSBanner() {
            : bms.niveau === 'large' ? 'Large' : 'Lagon';
   var nature = bms.nature ? bms.nature.replace(/^Avis de\s*/i,'') : 'avis marine';
 
+  var notifPerm = ('Notification' in window) ? Notification.permission : 'unsupported';
+  var notifBtn = notifPerm === 'default'
+    ? '<button type="button" onclick="enableBmsNotifications()" '
+      + 'style="margin-top:6px;margin-left:6px;background:none;border:1px solid '+bd+';color:'+col+';font-size:9px;'
+      + 'padding:3px 10px;border-radius:5px;cursor:pointer;">🔔 Activer les alertes</button>'
+    : notifPerm === 'denied'
+    ? '<span style="font-size:8.5px;color:var(--faint);margin-left:8px;">🔕 Notifications bloquées (réglages navigateur)</span>'
+    : '';
+
   box.innerHTML =
     '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:8px;padding:8px 11px;">'
     + '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">'
@@ -12453,9 +12462,60 @@ async function updateNavBMSBanner() {
     + '<button type="button" onclick="openNavBMSDetail()" '
     +   'style="margin-top:6px;background:none;border:1px solid '+bd+';color:'+col+';font-size:9px;'
     +   'padding:3px 10px;border-radius:5px;cursor:pointer;">détails →</button>'
+    + notifBtn
     + '</div>';
   box.style.display = 'block';
+  _maybeNotifyBms(bms);
 }
+
+// ── Notification navigateur/PWA quand un NOUVEAU BMS devient actif ─────────
+// Ne fonctionne que pendant que la page/PWA est ouverte (pas de vraie Web Push
+// avec serveur d'abonnement) : on revérifie via setInterval ci-dessous tant que
+// l'onglet reste ouvert. Dédoublonné par bulletin (localStorage) pour ne pas
+// renotifier à chaque rafraîchissement tant que le même BMS reste actif.
+// Permission JAMAIS demandée automatiquement : uniquement via clic explicite
+// sur le bouton du bandeau (exigence des navigateurs + bonne pratique UX).
+var BMS_NOTIFY_KEY = 'bms-notified-id';
+
+function _bmsId(bms) {
+  return [bms.niveau, bms.nature, bms.updateLabel].filter(Boolean).join('|');
+}
+
+async function _maybeNotifyBms(bms) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  var id = _bmsId(bms);
+  var last = null;
+  try { last = localStorage.getItem(BMS_NOTIFY_KEY); } catch(e) {}
+  if (last === id) return; // déjà notifié pour ce bulletin précis
+  try { localStorage.setItem(BMS_NOTIFY_KEY, id); } catch(e) {}
+  var zone = bms.niveau === 'both' ? 'Lagon & Large' : bms.niveau === 'large' ? 'Large' : 'Lagon';
+  var nature = bms.nature ? bms.nature.replace(/^Avis de\s*/i,'') : 'avis marine';
+  var title = '⚠️ BMS ' + zone + ' actif';
+  var body = nature + (bms.updateLabel ? ' — ' + bms.updateLabel : '');
+  try {
+    if (navigator.serviceWorker) {
+      var reg = await navigator.serviceWorker.ready;
+      reg.showNotification(title, { body: body, icon: 'icons/icon-192x192.png', badge: 'icons/icon-72x72.png', tag: 'bms-alert', renotify: true });
+    } else {
+      new Notification(title, { body: body });
+    }
+  } catch(e) { console.warn('[BMS notif]', e && e.message); }
+}
+
+function enableBmsNotifications() {
+  if (!('Notification' in window)) { showToast('Notifications non supportées sur ce navigateur'); return; }
+  Notification.requestPermission().then(function(perm) {
+    if (perm === 'granted') {
+      showToast('🔔 Alertes BMS activées');
+      try { localStorage.removeItem(BMS_NOTIFY_KEY); } catch(e) {} // force la notif immédiate si un BMS est déjà actif
+    }
+    updateNavBMSBanner(); // rafraîchit le bandeau (retire/adapte le bouton selon la réponse)
+  });
+}
+
+// Revérifie périodiquement tant que la page reste ouverte — getActiveBMS() a
+// son propre cache 15 min, donc ce polling reste gratuit côté réseau.
+setInterval(function() { try { updateNavBMSBanner(); } catch(e) {} }, 5 * 60 * 1000);
 
 // Lien « détails » du bandeau → ouvre l'onglet Marée et défile vers la carte BMS.
 function openNavBMSDetail() {
