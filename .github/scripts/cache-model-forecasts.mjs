@@ -174,6 +174,49 @@ async function fetchEcmwf(spot) {
   return { swell, wind };
 }
 
+// ── meteo.nc (modèle officiel régionalisé NC) via rpcache ────────────────
+// Le token Bearer est capturé côté navigateur par l'extension puis poussé
+// dans Supabase (shared_tokens) par le worker Cloudflare toutes les 5 min —
+// on le RELIT ici pour interroger rpcache côté serveur, sans reproduire la
+// capture (impossible hors navigateur). Si le token est absent/expiré, on
+// saute meteo.nc sans faire échouer le reste (il reste alimenté par les
+// visites normales de l'app via _saveForecastDays).
+async function getNcToken() {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/shared_tokens?select=token&id=eq.meteo-nc`, {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+    });
+    const j = await r.json();
+    return j?.[0]?.token || null;
+  } catch (e) { console.warn('[nc token]', e.message); return null; }
+}
+
+async function fetchMeteoNc(spot, token) {
+  if (!token) return { swell: [], wind: [] };
+  try {
+    const r = await fetchWithTimeout(
+      `https://rpcache.meteo.nc/internet2018client/2.0/forecast/marine?lat=${spot.lat}&lon=${spot.lon}`,
+      12000,
+      { Authorization: `Bearer ${token}`, Referer: 'https://meteo.nc/' }
+    );
+    if (!r.ok) { console.warn('[nc]', spot.name, 'HTTP', r.status); return { swell: [], wind: [] }; }
+    const j = await r.json();
+    const rows = j?.properties?.marine || j?.properties?.hourly || j?.properties?.forecast;
+    if (!rows?.length) return { swell: [], wind: [] };
+    const swell = [], wind = [];
+    for (const d of rows) {
+      // rpcache/forecast/marine étiquette les temps en UTC réel (cf.
+      // previsions.html : +11h appliqué SANS normalisation de jour, à la
+      // différence de l'endpoint tide) → new Date(d.time) = vrai UTC.
+      const ms = new Date(d.time).getTime();
+      const h1 = d.primary_swell_height ?? d.wave_height;
+      if (h1 != null) swell.push({ ms, val: h1, period: d.primary_swell_period, dir: d.primary_swell_direction });
+      if (d.wind_speed_kt != null) wind.push({ ms, val: d.wind_speed_kt, dir: d.wind_direction });
+    }
+    return { swell, wind };
+  } catch (e) { console.warn('[nc]', spot.name, e.message); return { swell: [], wind: [] }; }
+}
+
 // ── Regroupe des points par date NC-locale (+11h) → lignes model_forecast_cache ──
 function toRows(spot, modelKey, kind, pts) {
   if (!pts.length) return [];
@@ -214,12 +257,16 @@ async function upsert(rows) {
 
 async function run() {
   console.log(`=== Cache modèles météo — ${new Date().toISOString()} ===`);
+  const ncToken = await getNcToken();
+  console.log(ncToken ? '[nc] token trouvé — meteo.nc inclus' : '[nc] pas de token Supabase — meteo.nc sauté (alimenté par les visites de l\'app)');
   for (const spot of SPOTS) {
     console.log(`--- ${spot.name} ---`);
-    const [bom, mfWave, gfsWave, gfsWind, ecmwf] = await Promise.all([
-      fetchBom(spot), fetchMfWave(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot),
+    const [bom, mfWave, gfsWave, gfsWind, ecmwf, nc] = await Promise.all([
+      fetchBom(spot), fetchMfWave(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot), fetchMeteoNc(spot, ncToken),
     ]);
     const rows = [
+      ...toRows(spot, 'nc', 'swell_primary', nc.swell),
+      ...toRows(spot, 'nc', 'wind', nc.wind),
       ...toRows(spot, 'bom', 'swell_primary', bom.swell),
       ...toRows(spot, 'bom', 'wind', bom.wind),
       ...toRows(spot, 'mf', 'swell_primary', mfWave),
@@ -228,7 +275,7 @@ async function run() {
       ...toRows(spot, 'ecmwf', 'swell_primary', ecmwf.swell),
       ...toRows(spot, 'ecmwf', 'wind', ecmwf.wind),
     ];
-    // Supabase limite la taille d'un batch insert — ce volume (~10j × 5
+    // Supabase limite la taille d'un batch insert — ce volume (~10j × 6
     // modèles/kind max) reste largement en dessous, mais on découpe par
     // prudence si jamais un spot remonte beaucoup de lignes.
     for (let i = 0; i < rows.length; i += 50) await upsert(rows.slice(i, i + 50));
