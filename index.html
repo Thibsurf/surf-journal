@@ -1695,7 +1695,7 @@ function renderCrewView() {
     html += '</tr>';
     names.forEach(function(a) {
       var hue2 = a.split('').reduce(function(x,c){return x+c.charCodeAt(0);},0)%360;
-      html += '<tr><td style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);font-weight:600;color:hsl('+hue2+',60%,70%);white-space:nowrap;">'+a+'</td>';
+      html += '<tr><td style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);font-weight:600;color:hsl('+hue2+',60%,70%);white-space:nowrap;">'+escapeHtml(a)+'</td>';
       names.forEach(function(b) {
         if (a === b) { html += '<td style="padding:6px 8px;border:1px solid var(--border);background:rgba(255,255,255,.03);text-align:center;color:var(--text-faint);">—</td>'; return; }
         var common = sharedBetween(a, b).length;
