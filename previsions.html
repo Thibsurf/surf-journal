@@ -446,11 +446,11 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       <div class="gw-chart-wrap">
         <canvas id="gw-overview" title="Survoler = vecteurs sur la vue satellite · cliquer = choisir le jour"></canvas>
         <div id="gw-ov-readout">← Survolez le graphe : les vecteurs houle/vent suivent l'heure</div>
-        <div style="font-size:8.5px;color:var(--faint);display:flex;gap:11px;flex-wrap:wrap;margin-top:3px;">
+        <div style="font-size:10.5px;color:var(--muted);display:flex;gap:12px;row-gap:4px;flex-wrap:wrap;margin-top:5px;">
           <span><span style="color:#3dba8a;font-weight:700;">━</span> vent moyen</span>
-          <span><span style="color:#e05c5c;">◆</span> rafales</span>
-          <span><span style="color:rgba(79,163,199,.9);">▮</span> houle totale</span>
-          <span><span style="color:rgba(185,208,235,.95);">▮</span> houle primaire</span>
+          <span><span style="color:#e05c5c;font-weight:700;">◆</span> rafales</span>
+          <span><span style="color:rgba(79,163,199,.9);font-weight:700;">▮</span> houle totale</span>
+          <span><span style="color:rgba(185,208,235,.95);font-weight:700;">▮</span> houle primaire</span>
         </div>
       </div>
       <div class="gw-sat-panel" id="gw-sat-panel"
@@ -4543,10 +4543,10 @@ function _drawSwellCompare() {
   renderNowRow(Date.now());
   _drawSwellRose(Date.now());
 
-  cv.onmousemove = function(e) {
-    var rect = cv.getBoundingClientRect();
-    var ms = t0 + (e.clientX - rect.left - padL) / (W - padL - padR) * (t1 - t0);
-    if (ms < t0 || ms > t1) return;
+  // Dessin + relevé à un instant donné, factorisé pour être appelé aussi bien
+  // par le survol natif que par window._swellCmpCursorTo (lien avec le
+  // comparatif vent) sans dupliquer la logique.
+  function renderSwellAt(ms) {
     draw(ms);
     renderNowRow(ms);
     _drawSwellRose(ms);
@@ -4567,33 +4567,42 @@ function _drawSwellCompare() {
       }
       ro.innerHTML = parts.join(' · ');
     }
-  };
-  cv.onmouseleave = function() {
+  }
+  function resetSwellView() {
     draw(null);
     renderNowRow(Date.now());
     _drawSwellRose(Date.now());
     var ro = document.getElementById('swell-cmp-readout');
     if (ro) ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles';
+  }
+  cv.onmousemove = function(e) {
+    var rect = cv.getBoundingClientRect();
+    var ms = t0 + (e.clientX - rect.left - padL) / (W - padL - padR) * (t1 - t0);
+    if (ms < t0 || ms > t1) return;
+    renderSwellAt(ms);
+    // Lien avec le comparatif vent (demande utilisateur) : survoler l'un
+    // déplace le curseur de l'autre, pour lire houle et vent au même instant.
+    // Cross-appel UNIQUEMENT depuis un vrai événement souris ici — jamais
+    // depuis window._swellCmpCursorTo lui-même, sinon un survol du vent hors
+    // fenêtre houle ferait rebondir un reset vers le vent en boucle.
+    if (window._aromeCmpCursorTo) window._aromeCmpCursorTo(ms);
+  };
+  cv.onmouseleave = function() {
+    resetSwellView();
+    if (window._aromeCmpCursorTo) window._aromeCmpCursorTo(null);
   };
   cv.ontouchstart = cv.ontouchmove = function(ev) {
     if (ev.touches && ev.touches[0]) cv.onmousemove({ clientX: ev.touches[0].clientX });
   };
   // Positionnement programmatique du curseur (lien profond depuis le Journal,
-  // cf. _initSwellVoteFromUrl) — même principe que window._aromeCmpCursorTo.
+  // cf. _initSwellVoteFromUrl, et désormais le comparatif vent). ms hors
+  // [t0,t1] de CE graphe (ex: le vent couvre jusqu'à 6j, la houle peut avoir
+  // une fenêtre différente) → curseur caché plutôt qu'affiché hors cadre. Ne
+  // cross-appelle jamais le vent en retour (cf. commentaire sur onmousemove).
   window._swellCmpCursorTo = function(ms) {
-    if (ms == null) { cv.onmouseleave(); return; }
-    draw(ms); renderNowRow(ms); _drawSwellRose(ms);
-    var ro2 = document.getElementById('swell-cmp-readout');
-    if (ro2) {
-      var dNC2 = new Date(ms + 11 * 36e5);
-      var lbl2 = String(dNC2.getUTCDate()).padStart(2, '0') + '/' + (dNC2.getUTCMonth() + 1) + ' ' + String(dNC2.getUTCHours()).padStart(2, '0') + 'h';
-      var parts2 = ['<b style="color:var(--text);">' + lbl2 + '</b>'];
-      activeModels.forEach(function(m) {
-        var p = nearest(series[m.key], ms);
-        if (p) parts2.push('<span style="color:' + m.col + ';">' + m.label + ' <b>' + p.h.toFixed(1) + 'm</b>' + (p.t ? ' ' + Math.round(p.t) + 's' : '') + '</span>');
-      });
-      ro2.innerHTML = parts2.join(' · ');
-    }
+    if (ms != null && (ms < t0 || ms > t1)) ms = null;
+    if (ms == null) { resetSwellView(); return; }
+    renderSwellAt(ms);
   };
   // Le vote dépend des modèles actifs pour le mode houle 1/2 courant — redessiné
   // ici aussi (appelé à chaque render, pas seulement au premier chargement).
@@ -7833,16 +7842,24 @@ async function _loadAromeWidget(wgId) {
   h += '<div style="font-size:9px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '') + ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a></div>';
   // Comparatif vent : mesures station (passé) vs AROME/meteo.nc/GFS/BOM/ECMWF
   h += '<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:8px;">'
-    + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;font-size:9px;color:var(--muted);margin-bottom:4px;">'
-    + '<b style="color:var(--text);font-size:10px;">🆚 Vent : mesuré vs modèles</b>'
+    + '<b style="color:var(--text);font-size:11.5px;display:block;margin-bottom:6px;">🆚 Vent : mesuré vs modèles</b>'
+    // Rangée 1 : séries en direct (celles tracées en trait plein/tireté sur le
+    // graphe). Rangée 2, visuellement séparée : marqueurs de points archivés
+    // (cache), pour ne pas les confondre avec les courbes live — même code
+    // couleur mais un pictogramme différent (cercle creux) déjà utilisé sur
+    // le graphe. Police remontée à 11px (était 9px, signalé illisible).
+    + '<div style="display:flex;gap:10px;row-gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-bottom:5px;">'
     + '<span><span style="color:#3dba8a;font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
     + '<span style="cursor:help;" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution"><span style="color:#4fa3c7;font-weight:700;">━</span> AROME 2.5 ⓘ</span>'
     + '<span style="cursor:help;" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)"><span style="color:#e8a057;font-weight:700;">╌</span> meteo.nc ⓘ</span>'
     + '<span style="cursor:help;" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km)"><span style="color:#a99ff8;font-weight:700;">╌</span> GFS ⓘ</span>'
     + '<span style="cursor:help;" title="Bureau of Meteorology (Australie) — vent du modèle régional WaveWatch III, grille 0,125° (~14 km)"><span style="color:#e05c5c;font-weight:700;">╌</span> BOM ⓘ</span>'
     + '<span style="cursor:help;" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km), le plus fin des modèles globaux ici"><span style="color:#7dd3fc;font-weight:700;">╌</span> ECMWF ⓘ</span>'
-    + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé (cache)</span>'
-    + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé (cache)</span>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;row-gap:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--faint);margin-bottom:4px;">'
+    + '<span>Archivé :</span>'
+    + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé</span>'
+    + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé</span>'
     + '</div>'
     + '<div style="display:flex;gap:10px;align-items:flex-start;">'
     + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;"><canvas id="arome-cmp"></canvas></div>'
@@ -8103,7 +8120,19 @@ async function _renderAromeCompare(j) {
   (j.hours || []).forEach(function(hh, i) {
     if (j.WINDSPD[i] != null) aro.push({ ms: j.init * 1000 + hh * 3600000, kt: j.WINDSPD[i], dir: j.WINDDIR && j.WINDDIR[i] });
   });
-  var now = Date.now(), t0 = now - 24 * 36e5, t1 = now + 48 * 36e5;
+  var now = Date.now(), t0 = now - 24 * 36e5;
+  // AROME (2,5 km) a un horizon court (~48h) par nature du modèle, mais
+  // meteo.nc/GFS/BOM/ECMWF vont bien plus loin (leurs données sont déjà
+  // chargées ci-dessus, sur tout leur horizon, avant tout clip) — avant, la
+  // fenêtre était figée à +48h pour tout le monde, coupant ces séries plus
+  // longues sans raison. On étend jusqu'au point le plus lointain parmi elles,
+  // borné à 6j pour rester lisible (au-delà, seul ECMWF a encore des points —
+  // une traîne à un seul modèle n'apporte rien et écrase l'axe des autres).
+  // AROME s'arrête simplement à son dernier point, sans rien casser.
+  var t1 = [pageNc, pageGfs, bomWind, ecmwfWind].reduce(function(mx, arr) {
+    return arr.reduce(function(m2, p) { return Math.max(m2, p.ms); }, mx);
+  }, now + 48 * 36e5);
+  t1 = Math.min(t1, now + 6 * 24 * 36e5);
   // 4. Passé depuis le CACHE (meteo_cache, jusqu'à 8 jours en arrière) — affiché
   // en POINTS sans courbe : ce sont des prévisions archivées, pas une série
   // continue ; on les compare aux mesures pour juger les modèles a posteriori.
@@ -8249,12 +8278,20 @@ async function _renderAromeCompare(j) {
       ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
       ctx.fillStyle = 'rgba(122,148,170,.85)'; ctx.fillText(g + '', padL - 4, gy + 3);
     }
-    // Minuits NC (+11h, indépendant du fuseau du device) + libellés jour
+    // Minuits NC (+11h, indépendant du fuseau du device) + libellés jour.
+    // Densité adaptative (même logique que le comparatif houle) : la fenêtre
+    // pouvant maintenant couvrir jusqu'à 6j (au lieu de 2 fixes), un libellé
+    // par jour se chevaucherait sur mobile — on saute des jours plutôt que
+    // d'entasser du texte, mais le quadrillage vertical reste sur CHAQUE jour.
     ctx.textAlign = 'center';
     var mid0 = Math.ceil((t0 + 11 * 36e5) / 864e5) * 864e5 - 11 * 36e5;
-    for (var ms = mid0; ms < t1; ms += 864e5) {
+    var pxPerDayW = X(mid0 + 864e5) - X(mid0);
+    var dayStepW = Math.max(1, Math.ceil(40 / Math.max(1, pxPerDayW)));
+    var dayIdxW = 0;
+    for (var ms = mid0; ms < t1; ms += 864e5, dayIdxW++) {
       ctx.strokeStyle = 'rgba(255,255,255,.09)';
       ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
+      if (dayIdxW % dayStepW !== 0) continue;
       var dd = new Date(ms + 11 * 36e5 + 36e5);
       ctx.fillStyle = 'rgba(122,148,170,.9)';
       ctx.fillText(dd.getUTCDate() + '/' + (dd.getUTCMonth() + 1), X(Math.min(ms + 432e5, t1 - 216e5)), H - 5);
@@ -8389,15 +8426,26 @@ async function _renderAromeCompare(j) {
     updateReadout(ms);
     _drawWindRose(ms);
     if (window._aromeSetTableCol) window._aromeSetTableCol(findNearestColIdx(ms));
+    // Lien avec le comparatif houle (demande utilisateur) : survoler l'un
+    // déplace le curseur de l'autre, pour lire vent et houle au même instant
+    // sans se perdre entre deux graphes séparés.
+    if (window._swellCmpCursorTo) window._swellCmpCursorTo(ms);
   };
   cv.onmouseleave = function() {
     draw(null);
     updateReadout(null);
     _drawWindRose(now);
     if (window._aromeSetTableCol) window._aromeSetTableCol(null);
+    if (window._swellCmpCursorTo) window._swellCmpCursorTo(null);
   };
-  // Lien table AROME → graphe : appelé par colSel() dans _loadAromeWidget()
-  window._aromeCmpCursorTo = function(ms) { draw(ms); updateReadout(ms); _drawWindRose(ms == null ? now : ms); };
+  // Lien table AROME → graphe : appelé par colSel() dans _loadAromeWidget().
+  // ms hors [t0,t1] de CE graphe (ex: survol du comparatif houle sur un jour
+  // que le vent ne couvre pas) → curseur simplement caché plutôt qu'affiché
+  // hors cadre avec un relevé vide.
+  window._aromeCmpCursorTo = function(ms) {
+    if (ms != null && (ms < t0 || ms > t1)) ms = null;
+    draw(ms); updateReadout(ms); _drawWindRose(ms == null ? now : ms);
+  };
   _drawWindRose(now);
   // Mobile : le doigt déplace le curseur (le scroll vertical reste possible)
   cv.ontouchstart = cv.ontouchmove = function(ev) {
