@@ -1793,8 +1793,12 @@ async function _sessionSharedWithUpdate(sessionId, mutate) {
   var fresh = await sb.from('sessions').select('shared_with').eq('id', sessionId).maybeSingle();
   if (fresh && fresh.error) return { error: fresh.error };
   var next = mutate(fresh && fresh.data ? fresh.data.shared_with : null);
-  var res = await sb.from('sessions').update({ shared_with: next }).eq('id', sessionId);
+  // .select() indispensable : supabase-js ne lève pas d'erreur si la RLS
+  // bloque silencieusement (0 ligne modifiée) — sans ça, renameCrewMember/
+  // removeCrewMember pouvaient afficher "renommé ✓" sans rien avoir écrit.
+  var res = await sb.from('sessions').update({ shared_with: next }).eq('id', sessionId).select('id');
   if (res && res.error) return { error: res.error };
+  if (!res.data || !res.data.length) return { error: { message: 'Aucune ligne modifiée (droits insuffisants ou session introuvable)' } };
   return { data: next };
 }
 
@@ -2281,7 +2285,7 @@ async function _autoFillConditions(targetDate) {
           { name:'We / Lifou',         lat:-20.91, lon:167.28 },
           { name:'Tadine / Maré',      lat:-21.56, lon:167.85 },
         ];
-        stInfoEl.innerHTML = '<span style="color:var(--accent-warm);font-size:10px;">📍 ' + spotVal + ' — quelle station de prévision ?</span>'
+        stInfoEl.innerHTML = '<span style="color:var(--accent-warm);font-size:10px;">📍 ' + escapeHtml(spotVal) + ' — quelle station de prévision ?</span>'
           + '<select id="autofill-station-pick" style="width:100%;margin-top:4px;background:var(--mid);border:1px solid var(--border);'
           + 'border-radius:6px;color:var(--text);font-size:11px;padding:4px 7px;">'
           + '<option value="">— Choisir une station NC —</option>'
@@ -2319,7 +2323,7 @@ async function _autoFillConditions(targetDate) {
   if (stInfoEl) {
     var prevUrl = 'https://thibsurf.github.io/surf-journal/previsions.html';
     var srcBadge = _isHistory ? '📅' : (_srcPref === 'nc' ? '🛰' : _srcPref === 'gfs' ? '🌐' : '🔄');
-    stInfoEl.innerHTML = '<span style="color:var(--accent);">' + srcBadge + ' ' + station.name + '</span>'
+    stInfoEl.innerHTML = '<span style="color:var(--accent);">' + srcBadge + ' ' + escapeHtml(station.name) + '</span>'
       + ' <a href="'+prevUrl+'" target="_blank" style="color:var(--text-faint);font-size:9px;text-decoration:none;margin-left:4px;">prévisions 7j →</a>';
   }
 
@@ -3656,18 +3660,24 @@ async function loadComments(sessionId) {
 
 async function submitComment() {
   if (!sb || !currentDetailSession) return;
-  const text = document.getElementById('comment-text').value.trim();
-  const { error } = await sb.from('session_comments').insert({
-    session_id: currentDetailSession.id,
-    user_id: currentUser.id,
-    username: currentProfile?.username || '?',
-    quality: selectedCommentQuality || null,
-    comment: text,
-  });
-  if (error) { showToast('Erreur', 'error'); return; }
-  showToast('Avis ajouté !', 'success');
-  document.getElementById('comment-text').value = '';
-  await loadComments(currentDetailSession.id);
+  // Garde anti-double-clic : .insert() direct (pas idempotent) sans bouton
+  // désactivé pendant l'attente réseau — un double-tap postait le même avis
+  // deux fois, visible de tout le groupe.
+  if (submitComment._busy) return; submitComment._busy = true;
+  try {
+    const text = document.getElementById('comment-text').value.trim();
+    const { error } = await sb.from('session_comments').insert({
+      session_id: currentDetailSession.id,
+      user_id: currentUser.id,
+      username: currentProfile?.username || '?',
+      quality: selectedCommentQuality || null,
+      comment: text,
+    });
+    if (error) { showToast('Erreur', 'error'); return; }
+    showToast('Avis ajouté !', 'success');
+    document.getElementById('comment-text').value = '';
+    await loadComments(currentDetailSession.id);
+  } finally { submitComment._busy = false; }
 }
 
 async function deleteSession(id) {
@@ -4812,8 +4822,11 @@ async function _profileBoardsUpdate(mutate) {
   var fresh = await sb.from('profiles').select('boards').eq('id', currentUser.id).maybeSingle();
   if (fresh && fresh.error) { showToast('❌ Erreur lecture profil : ' + fresh.error.message, 'error'); return false; }
   var next = mutate((fresh && fresh.data ? fresh.data.boards : null) || []);
-  var res = await sb.from('profiles').update({ boards: next }).eq('id', currentUser.id);
+  // .select() indispensable (même piège partout ailleurs dans ce fichier) :
+  // supabase-js ne lève pas d'erreur sur un update RLS-bloqué à 0 ligne.
+  var res = await sb.from('profiles').update({ boards: next }).eq('id', currentUser.id).select('id');
   if (res && res.error) { showToast('❌ Planche NON enregistrée : ' + res.error.message, 'error'); return false; }
+  if (!res.data || !res.data.length) { showToast('❌ Planche NON enregistrée (droits insuffisants ?)', 'error'); return false; }
   currentProfile.boards = next;
   return true;
 }
@@ -6268,6 +6281,11 @@ function openEditBoat(b){
 
 async function saveBoat(){
   if(!sb){showToast('Supabase requis','error');return;}
+  // Garde anti-double-clic : la vérif anti-doublon lit boatsCache (pas encore
+  // à jour tant que le 1er insert n'est pas résolu), un double-tap créait 2
+  // bateaux quasi identiques.
+  if (saveBoat._busy) return; saveBoat._busy = true;
+  try {
   var id=document.getElementById('boat-edit-id').value;
   var name=document.getElementById('boat-name').value.trim();
   if(!name){showToast('Le nom ne peut pas être vide','error');return;}
@@ -6290,6 +6308,7 @@ async function saveBoat(){
   showToast(id?'Bateau mis à jour !':'Bateau ajouté !','success');
   closeModal('modal-boat'); boatsCache=[];
   await loadBoatsPage(); await populateBoatSelect();
+  } finally { saveBoat._busy = false; }
 }
 
 // ══ BOOT ══

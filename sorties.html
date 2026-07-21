@@ -1601,8 +1601,12 @@ async function saveSortie() {
       payload.inscriptions    = _editInscriptions;
       payload.covoit_passengers = _editCovoitPax;
       payload.boat_owners     = _editBoatOwners;
-      const { error } = await sb.from('sorties').update(payload).eq('id', _editingId);
-      if (error) throw error;
+      // .select() indispensable : supabase-js ne lève pas d'erreur si la RLS
+      // bloque silencieusement l'update (0 ligne modifiée) — même piège déjà
+      // corrigé sur saveSession/saveBoat (index.html) et saveBoat (sorties).
+      const editRes = await sb.from('sorties').update(payload).eq('id', _editingId).select('id');
+      if (editRes.error) throw editRes.error;
+      if (!editRes.data || !editRes.data.length) throw new Error('Aucune modification enregistrée (droits insuffisants ou sortie introuvable)');
       toast('Sortie mise à jour ✓', 'ok');
       _editingId = null; _editInscriptions = []; _editCovoitPax = {}; _editBoatOwners = [];
     } else {
@@ -1711,7 +1715,12 @@ async function _sortieFieldUpdate(sortieId, field, mutate) {
   var next = mutate(fresh && fresh.data ? fresh.data[field] : null);
   if (next === null || next === undefined) return { aborted: true };
   var upd = {}; upd[field] = next;
-  var res = await sb.from('sorties').update(upd).eq('id', sortieId);
+  // .select() indispensable : supabase-js ne lève pas d'erreur si la RLS
+  // bloque silencieusement (0 ligne modifiée) — ce helper est utilisé par
+  // quasi toutes les écritures du fichier (covoit, commentaires, dépenses,
+  // miton, inscriptions...), donc ce trou touchait tout, pas juste un flux.
+  var res = await sb.from('sorties').update(upd).eq('id', sortieId).select('id');
+  if (!res.error && (!res.data || !res.data.length)) res.error = { message: 'Aucune ligne modifiée (droits insuffisants ou sortie introuvable)' };
   return res || {};
 }
 
