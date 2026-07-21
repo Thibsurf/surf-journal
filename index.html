@@ -845,6 +845,11 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
         <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12" oninput="updateFuelEstimate()">
       </div>
     </div>
+    <div style="font-size:10.5px;color:var(--text-faint);margin:-8px 0 12px 2px;">
+      💡 Se remplissent automatiquement si vous utilisez le
+      <a href="javascript:void(0)" onclick="_scrollToTideWidget()" style="color:var(--accent);">widget marée</a>
+      ci-dessous (plus précis) — sinon, saisie manuelle.
+    </div>
     <div class="form-group">
       <label class="form-label">Spot</label>
       <select class="form-select" id="f-spot" onchange="handleSpotChange(this)">
@@ -1809,6 +1814,36 @@ function sessionCardHTML(s, opts) {
   </div>`;
 }
 
+// Marque le champ « Heure » comme modifié manuellement dès que l'utilisateur
+// le touche, pour que le widget marée arrête de l'écraser automatiquement
+// (même pattern que dataset.fromTide sur f-duration/f-tide, cf renderTideWidget).
+function _bindSessionHourManualFlag() {
+  var sel = document.getElementById('f-session-hour');
+  if (!sel || sel._manualBound) return;
+  sel._manualBound = true;
+  sel.addEventListener('change', function() { this.dataset.userEdited = '1'; });
+}
+
+// Ouvre le bloc « Conditions » (replié par défaut) si besoin et scrolle
+// jusqu'au widget marée, pour guider vers la sélection précise plutôt
+// que la ressaisie manuelle de l'heure/durée.
+function _scrollToTideWidget() {
+  var secEl = document.getElementById('sec-conditions');
+  var arrEl = document.getElementById('sec-conditions-arrow');
+  if (secEl && secEl.style.display === 'none') {
+    secEl.style.display = '';
+    if (arrEl) arrEl.textContent = '▲';
+  }
+  var w = document.getElementById('tide-widget');
+  if (w) {
+    w.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var prevBoxShadow = w.style.boxShadow;
+    w.style.transition = 'box-shadow .3s';
+    w.style.boxShadow = '0 0 0 2px var(--accent)';
+    setTimeout(function() { w.style.boxShadow = prevBoxShadow; }, 1200);
+  }
+}
+
 // ══ ADD / EDIT SESSION ══
 function openAddSession() {
   editingSessionId = null;
@@ -1879,7 +1914,9 @@ function openAddSession() {
       }
     }
     sessionHourSel.value = String(defHour);
+    sessionHourSel.dataset.userEdited = '0';
   }
+  _bindSessionHourManualFlag();
   // Port selon launch point
   var tportEl = document.getElementById('tide-port');
   if (tportEl) tportEl.value = 'noumea';
@@ -2614,7 +2651,9 @@ function editSession() {
       }
     }
     editHourSel.value = String(tideRanges.length ? Math.round(tideRanges[0].start) : new Date().getHours());
+    editHourSel.dataset.userEdited = '0';
   }
+  _bindSessionHourManualFlag();
   updateFuelEstimate();
   // Fiabilité prévisions
   if (s.forecast_accuracy) setForecastAccuracy(s.forecast_accuracy);
@@ -2817,6 +2856,14 @@ function renderTideWidget() {
     if (durEl && (!durEl.value || durEl.dataset.fromTide === '1')) {
       durEl.value = totalDur.toFixed(2);
       durEl.dataset.fromTide = '1';
+    }
+    // Auto-remplir l'heure de session depuis le début de la 1ère plage marée,
+    // sauf si l'utilisateur a explicitement choisi une heure différente
+    // (évite d'avoir à ressaisir une heure déjà exprimée par la sélection marée).
+    var hourEl = document.getElementById('f-session-hour');
+    if (hourEl && hourEl.dataset.userEdited !== '1') {
+      var startH = Math.max(0, Math.min(23, Math.round(tideRanges[0].start)));
+      if (hourEl.value !== String(startH)) hourEl.value = String(startH);
     }
     var tideEl = document.getElementById('f-tide');
     if (tideEl && (!tideEl.value || tideEl.dataset.fromTide === '1')) {
