@@ -3216,7 +3216,12 @@ var MODEL_RELIABILITY_WINDOW_DAYS = 2;
 
 function _isRecentForModelVote(dateStr) {
   if (!dateStr) return false;
-  var d = new Date(dateStr + 'T00:00:00');
+  // +11:00 explicite (heure NC) — un `new Date(dateStr+'T00:00:00')` sans
+  // offset est interprété dans le fuseau du DEVICE, pas celui de la NC :
+  // même bug que celui à éviter partout ailleurs dans ce projet (cf.
+  // previsions.html, convention "NC-local via +11h"). Un appareil réglé
+  // sur un autre fuseau aurait décalé la fenêtre "récente" d'un jour.
+  var d = new Date(dateStr + 'T00:00:00+11:00');
   var diffDays = (Date.now() - d.getTime()) / 86400000;
   return diffDays >= -1 && diffDays <= MODEL_RELIABILITY_WINDOW_DAYS;
 }
@@ -3289,29 +3294,135 @@ function _modelVoteUrl(opts) {
   return 'previsions.html?' + p.toString();
 }
 
+// ── Tableau inline houle/modèles ────────────────────────────────────────
+// V1 (lien profond vers previsions.html pour voter) cassée par un bug de
+// guillemets (JSON.stringify() dans un attribut onclick="", cf. retour
+// utilisateur "javascript:void(0)... ça fait sortir du menu de création")
+// ET pas la bonne UX demandée : un petit tableau HAUTEUR/PÉRIODE/DIRECTION
+// avec case à cocher, sans quitter le formulaire. Lit model_forecast_cache
+// (archivé par previsions.html à chaque visite) plutôt que de dupliquer ici
+// tout le fetch BOM/Windguru/Open-Meteo.
+var _modelCacheTableOkJournal = null;
+async function _hasModelCacheTableJournal() {
+  if (_modelCacheTableOkJournal !== null) return _modelCacheTableOkJournal;
+  if (!sb) { _modelCacheTableOkJournal = false; return false; }
+  try { var r = await sb.from('model_forecast_cache').select('id').limit(1); _modelCacheTableOkJournal = !r.error; }
+  catch (e) { _modelCacheTableOkJournal = false; }
+  return _modelCacheTableOkJournal;
+}
+
+// { modelKey: {val, period, dir} } — échantillon = heure de Hs max de la
+// journée pour chaque modèle (comparable d'un modèle à l'autre), ou null si
+// la table n'existe pas / rien archivé pour ce spot+date.
+async function _fetchModelTableRows(spotVal, dateVal) {
+  if (!(await _hasModelCacheTableJournal())) return null;
+  var station = _lookupSpotStation(spotVal);
+  if (!station) return null;
+  try {
+    var r = await sb.from('model_forecast_cache').select('model,lat,lon,hours').eq('date', dateVal).eq('kind', 'swell_primary');
+    if (r.error || !r.data || !r.data.length) return null;
+    var rows = r.data.filter(function(row) {
+      return Math.abs(row.lat - station.lat) < 0.02 && Math.abs(row.lon - station.lon) < 0.02;
+    });
+    if (!rows.length) return null;
+    var out = {};
+    rows.forEach(function(row) {
+      if (!row.hours || !row.hours.length) return;
+      var best = row.hours.reduce(function(a, b) { return (b.val || 0) > (a.val || 0) ? b : a; }, row.hours[0]);
+      if (best.val != null) out[row.model] = { val: best.val, period: best.period, dir: best.dir };
+    });
+    return Object.keys(out).length ? out : null;
+  } catch (e) { return null; }
+}
+
+// Contexte du tableau actuellement affiché — évite de faire transiter
+// spot/date/id (potentiellement des apostrophes, ex: "L'anse Vata") à
+// travers un attribut onclick="" (source du bug de guillemets ci-dessus).
+var _modelTableCtx = null;
+
+function _modelTableHTML(rows) {
+  var order = ['nc', 'gfs', 'bom', 'mf', 'ecmwf'];
+  var present = order.filter(function(k) { return rows[k]; });
+  if (!present.length) return null;
+  var trs = present.map(function(k) {
+    var info = MODEL_RELIABILITY_LABELS[k];
+    var r = rows[k];
+    var dirLbl = r.dir != null ? (_degToCardinal(r.dir) || '') + ' ' + Math.round(r.dir) + '°' : '—';
+    return '<tr onclick="_castInlineModelVote(\'' + k + '\')" style="cursor:pointer;border-bottom:1px solid var(--border);">'
+      + '<td style="padding:6px 4px;color:' + info.col + ';font-weight:600;font-size:12px;">' + info.label + '</td>'
+      + '<td style="padding:6px 4px;text-align:center;font-size:12px;">' + (r.val != null ? r.val.toFixed(1) + 'm' : '—') + '</td>'
+      + '<td style="padding:6px 4px;text-align:center;font-size:12px;">' + (r.period != null ? Math.round(r.period) + 's' : '—') + '</td>'
+      + '<td style="padding:6px 4px;text-align:center;font-size:11px;color:var(--text-muted);">' + dirLbl + '</td>'
+      + '<td style="padding:6px 4px;text-align:center;"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);"></span></td>'
+      + '</tr>';
+  }).join('');
+  return '<table style="width:100%;border-collapse:collapse;">'
+    + '<thead><tr style="border-bottom:1px solid var(--border);">'
+    + '<th style="text-align:left;padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Modèle</th>'
+    + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Hauteur</th>'
+    + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Période</th>'
+    + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Direction</th>'
+    + '<th style="padding:4px;"></th>'
+    + '</tr></thead><tbody>' + trs + '</tbody></table>'
+    + '<div onclick="_castInlineModelVote(null)" style="cursor:pointer;text-align:center;padding:6px;font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);margin-top:2px;">Aucun modèle fiable pour cette session</div>';
+}
+
+async function _castInlineModelVote(modelKey) {
+  if (!_modelTableCtx) return;
+  var ctx = _modelTableCtx;
+  var vote = { votedModel: modelKey, votedAt: new Date().toISOString(), spot: ctx.spot, date: ctx.date, predictions: ctx.rows || {} };
+  if (ctx.sessionId) {
+    await saveModelReliabilityFromJournal(ctx.sessionId, vote);
+    // Patch la copie en mémoire : sinon getModelReliability() la trouverait
+    // toujours "non votée" tant que loadMySessions() n'a pas rechargé depuis
+    // la base (session.model_reliability prime sur le repli localStorage).
+    var sessInMem = (allSessions || []).find(function(x) { return x.id === ctx.sessionId; });
+    if (sessInMem) sessInMem.model_reliability = vote;
+  } else {
+    try {
+      var store = JSON.parse(localStorage.getItem('model-reliability-pending') || '{}');
+      store[_pendingVoteKey(ctx.spot, ctx.date)] = vote;
+      localStorage.setItem('model-reliability-pending', JSON.stringify(store));
+    } catch (e) {}
+  }
+  if (typeof showToast === 'function') showToast('✓ Fiabilité houle enregistrée', 'success');
+  // Réaffiche la bonne vue (formulaire ou détail) selon d'où le clic venait.
+  if (ctx.formMode) { if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection(); }
+  else if (ctx.session) { await openDetail(ctx.session.id); }
+}
+
+// Rendu commun form/détail : tableau si des données sont en cache, sinon
+// message + lien (simple href, pas d'onclick) vers Prévisions pour l'y
+// consulter d'abord. wrapEl reçoit le HTML ; ctx sert au clic (vote).
+async function _renderModelTableInto(wrapEl, spot, date, ctx) {
+  wrapEl.innerHTML = '<div style="font-size:11px;color:var(--text-faint);padding:6px 0;">Chargement…</div>';
+  var rows = await _fetchModelTableRows(spot, date);
+  var tableHtml = rows ? _modelTableHTML(rows) : null;
+  if (!tableHtml) {
+    wrapEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Pas encore de données modèles archivées pour ce spot/cette date. '
+      + '<a href="previsions.html" target="_blank" style="color:var(--accent);">Ouvrir Prévisions</a> pour ce spot les met en cache automatiquement.</div>';
+    return;
+  }
+  _modelTableCtx = Object.assign({ spot: spot, date: date, rows: rows }, ctx);
+  wrapEl.innerHTML = tableHtml;
+}
+
 // Section HTML "Fiabilité houle" pour le détail d'une session (uniquement
 // pertinent pour ses propres sessions, cf. appel conditionné à isOwn).
 function _renderModelReliabilitySection(s) {
   var vote = getModelReliability(s);
-  if (vote && vote.votedModel) {
-    var info = MODEL_RELIABILITY_LABELS[vote.votedModel];
+  if (vote && (vote.votedModel || vote.votedModel === null)) {
+    var info = vote.votedModel ? MODEL_RELIABILITY_LABELS[vote.votedModel] : null;
     return '<div class="detail-item" style="grid-column:1/-1;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.15);border-radius:8px;padding:8px 10px;">'
       + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
-      + '<div class="detail-value" style="color:' + (info ? info.col : 'var(--accent)') + ';">' + escapeHtml(info ? info.label : vote.votedModel) + '</div>'
-      + '<a href="' + _modelVoteUrl({ id: s.id, spot: s.spot || (s.spots && s.spots[0]) || '', date: s.date }) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
-      + '</div>';
-  }
-  if (vote && vote.votedModel === null) {
-    return '<div class="detail-item" style="grid-column:1/-1;">'
-      + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
-      + '<div class="detail-value" style="color:var(--text-muted);font-size:12px;">Aucun modèle jugé fiable pour cette session</div>'
-      + '<a href="' + _modelVoteUrl({ id: s.id, spot: s.spot || (s.spots && s.spots[0]) || '', date: s.date }) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
+      + '<div class="detail-value" style="color:' + (info ? info.col : 'var(--text-muted)') + ';' + (info ? '' : 'font-size:12px;') + '">' + escapeHtml(info ? info.label : 'Aucun modèle jugé fiable') + '</div>'
+      + '<a href="javascript:void(0)" onclick="_reopenModelTableDetail(\'' + s.id + '\')" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
       + '</div>';
   }
   if (_isRecentForModelVote(s.date)) {
     return '<div class="detail-item" style="grid-column:1/-1;">'
-      + '<a href="' + _modelVoteUrl({ id: s.id, spot: s.spot || (s.spots && s.spots[0]) || '', date: s.date }) + '" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);text-decoration:none;background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.25);border-radius:8px;padding:6px 10px;">'
-      + '🌊 Quel modèle de houle a été le plus fiable pour cette session ? →</a>'
+      + '<div class="detail-label" style="margin-bottom:4px;">🌊 Quel modèle a été le plus fiable pour cette session ?</div>'
+      + '<div id="model-table-detail-' + s.id + '"></div>'
       + '</div>';
   }
   return '<div class="detail-item" style="grid-column:1/-1;">'
@@ -3320,11 +3431,31 @@ function _renderModelReliabilitySection(s) {
     + '</div>';
 }
 
+// openDetail() a déjà injecté le HTML ci-dessus de façon synchrone — le
+// tableau lui-même (async, dépend d'une requête réseau) est peuplé juste
+// après, une fois le conteneur #model-table-detail-<id> présent dans le DOM.
+function _mountModelTableDetail(s) {
+  var el = document.getElementById('model-table-detail-' + s.id);
+  if (!el) return;
+  _renderModelTableInto(el, s.spot || (s.spots && s.spots[0]) || '', s.date, { sessionId: s.id, session: s, formMode: false });
+}
+function _reopenModelTableDetail(sessionId) {
+  var s = (allSessions || []).find(function(x) { return x.id === sessionId; });
+  if (!s) return;
+  try {
+    var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
+    delete store[sessionId];
+    localStorage.setItem('model-reliability', JSON.stringify(store));
+  } catch (e) {}
+  if (s.model_reliability) s.model_reliability = null; // repli localStorage tant que non re-voté
+  openDetail(sessionId);
+}
+
 // Même section que le détail, mais dans le formulaire d'ajout/modification —
 // demandé pour pouvoir voter dès la création plutôt qu'en repassant par le
 // détail après coup. Pour une session en cours de CRÉATION (pas encore
-// d'id), le lien passe en mode "pending" (_modelVoteUrl sans id) : le vote
-// est retrouvé par spot+date et attaché au vrai id dans saveSession().
+// d'id), le vote est mis de côté par spot+date (cf. _castInlineModelVote)
+// et attaché au vrai id dans saveSession() → _attachPendingModelVote.
 function _updateModelReliabilityFormSection() {
   var wrap = document.getElementById('f-model-reliability-wrap');
   if (!wrap) return;
@@ -3332,42 +3463,45 @@ function _updateModelReliabilityFormSection() {
   var spotVal = (typeof getSpotValue === 'function') ? getSpotValue() : '';
   if (!dateVal || !spotVal || spotVal === '__autre__') { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
 
-  if (editingSessionId) {
-    var existing = (allSessions || []).find(function(s) { return s.id === editingSessionId; }) || { id: editingSessionId, date: dateVal, spot: spotVal };
-    wrap.style.display = 'block';
-    wrap.innerHTML = '<label class="form-label">🌊 Fiabilité houle par modèle</label>' + _renderModelReliabilitySection(existing);
-    return;
-  }
+  var sessionId = editingSessionId || null;
+  var pending = sessionId ? null : _getPendingModelVote(spotVal, dateVal);
+  var savedVote = sessionId ? getModelReliability((allSessions || []).find(function(s) { return s.id === sessionId; }) || {}) : pending;
 
-  var pending = _getPendingModelVote(spotVal, dateVal);
-  if (pending) {
-    var info = pending.votedModel ? MODEL_RELIABILITY_LABELS[pending.votedModel] : null;
+  if (savedVote && (savedVote.votedModel || savedVote.votedModel === null)) {
+    var info = savedVote.votedModel ? MODEL_RELIABILITY_LABELS[savedVote.votedModel] : null;
     wrap.style.display = 'block';
     wrap.innerHTML = '<label class="form-label">🌊 Fiabilité houle par modèle</label>'
       + '<div style="background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.25);border-radius:8px;padding:8px 10px;">'
-      + '<div style="font-size:12px;color:var(--text);">✓ <b style="color:' + (info ? info.col : 'var(--accent)') + ';">' + escapeHtml(info ? info.label : 'Aucun') + '</b> sera enregistré avec cette session</div>'
-      + '<a href="javascript:void(0)" onclick="_confirmLeaveForVote(' + JSON.stringify(_modelVoteUrl({ spot: spotVal, date: dateVal })) + ')" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
+      + '<div style="font-size:12px;color:var(--text);">✓ <b style="color:' + (info ? info.col : 'var(--accent)') + ';">' + escapeHtml(info ? info.label : 'Aucun') + '</b>' + (sessionId ? ' pour cette session' : ' sera enregistré avec cette session') + '</div>'
+      + '<a href="javascript:void(0)" onclick="_resetModelVoteInForm()" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
       + '</div>';
     return;
   }
-  if (_isRecentForModelVote(dateVal)) {
-    wrap.style.display = 'block';
-    wrap.innerHTML = '<label class="form-label">🌊 Fiabilité houle par modèle</label>'
-      + '<a href="javascript:void(0)" onclick="_confirmLeaveForVote(' + JSON.stringify(_modelVoteUrl({ spot: spotVal, date: dateVal })) + ')" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);text-decoration:none;background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.25);border-radius:8px;padding:6px 10px;">'
-      + '🌊 Comparer les modèles pour cette session →</a>';
-    return;
-  }
-  wrap.style.display = 'none';
-  wrap.innerHTML = '';
+  if (!_isRecentForModelVote(dateVal)) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+
+  wrap.style.display = 'block';
+  wrap.innerHTML = '<label class="form-label">🌊 Quel modèle de houle a été le plus fiable pour cette session ?</label><div id="model-table-form"></div>';
+  var el = document.getElementById('model-table-form');
+  _renderModelTableInto(el, spotVal, dateVal, { sessionId: sessionId, formMode: true });
 }
 
-// Quitter le formulaire (même non enregistré) pour aller voter perd le
-// brouillon en cours — sans confirmation, on prévient juste que le vote sera
-// bien récupéré au retour (aucune perte côté vote, seulement côté brouillon).
-function _confirmLeaveForVote(url) {
-  if (confirm('Tu vas quitter ce formulaire pour comparer les modèles sur Prévisions.\n\nLes champs déjà saisis ici ne seront PAS conservés (le vote, lui, sera bien récupéré automatiquement à ton retour). Continuer ?')) {
-    location.href = url;
+// "Changer" depuis le formulaire : efface le vote déjà mis de côté (pending
+// ou déjà associé à l'id en édition) pour réafficher le tableau de vote.
+function _resetModelVoteInForm() {
+  var dateVal = document.getElementById('f-date') ? document.getElementById('f-date').value : '';
+  var spotVal = (typeof getSpotValue === 'function') ? getSpotValue() : '';
+  if (editingSessionId) {
+    try {
+      var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
+      delete store[editingSessionId];
+      localStorage.setItem('model-reliability', JSON.stringify(store));
+    } catch (e) {}
+    var s = (allSessions || []).find(function(x) { return x.id === editingSessionId; });
+    if (s) s.model_reliability = null;
+  } else {
+    _clearPendingModelVote(spotVal, dateVal);
   }
+  _updateModelReliabilityFormSection();
 }
 
 async function openDetail(id) {
@@ -3435,6 +3569,7 @@ async function openDetail(id) {
     document.getElementById('detail-comments-section').style.display = 'none';
   }
   document.getElementById('modal-detail').classList.add('open');
+  if (isOwn && s.hs) _mountModelTableDetail(s);
 }
 
 async function loadComments(sessionId) {
@@ -4140,10 +4275,21 @@ async function openUserProfile(userId) {
   sessions.forEach(function(s){var sp=s.spot||'?';spotMap[sp]=(spotMap[sp]||0)+1;});
   var topSpots = Object.entries(spotMap).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
 
-  // Répartition planches
-  var boardMap = {};
-  sessions.forEach(function(s){if(s.board)boardMap[s.board]=(boardMap[s.board]||0)+1;});
-  var topBoards = Object.entries(boardMap).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+  // Répartition planches — groupée par clé normalisée (_normBoardKey), sinon
+  // "Pyzel – Power Tiger" et "Pyzel - Power Tiger" (tiret/espace différents
+  // selon la session, champ texte libre) apparaissent comme 2 planches
+  // distinctes dans le camembert (signalé par l'utilisateur, capture à
+  // l'appui) — même normalisation que la déduplication du profil, mais ici
+  // sur session.board (texte libre par session) et non profiles.boards
+  // (liste), donc un correctif différent était nécessaire.
+  var boardMap = {}; // normKey -> {label, count}
+  sessions.forEach(function(s){
+    if (!s.board) return;
+    var key = _normBoardKey(s.board);
+    if (!boardMap[key]) boardMap[key] = { label: s.board, count: 0 };
+    boardMap[key].count++;
+  });
+  var topBoards = Object.values(boardMap).sort(function(a,b){return b.count-a.count;}).slice(0,6).map(function(b){return [b.label, b.count];});
 
   // Répartition bateaux
   var boatMap = {};
