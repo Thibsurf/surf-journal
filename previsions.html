@@ -366,7 +366,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <button class="nav-tab" onclick="showTab('synop',this);closeNavMenu()">🗺 Isofronts</button>
     <button class="nav-tab" onclick="showTab('maree',this);closeNavMenu()">🌊 Marée &amp; Pêche</button>
     <button class="nav-tab" onclick="showTab('enso',this);closeNavMenu()">📈 ENSO</button>
-    <button class="nav-tab" onclick="showTab('forecast');shareSpotCard();closeNavMenu()" title="Partager le spot actif (image WhatsApp)">📤 Partager</button>
+    <button class="nav-tab" onclick="showTab('forecast');shareSpotCard();closeNavMenu()" title="Partager le jour actuellement affiché dans le widget (image WhatsApp) — change de jour là-bas avant de partager">📤 Partager</button>
   </div>
   <span id="last-update" style="font-size:11px;color:var(--faint);"></span>
   <span id="data-source-badge" onclick="showNetDiagPanel()"
@@ -416,7 +416,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <div class="section-label" style="margin-bottom:0;">📍 Spot</div>
     <div style="display:flex;align-items:center;gap:6px;">
       <button onclick="shareSpotCard()" id="share-spot-btn"
-        title="Générer une image résumé du spot à partager (WhatsApp…)"
+        title="Générer une image résumé du jour affiché ci-dessous (change de jour avec Aujourd'hui/Demain/J+n pour partager un autre jour)"
         style="background:rgba(79,163,199,.12);border:1px solid var(--accent);color:var(--accent);
         padding:4px 10px;border-radius:var(--rs);cursor:pointer;font-size:11px;
         font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
@@ -5821,10 +5821,67 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p){
   };
 }
 
+// Construit les données de partage pour le JOUR actuellement affiché dans le
+// widget principal (_gwDayIdx, déjà sélectionnable via les boutons Aujourd'hui/
+// Demain/J+n du widget) — avant, le partage figeait toujours "maintenant",
+// impossible de partager un autre jour (retour utilisateur). Réutilise les
+// séries meteo.nc ET GFS déjà chargées en parallèle (_ncFcastData/_omFcastData,
+// jamais un seul re-fetch) pour les mini-graphes houle/vent multimodèles.
+function _buildShareDayPayload() {
+  var d = (typeof _gwActiveData === 'function') ? _gwActiveData() : null;
+  if (!d || !d.dates || !d.dates.length) return null;
+  var days = _gwGroupDays(d);
+  if (!days.length) return null;
+  var dayIdx = Math.min(_gwDayIdx || 0, days.length - 1);
+  var day = days[dayIdx];
+  var gi = _gwDefaultGi(d, day);
+
+  var DAY_FR_W = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var nowNC = new Date(Date.now() + 11*3600000);
+  var todayMs = Date.UTC(nowNC.getUTCFullYear(), nowNC.getUTCMonth(), nowNC.getUTCDate());
+  var dd = day.dateObj;
+  var dMs = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
+  var diff = Math.round((dMs - todayMs) / 864e5);
+  var dayLabel = diff===0 ? "Aujourd'hui" : diff===1 ? 'Demain' : diff>1 ? 'J+'+diff
+    : DAY_FR_W[dd.getUTCDay()]+' '+dd.getUTCDate()+'/'+(dd.getUTCMonth()+1);
+  var dateStr = dd.getUTCFullYear()+'-'+String(dd.getUTCMonth()+1).padStart(2,'0')+'-'+String(dd.getUTCDate()).padStart(2,'0');
+
+  // Séries horaires du jour, meteo.nc + GFS séparément (mêmes indices que le
+  // widget principal ne suffisent pas : _ncFcastData/_omFcastData ont chacun
+  // leurs propres tableaux, on regroupe chacun par jour indépendamment).
+  function daySeries(fc) {
+    if (!fc || !fc.dates) return [];
+    var byDay = _gwGroupDays(fc);
+    var match = byDay.filter(function(x){ return x.dateObj.getUTCFullYear()===dd.getUTCFullYear()
+      && x.dateObj.getUTCMonth()===dd.getUTCMonth() && x.dateObj.getUTCDate()===dd.getUTCDate(); })[0];
+    if (!match) return [];
+    return match.indices.map(function(i){
+      return { h: fc.dates[i].getUTCHours(), hs: fc.sw1h ? fc.sw1h[i] : null, ws: fc.wSpd ? fc.wSpd[i] : null };
+    }).sort(function(a,b){ return a.h - b.h; });
+  }
+
+  var hsV = d.sw1h[gi], TV = d.sw1t[gi], dirV = d.sw1d[gi], wsV = d.wSpd[gi], wgV = d.wGst ? d.wGst[gi] : null, wdV = d.wDir[gi], pV = d.pwr ? d.pwr[gi] : null;
+  var surf = (typeof calcSurfScore === 'function') ? calcSurfScore(hsV, TV, dirV, wsV, wgV, wdV, pV) : null;
+
+  return {
+    spotName: (SPOTS[currentSpot] && SPOTS[currentSpot].name) || '',
+    dayLabel: dayLabel, dateStr: dateStr, dateObj: dd, hour: d.dates[gi].getUTCHours(),
+    hs: hsV, T: TV, dir: dirV, hs2: d.sw2h ? d.sw2h[gi] : 0, tot: d.totH[gi],
+    ws: wsV, wg: wgV, wd: wdV, p: pV,
+    score: surf ? surf.score : null, scoreLabel: surf ? surf.label : '',
+    onshoreLimit: (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.onshoreLimit : 45),
+    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135),
+    ncSeries: daySeries(_ncFcastData), gfsSeries: daySeries(_omFcastData)
+  };
+}
+
 // PROMPT 4 — génère et partage la carte résumé du spot (PNG 1080² + texte WhatsApp).
 async function shareSpotCard() {
   if (!window.ShareCard) { try { showToast('Module partage indisponible'); } catch(_){} return; }
-  var sctx = window._shareCtx;
+  // Jour actuellement affiché dans le widget (Aujourd'hui/Demain/J+n déjà
+  // choisi par l'utilisateur là-haut) — repli sur l'ancien instantané "maintenant"
+  // si le widget n'est pas actif (spot sans correspondance, page pas encore chargée).
+  var sctx = _buildShareDayPayload() || window._shareCtx;
   if (!sctx || !sctx.spotName) { try { showToast('Données pas encore prêtes'); } catch(_){} return; }
 
   var btn = document.getElementById('share-spot-btn');
@@ -5832,8 +5889,10 @@ async function shareSpotCard() {
   if (btn) { btn.disabled = true; btn.innerHTML = '⏳ génération…'; }
 
   try {
-    // Données complémentaires : marée (cache NC) + BMS (source unifiée du PROMPT 2).
-    var tide = null; try { tide = ShareCard.nextTides(_ncTideCache); } catch(_){}
+    // Marée du JOUR partagé (pas "prochaine depuis maintenant" — sctx.dateStr
+    // absent = repli ancien comportement) + BMS (source unifiée du PROMPT 2).
+    var tide = null;
+    try { tide = sctx.dateStr ? ShareCard.tidesForDay(_ncTideCache, sctx.dateStr) : ShareCard.nextTides(_ncTideCache); } catch(_){}
     var bms = null;  try { bms = await getActiveBMS(); } catch(_){}
     var data = Object.assign({}, sctx, { tide: tide, bms: bms });
 
