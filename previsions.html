@@ -10628,7 +10628,10 @@ function renderTideCurve(offset) {
 
 // ─── SCORE PECHE ─────────────────────────────────────────────────────────
 // Helpers jour affiché (1.4) — partagés par score pêche / marnage
-function _isMareeToday(y,m,d){ if(!(y&&m&&d))return true; var n=new Date(); return y===n.getFullYear()&&m===n.getMonth()+1&&d===n.getDate(); }
+// +11h/getUTC* (NC fixe, sans DST) et non new Date().getFullYear()/getDate() —
+// ces derniers dépendent du fuseau du NAVIGATEUR, faux hors NC (même classe de
+// bug déjà corrigée ~14 fois ailleurs dans ce fichier, oubliée ici).
+function _isMareeToday(y,m,d){ if(!(y&&m&&d))return true; var n=new Date(Date.now()+11*3600000); return y===n.getUTCFullYear()&&m===n.getUTCMonth()+1&&d===n.getUTCDate(); }
 function _mareeDayShort(y,m,d){ return new Date(y,m-1,d).toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }
 
 // ─── ÉPHÉMÉRIDE LUNAIRE (2.2) — algo Schlyter, ~2', vérifié rise≈coucher soleil à la PL ───
@@ -10781,7 +10784,10 @@ function drawFishingScore(year,month,day){
     var allTide=(_ncTideCache.properties.tide.high_tide||[]).concat(_ncTideCache.properties.tide.low_tide||[]);
     var nowMs=Date.now();
     allTide.forEach(function(e){
-      var dist=Math.abs(new Date(e.time).getTime()-nowMs)/60000;
+      // _gwTideMs (naïf → NC-local, +11h) et non new Date(e.time) : les horaires
+      // marée sont naïfs (convention NC), un new Date() nu les interprète dans le
+      // fuseau du NAVIGATEUR — juste par coïncidence en NC, faux ailleurs.
+      var dist=Math.abs(_gwTideMs(e.time)-nowMs)/60000;
       tideScore=Math.max(tideScore,Math.max(0,1-dist/120));
     });
   }
@@ -10805,7 +10811,7 @@ function drawFishingScore(year,month,day){
   for(var fi=0;fi<5;fi++) fishHTML += fishSVG(fi<total);
   el.innerHTML='<div style="display:flex;gap:2px;align-items:center;margin-bottom:3px;">'+fishHTML+'</div>'
     +'<div style="font-size:10px;color:'+col+';font-weight:600;">'+labels[total]+'</div>'
-    +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité maximale (théorie solunaire). Périodes majeures = transits lunaires (lune au plus haut/plus bas) ; mineures = lever/coucher de lune." style="font-size:10px;color:var(--faint);margin-top:1px;cursor:help;">Lune solunaire '+(moonScore*100|0)+'% · synthèse jour '+Math.round(dayScoreVal*100)+'% <span style="opacity:.6">ⓘ</span></div>';
+    +'<div title="Syzygie = nouvelle/pleine lune → vives-eaux, activité maximale (théorie solunaire). Périodes majeures = transits lunaires (lune au plus haut/plus bas) ; mineures = lever/coucher de lune." style="font-size:10px;color:var(--muted);margin-top:1px;cursor:help;">Lune solunaire '+(moonScore*100|0)+'% · synthèse jour '+Math.round(dayScoreVal*100)+'% <span style="opacity:.6">ⓘ</span></div>';
 
   // Badge jour
   var fday=document.getElementById('fishing-day');
@@ -10845,15 +10851,24 @@ function drawTideMarnage(year,month,day) {
   var pmH = null, bmH = null, allEvts = [];
   if(_ncTideCache && _ncTideCache.properties && _ncTideCache.properties.tide){
     var tideData = _ncTideCache.properties.tide;
-    var todayStart = new Date(refDate); todayStart.setHours(0,0,0,0);
-    var todayEnd = new Date(refDate); todayEnd.setHours(23,59,59,999);
+    // Bornes du jour NC-local en vrai epoch UTC (+11h fixe, sans DST) — un
+    // new Date(refDate).setHours(0,0,0,0) calait ces bornes sur le fuseau du
+    // NAVIGATEUR, pas la NC (juste coïncidence en NC, faux ailleurs — même
+    // classe de bug que _gwTideMs, corrigée ici en même temps).
+    var _refY = year, _refM = month, _refD = day;
+    if (!_refY || !_refM || !_refD) {
+      var _nowNCd = new Date(Date.now() + 11*3600000);
+      _refY = _nowNCd.getUTCFullYear(); _refM = _nowNCd.getUTCMonth()+1; _refD = _nowNCd.getUTCDate();
+    }
+    var todayStart = Date.UTC(_refY, _refM-1, _refD, 0,0,0) - 11*3600000;
+    var todayEnd = Date.UTC(_refY, _refM-1, _refD, 23,59,59,999) - 11*3600000;
     (tideData.high_tide||[]).forEach(function(e){
-      var ms = new Date(e.time).getTime();
+      var ms = _gwTideMs(e.time);
       allEvts.push({ms:ms, h:e.h||e.tidal_height, type:'PM', coef:e.tidal_coefficient||null});
       if(ms>=todayStart&&ms<=todayEnd) pmH = Math.max(pmH||0, e.h||e.tidal_height||0);
     });
     (tideData.low_tide||[]).forEach(function(e){
-      var ms = new Date(e.time).getTime();
+      var ms = _gwTideMs(e.time);
       allEvts.push({ms:ms, h:e.h||e.tidal_height, type:'BM', coef:e.tidal_coefficient||null});
       if(ms>=todayStart&&ms<=todayEnd) bmH = Math.min(bmH!==null?bmH:99, e.h||e.tidal_height||0);
     });
@@ -11756,7 +11771,10 @@ function drawMoon(year, month, day) {
 async function initMaree() {
   drawMoon();
   var now = new Date();
-  renderTwilightAndOrbit(now.getFullYear(), now.getMonth()+1, now.getDate());
+  // +11h/getUTC* (NC fixe) plutôt que getFullYear/getMonth/getDate en heure
+  // navigateur — même correctif que _isMareeToday, même bug oublié ici.
+  var _nowNCmaree = new Date(now.getTime() + 11*3600000);
+  renderTwilightAndOrbit(_nowNCmaree.getUTCFullYear(), _nowNCmaree.getUTCMonth()+1, _nowNCmaree.getUTCDate());
   drawFishingScore();
   var spot = SPOTS[currentSpot] || SPOTS[0];
   var tideId = spot.tideId || '9881852';
@@ -11797,7 +11815,14 @@ function loadSynopImage() {
   var errDiv = document.getElementById('synop-err');
   if(!img) return;
   var url = 'https://rpcache.meteo.nc/internet2018client/2.0/report?domain=DEPT988&report_type=modele&report_subtype=isofront&format=jpg';
-  fetch(url, {headers:{'Authorization':'Bearer '+_ncToken}, credentials:'omit'})
+  // Timeout 4s obligatoire (même pattern que le panneau diagnostic réseau,
+  // L2481) : sans lui, un rpcache qui blackhole (réseau mobile) laissait
+  // l'image isofronts bloquée sur son état de chargement initial pour
+  // toujours, sans jamais afficher #synop-err (qui ne se déclenche que sur
+  // catch/erreur HTTP, jamais sur un fetch qui ne se résout jamais).
+  var ctrl = new AbortController();
+  var tmo = setTimeout(function(){ ctrl.abort(); }, 4000);
+  fetch(url, {headers:{'Authorization':'Bearer '+_ncToken}, credentials:'omit', signal: ctrl.signal})
     .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.blob(); })
     .then(function(blob){
       img.src = URL.createObjectURL(blob);
@@ -11808,7 +11833,8 @@ function loadSynopImage() {
       console.warn('[synop]', e.message);
       img.style.display = 'none';
       if(errDiv) errDiv.style.display = 'block';
-    });
+    })
+    .finally(function(){ clearTimeout(tmo); });
 }
 
 function showFrontTab(tab, btn) {
@@ -11827,12 +11853,17 @@ function showFrontTab(tab, btn) {
 function loadBaroData() {
   var url = 'https://api.open-meteo.com/v1/forecast?latitude=-22.28&longitude=166.45'
     +'&hourly=surface_pressure&forecast_days=3&timezone=Pacific%2FNoumea&past_days=1';
-  fetch(url).then(function(r){return r.json();}).then(function(data){
+  var ctrl = new AbortController();
+  var tmo = setTimeout(function(){ ctrl.abort(); }, 8000);
+  fetch(url, {signal: ctrl.signal}).then(function(r){return r.json();}).then(function(data){
     if(!data.hourly||!data.hourly.surface_pressure) return;
     var pressures = data.hourly.surface_pressure;
     var times = data.hourly.time;
-    var now = new Date();
-    var curIdx = times.findIndex(function(t){ return new Date(t) >= now; });
+    var nowMs = Date.now();
+    // times est en heure locale NC naïve (timezone=Pacific/Noumea) — un new
+    // Date(t) nu l'interprète dans le fuseau du NAVIGATEUR, pas la NC (même
+    // classe de bug que _gwTideMs) : +'Z' puis -11h pour le vrai epoch UTC.
+    var curIdx = times.findIndex(function(t){ return new Date(t+'Z').getTime() - 11*3600000 >= nowMs; });
     if(curIdx < 0) curIdx = pressures.length-1;
     if(curIdx > 0) curIdx--;
     var curP = pressures[curIdx];
@@ -11901,7 +11932,8 @@ function loadBaroData() {
         +'<text x="'+W+'" y="9" text-anchor="end" font-size="7" fill="rgba(61,186,138,.5)" font-family="DM Sans">'+invMax.toFixed(1)+'cm</text>'
         +'</svg>';
     }
-  }).catch(function(e){ console.warn('[baro]',e.message); });
+  }).catch(function(e){ console.warn('[baro]',e.message); })
+    .finally(function(){ clearTimeout(tmo); });
 }
 
 
