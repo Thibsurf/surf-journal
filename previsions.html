@@ -7844,12 +7844,16 @@ async function _loadAromeWidget(wgId) {
     + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé (cache)</span>'
     + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé (cache)</span>'
     + '</div>'
-    + '<div id="arome-cmp-corr" style="font-size:9px;color:var(--faint);margin-bottom:6px;"></div>'
     + '<div style="display:flex;gap:10px;align-items:flex-start;">'
     + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
     + '</div>'
     + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour lire les valeurs au même instant</div>'
+    // Sous les courbes de vent (et non au-dessus, où c'était facile à manquer) :
+    // seul le vent a une vraie mesure au sol pour comparer les modèles — la
+    // houle n'a pas d'instrument équivalent, d'où le vote subjectif après-coup
+    // (Journal → "Modèle de houle le plus fiable") au lieu d'une corrélation ici.
+    + '<div id="arome-cmp-corr" style="font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);"></div>'
     + '</div>';
   body.innerHTML = h;
   _aromeData = j;
@@ -8106,7 +8110,7 @@ async function _renderAromeCompare(j) {
   // aromeKt/aromeGst : archivés par _saveAromeSnapshot() à chaque chargement du
   // widget AROME — la fenêtre affichée s'étend automatiquement en arrière au fil
   // des jours à mesure que l'historique s'accumule (sans backfill rétroactif).
-  var cachePts = [], aromeCachePts = [];
+  var cachePts = [], aromeCachePts = [], gfsCachePts = [], bomCachePts = [], ecmwfCachePts = [];
   try {
     if (typeof _ensureSupabaseClient === 'function' && _ensureSupabaseClient()) {
       var s0 = SPOTS[currentSpot];
@@ -8135,14 +8139,40 @@ async function _renderAromeCompare(j) {
           if (hhh.aromeKt != null) aromeCachePts.push({ ms: ms, kt: hhh.aromeKt });
         });
       });
+      // GFS/BOM/ECMWF sont déjà archivés dans model_forecast_cache à chaque
+      // chargement de ce comparatif (cf. _cacheModelPoints plus bas) ET 2x/jour
+      // par le job GitHub Actions (cache-model-forecasts.yml) — jusqu'ici cette
+      // profondeur n'était jamais relue, seuls meteo.nc/AROME avaient du recul.
+      // Sans ça, le badge de corrélation n'avait quasi aucune chance d'avoir
+      // 3 points concordants pour BOM/ECMWF (fenêtre live seulement).
+      if (await _hasModelCacheTable()) {
+        var mIds = [];
+        ['gfs', 'bom', 'ecmwf'].forEach(function(mk) { dayIds.forEach(function(ds) { mIds.push(ds + '_' + mk + '_wind'); }); });
+        var mRes = await _tokenSbClient.from('model_forecast_cache').select('id,hours').in('id', mIds);
+        if (mRes && mRes.data) mRes.data.forEach(function(row) {
+          var parts = row.id.split('_'); // ds_la_lo_model_kind
+          var p = parts[0].split('-'), mk = parts[3];
+          var dst = mk === 'gfs' ? gfsCachePts : mk === 'bom' ? bomCachePts : ecmwfCachePts;
+          (row.hours || []).forEach(function(hhh) {
+            if (!hhh || hhh.h == null || hhh.val == null) return;
+            var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)) - 11 * 3600000;
+            if (ms > now) return;
+            dst.push({ ms: ms, kt: hhh.val });
+          });
+        });
+      }
     }
   } catch(e) {}
-  // Étendre la fenêtre affichée en arrière si de l'historique AROME existe au-delà de -24h
-  aromeCachePts.forEach(function(p) { if (p.ms < t0) t0 = p.ms; });
+  // Étendre la fenêtre affichée en arrière si de l'historique archivé (tous
+  // modèles, pas seulement AROME) existe au-delà de -24h.
+  [aromeCachePts, cachePts, gfsCachePts, bomCachePts, ecmwfCachePts].forEach(function(arr) {
+    arr.forEach(function(p) { if (p.ms < t0) t0 = p.ms; });
+  });
   t0 = Math.max(t0, now - 8 * 24 * 36e5);
   function clip(a) { return a.filter(function(p) { return p.ms >= t0 && p.ms <= t1; }); }
   obs = clip(obs); pageNc = clip(pageNc); pageGfs = clip(pageGfs); aro = clip(aro); cachePts = clip(cachePts); aromeCachePts = clip(aromeCachePts);
   bomWind = clip(bomWind); ecmwfWind = clip(ecmwfWind);
+  gfsCachePts = clip(gfsCachePts); bomCachePts = clip(bomCachePts); ecmwfCachePts = clip(ecmwfCachePts);
   // Archivage best-effort côté vent, même principe que le comparatif houle
   // (table optionnelle, no-op si absente) — pas de mesures (obs), ce sont des
   // observations et non un modèle à comparer.
@@ -8168,8 +8198,14 @@ async function _renderAromeCompare(j) {
   // Corrélation modèle ↔ mesures : biais moyen (modèle - obs) au plus proche
   // point mesuré, sur toute la fenêtre passée où les deux existent. Répond à
   // « indicateur du modèle le plus réaliste » — comparaison simple mais honnête
-  // (biais absolu moyen, pas une vraie corrélation statistique) sur les données
-  // déjà chargées, sans coût réseau supplémentaire.
+  // (biais absolu moyen, pas une vraie corrélation statistique).
+  // Le vent est le SEUL flux avec une vraie mesure au sol (station) — la houle
+  // n'a pas d'instrument équivalent, d'où le vote subjectif après-coup côté
+  // Journal au lieu d'un calcul ici. On mélange la série live (fenêtre de
+  // prévision en cours, souvent sans recul passé pour BOM/ECMWF) avec son
+  // archive model_forecast_cache (prévisions passées sauvées, cf. plus haut) :
+  // sans ça, BOM/ECMWF n'avaient quasiment jamais de point assez ancien pour
+  // croiser une mesure passée, et le badge restait silencieusement vide.
   function biasVsObs(pts) {
     if (!obs.length || !pts.length) return null;
     var diffs = [];
@@ -8178,22 +8214,26 @@ async function _renderAromeCompare(j) {
       pts.forEach(function(p) { var df = Math.abs(p.ms - o.ms); if (df < bd) { bd = df; best = p; } });
       if (best) diffs.push(Math.abs(best.kt - o.kt));
     });
-    return diffs.length >= 3 ? diffs.reduce(function(s,v){return s+v;},0) / diffs.length : null;
+    if (diffs.length < 3) return null;
+    return { avg: diffs.reduce(function(s,v){return s+v;},0) / diffs.length, n: diffs.length };
   }
   (function renderCorrBadge() {
     var el = document.getElementById('arome-cmp-corr'); if (!el) return;
     var cands = [
-      { label: 'AROME', bias: biasVsObs(aro) },
-      { label: 'meteo.nc', bias: biasVsObs(pageNc) },
-      { label: 'GFS', bias: biasVsObs(pageGfs) },
-      { label: 'BOM', bias: biasVsObs(bomWind) },
-      { label: 'ECMWF', bias: biasVsObs(ecmwfWind) }
-    ].filter(function(c) { return c.bias != null; });
-    if (cands.length < 2) { el.innerHTML = ''; return; } // pas assez de recul pour comparer
-    cands.sort(function(a, b) { return a.bias - b.bias; });
-    el.innerHTML = '🎯 Le plus proche des mesures récentes : <b style="color:var(--ok);">' + cands[0].label
-      + '</b> (écart moyen ' + cands[0].bias.toFixed(1) + ' kt) · '
-      + cands.slice(1).map(function(c) { return c.label + ' ' + c.bias.toFixed(1) + ' kt'; }).join(' · ');
+      { label: 'AROME',    r: biasVsObs(aro.concat(aromeCachePts)) },
+      { label: 'meteo.nc', r: biasVsObs(pageNc.concat(cachePts)) },
+      { label: 'GFS',      r: biasVsObs(pageGfs.concat(gfsCachePts)) },
+      { label: 'BOM',      r: biasVsObs(bomWind.concat(bomCachePts)) },
+      { label: 'ECMWF',    r: biasVsObs(ecmwfWind.concat(ecmwfCachePts)) }
+    ].filter(function(c) { return c.r != null; });
+    if (cands.length < 2) {
+      el.innerHTML = '🎯 Pas encore assez de mesures et de prévisions archivées qui se recoupent pour comparer les modèles ici — revient au fil des jours (archivage 2×/jour).';
+      return;
+    }
+    cands.sort(function(a, b) { return a.r.avg - b.r.avg; });
+    el.innerHTML = '🎯 Le plus proche des mesures (' + cands[0].r.n + ' points croisés) : <b style="color:var(--ok);">' + cands[0].label
+      + '</b> (écart moyen ' + cands[0].r.avg.toFixed(1) + ' kt) · '
+      + cands.slice(1).map(function(c) { return c.label + ' ' + c.r.avg.toFixed(1) + ' kt (' + c.r.n + ')'; }).join(' · ');
   })();
 
   function draw(hoverMs) {
