@@ -7731,6 +7731,14 @@ function _wgIdForSpot(s) {
 }
 var _wgLoadedFor = null;
 var _aromeData = null; // dernier jeu AROME chargé (purgé quand le spot n'a pas de correspondance)
+// Le graphe comparatif vent n'étend sa fenêtre à l'historique archivé (jusqu'à
+// 8j) que si l'utilisateur le demande (bouton) — par défaut ça écrasait les
+// courbes récentes de points morts dès l'ouverture (retour utilisateur).
+var _aromeCmpShowHistory = false;
+function _toggleAromeCmpHistory() {
+  _aromeCmpShowHistory = !_aromeCmpShowHistory;
+  if (_aromeData) _renderAromeCompare(_aromeData);
+}
 function updateAromeCard() {
   var card = document.getElementById('wg-arome-card'); if (!card) return;
   var s = SPOTS[currentSpot];
@@ -7856,11 +7864,18 @@ async function _loadAromeWidget(wgId) {
     + '<span style="cursor:help;" title="Bureau of Meteorology (Australie) — vent du modèle régional WaveWatch III, grille 0,125° (~14 km)"><span style="color:#e05c5c;font-weight:700;">╌</span> BOM ⓘ</span>'
     + '<span style="cursor:help;" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km), le plus fin des modèles globaux ici"><span style="color:#7dd3fc;font-weight:700;">╌</span> ECMWF ⓘ</span>'
     + '</div>'
-    + '<div style="display:flex;gap:10px;row-gap:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--faint);margin-bottom:4px;">'
-    + '<span>Archivé :</span>'
-    + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé</span>'
-    + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé</span>'
-    + '</div>'
+    // Historique archivé (jusqu'à 8j) masqué par défaut — l'afficher d'entrée
+    // écrasait les courbes récentes de points morts (retour utilisateur). Le
+    // badge de corrélation plus bas, lui, utilise toujours l'archive complète
+    // que ce bouton soit activé ou non.
+    + (_aromeCmpShowHistory
+        ? '<div style="display:flex;gap:10px;row-gap:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--faint);margin-bottom:6px;">'
+          + '<span>Archivé :</span>'
+          + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé</span>'
+          + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé</span>'
+          + '<button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:auto;">▲ Masquer l\'historique</button>'
+          + '</div>'
+        : '<div style="margin-bottom:6px;"><button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:3px 9px;border-radius:10px;cursor:pointer;">▼ Afficher l\'historique archivé (jusqu\'à 8j)</button></div>')
     + '<div style="display:flex;gap:10px;align-items:flex-start;">'
     + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
@@ -8192,12 +8207,21 @@ async function _renderAromeCompare(j) {
       }
     }
   } catch(e) {}
-  // Étendre la fenêtre affichée en arrière si de l'historique archivé (tous
-  // modèles, pas seulement AROME) existe au-delà de -24h.
-  [aromeCachePts, cachePts, gfsCachePts, bomCachePts, ecmwfCachePts].forEach(function(arr) {
-    arr.forEach(function(p) { if (p.ms < t0) t0 = p.ms; });
-  });
-  t0 = Math.max(t0, now - 8 * 24 * 36e5);
+  // Copies complètes (avant tout clip) pour le badge de corrélation, qui doit
+  // rester exhaustif même quand le GRAPHE reste sur la fenêtre récente.
+  var obsBias = obs, cachePtsBias = cachePts, aromeCachePtsBias = aromeCachePts,
+      gfsCachePtsBias = gfsCachePts, bomCachePtsBias = bomCachePts, ecmwfCachePtsBias = ecmwfCachePts;
+  // Par défaut, la fenêtre AFFICHÉE reste récente (24h + prévision) — étendre
+  // systématiquement jusqu'à 8j en arrière remplissait le graphe de points
+  // archivés dès l'ouverture et écrasait les courbes (signalé par l'utilisateur).
+  // Disponible à la demande via le bouton "Afficher l'historique" (cf. plus bas) ;
+  // le badge de corrélation, lui, utilise toujours l'archive complète ci-dessus.
+  if (_aromeCmpShowHistory) {
+    [aromeCachePts, cachePts, gfsCachePts, bomCachePts, ecmwfCachePts].forEach(function(arr) {
+      arr.forEach(function(p) { if (p.ms < t0) t0 = p.ms; });
+    });
+    t0 = Math.max(t0, now - 8 * 24 * 36e5);
+  }
   function clip(a) { return a.filter(function(p) { return p.ms >= t0 && p.ms <= t1; }); }
   obs = clip(obs); pageNc = clip(pageNc); pageGfs = clip(pageGfs); aro = clip(aro); cachePts = clip(cachePts); aromeCachePts = clip(aromeCachePts);
   bomWind = clip(bomWind); ecmwfWind = clip(ecmwfWind);
@@ -8235,10 +8259,13 @@ async function _renderAromeCompare(j) {
   // archive model_forecast_cache (prévisions passées sauvées, cf. plus haut) :
   // sans ça, BOM/ECMWF n'avaient quasiment jamais de point assez ancien pour
   // croiser une mesure passée, et le badge restait silencieusement vide.
+  // Utilise obsBias/*CachePtsBias (copies complètes, pas rognées par le
+  // toggle d'affichage) pour que le badge reste aussi robuste que le graphe
+  // soit en vue "récente" ou "historique complet".
   function biasVsObs(pts) {
-    if (!obs.length || !pts.length) return null;
+    if (!obsBias.length || !pts.length) return null;
     var diffs = [];
-    obs.forEach(function(o) {
+    obsBias.forEach(function(o) {
       var best = null, bd = 70 * 60000;
       pts.forEach(function(p) { var df = Math.abs(p.ms - o.ms); if (df < bd) { bd = df; best = p; } });
       if (best) diffs.push(Math.abs(best.kt - o.kt));
@@ -8249,11 +8276,11 @@ async function _renderAromeCompare(j) {
   (function renderCorrBadge() {
     var el = document.getElementById('arome-cmp-corr'); if (!el) return;
     var cands = [
-      { label: 'AROME',    r: biasVsObs(aro.concat(aromeCachePts)) },
-      { label: 'meteo.nc', r: biasVsObs(pageNc.concat(cachePts)) },
-      { label: 'GFS',      r: biasVsObs(pageGfs.concat(gfsCachePts)) },
-      { label: 'BOM',      r: biasVsObs(bomWind.concat(bomCachePts)) },
-      { label: 'ECMWF',    r: biasVsObs(ecmwfWind.concat(ecmwfCachePts)) }
+      { label: 'AROME',    r: biasVsObs(aro.concat(aromeCachePtsBias)) },
+      { label: 'meteo.nc', r: biasVsObs(pageNc.concat(cachePtsBias)) },
+      { label: 'GFS',      r: biasVsObs(pageGfs.concat(gfsCachePtsBias)) },
+      { label: 'BOM',      r: biasVsObs(bomWind.concat(bomCachePtsBias)) },
+      { label: 'ECMWF',    r: biasVsObs(ecmwfWind.concat(ecmwfCachePtsBias)) }
     ].filter(function(c) { return c.r != null; });
     if (cands.length < 2) {
       el.innerHTML = '🎯 Pas encore assez de mesures et de prévisions archivées qui se recoupent pour comparer les modèles ici — revient au fil des jours (archivage 2×/jour).';
