@@ -1647,8 +1647,11 @@ function resetForm() {
 async function deleteSortie(id) {
   if (!confirm('Supprimer cette sortie ?')) return;
   try {
-    const { error } = await sb.from('sorties').delete().eq('id', id);
+    // .select() indispensable : une DELETE bloquée par la RLS renvoie 0 ligne
+    // supprimée sans erreur — même piège que sur les update de ce fichier.
+    const { error, data } = await sb.from('sorties').delete().eq('id', id).select('id');
     if (error) throw error;
+    if (!data || !data.length) throw new Error('Suppression refusée (droits insuffisants ?)');
     toast('Sortie supprimée', 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
@@ -5176,12 +5179,15 @@ async function addAlias() {
 async function deleteAlias(aliasText) {
   if (!confirm('Supprimer l\'alias "'+aliasText+'" ?')) return;
   try {
-    var res = await sb.from('aliases').delete().eq('alias_text', aliasText);
+    // .select() indispensable : même piège que partout ailleurs, une DELETE
+    // bloquée par la RLS renvoie 0 ligne supprimée sans erreur.
+    var res = await sb.from('aliases').delete().eq('alias_text', aliasText).select('alias_text');
     if (res && res.error) {
       console.error('[alias] Refus Supabase:', res.error);
       toast('❌ Suppression refusée par le serveur : ' + (res.error.message || res.error.code), 'err');
       return;
     }
+    if (!res.data || !res.data.length) { toast('❌ Suppression refusée (droits insuffisants ?)', 'err'); return; }
     delete aliasMap[aliasText.toLowerCase()];
     try { localStorage.setItem('surf-aliases', JSON.stringify(aliasMap)); } catch(e) {}
     toast('Alias supprimé (sur tous les appareils)', 'ok');

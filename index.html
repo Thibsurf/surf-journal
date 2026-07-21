@@ -3683,8 +3683,12 @@ async function submitComment() {
 async function deleteSession(id) {
   if (!confirm('Supprimer cette session ?')) return;
   try {
-    const { error } = await sb.from('sessions').delete().eq('id', id);
+    // .select() indispensable : même piège que sur update, une DELETE
+    // bloquée par la RLS renvoie 0 ligne supprimée SANS erreur — sans ça,
+    // "Session supprimée" pouvait s'afficher alors qu'elle existe toujours.
+    const { error, data } = await sb.from('sessions').delete().eq('id', id).select('id');
     if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
+    if (!data || !data.length) { showToast('Suppression refusée (droits insuffisants ?)', 'error'); return; }
     closeModal('modal-detail');
     await loadMySessions();
     showToast('Session supprimée', 'success');
