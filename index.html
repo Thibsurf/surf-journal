@@ -400,6 +400,10 @@ nav {
 }
 @media (max-width: 600px) {
   .form-row, .form-row-3, .detail-grid { grid-template-columns: 1fr; }
+  /* #csv-export-btns : grid 3 colonnes fixe non couverte par une classe
+     partagée — 3 boutons icône+libellé se retrouvaient écrasés à ~100px
+     chacun sur téléphone (texte qui déborde/wrap). */
+  #csv-export-btns { grid-template-columns: 1fr; }
   .session-card { grid-template-columns: auto 1fr; }
   /* Avant : complètement masqué sur mobile — qualité/durée/prix invisibles
      tant qu'on n'ouvrait pas le détail (signalé lors d'un précédent audit,
@@ -1472,6 +1476,14 @@ document.addEventListener('click', function(e) {
   var crewCard = e.target.closest && e.target.closest('.crew-card');
   if (crewCard) { showCrewDetail(crewCard.getAttribute('data-name')); return; }
 });
+// .session-card est le contrôle cliquable le plus utilisé de l'app (chaque
+// carte du Journal/du fil groupe) mais n'avait aucune sémantique clavier —
+// role="button"+tabindex ajoutés au markup, Entrée/Espace gérés ici.
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var card = e.target.closest && e.target.closest('.session-card');
+  if (card) { e.preventDefault(); card.click(); }
+});
 
 async function init() {
   if (window._appInit) return; window._appInit=true;
@@ -1881,7 +1893,7 @@ function sessionCardHTML(s, opts) {
   if (s.board) tags.push(`<span class="tag tag-board">${escapeHtml(s.board)}</span>`);
   if (s.moves) s.moves.filter(m=>m!=='tube').slice(0,2).forEach(m => tags.push(`<span class="tag tag-board">${escapeHtml(m)}</span>`));
   const dur = s.duration_h ? `${s.duration_h}h` : '';
-  return `<div class="session-card ${s.is_shared ? 'shared' : ''}" onclick="openDetail('${s.id}')" style="margin-bottom:8px;">
+  return `<div class="session-card ${s.is_shared ? 'shared' : ''}" onclick="openDetail('${s.id}')" role="button" tabindex="0" style="margin-bottom:8px;">
     <div class="session-date-block">
       <div class="session-day">${day}</div>
       <div class="session-month">${month} ${year}</div>
@@ -3180,6 +3192,21 @@ async function saveSession() {
       tide_ranges: tideRanges.length > 0 ? tideRanges : null,
       tide_port: document.getElementById('tide-port') ? (document.getElementById('tide-port').value || null) : null,
     };
+    // Validation basique : les min/max HTML5 des champs ne sont jamais
+    // appliqués (pas de <form>, pas de reportValidity() sur ce bouton
+    // onclick) — un nombre négatif passait tel quel jusqu'en base (ex: durée
+    // -5h) et faussait les calculs en aval (carburant, CSV, graphes Puissance).
+    var negFields = [
+      ['duration_h', 'Durée'], ['distance_nm', 'Distance'], ['nb_surfers', 'Nb surfeurs'],
+      ['wind_kts', 'Vent'], ['price_cfp', 'Prix'], ['hs', 'Houle'], ['period', 'Période']
+    ];
+    for (var nfi = 0; nfi < negFields.length; nfi++) {
+      var nfKey = negFields[nfi][0];
+      if (payload[nfKey] != null && payload[nfKey] < 0) {
+        showToast(negFields[nfi][1] + ' ne peut pas être négatif', 'error');
+        return;
+      }
+    }
     console.log('[saveSession] payload:', JSON.stringify(payload).slice(0, 300));
     if (btn) { btn.textContent = '…'; btn.disabled = true; }
     let error;
@@ -3189,7 +3216,13 @@ async function saveSession() {
     var newId = editingSessionId || (crypto.randomUUID ? crypto.randomUUID() : null);
     if (!editingSessionId && newId) payload.id = newId;
     if (editingSessionId) {
-      ({ error } = await sb.from('sessions').update(payload).eq('id', editingSessionId));
+      // .select() indispensable : supabase-js ne lève PAS d'erreur si la RLS
+      // bloque silencieusement l'update (0 ligne modifiée) — sans lire data en
+      // retour, un update qui n'a RIEN écrit semblait quand même réussi (même
+      // piège déjà corrigé sur saveProfileData/saveModelReliabilityFromJournal).
+      var updRes = await sb.from('sessions').update(payload).eq('id', editingSessionId).select('id');
+      error = updRes.error;
+      if (!error && (!updRes.data || !updRes.data.length)) error = { message: 'Aucune ligne modifiée (droits insuffisants ou session introuvable)' };
     } else {
       ({ error } = await sb.from('sessions').insert(payload));
     }
@@ -4771,26 +4804,42 @@ function renderBoardsList() {
   `).join('') || '<div style="font-size:13px;color:var(--text-faint);margin-bottom:8px;">Aucune planche enregistrée</div>';
 }
 
+// Relit profiles.boards depuis Supabase juste avant d'écrire (au lieu de
+// upserter tout currentProfile, potentiellement obsolète si modifié depuis un
+// autre appareil entretemps) — même principe que _sessionSharedWithUpdate.
+async function _profileBoardsUpdate(mutate) {
+  if (!sb || !currentUser) return false;
+  var fresh = await sb.from('profiles').select('boards').eq('id', currentUser.id).maybeSingle();
+  if (fresh && fresh.error) { showToast('❌ Erreur lecture profil : ' + fresh.error.message, 'error'); return false; }
+  var next = mutate((fresh && fresh.data ? fresh.data.boards : null) || []);
+  var res = await sb.from('profiles').update({ boards: next }).eq('id', currentUser.id);
+  if (res && res.error) { showToast('❌ Planche NON enregistrée : ' + res.error.message, 'error'); return false; }
+  currentProfile.boards = next;
+  return true;
+}
+
 async function addBoard() {
   const val = document.getElementById('new-board-input').value.trim();
   if (!val || !currentProfile) return;
-  var existing = (currentProfile.boards || []);
   var key = _normBoardKey(val);
-  if (existing.some(function(b) { return _normBoardKey(b) === key; })) {
+  if ((currentProfile.boards || []).some(function(b) { return _normBoardKey(b) === key; })) {
     if (typeof showToast === 'function') showToast('Cette planche est déjà enregistrée', 'error');
     document.getElementById('new-board-input').value = '';
     return;
   }
-  currentProfile.boards = [...existing, val];
   document.getElementById('new-board-input').value = '';
-  renderBoardsList();
-  await saveProfileData();
+  var ok = await _profileBoardsUpdate(function(cur) {
+    if (cur.some(function(b) { return _normBoardKey(b) === key; })) return cur; // déjà ajoutée entretemps
+    return cur.concat([val]);
+  });
+  if (ok) renderBoardsList();
 }
 
 async function removeBoard(i) {
-  currentProfile.boards.splice(i, 1);
-  renderBoardsList();
-  await saveProfileData();
+  var val = currentProfile.boards && currentProfile.boards[i];
+  if (val == null) return;
+  var ok = await _profileBoardsUpdate(function(cur) { return cur.filter(function(b) { return b !== val; }); });
+  if (ok) renderBoardsList();
 }
 
 async function saveProfile() {
@@ -6233,8 +6282,11 @@ async function saveBoat(){
     fuel_type:document.getElementById('boat-fuel').value,
     notes:document.getElementById('boat-notes').value.trim()||null,
   };
-  var res=id?await sb.from('boats').update(payload).eq('id',id):await sb.from('boats').insert(payload);
+  // .select() indispensable sur l'update : supabase-js ne lève pas d'erreur si
+  // la RLS bloque silencieusement (0 ligne modifiée) — même piège que saveSession.
+  var res=id?await sb.from('boats').update(payload).eq('id',id).select('id'):await sb.from('boats').insert(payload);
   if(res.error){showToast('Erreur : '+res.error.message,'error');return;}
+  if(id&&(!res.data||!res.data.length)){showToast('Aucune modification enregistrée (droits insuffisants ?)','error');return;}
   showToast(id?'Bateau mis à jour !':'Bateau ajouté !','success');
   closeModal('modal-boat'); boatsCache=[];
   await loadBoatsPage(); await populateBoatSelect();
