@@ -14091,6 +14091,37 @@ function ensoRender() {
   if (location.search.indexOf('voteSession=') >= 0 || location.search.indexOf('votePending=') >= 0) {
     setTimeout(function() { try { _initSwellVoteFromUrl(); } catch(e) { console.warn('[voteFromUrl]', e && e.message); } }, 900);
   }
+
+  // Graphiques comparatif houle/vent dessinés une seule fois avec la largeur
+  // du conteneur AU MOMENT du rendu (cv.parentElement.clientWidth), jamais
+  // redessinés ensuite — en PWA installée (Android), la mise en page finale
+  // (barre de statut, insets) peut se stabiliser un instant APRÈS ce premier
+  // rendu, laissant les graphes figés sur une largeur trop étroite (dates qui
+  // se chevauchent, illisibles) — signalé par l'utilisateur. Un resize/
+  // orientationchange redessine depuis le cache déjà en mémoire (gratuit pour
+  // la houle ; le vent AROME refetch, d'où le debounce généreux).
+  var _resizeRedrawT = null;
+  window.addEventListener('resize', function() {
+    clearTimeout(_resizeRedrawT);
+    _resizeRedrawT = setTimeout(function() {
+      try { if (typeof _swellCache !== 'undefined' && _swellCache && typeof _drawSwellCompare === 'function') _drawSwellCompare(); } catch(e) {}
+      try { if (typeof _aromeData !== 'undefined' && _aromeData && typeof _renderAromeCompare === 'function') _renderAromeCompare(_aromeData); } catch(e) {}
+    }, 400);
+  });
+  window.addEventListener('orientationchange', function() {
+    clearTimeout(_resizeRedrawT);
+    _resizeRedrawT = setTimeout(function() {
+      try { if (typeof _swellCache !== 'undefined' && _swellCache && typeof _drawSwellCompare === 'function') _drawSwellCompare(); } catch(e) {}
+      try { if (typeof _aromeData !== 'undefined' && _aromeData && typeof _renderAromeCompare === 'function') _renderAromeCompare(_aromeData); } catch(e) {}
+    }, 600);
+  });
+  // Filet de sécurité PWA : même sans resize/rotation, un premier redessin
+  // forcé peu après le chargement rattrape le cas où la largeur du conteneur
+  // n'était pas encore stabilisée au tout premier rendu (le cas le plus
+  // probable pour "pas maximisé" en PWA installée, sans event déclencheur).
+  setTimeout(function() {
+    try { if (typeof _swellCache !== 'undefined' && _swellCache && typeof _drawSwellCompare === 'function') _drawSwellCompare(); } catch(e) {}
+  }, 2500);
 })();
 </script>
 <script>
