@@ -4495,12 +4495,23 @@ function _drawSwellCompare() {
       ctx.fillStyle = 'rgba(122,148,170,.85)'; ctx.fillText((hStep < 1 ? g.toFixed(1) : g) + '', padL - 5, gy + 3);
     }
     ctx.textAlign = 'center';
-    for (var ms = mid0; ms < t1; ms += 864e5) {
+    // Densité adaptative : sur 10 jours (fenêtre swell), un libellé par jour se
+    // chevauche dès que le canvas est étroit (mobile) — signalé par l'utilisateur
+    // ("dates illisibles"). On saute des jours plutôt que d'entasser du texte.
+    var pxPerDay = X(mid0 + 864e5) - X(mid0);
+    var MIN_LABEL_PX = 40;
+    var dayStep = Math.max(1, Math.ceil(MIN_LABEL_PX / Math.max(1, pxPerDay)));
+    var dayIdx = 0;
+    for (var ms = mid0; ms < t1; ms += 864e5, dayIdx++) {
       ctx.strokeStyle = 'rgba(255,255,255,.09)';
       ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
+      if (dayIdx % dayStep !== 0) continue;
       var dd = new Date(ms + 11 * 36e5 + 36e5);
       ctx.fillStyle = 'rgba(122,148,170,.9)';
-      ctx.fillText(dd.getUTCDate() + '/' + (dd.getUTCMonth() + 1), Math.min(X(ms) + 30, W - 24), H - 6);
+      // Centré sur la bande du jour (comme le comparatif vent) plutôt que
+      // décalé à +30px d'un bord fixe, qui poussait le texte à chevaucher le
+      // jour suivant sur les canvases étroits.
+      ctx.fillText(dd.getUTCDate() + '/' + (dd.getUTCMonth() + 1), Math.min(X(ms + 432e5), W - 20), H - 6);
     }
     var nowMs = Date.now();
     if (nowMs >= t0 && nowMs <= t1) {
