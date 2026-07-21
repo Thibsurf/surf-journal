@@ -9,11 +9,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Surf NC">
-<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=4">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png?v=4">
+<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=5">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png?v=5">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
-<link rel="shortcut icon" href="icons/icon-192x192.png?v=4">
+<link rel="shortcut icon" href="icons/icon-192x192.png?v=5">
 <link rel="stylesheet" href="pwa.css">
 <title>Coups de surf NC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -5047,7 +5047,13 @@ function showSpotSourceSettings() {
     + '<input type="number" id="ssd-lon" value="'+(cfg.lon||station.lon)+'" step="0.001" '
     + 'style="width:100%;background:var(--glass);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px;outline:none;"></div>'
     + '</div>'
-    + '<div style="font-size:9px;color:var(--text-faint);margin-bottom:12px;margin-top:-4px;">Défaut: '+ station.name +'</div>'
+    // "Défaut: X" affichait TOUJOURS la station de repli codée en dur (ex:
+    // Passe de Dumbéa pour "Grand bac"), même quand une source personnalisée
+    // était bien enregistrée et correctement pré-remplie juste au-dessus
+    // (lat/lon/dropdown corrects) — lu comme "ça utilise encore Dumbéa,
+    // il y a une mémoire ?" alors que la personnalisation était bien active.
+    // Affiché seulement quand AUCUNE personnalisation n'existe encore.
+    + (cfg.lat ? '' : '<div style="font-size:9px;color:var(--text-faint);margin-bottom:12px;margin-top:-4px;">Par défaut (non personnalisé) : '+ station.name +'</div>')
 
     // Label personnalisé
     + '<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">Nom affiché (optionnel)</div>'

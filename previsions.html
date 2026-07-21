@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Surf NC">
-<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=4">
+<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=5">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
 <link rel="icon" href="favicon.ico">
@@ -1568,7 +1568,10 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     </div>
     <!-- Indicateur cyclone -->
     <div class="card" style="padding:12px 14px;">
-      <div class="section-label" style="margin-bottom:8px;">🌀 Perturbations &amp; cyclones</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+        <div class="section-label" style="margin-bottom:0;">🌀 Perturbations &amp; cyclones</div>
+        <div id="bms-notif-toggle"></div>
+      </div>
       <div id="cyclone-indicator">
         <div style="color:var(--faint);font-size:11px;">Chargement…</div>
       </div>
@@ -12823,8 +12826,31 @@ function enableBmsNotifications() {
       try { localStorage.removeItem(BMS_NOTIFY_KEY); } catch(e) {} // force la notif immédiate si un BMS est déjà actif
     }
     updateNavBMSBanner(); // rafraîchit le bandeau (retire/adapte le bouton selon la réponse)
+    _renderBmsNotifToggle();
   });
 }
+
+// Bouton persistant (section "Perturbations & cyclones", toujours visible) —
+// le bandeau BMS lui-même (nav-bms-banner) n'apparaît QUE si un BMS est
+// activement en cours, ce qui n'arrive pas souvent hors saison cyclonique
+// (signalé "le bouton ne marche pas" — en réalité probablement invisible
+// faute de BMS actif au moment du test, pas un bug du bouton lui-même).
+// Celui-ci permet d'activer les alertes À TOUT MOMENT, indépendamment de
+// l'état actuel d'un BMS.
+function _renderBmsNotifToggle() {
+  var el = document.getElementById('bms-notif-toggle');
+  if (!el) return;
+  if (!('Notification' in window)) { el.innerHTML = ''; return; }
+  var perm = Notification.permission;
+  if (perm === 'granted') {
+    el.innerHTML = '<span style="font-size:9.5px;color:#3dba8a;" title="Une notification apparaîtra si un BMS (bulletin météo spécial) devient actif, tant que cette page/PWA reste ouverte ou récemment active">🔔 Alertes BMS activées</span>';
+  } else if (perm === 'denied') {
+    el.innerHTML = '<span style="font-size:9.5px;color:var(--faint);" title="Réactive-les depuis les réglages de notifications de ton navigateur/téléphone pour ce site">🔕 Alertes bloquées (réglages navigateur)</span>';
+  } else {
+    el.innerHTML = '<button type="button" onclick="enableBmsNotifications()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:9.5px;padding:3px 8px;border-radius:12px;cursor:pointer;">🔔 Activer les alertes BMS</button>';
+  }
+}
+try { _renderBmsNotifToggle(); } catch(e) {}
 
 // Revérifie périodiquement tant que la page reste ouverte — getActiveBMS() a
 // son propre cache 15 min, donc ce polling reste gratuit côté réseau.
