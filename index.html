@@ -401,7 +401,18 @@ nav {
 @media (max-width: 600px) {
   .form-row, .form-row-3, .detail-grid { grid-template-columns: 1fr; }
   .session-card { grid-template-columns: auto 1fr; }
-  .session-right { display: none; }
+  /* Avant : complètement masqué sur mobile — qualité/durée/prix invisibles
+     tant qu'on n'ouvrait pas le détail (signalé lors d'un précédent audit,
+     jamais corrigé). Repositionné en rangée pleine largeur sous le spot
+     plutôt que supprimé, pour rester visible sans le mal de place d'une
+     3e colonne étroite sur petit écran. */
+  .session-right {
+    grid-column: 1 / -1; text-align: left;
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid rgba(255,255,255,.05);
+  }
+  .session-duration, .session-price { margin-top: 0; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .stats-2col { grid-template-columns: 1fr; }
   nav { padding: 0 1rem; }
@@ -478,7 +489,7 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
   </div>
   <button class="nav-btn primary" id="nav-new-session-btn" onclick="openAddSession()">+ Session</button>
   <div id="nav-token-dot" title="Token meteo.nc : —" style="width:9px;height:9px;border-radius:50%;background:var(--border);flex-shrink:0;cursor:default;transition:background .3s;"></div>
-  <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')">?</div>
+  <div class="nav-avatar" id="nav-avatar" role="button" tabindex="0" aria-label="Mon profil" onclick="showPage('profile')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('profile');}">?</div>
   <button class="nav-hamburger-btn" id="nav-hamburger-idx" onclick="toggleIndexMenu()" aria-label="Menu">☰</button>
 </nav>
 
