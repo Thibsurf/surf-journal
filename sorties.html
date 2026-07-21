@@ -131,7 +131,7 @@ nav a.back:hover{color:var(--text);}
 .comments-section{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);}
 .comment-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:12px;}
 .comment-author{font-weight:600;color:var(--accent);font-size:11px;}
-.comment-text{color:var(--text-muted);font-size:12px;margin-top:2px;}
+.comment-text{color:var(--text);font-size:12px;margin-top:2px;}
 .comment-date{font-size:9px;color:var(--text-faint);margin-top:1px;}
 
 /* Modal */
@@ -306,7 +306,7 @@ nav a.back:hover{color:var(--text);}
 .comment-head{display:flex;gap:8px;align-items:baseline;margin-bottom:2px;flex-wrap:wrap;}
 .comment-author{font-size:12px;font-weight:600;color:var(--text);}
 .comment-time{font-size:10px;color:var(--text-faint);}
-.comment-text{font-size:12px;color:var(--text-muted);line-height:1.5;white-space:pre-wrap;word-break:break-word;}
+.comment-text{font-size:12px;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word;}
 .comment-input{display:flex;gap:6px;margin-top:10px;}
 .comment-input input{flex:1;background:var(--mid);border:1px solid var(--border);border-radius:6px;
   padding:7px 10px;color:var(--text);font-size:12px;font-family:inherit;}
@@ -1081,6 +1081,8 @@ var _editInscriptions = [];
 var _editOpenedAt = null; // horodatage d'ouverture du dialogue d'édition (anti-écrasement)
 var _editCovoitPax = {};
 var _editBoatOwners = [];
+var _editCovoitPaxBaseline = {};
+var _editBoatOwnersBaseline = [];
 
 // ════════════════════════════════════════════════════════════════
 // INIT
@@ -1409,8 +1411,11 @@ async function loadMeteoForSortie(s) {
   const el = document.getElementById('meteo-' + s.id);
   if (!el) return;
   // parseLocalDate (et non new Date(str)) : cohérent avec le reste de la page,
-  // évite le glissement de jour sur l'interprétation UTC d'une date nue
-  const now = new Date(), date = parseLocalDate(s.date_start);
+  // évite le glissement de jour sur l'interprétation UTC d'une date nue.
+  // now recalé à minuit : sans ça, l'heure courante (ex: 23h50) faisait
+  // arrondir daysAhead au jour d'à côté selon le moment de la journée.
+  const now = new Date(); now.setHours(0,0,0,0);
+  const date = parseLocalDate(s.date_start);
   const daysAhead = Math.round((date - now) / 86400000);
   if (daysAhead > 7 || daysAhead < -1) {
     el.innerHTML = '<span class="meteo-loading">📅 Prévisions disponibles ~7 jours avant</span>';
@@ -1565,6 +1570,31 @@ async function saveSortie() {
             if (!editKeys[k] && i.created_at && _editOpenedAt && i.created_at > _editOpenedAt) {
               _editInscriptions.push(i); // arrivé pendant l'édition → on le garde
             }
+          });
+        }
+      } catch(e) {}
+      // Même anti-écrasement que les inscriptions ci-dessus, adapté : pas de
+      // created_at par entrée ici, donc on compare à l'état de RÉFÉRENCE pris
+      // à l'ouverture (_editCovoitPaxBaseline/_editBoatOwnersBaseline) plutôt
+      // qu'à un horodatage — tout ce qui est apparu dans le frais mais absent
+      // de la référence a été ajouté par quelqu'un d'autre pendant l'édition
+      // (ex: un passager qui rejoint une voiture) et doit être préservé, sans
+      // quoi saveSortie() l'écrasait silencieusement avec le snapshot figé.
+      try {
+        var freshCovoit = await sb.from('sorties').select('covoit_passengers,boat_owners').eq('id', _editingId).maybeSingle();
+        if (freshCovoit && freshCovoit.data) {
+          var freshPax = freshCovoit.data.covoit_passengers || {};
+          Object.keys(freshPax).forEach(function(driverId) {
+            var baseList = _editCovoitPaxBaseline[driverId] || [];
+            (freshPax[driverId] || []).forEach(function(paxId) {
+              if (baseList.indexOf(paxId) < 0) {
+                if (!_editCovoitPax[driverId]) _editCovoitPax[driverId] = [];
+                if (_editCovoitPax[driverId].indexOf(paxId) < 0) _editCovoitPax[driverId].push(paxId);
+              }
+            });
+          });
+          (freshCovoit.data.boat_owners || []).forEach(function(uid) {
+            if (_editBoatOwnersBaseline.indexOf(uid) < 0 && _editBoatOwners.indexOf(uid) < 0) _editBoatOwners.push(uid);
           });
         }
       } catch(e) {}
@@ -2019,10 +2049,14 @@ function buildMitonBox(s) {
 
 async function addMitonOrder(sortieId) {
   if (!currentUser) return;
+  // Garde anti-double-clic : aucun bouton d'écriture de ce fichier (sauf
+  // saveSortie) ne se désactivait pendant l'attente réseau — un double-tap
+  // rapide (mobile) pouvait dupliquer la commande.
+  if (addMitonOrder._busy) return; addMitonOrder._busy = true;
   var input = document.getElementById('miton-input-' + sortieId);
-  if (!input) return;
+  if (!input) { addMitonOrder._busy = false; return; }
   var what = input.value.trim();
-  if (!what) return;
+  if (!what) { addMitonOrder._busy = false; return; }
   var order = {
     user_id: currentUser.id,
     username: currentProfile.username || 'Surfeur',
@@ -2039,6 +2073,7 @@ async function addMitonOrder(sortieId) {
     await loadSorties();
     toast('Commande ajoutee', 'ok');
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+  finally { addMitonOrder._busy = false; }
 }
 
 async function toggleMitonDone(sortieId, idx) {
@@ -2091,6 +2126,7 @@ document.addEventListener('click', function(e) {
   if (act === 'miton-add') addMitonOrder(sid);
   else if (act === 'toggle-miton') toggleMitonDone(sid, idx);
   else if (act === 'remove-miton') removeMitonOrder(sid, idx);
+  else if (act === 'delete-alias') deleteAlias(el.getAttribute('data-alias'));
 });
 document.addEventListener('keypress', function(e) {
   if (e.key !== 'Enter') return;
@@ -2256,6 +2292,7 @@ function buildCovoitBox(sortie) {
 
 async function toggleCovoit(sortieId, driverId) {
   if (!currentUser) return;
+  if (toggleCovoit._busy) return; toggleCovoit._busy = true;
   var wasIn = false;
   try {
     // Le toggle est décidé sur l'état FRAIS (pas la copie locale) : sinon deux
@@ -2278,6 +2315,7 @@ async function toggleCovoit(sortieId, driverId) {
     toast(wasIn ? 'Retiré du covoit' : 'Ajouté au covoit ✓', 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+  finally { toggleCovoit._busy = false; }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2318,6 +2356,8 @@ function timeAgo(iso) {
 
 async function postComment(sortieId) {
   if (!currentUser) { toast('Connecte-toi', 'err'); return; }
+  if (postComment._busy) return; postComment._busy = true;
+  try {
   var input = document.getElementById('cmt-' + sortieId);
   if (!input) return;
   var text = input.value.trim();
@@ -2336,6 +2376,7 @@ async function postComment(sortieId) {
     input.value = '';
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+  } finally { postComment._busy = false; }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2421,6 +2462,10 @@ async function saveFeedback() {
   var s = allSorties.find(x => x.id === sortieId);
   if (!s) return;
   if (!_fbQuality) { toast('Choisis une qualité', 'err'); return; }
+  // Garde anti-double-clic : contrairement à toggleCovoit/_sortieFieldUpdate
+  // (read-modify-write, un doublon s'annule), ceci fait un INSERT direct dans
+  // sessions — un double-tap crée deux entrées de journal dupliquées.
+  if (saveFeedback._busy) return; saveFeedback._busy = true;
 
   // Créer une session dans le journal
   var payload = {
@@ -2455,7 +2500,7 @@ async function saveFeedback() {
   } catch(e) {
     console.error(e);
     toast('Erreur: ' + (e.message || 'inconnu'), 'err');
-  }
+  } finally { saveFeedback._busy = false; }
 }
 
 function hoursBetween(t1, t2) {
@@ -3545,7 +3590,7 @@ async function sendMagicLink() {
       options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true }
     });
     if (res.error) throw res.error;
-    infoEl.innerHTML = '📬 <b>Email envoyé à ' + email + '</b><br>'
+    infoEl.innerHTML = '📬 <b>Email envoyé à ' + escapeHtml(email) + '</b><br>'
       + 'Ouvre-le <b>sur cet appareil</b> et clique le lien : tu seras connecté automatiquement.'
       + '<br><span style="opacity:.8">Rien reçu au bout d\'une minute ? Regarde les <b>spams</b>.</span>';
     infoEl.style.display = 'block';
@@ -3571,7 +3616,7 @@ async function sendPasswordReset() {
   try {
     var res = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
     if (res.error) throw res.error;
-    infoEl.innerHTML = '📬 <b>Email de réinitialisation envoyé à ' + email + '</b><br>'
+    infoEl.innerHTML = '📬 <b>Email de réinitialisation envoyé à ' + escapeHtml(email) + '</b><br>'
       + 'Clique le lien <b>sur cet appareil</b> : la page te demandera ton nouveau mot de passe.'
       + '<br><span style="opacity:.8">Pense aux <b>spams</b> si rien au bout d\'une minute.</span>';
     infoEl.style.display = 'block';
@@ -4021,6 +4066,12 @@ function openEditModal(sortieId) {
   _editInscriptions = (s.inscriptions || []).map(function(i) { return Object.assign({}, i); });
   _editCovoitPax    = JSON.parse(JSON.stringify(s.covoit_passengers || {}));
   _editBoatOwners   = (s.boat_owners || []).slice();
+  // Instantané de référence pour détecter un changement concurrent à la
+  // sauvegarde (cf. saveSortie) — contrairement aux inscriptions, covoiturage
+  // et propriétaires n'ont pas de created_at par entrée à comparer, donc on
+  // diffe contre CET état plutôt que de simplement écraser avec _editCovoitPax.
+  _editCovoitPaxBaseline  = JSON.parse(JSON.stringify(s.covoit_passengers || {}));
+  _editBoatOwnersBaseline = (s.boat_owners || []).slice();
 
   // Remplir le form existant avec les données de la sortie
   setSortieType(s.type || 'session');
@@ -4426,14 +4477,22 @@ function renderTricount() {
       var canDel = currentUser && (
         (e.payer_id && (aliasMap[e.payer_id.toLowerCase()]||e.payer_id) === currentUser.id) || isCreator
       );
-      // Parts : chaque participant + sa quote-part
+      // Parts : chaque participant + sa quote-part. Même méthode du plus fort
+      // reste (au centime) que le calcul d'Équilibre plus haut — un simple
+      // amt/n affichait ici des montants qui ne correspondaient pas exactement
+      // à ce que l'Équilibre facturait réellement à chacun (ex: 5000/3).
       var splits = e.splits && e.splits.length ? e.splits : participants.map(function(p){return p.id;});
+      var nSplitRow = splits.length;
+      var baseCRow = Math.floor((amt * 100) / nSplitRow);
+      var remCRow = Math.round(amt * 100) - baseCRow * nSplitRow;
       var partsHtml = splits.map(function(uid, si) {
         var share = (e.custom_shares && e.custom_shares[uid] != null)
-          ? e.custom_shares[uid] : (amt / splits.length);
+          ? e.custom_shares[uid] : (baseCRow + (si < remCRow ? 1 : 0)) / 100;
         var resolved = aliasMap[(uid||'').toLowerCase()] || uid;
         var isSelf = currentUser && resolved === currentUser.id;
-        return '<span style="font-size:10px;white-space:nowrap;color:'+(isSelf?'#e8a057':'var(--text-faint)')+';">'
+        // Contraste bas (--text-faint, 10px) sur une info financière que
+        // l'utilisateur veut justement pouvoir vérifier au premier coup d'œil.
+        return '<span style="font-size:11px;white-space:nowrap;color:'+(isSelf?'#e8a057':'var(--text-muted)')+';">'
           + escapeHtml(pName(uid)) + ' <b style="color:var(--bad);">-'+Math.round(share).toLocaleString('fr')+'</b></span>';
       }).join(' · ');
 
@@ -4704,6 +4763,8 @@ function addExistingUser(sortieId) {
 }
 
 async function confirmAddUser(sortieId) {
+  if (confirmAddUser._busy) return; confirmAddUser._busy = true;
+  try {
   var sel = document.getElementById('add-user-select');
   if (!sel || !sel.value) { toast('Choisis un membre', 'err'); return; }
   var uid = sel.value;
@@ -4720,6 +4781,7 @@ async function confirmAddUser(sortieId) {
     toast(name + ' ajouté ✓', 'ok');
     await loadSorties();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+  } finally { confirmAddUser._busy = false; }
 }
 
 // Ajouter un participant invité (sans compte Supabase)
@@ -4763,20 +4825,24 @@ function toggleCustomSplit(sortieId) {
 
 async function addExpenseFromDialog(sortieId) {
   if (!currentUser) { toast('Connecte-toi', 'err'); return; }
+  // Garde anti-double-clic : concat direct dans expenses (pas idempotent comme
+  // un toggle) — un double-tap dupliquait la dépense et faussait le tricount
+  // de tout le monde jusqu'à suppression manuelle.
+  if (addExpenseFromDialog._busy) return; addExpenseFromDialog._busy = true;
   var lbl = document.getElementById('qe-label')?.value.trim();
   var amt = parseFloat(document.getElementById('qe-amount')?.value);
-  if (!lbl) { toast('Décris la dépense', 'err'); return; }
-  if (!amt || amt <= 0) { toast('Indique un montant', 'err'); return; }
+  if (!lbl) { toast('Décris la dépense', 'err'); addExpenseFromDialog._busy = false; return; }
+  if (!amt || amt <= 0) { toast('Indique un montant', 'err'); addExpenseFromDialog._busy = false; return; }
 
   var s = allSorties.find(function(x) { return x.id === sortieId; });
-  if (!s) return;
+  if (!s) { addExpenseFromDialog._busy = false; return; }
 
   var participants = window._qeParticipants || [];
   var splits = participants.filter(function(p) {
     var el = document.getElementById('qe-chk-' + p.id);
     return el && el.checked;
   }).map(function(p) { return p.id; });
-  if (!splits.length) { toast('Coche au moins une personne', 'err'); return; }
+  if (!splits.length) { toast('Coche au moins une personne', 'err'); addExpenseFromDialog._busy = false; return; }
 
   var payerId = document.getElementById('qe-payer')?.value || currentUser.id;
   var payerName = (participants.find(function(p){ return p.id === payerId; }) || {}).name
@@ -4804,6 +4870,7 @@ async function addExpenseFromDialog(sortieId) {
     await loadSorties();
     renderTricount();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+  finally { addExpenseFromDialog._busy = false; }
 }
 
 function tcFreePreset(label, amount) {
@@ -4945,15 +5012,18 @@ function tcPreset(sortieId, label, amount) {
 
 async function addExpense(sortieId) {
   if (!currentUser) { toast('Connecte-toi', 'err'); return; }
+  // Garde anti-double-clic : concat direct dans expenses, même risque de
+  // doublon que addExpenseFromDialog.
+  if (addExpense._busy) return; addExpense._busy = true;
   var label = document.getElementById('tc-label-' + sortieId);
   var amount = document.getElementById('tc-amount-' + sortieId);
-  if (!label || !amount) return;
+  if (!label || !amount) { addExpense._busy = false; return; }
   var lbl = label.value.trim(), amt = parseFloat(amount.value);
-  if (!lbl) { toast('Décris la dépense', 'err'); return; }
-  if (!amt || amt <= 0) { toast('Montant invalide', 'err'); return; }
+  if (!lbl) { toast('Décris la dépense', 'err'); addExpense._busy = false; return; }
+  if (!amt || amt <= 0) { toast('Montant invalide', 'err'); addExpense._busy = false; return; }
 
   var s = allSorties.find(function(x) { return x.id === sortieId; });
-  if (!s) return;
+  if (!s) { addExpense._busy = false; return; }
   var inscriptions = (s.inscriptions || []).filter(function(i) { return i.status === 'in'; });
   var expense = {
     id: Date.now() + '-' + Math.random().toString(36).slice(2,7),
@@ -4977,6 +5047,7 @@ async function addExpense(sortieId) {
     await loadSorties();
     renderTricount();
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
+  finally { addExpense._busy = false; }
 }
 
 async function deleteExpense(sortieId, idx) {
@@ -5020,7 +5091,7 @@ function openAliasManager() {
     var userName = profileCache[e[1]] || e[1].slice(0,8);
     return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);">'
       + '<span style="flex:1;font-size:11px;color:var(--text);">"<b>'+escapeHtml(e[0])+'</b>" → '+escapeHtml(userName)+'</span>'
-      + '<button onclick="deleteAlias(\''+escapeHtml(e[0])+'\')" style="background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:#e05c5c;border-radius:5px;font-size:10px;padding:2px 7px;cursor:pointer;">✕</button>'
+      + '<button data-act="delete-alias" data-alias="'+escapeHtml(e[0])+'" style="background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:#e05c5c;border-radius:5px;font-size:10px;padding:2px 7px;cursor:pointer;">✕</button>'
       + '</div>';
   }).join('') || '<div style="font-size:11px;color:var(--text-faint);padding:4px 0;">Aucun alias défini</div>';
 
