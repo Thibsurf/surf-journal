@@ -1,0 +1,20 @@
+name: Cache model forecasts
+
+# 2x/jour (choix utilisateur) : 07:00 et 20:00 UTC = 18:00 et 07:00 (jour
+# suivant) heure NC (UTC+11) — couvre les créneaux matin/soir sans solliciter
+# les APIs externes (BOM/Windguru/Open-Meteo) plus que nécessaire.
+on:
+  schedule:
+    - cron: '0 7,20 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Fetch + archive model forecasts
+        run: node .github/scripts/cache-model-forecasts.mjs
