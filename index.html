@@ -9,11 +9,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Surf NC">
-<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=5">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png?v=5">
+<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=6">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png?v=6">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
-<link rel="shortcut icon" href="icons/icon-192x192.png?v=5">
+<link rel="shortcut icon" href="icons/icon-192x192.png?v=6">
 <link rel="stylesheet" href="pwa.css">
 <title>Coups de surf NC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1112,6 +1112,7 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
         <button onclick="closeModal('modal-detail')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
       </div>
     </div>
+    <div id="detail-author" style="font-size:12px;color:var(--text-muted);margin:-1rem 0 1rem;"></div>
     <div id="detail-content"></div>
     <div id="detail-comments-section" style="display:none;margin-top:1.5rem;">
       <div class="section-title" style="margin-bottom:0.75rem;">Avis des surfeurs</div>
@@ -1453,6 +1454,12 @@ async function doLogout() {
 document.addEventListener('click', function(e) {
   var el = e.target.closest && e.target.closest('.tap-author');
   if (el) { e.stopPropagation(); var uid = el.getAttribute('data-uid'); if (uid) openUserProfile(uid); }
+  var renameBtn = e.target.closest && e.target.closest('.crew-rename-btn');
+  if (renameBtn) { e.stopPropagation(); renameCrewMember(renameBtn.getAttribute('data-name')); return; }
+  var removeBtn = e.target.closest && e.target.closest('.crew-remove-btn');
+  if (removeBtn) { e.stopPropagation(); removeCrewMember(removeBtn.getAttribute('data-name')); return; }
+  var crewCard = e.target.closest && e.target.closest('.crew-card');
+  if (crewCard) { showCrewDetail(crewCard.getAttribute('data-name')); return; }
 });
 
 async function init() {
@@ -1683,7 +1690,7 @@ function renderCrewView() {
     var hue = name.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0) % 360;
 
     var looksLikeSpot = typeof _lookupSpotStation === 'function' && !!_lookupSpotStation(name);
-    html += '<div class="card" style="cursor:pointer;transition:all .2s;'+(looksLikeSpot?'border-color:rgba(232,160,87,.5);':'')+'" onclick="showCrewDetail(\''+name.replace(/'/g,"\\'")+'\')">'
+    html += '<div class="card crew-card" data-name="'+escapeHtml(name)+'" style="cursor:pointer;transition:all .2s;'+(looksLikeSpot?'border-color:rgba(232,160,87,.5);':'')+'">'
       + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
       + '<div style="width:38px;height:38px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:hsl('+hue+',60%,70%);flex-shrink:0;">'+initials+'</div>'
       + '<div><div style="font-weight:600;font-size:14px;">'+escapeHtml(name)+(looksLikeSpot?' <span title="Ce nom correspond à un spot connu — erreur de saisie possible (champ Surfeurs au lieu du champ Spot) ?" style="cursor:help;font-size:11px;">⚠️</span>':'')+'</div>'
@@ -1742,18 +1749,30 @@ function showCrewDetail(name) {
     var hdr = document.createElement('div');
     hdr.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);';
     var hue = name.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0)%360;
-    var nameEsc = name.replace(/'/g,"\\'");
     hdr.innerHTML = '<button onclick="filterSessions(\'crew\',document.querySelector(\'.tab[onclick*=crew]\'))" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;padding:0;">←</button>'
       + '<div style="width:30px;height:30px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:hsl('+hue+',60%,70%);">'
       + name.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase()+'</div>'
       + '<span style="font-weight:600;">'+escapeHtml(name)+'</span>'
       + '<span style="font-size:11px;color:var(--text-muted);">'+c.length+' session(s) en commun</span>'
       + '<span style="margin-left:auto;display:flex;gap:4px;">'
-      + '<button onclick="renameCrewMember(\''+nameEsc+'\')" title="Corriger le nom (ex: faute de frappe)" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;">✏️</button>'
-      + '<button onclick="removeCrewMember(\''+nameEsc+'\')" title="Retirer (ex: nom de spot saisi par erreur)" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;">🗑️</button>'
+      + '<button class="crew-rename-btn" data-name="'+escapeHtml(name)+'" title="Corriger le nom (ex: faute de frappe)" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;">✏️</button>'
+      + '<button class="crew-remove-btn" data-name="'+escapeHtml(name)+'" title="Retirer (ex: nom de spot saisi par erreur)" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;">🗑️</button>'
       + '</span>';
     el.insertBefore(hdr, el.firstChild);
   }
+}
+
+// Relit shared_with depuis Supabase juste avant d'écrire (au lieu de se fier à
+// la copie en mémoire, potentiellement obsolète si modifiée depuis un autre
+// appareil entretemps) puis applique la mutation dessus — même principe que
+// _sortieFieldUpdate (sorties.html) contre les écrasements concurrents.
+async function _sessionSharedWithUpdate(sessionId, mutate) {
+  var fresh = await sb.from('sessions').select('shared_with').eq('id', sessionId).maybeSingle();
+  if (fresh && fresh.error) return { error: fresh.error };
+  var next = mutate(fresh && fresh.data ? fresh.data.shared_with : null);
+  var res = await sb.from('sessions').update({ shared_with: next }).eq('id', sessionId);
+  if (res && res.error) return { error: res.error };
+  return { data: next };
 }
 
 // Corrige un nom mal orthographié dans shared_with sur TOUTES les sessions
@@ -1771,9 +1790,10 @@ async function renameCrewMember(oldName) {
   var ok = 0, fail = 0;
   for (var i = 0; i < toUpdate.length; i++) {
     var s = toUpdate[i];
-    var newShared = s.shared_with.map(function(x) { return x.trim() === oldName ? newName : x; });
-    var res = await sb.from('sessions').update({ shared_with: newShared }).eq('id', s.id);
-    if (res && res.error) fail++; else { s.shared_with = newShared; ok++; }
+    var res = await _sessionSharedWithUpdate(s.id, function(cur) {
+      return (cur || []).map(function(x) { return x.trim() === oldName ? newName : x; });
+    });
+    if (res && res.error) fail++; else { s.shared_with = res.data; ok++; }
   }
   showToast(fail ? ('⚠ ' + ok + ' session(s) renommée(s), ' + fail + ' échec(s)') : ('✓ "' + oldName + '" renommé en "' + newName + '" (' + ok + ' session' + (ok > 1 ? 's' : '') + ')'), fail ? 'error' : 'success');
   filterSessions('crew', document.querySelector('.tab[onclick*=crew]'));
@@ -1790,9 +1810,10 @@ async function removeCrewMember(name) {
   var ok = 0, fail = 0;
   for (var i = 0; i < toUpdate.length; i++) {
     var s = toUpdate[i];
-    var newShared = s.shared_with.filter(function(x) { return x.trim() !== name; });
-    var res = await sb.from('sessions').update({ shared_with: newShared }).eq('id', s.id);
-    if (res && res.error) fail++; else { s.shared_with = newShared; ok++; }
+    var res = await _sessionSharedWithUpdate(s.id, function(cur) {
+      return (cur || []).filter(function(x) { return x.trim() !== name; });
+    });
+    if (res && res.error) fail++; else { s.shared_with = res.data; ok++; }
   }
   showToast(fail ? ('⚠ ' + ok + ' session(s) mise(s) à jour, ' + fail + ' échec(s)') : ('✓ "' + name + '" retiré de ' + ok + ' session(s)'), fail ? 'error' : 'success');
   filterSessions('crew', document.querySelector('.tab[onclick*=crew]'));
@@ -3711,8 +3732,8 @@ function renderStats(sessions, el) {
         var namesShort = names.length < 40 ? names : names.slice(0, 38) + '…';
         return '<tr style="border-bottom:1px solid var(--border);">'
           +'<td style="padding:6px 4px;font-size:11px;color:var(--text-muted);">'+g.date.slice(5).replace('-','/')+'</td>'
-          +'<td style="padding:6px 4px;font-size:11px;font-weight:500;">'+g.spot+'</td>'
-          +'<td style="padding:6px 4px;font-size:11px;color:var(--accent);">'+g.sessions.length+' surfeurs<br><span style="font-size:9px;opacity:.75;">'+namesShort+'</span></td>'
+          +'<td style="padding:6px 4px;font-size:11px;font-weight:500;">'+escapeHtml(g.spot)+'</td>'
+          +'<td style="padding:6px 4px;font-size:11px;color:var(--accent);">'+g.sessions.length+' surfeurs<br><span style="font-size:9px;opacity:.75;">'+escapeHtml(namesShort)+'</span></td>'
           +'<td style="padding:6px 4px;font-size:11px;color:var(--star);">'+stars+'</td>'
           +'<td style="padding:6px 4px;font-size:10px;color:var(--text-muted);">'+(avgHs>0?avgHs.toFixed(1)+'m':'—')+'</td>'
           +'</tr>';
@@ -3816,7 +3837,7 @@ function renderStats(sessions, el) {
         +'</tr></thead><tbody>'
         + spotTideRows.map(function(r) {
           return '<tr style="border-bottom:1px solid var(--border);">'
-            +'<td style="padding:6px 4px;font-size:11px;font-weight:500;">'+r.spot+'</td>'
+            +'<td style="padding:6px 4px;font-size:11px;font-weight:500;">'+escapeHtml(r.spot)+'</td>'
             +'<td style="padding:6px 4px;font-size:11px;color:var(--accent);">💧 '+r.tide.toFixed(2)+'m</td>'
             +'<td style="padding:6px 4px;font-size:11px;">'+r.hs+'</td>'
             +'<td style="padding:6px 4px;font-size:11px;">'+r.period+'</td>'
@@ -4134,9 +4155,9 @@ async function showAliasTool() {
         return '<div id="sug-'+i+'" style="display:flex;align-items:center;gap:10px;padding:8px;'
           + 'background:var(--glass);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;">'
           + '<div style="flex:1;min-width:0;">'
-          + '<span style="font-weight:600;color:var(--text);">"'+s.text+'"</span>'
+          + '<span style="font-weight:600;color:var(--text);">"'+escapeHtml(s.text)+'"</span>'
           + '<span style="color:var(--text-muted);font-size:10px;"> ('+s.count+'x)</span>'
-          + ' → <span style="color:var(--accent);">'+s.match.username+'</span>'
+          + ' → <span style="color:var(--accent);">'+escapeHtml(s.match.username)+'</span>'
           + '<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">'+confidence+'</span>'
           + '</div>'
           + '<div style="display:flex;gap:6px;flex-shrink:0;">'
@@ -4152,7 +4173,7 @@ async function showAliasTool() {
     : coNavEntries.slice(0,8).map(function(e) {
         return '<div style="display:flex;justify-content:space-between;font-size:12px;'
           + 'padding:5px 0;border-bottom:1px solid var(--border);">'
-          + '<span style="font-weight:500;">'+e.name+'</span>'
+          + '<span style="font-weight:500;">'+escapeHtml(e.name)+'</span>'
           + '<span style="color:var(--accent);">'+e.count+' sortie'+(e.count>1?'s':'')+'</span>'
           + '</div>';
       }).join('');
@@ -4162,7 +4183,7 @@ async function showAliasTool() {
     + '<div style="font-size:11px;font-weight:600;color:var(--accent-warm);margin-bottom:6px;">'
     + '⚠ Noms sans correspondance ('+unmatched.length+')</div>'
     + '<div style="font-size:11px;color:var(--text-muted);">'
-    + unmatched.map(function(n){return '"'+n+'"';}).join(', ')
+    + unmatched.map(function(n){return '"'+escapeHtml(n)+'"';}).join(', ')
     + '</div><div style="font-size:10px;color:var(--text-faint);margin-top:4px;">'
     + 'Ces noms ne correspondent à aucun pseudo connu. Vérifie l’orthographe ou invite ces personnes à créer un compte.</div></div>';
 
@@ -4195,7 +4216,7 @@ async function showAliasTool() {
     + '<select id="alias-user-select" style="flex:1;min-width:120px;background:var(--mid);'
     + 'border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:12px;">'
     + Object.entries(window._profileCache || {}).map(function(e) {
-        return '<option value="'+e[0]+'">'+e[1]+'</option>';
+        return '<option value="'+escapeHtml(e[0])+'">'+escapeHtml(e[1])+'</option>';
       }).join('')
     + '</select>'
     + '<button id="alias-add-btn" '
@@ -4886,15 +4907,18 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 
 // ══ SHOM LINK ══
 function updateShomLink() {
-  var port = (document.getElementById('shom-port') || {value:'NOUMEA_NUMBO'}).value;
+  // Le port vient du même sélecteur que le widget marée (#tide-port) — avant ce
+  // fix, cette fonction lisait un #shom-port inexistant et retombait toujours
+  // sur Nouméa, écrasant le lien correct posé par renderTideWidget() dès que la
+  // date changeait sur une session avec un port différent (Tomo/Bourail/Thio).
+  var portMap = { noumea: 'NOUMEA_NUMBO', tomo: 'TOMO_NOUVELLE_CALEDONIE', bourail: 'BOURAIL', thio: 'THIO' };
+  var tp = document.getElementById('tide-port');
+  var port = portMap[tp && tp.value] || 'NOUMEA_NUMBO';
   var dateEl = document.getElementById('f-date');
   var date = dateEl && dateEl.value ? dateEl.value : _localDayStr();
-  var portNames = { NOUMEA_NUMBO: 'Nouméa', TOMO_NOUVELLE_CALEDONIE: 'Tomo' };
   var url = 'https://maree.shom.fr/harbor/' + port + '/hlt/0?date=' + date + '&utc=11';
   var link = document.getElementById('shom-link');
-  var label = document.getElementById('shom-link-label');
   if (link) link.href = url;
-  if (label) label.textContent = 'Voir marée ' + (portNames[port] || port) + ' · ' + date + ' →';
   if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
 }
 
@@ -5823,10 +5847,10 @@ async function loadRanking() {
       var isMe=currentUser&&u.uid===currentUser.id;
       html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
       html+='<span style="min-width:26px;font-size:1.1rem;">'+( medals[i]||'')+'</span>';
-      html+='<span style="min-width:80px;font-size:13px;font-weight:'+(isMe?'500':'400')+';color:'+(isMe?'var(--accent)':'var(--text)')+';">'+u.name+(isMe?' (toi)':'')+'</span>';
+      html+='<span style="min-width:80px;font-size:13px;font-weight:'+(isMe?'500':'400')+';color:'+(isMe?'var(--accent)':'var(--text)')+';">'+escapeHtml(u.name)+(isMe?' (toi)':'')+'</span>';
       html+='<div style="flex:1;background:var(--glass);border-radius:4px;height:16px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:'+bc[i%bc.length]+';border-radius:4px;"></div></div>';
       html+='<span style="min-width:70px;text-align:right;font-size:12px;color:var(--text-muted);">'+cat.fmt(u)+'</span></div>';
-      if(cat.key==='sessions'&&u.favSpot)html+='<div style="padding-left:36px;margin-top:-4px;margin-bottom:6px;font-size:11px;color:var(--text-faint);">📍 '+u.favSpot+'</div>';
+      if(cat.key==='sessions'&&u.favSpot)html+='<div style="padding-left:36px;margin-top:-4px;margin-bottom:6px;font-size:11px;color:var(--text-faint);">📍 '+escapeHtml(u.favSpot)+'</div>';
     });
     html+='</div>';
   });
@@ -6127,8 +6151,8 @@ async function loadBoatsPage() {
     var spPref=Object.entries(sc).sort(function(a,b){return b[1]-a[1];})[0];
     html+='<div class="card" style="margin-bottom:12px;">';
     html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
-    html+='<div><div style="font-weight:500;font-size:15px;">'+b.name+'</div>';
-    if(b.alias) html+='<div style="font-size:12px;color:var(--text-muted);">Propriétaire : '+b.alias+'</div>';
+    html+='<div><div style="font-weight:500;font-size:15px;">'+escapeHtml(b.name)+'</div>';
+    if(b.alias) html+='<div style="font-size:12px;color:var(--text-muted);">Propriétaire : '+escapeHtml(b.alias)+'</div>';
     html+='</div>';
     html+='<button class="btn btn-sm btn-secondary" data-bidx="'+bi+'" onclick="openEditBoatByIdx(this)">Modifier</button>';
     html+='</div>';

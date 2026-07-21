@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Surf NC">
-<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=5">
+<link rel="apple-touch-icon" href="icons/icon-180x180.png?v=6">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
 <link rel="icon" href="favicon.ico">
@@ -2381,7 +2381,7 @@ function showNetDiagPanel() {
   var pS = _timedProbe(function(){ var sb = _ensureSupabaseClient(); if (!sb) throw new Error('client supabase indispo');
     return sb.from('shared_tokens').select('updated_at').eq('id', 'meteo-nc').maybeSingle().then(function(r){ return !r.error && !!r.data; }); });
   var pR = (_ncToken && _isTokenValid())
-    ? _timedProbe(function(){ return fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881752',
+    ? _timedProbe(function(){ return fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881852',
         { headers: { 'Authorization': 'Bearer ' + _ncToken }, credentials: 'omit' }).then(function(r){ return r.ok; }); })
     : Promise.resolve({ skip: true, note: 'pas de token' });
   var pO = _timedProbe(function(){ return fetch('https://api.open-meteo.com/v1/forecast?latitude=-22.27&longitude=166.44&current=wind_speed_10m')
@@ -2488,7 +2488,7 @@ function showNcTokenPrompt() {
         // Timeout 4s obligatoire : sans lui, un rpcache qui blackhole (réseau
         // mobile) laissait le diagnostic sur « ⏳ » sans fin (Promise.all bloqué)
         var cD = new AbortController(); var tD = setTimeout(function(){ cD.abort(); }, 4000);
-        var r = await fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881752',
+        var r = await fetch('https://rpcache.meteo.nc/internet2018client/2.0/tide?id=9881852',
           { headers: { 'Authorization': 'Bearer ' + _ncToken }, credentials: 'omit', signal: cD.signal });
         clearTimeout(tD); dOk = r.ok;
       }
@@ -3264,7 +3264,18 @@ async function loadForecast(i) {
 
     // Rendu progressif : observations + encart marée de base dès qu'ils arrivent
     _pObs.then(function(o){ obsData = o && o.data; try { renderObs(obsData, s, o); } catch(_){} });
-    _pTide.then(function(d){ if (d) { ncTide = d; try { renderTideEncart(d, s); } catch(_){} } });
+    _pTide.then(function(d){
+      if (!d) return;
+      // Même vote anti-Z-abusif que le rendu final (L3344) — sans lui, ce rendu
+      // progressif (arrive avant les autres flux) peut afficher des PM/BM décalées
+      // de ~11h le temps que le re-rendu normalisé corrige, quand rpcache mislabel
+      // le jour.
+      var _nowNCp = new Date(Date.now() + 11*3600000);
+      var _todayDsP = _nowNCp.getUTCFullYear() + '-' + String(_nowNCp.getUTCMonth()+1).padStart(2,'0') + '-' + String(_nowNCp.getUTCDate()).padStart(2,'0');
+      d = _tideNormalizeDay(d, _todayDsP);
+      ncTide = d;
+      try { renderTideEncart(d, s); } catch(_){}
+    });
 
     // Attendre toutes les données (allSettled ne rejette jamais → outer catch préservé pour le rendu)
     var _all = await Promise.allSettled([_pTide, _pObs, _pMarine, _pForecast, _pOmMarine, _pOmWind]);
@@ -4606,8 +4617,10 @@ async function _renderWeeklyStats() {
   var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
   var ids = [];
   for (var d = 0; d <= 6; d++) {
-    var dd = new Date(Date.now() - d * 864e5);
-    ids.push(dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0') + '-' + String(dd.getDate()).padStart(2, '0') + '_' + la + '_' + lo);
+    // Jour calendaire NC (+11h, sans DST) et non celui du fuseau système du
+    // navigateur — même convention d'écriture que _saveForecastDays (L3068).
+    var dd = new Date(Date.now() - d * 864e5 + 11 * 3600000);
+    ids.push(dd.getUTCFullYear() + '-' + String(dd.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dd.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo);
   }
   try {
     var res = await _tokenSbClient.from('meteo_cache').select('id,data').in('id', ids);
@@ -7768,24 +7781,26 @@ async function _loadAromeWidget(wgId) {
   }
   if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;">Run AROME épuisé — prochain run sous peu.</div>'; return; }
   // Bande jours (colspan) + lignes heure/vent/rafales/dir/pluie/T°
-  var dayCells = [], curKey = null, span = 0, dayLbls = [];
+  var dayCells = [], curKey = null, span = 0, dayLbls = [], curMs0 = null;
   cols.forEach(function(c) {
     var nc = new Date(c.ms + 11 * 3600000);
     var key = nc.getUTCDate() + '/' + (nc.getUTCMonth() + 1);
-    if (key !== curKey) { if (curKey !== null) dayCells.push({ k: curKey, n: span }); curKey = key; span = 0; }
+    if (key !== curKey) { if (curKey !== null) dayCells.push({ k: curKey, n: span, ms0: curMs0 }); curKey = key; span = 0; curMs0 = c.ms; }
     span++;
     dayLbls.push(String(nc.getUTCHours()).padStart(2, '0') + 'h');
   });
-  dayCells.push({ k: curKey, n: span });
+  dayCells.push({ k: curKey, n: span, ms0: curMs0 });
   var DAYS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   var _tdCi = -1; // index de colonne courant, incrémenté par rangée via _tdReset
   function _tdReset() { _tdCi = -1; }
   function td(html, style) { _tdCi++; return '<td data-ci="' + _tdCi + '" style="padding:3px 4px;text-align:center;border-left:1px solid rgba(255,255,255,.04);white-space:nowrap;' + (style || '') + '">' + html + '</td>'; }
   var h = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:10px;color:var(--text);min-width:100%;">';
   h += '<tr>' + '<td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:9px;">jour</td>' + dayCells.map(function(d) {
-    var parts = d.k.split('/');
-    var dObj = new Date(new Date().getFullYear(), +parts[1] - 1, +parts[0]);
-    return '<td colspan="' + d.n + '" style="padding:3px;text-align:center;font-weight:700;color:var(--accent);border-left:2px solid rgba(79,163,199,.35);background:rgba(79,163,199,.06);">' + DAYS_FR[dObj.getDay()] + ' ' + d.k + '</td>';
+    // Jour de semaine dérivé du vrai epoch (ms0, faux-local +11h) plutôt que
+    // reconstruit depuis "jour/mois" + année courante supposée — cette dernière
+    // se trompait à cheval sur le nouvel an (31 déc / 1er janv).
+    var wd = new Date(d.ms0 + 11 * 3600000).getUTCDay();
+    return '<td colspan="' + d.n + '" style="padding:3px;text-align:center;font-weight:700;color:var(--accent);border-left:2px solid rgba(79,163,199,.35);background:rgba(79,163,199,.06);">' + DAYS_FR[wd] + ' ' + d.k + '</td>';
   }).join('') + '</tr>';
   _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:9px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
   _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">💨 kt</td>' + cols.map(function(c) {
@@ -8098,8 +8113,10 @@ async function _renderAromeCompare(j) {
       var la = s0.lat.toFixed(3), lo = s0.lon.toFixed(3);
       var dayIds = [];
       for (var dback = 0; dback <= 8; dback++) {
-        var dd0 = new Date(now - dback * 864e5);
-        dayIds.push(dd0.getFullYear() + '-' + String(dd0.getMonth() + 1).padStart(2, '0') + '-' + String(dd0.getDate()).padStart(2, '0') + '_' + la + '_' + lo);
+        // Jour calendaire NC (+11h puis getUTC*), indépendant du fuseau système
+        // du navigateur — même convention d'écriture que _saveForecastDays.
+        var dd0 = new Date(now - dback * 864e5 + 11 * 3600000);
+        dayIds.push(dd0.getUTCFullYear() + '-' + String(dd0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dd0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo);
       }
       var cRes = await _tokenSbClient.from('meteo_cache').select('id,data').in('id', dayIds);
       if (cRes && cRes.data) cRes.data.forEach(function(row) {
@@ -8108,7 +8125,11 @@ async function _renderAromeCompare(j) {
         var p = row.id.split('_')[0].split('-');
         hrs.forEach(function(hhh) {
           if (!hhh || hhh.h == null) return;
-          var ms = new Date(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)).getTime();
+          // p[0..2]/hhh.h sont un jour+heure NC-local stockés tels quels — Date.UTC
+          // traite ces champs comme UTC (indépendant du fuseau navigateur), puis on
+          // retranche 11h pour obtenir le vrai epoch UTC (faux-local → vrai UTC,
+          // même convention que partout ailleurs dans ce fichier).
+          var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)) - 11 * 3600000;
           if (ms > now) return;
           if (hhh.windKt != null) cachePts.push({ ms: ms, kt: hhh.windKt });
           if (hhh.aromeKt != null) aromeCachePts.push({ ms: ms, kt: hhh.aromeKt });
@@ -8228,6 +8249,11 @@ async function _renderAromeCompare(j) {
     ctx.fillStyle = 'rgba(169,159,248,.9)';
     pageGfs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
     drawSmooth(aro, 'rgba(79,163,199,.95)', 2.2);
+    // Marqueurs AROME : drawSmooth() ne trace rien si <2 points (créneau frais
+    // ou fenêtre qui clippe presque tout) — sans ce fallback la série disparaît
+    // du graphe sans aucune trace alors que la légende la liste toujours.
+    ctx.fillStyle = 'rgba(79,163,199,.95)';
+    aro.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
     drawSmooth(obs, 'rgba(61,186,138,.95)', 2.4);
     // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
     ctx.strokeStyle = 'rgba(232,160,87,.9)'; ctx.lineWidth = 1.4;
@@ -8804,9 +8830,12 @@ async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
       var today = new Date();
       var ids = [];
       for (var di = 1; di <= 7; di++) {
-        var d = new Date(today.getTime() - di * 86400000);
-        // date LOCALE (getUTC* décalait les 7 ids d'un jour avant 11h NC)
-        var ds = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        // Jour calendaire NC (+11h puis getUTC*), pas le fuseau système du
+        // navigateur : getFullYear/getMonth/getDate ne redonnent le bon jour NC
+        // que si l'OS de l'appareil est réglé sur Pacific/Noumea — même
+        // convention d'écriture que _saveForecastDays (L3068).
+        var d = new Date(today.getTime() - di * 86400000 + 11 * 3600000);
+        var ds = d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
         ids.push(ds+'_'+spot.lat.toFixed(3)+'_'+spot.lon.toFixed(3));
       }
       var {data: cacheRows} = await _tokenSbClient.from('meteo_cache').select('id,data,status').in('id', ids);
