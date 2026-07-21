@@ -1058,6 +1058,7 @@ const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
           style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">🎯 Top</button>
       </div>
     </div>
+    <div class="form-group" id="f-model-reliability-wrap" style="display:none;"></div>
     <div class="form-group">
       <label class="form-label">Manœuvres & highlights</label>
       <div class="toggle-group" id="f-moves" style="margin-bottom:8px;">
@@ -1998,6 +1999,7 @@ function openAddSession() {
     });
   }
   _populateCustomSpots();
+  if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
   document.getElementById('modal-add').classList.add('open');
   // Auto-fill conditions dès qu'un spot est sélectionné
   var spotSel = document.getElementById('f-spot');
@@ -2736,6 +2738,7 @@ function editSession() {
     b.classList.toggle('active', selectedMoves.includes(move));
   });
   _populateCustomSpots();
+  if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
   document.getElementById('modal-add').classList.add('open');
 }
 
@@ -3143,6 +3146,11 @@ async function saveSession() {
     console.log('[saveSession] payload:', JSON.stringify(payload).slice(0, 300));
     if (btn) { btn.textContent = '…'; btn.disabled = true; }
     let error;
+    // id généré côté client pour une nouvelle session (pas encore de ligne en
+    // base) : nécessaire pour associer un vote de fiabilité houle fait AVANT
+    // l'enregistrement (cf. _updateModelReliabilityFormSection / mode pending).
+    var newId = editingSessionId || (crypto.randomUUID ? crypto.randomUUID() : null);
+    if (!editingSessionId && newId) payload.id = newId;
     if (editingSessionId) {
       ({ error } = await sb.from('sessions').update(payload).eq('id', editingSessionId));
     } else {
@@ -3154,6 +3162,7 @@ async function saveSession() {
       showToast('Erreur Supabase : ' + error.message, 'error');
       return;
     }
+    if (newId) { try { await _attachPendingModelVote(newId, spotVal, dateVal); } catch (e) {} }
     showToast(editingSessionId ? 'Session mise à jour !' : 'Session ajoutée !', 'success');
     closeModal('modal-add');
     await loadMySessions();
@@ -3215,11 +3224,63 @@ function getModelReliability(session) {
   } catch (e) { return null; }
 }
 
+// Vote « en attente » — cas d'une session en cours de CRÉATION, donc sans id
+// pour l'instant. Clé = spot+date (pas d'id à ce stade) ; attaché au vrai id
+// dès que saveSession() réussit (cf. son appel à _attachPendingModelVote).
+function _pendingVoteKey(spot, date) { return spot + '|' + date; }
+function _getPendingModelVote(spot, date) {
+  try {
+    var store = JSON.parse(localStorage.getItem('model-reliability-pending') || '{}');
+    return store[_pendingVoteKey(spot, date)] || null;
+  } catch (e) { return null; }
+}
+function _clearPendingModelVote(spot, date) {
+  try {
+    var store = JSON.parse(localStorage.getItem('model-reliability-pending') || '{}');
+    delete store[_pendingVoteKey(spot, date)];
+    localStorage.setItem('model-reliability-pending', JSON.stringify(store));
+  } catch (e) {}
+}
+// Appelé juste après un insert/update de session réussi : si un vote a été
+// fait AVANT la sauvegarde (depuis le formulaire de création), on l'associe
+// maintenant au vrai id et on nettoie l'attente.
+async function _attachPendingModelVote(sessionId, spot, date) {
+  var pending = _getPendingModelVote(spot, date);
+  if (!pending) return;
+  await saveModelReliabilityFromJournal(sessionId, pending);
+  _clearPendingModelVote(spot, date);
+}
+// Écrit le vote dans sessions.model_reliability si la colonne existe, sinon
+// repli localStorage 'model-reliability' (clé = id) — même mécanisme que
+// saveModelReliability() côté previsions.html, dupliqué ici car page distincte.
+var _modelRelColOkJournal = null;
+async function _hasModelReliabilityColumnJournal() {
+  if (_modelRelColOkJournal !== null) return _modelRelColOkJournal;
+  if (!sb) { _modelRelColOkJournal = false; return false; }
+  try { var r = await sb.from('sessions').select('model_reliability').limit(1); _modelRelColOkJournal = !r.error; }
+  catch (e) { _modelRelColOkJournal = false; }
+  return _modelRelColOkJournal;
+}
+async function saveModelReliabilityFromJournal(sessionId, vote) {
+  if (sb && await _hasModelReliabilityColumnJournal()) {
+    // .select() pour vérifier qu'une ligne a bien été modifiée — supabase-js
+    // ne remonte pas d'erreur sur un update RLS-bloqué à 0 ligne affectée.
+    try { var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sessionId).select('id'); if (!r.error && r.data && r.data.length) return true; } catch (e) {}
+  }
+  try {
+    var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
+    store[sessionId] = vote;
+    localStorage.setItem('model-reliability', JSON.stringify(store));
+    return true;
+  } catch (e) { return false; }
+}
+
 // Construit l'URL du lien profond vers previsions.html, pré-rempli pour
-// voter en contexte (courbes visibles) sur la session concernée.
-function _modelVoteUrl(session) {
-  var spot = session.spot || (session.spots && session.spots[0]) || '';
-  var p = new URLSearchParams({ voteSession: session.id, voteSpot: spot, voteDate: session.date });
+// voter en contexte (courbes visibles). Sans id (session pas encore créée) →
+// mode "pending", le vote est retrouvé par spot+date à la sauvegarde.
+function _modelVoteUrl(opts) {
+  var p = new URLSearchParams({ voteSpot: opts.spot, voteDate: opts.date });
+  if (opts.id) p.set('voteSession', opts.id); else p.set('votePending', '1');
   return 'previsions.html?' + p.toString();
 }
 
@@ -3232,19 +3293,19 @@ function _renderModelReliabilitySection(s) {
     return '<div class="detail-item" style="grid-column:1/-1;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.15);border-radius:8px;padding:8px 10px;">'
       + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
       + '<div class="detail-value" style="color:' + (info ? info.col : 'var(--accent)') + ';">' + escapeHtml(info ? info.label : vote.votedModel) + '</div>'
-      + '<a href="' + _modelVoteUrl(s) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
+      + '<a href="' + _modelVoteUrl({ id: s.id, spot: s.spot || (s.spots && s.spots[0]) || '', date: s.date }) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
       + '</div>';
   }
   if (vote && vote.votedModel === null) {
     return '<div class="detail-item" style="grid-column:1/-1;">'
       + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
       + '<div class="detail-value" style="color:var(--text-muted);font-size:12px;">Aucun modèle jugé fiable pour cette session</div>'
-      + '<a href="' + _modelVoteUrl(s) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
+      + '<a href="' + _modelVoteUrl({ id: s.id, spot: s.spot || (s.spots && s.spots[0]) || '', date: s.date }) + '" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
       + '</div>';
   }
   if (_isRecentForModelVote(s.date)) {
     return '<div class="detail-item" style="grid-column:1/-1;">'
-      + '<a href="' + _modelVoteUrl(s) + '" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);text-decoration:none;background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.25);border-radius:8px;padding:6px 10px;">'
+      + '<a href="' + _modelVoteUrl({ id: s.id, spot: s.spot || (s.spots && s.spots[0]) || '', date: s.date }) + '" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);text-decoration:none;background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.25);border-radius:8px;padding:6px 10px;">'
       + '🌊 Quel modèle de houle a été le plus fiable pour cette session ? →</a>'
       + '</div>';
   }
@@ -3252,6 +3313,56 @@ function _renderModelReliabilitySection(s) {
     + '<div class="detail-label">🌊 Modèle le plus fiable</div>'
     + '<div class="detail-value" style="color:var(--text-faint);font-size:11px;font-style:italic;" title="Les prévisions archivées par modèle ne sont conservées que ~' + MODEL_RELIABILITY_WINDOW_DAYS + ' jours — au-delà, la comparaison n\'est plus fiable.">Indisponible (session trop ancienne)</div>'
     + '</div>';
+}
+
+// Même section que le détail, mais dans le formulaire d'ajout/modification —
+// demandé pour pouvoir voter dès la création plutôt qu'en repassant par le
+// détail après coup. Pour une session en cours de CRÉATION (pas encore
+// d'id), le lien passe en mode "pending" (_modelVoteUrl sans id) : le vote
+// est retrouvé par spot+date et attaché au vrai id dans saveSession().
+function _updateModelReliabilityFormSection() {
+  var wrap = document.getElementById('f-model-reliability-wrap');
+  if (!wrap) return;
+  var dateVal = document.getElementById('f-date') ? document.getElementById('f-date').value : '';
+  var spotVal = (typeof getSpotValue === 'function') ? getSpotValue() : '';
+  if (!dateVal || !spotVal || spotVal === '__autre__') { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+
+  if (editingSessionId) {
+    var existing = (allSessions || []).find(function(s) { return s.id === editingSessionId; }) || { id: editingSessionId, date: dateVal, spot: spotVal };
+    wrap.style.display = 'block';
+    wrap.innerHTML = '<label class="form-label">🌊 Fiabilité houle par modèle</label>' + _renderModelReliabilitySection(existing);
+    return;
+  }
+
+  var pending = _getPendingModelVote(spotVal, dateVal);
+  if (pending) {
+    var info = pending.votedModel ? MODEL_RELIABILITY_LABELS[pending.votedModel] : null;
+    wrap.style.display = 'block';
+    wrap.innerHTML = '<label class="form-label">🌊 Fiabilité houle par modèle</label>'
+      + '<div style="background:rgba(61,186,138,.08);border:1px solid rgba(61,186,138,.25);border-radius:8px;padding:8px 10px;">'
+      + '<div style="font-size:12px;color:var(--text);">✓ <b style="color:' + (info ? info.col : 'var(--accent)') + ';">' + escapeHtml(info ? info.label : 'Aucun') + '</b> sera enregistré avec cette session</div>'
+      + '<a href="javascript:void(0)" onclick="_confirmLeaveForVote(' + JSON.stringify(_modelVoteUrl({ spot: spotVal, date: dateVal })) + ')" style="font-size:10px;color:var(--text-muted);">Changer →</a>'
+      + '</div>';
+    return;
+  }
+  if (_isRecentForModelVote(dateVal)) {
+    wrap.style.display = 'block';
+    wrap.innerHTML = '<label class="form-label">🌊 Fiabilité houle par modèle</label>'
+      + '<a href="javascript:void(0)" onclick="_confirmLeaveForVote(' + JSON.stringify(_modelVoteUrl({ spot: spotVal, date: dateVal })) + ')" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);text-decoration:none;background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.25);border-radius:8px;padding:6px 10px;">'
+      + '🌊 Comparer les modèles pour cette session →</a>';
+    return;
+  }
+  wrap.style.display = 'none';
+  wrap.innerHTML = '';
+}
+
+// Quitter le formulaire (même non enregistré) pour aller voter perd le
+// brouillon en cours — sans confirmation, on prévient juste que le vote sera
+// bien récupéré au retour (aucune perte côté vote, seulement côté brouillon).
+function _confirmLeaveForVote(url) {
+  if (confirm('Tu vas quitter ce formulaire pour comparer les modèles sur Prévisions.\n\nLes champs déjà saisis ici ne seront PAS conservés (le vote, lui, sera bien récupéré automatiquement à ton retour). Continuer ?')) {
+    location.href = url;
+  }
 }
 
 async function openDetail(id) {
@@ -4633,6 +4744,7 @@ function updateShomLink() {
   var label = document.getElementById('shom-link-label');
   if (link) link.href = url;
   if (label) label.textContent = 'Voir marée ' + (portNames[port] || port) + ' · ' + date + ' →';
+  if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
 }
 
 // ══ SECTION TOGGLE ══
@@ -4865,6 +4977,7 @@ function handleSpotChange(sel) {
   }
   const custom = document.getElementById('f-spot-custom');
   custom.style.display = sel.value === '__autre__' ? 'block' : 'none';
+  if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
   if (sel.value === '__autre__') { custom.focus(); return; }
   // Déclencher l'autofill à chaque changement de spot (pas seulement si date = today)
   if (sel.value) _autoFillConditions();

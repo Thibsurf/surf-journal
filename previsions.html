@@ -2107,13 +2107,20 @@ function buildSpotTabs() {
 var _tokenSbClient = null; // null when file:// or no supabase  // base principale (tiiptloz...)
 
 
+// storageKey 'surf-nc-auth' : DOIT matcher exactement la config du client créé
+// dans index.html, sinon les deux pages voient chacune un visiteur anonyme et
+// aucune écriture RLS (ex: sessions.model_reliability) ne peut jamais aboutir
+// depuis previsions.html même connecté sur index.html (même origine, mais
+// clé de storage différente par défaut → session invisible d'une page à l'autre).
+var _SB_AUTH_OPTS = { auth: { persistSession: true, storageKey: 'surf-nc-auth', storage: window.localStorage, autoRefreshToken: true } };
 try {
   const sb = window.supabase;
 
   if (sb?.createClient) {
     _tokenSbClient = sb.createClient(
       'https://tiiptlozingmgzcnexpu.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0'
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0',
+      _SB_AUTH_OPTS
     );
   }
 } catch (e) {
@@ -2129,7 +2136,8 @@ function _ensureSupabaseClient() {
     if (sb && sb.createClient) {
       _tokenSbClient = sb.createClient(
         'https://tiiptlozingmgzcnexpu.supabase.co',
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0'
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0',
+        _SB_AUTH_OPTS
       );
     }
   } catch(e) {}
@@ -4038,6 +4046,86 @@ function _swellToPts(d, comp) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// CACHE MULTI-MODÈLE — model_forecast_cache (table dédiée, optionnelle)
+// ═══════════════════════════════════════════════════════════════
+// Archive une snapshot légère (h/période/dir par heure) de chaque modèle
+// comparé (BOM/MF/ECMWF/GFS en plus de meteo.nc déjà caché par ailleurs via
+// meteo_cache) — deux usages : (1) laisser grandir une archive dans le temps
+// pour que le vote de fiabilité houle reste possible au-delà de la fenêtre
+// "en direct" des fournisseurs (aucun d'eux ne rejoue vraiment le passé),
+// (2) réduire les refetch réseau répétés pour un même jour déjà vu.
+//
+// Table SÉPARÉE de meteo_cache (pas une extension de son JSON) : meteo_cache
+// est réécrit en full-replace par _saveForecastDays/_saveAromeSnapshot à
+// chaque page — y ajouter une clé aurait fini écrasée à la prochaine passe.
+// Nécessite que la table existe côté Supabase (créée manuellement, on n'a
+// que la clé anon) — no-op silencieux sinon, jamais bloquant.
+//   create table model_forecast_cache (
+//     id text primary key, date date not null, spot_name text, lat float, lon float,
+//     model text not null, kind text not null, hours jsonb not null,
+//     updated_at timestamptz default now()
+//   );
+//   alter table model_forecast_cache enable row level security;
+//   create policy "Public read model cache" on model_forecast_cache for select using (true);
+//   create policy "Public write model cache" on model_forecast_cache for insert with check (true);
+//   create policy "Public update model cache" on model_forecast_cache for update using (true);
+var _modelCacheTableOk = null;
+async function _hasModelCacheTable() {
+  if (_modelCacheTableOk !== null) return _modelCacheTableOk;
+  // Pas de variable globale `sb` dans cette page (contrairement à index.html) :
+  // le client partagé s'appelle _tokenSbClient, exposé via _ensureSupabaseClient().
+  var client = _ensureSupabaseClient();
+  if (!client) { _modelCacheTableOk = false; return false; }
+  try {
+    var r = await client.from('model_forecast_cache').select('id').limit(1);
+    _modelCacheTableOk = !r.error;
+  } catch (e) { _modelCacheTableOk = false; }
+  return _modelCacheTableOk;
+}
+
+// Groupe des points par date NC-locale et upsert 1 ligne par jour pour ce
+// modèle/kind — n'écrase que SES propres lignes (id inclut le modèle), jamais
+// celles d'un autre modèle ni de meteo_cache. valKey/periodKey permettent de
+// réutiliser la même fonction pour la houle ({h,t,dir}) et le vent ({kt,dir}).
+async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
+  if (!pts || !pts.length || !(await _hasModelCacheTable())) return;
+  valKey = valKey || 'h';
+  try {
+    var byDate = {};
+    pts.forEach(function(p) {
+      var d = new Date(p.ms + 11 * 3600000);
+      var ds = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+      if (!byDate[ds]) byDate[ds] = [];
+      byDate[ds].push({ h: d.getUTCHours(), val: p[valKey], period: periodKey ? p[periodKey] : null, dir: p.dir });
+    });
+    var rows = Object.keys(byDate).map(function(ds) {
+      return {
+        id: ds + '_' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3) + '_' + modelKey + '_' + kind,
+        date: ds, spot_name: spot.name, lat: spot.lat, lon: spot.lon,
+        model: modelKey, kind: kind, hours: byDate[ds], updated_at: new Date().toISOString()
+      };
+    });
+    if (rows.length) await _ensureSupabaseClient().from('model_forecast_cache').upsert(rows);
+  } catch (e) { console.warn('[cacheModelPoints]', modelKey, e && e.message); }
+}
+
+// Lecture pour le vote (_castModelVote) : complète les modèles qui n'ont pas
+// de point live proche de la session (cf. _renderVoteUI) en interrogeant
+// l'archive — silencieux si la table n'existe pas ou rien d'archivé.
+async function _lookupModelCache(spot, modelKey, kind, dateStr, targetMs) {
+  if (!(await _hasModelCacheTable())) return null;
+  try {
+    var id = dateStr + '_' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3) + '_' + modelKey + '_' + kind;
+    var r = await _ensureSupabaseClient().from('model_forecast_cache').select('hours').eq('id', id).maybeSingle();
+    if (!r.data || !r.data.hours || !r.data.hours.length) return null;
+    var targetH = new Date(targetMs + 11 * 3600000).getUTCHours();
+    var best = null, bd = 5;
+    r.data.hours.forEach(function(row) { var df = Math.abs(row.h - targetH); if (df < bd) { bd = df; best = row; } });
+    return best ? { h: best.val, t: best.period, dir: best.dir } : null;
+  } catch (e) { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // FIABILITÉ HOULE PAR MODÈLE — vote depuis une session du Journal
 // ═══════════════════════════════════════════════════════════════
 // Le Journal (index.html) n'a pas accès directement au comparatif houle
@@ -4054,18 +4142,24 @@ function _swellToPts(d, comp) {
 var _modelRelColOk = null;
 async function _hasModelReliabilityColumn() {
   if (_modelRelColOk !== null) return _modelRelColOk;
-  if (typeof sb === 'undefined' || !sb) { _modelRelColOk = false; return false; }
+  var client = _ensureSupabaseClient();
+  if (!client) { _modelRelColOk = false; return false; }
   try {
-    var r = await sb.from('sessions').select('model_reliability').limit(1);
+    var r = await client.from('sessions').select('model_reliability').limit(1);
     _modelRelColOk = !r.error;
   } catch (e) { _modelRelColOk = false; }
   return _modelRelColOk;
 }
 async function saveModelReliability(sessionId, vote) {
-  if (typeof sb !== 'undefined' && sb && await _hasModelReliabilityColumn()) {
+  var client = _ensureSupabaseClient();
+  if (client && await _hasModelReliabilityColumn()) {
     try {
-      var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sessionId);
-      if (!r.error) return true;
+      // .select() est indispensable ici : supabase-js NE lève PAS d'erreur si
+      // la RLS bloque silencieusement (0 ligne modifiée, ex: pas connecté sur
+      // cette page) — sans lire data en retour, un update qui n'a RIEN écrit
+      // semblait quand même réussi (même piège que ailleurs dans le Journal).
+      var r = await client.from('sessions').update({ model_reliability: vote }).eq('id', sessionId).select('id');
+      if (!r.error && r.data && r.data.length) return true;
     } catch (e) {}
   }
   try {
@@ -4083,15 +4177,19 @@ var _pendingVote = null;
 function _initSwellVoteFromUrl() {
   try {
     var p = new URLSearchParams(location.search);
-    var sid = p.get('voteSession'), spot = p.get('voteSpot'), date = p.get('voteDate');
-    if (!sid || !spot || !date) return;
+    var sid = p.get('voteSession'), pending = p.get('votePending') === '1';
+    var spot = p.get('voteSpot'), date = p.get('voteDate');
+    if ((!sid && !pending) || !spot || !date) return;
     var hour = p.get('voteHour'); hour = (hour !== null && hour !== '') ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 12;
     // Date+heure NC (UTC+11) explicite → ms UTC réel, comparable aux séries (mêmes unités que _swellToPts).
     var targetMs = new Date(date + 'T' + String(hour).padStart(2, '0') + ':00:00+11:00').getTime();
     if (isNaN(targetMs)) return;
     var spotIdx = _findSpotIdxForName(spot);
     if (spotIdx < 0) return;
-    _pendingVote = { sessionId: sid, spotName: spot, dateStr: date, targetMs: targetMs };
+    // sessionId absent (session pas encore créée, cf. formulaire de création du
+    // Journal) → mode "pending" : le vote est mis de côté par spot+date et
+    // récupéré par le Journal au moment de l'enregistrement de la session.
+    _pendingVote = { sessionId: sid || null, pending: pending, spotName: spot, dateStr: date, targetMs: targetMs };
     bsfSelectSpot(spotIdx, targetMs).then(function() {
       // _renderSwellCompare() est déclenché ailleurs (pas attendu par bsfSelectSpot) —
       // on patiente que _swellCache soit prêt avant de positionner le curseur + afficher le vote.
@@ -4126,7 +4224,7 @@ function _normVoteSpotName(s) {
     .replace(/^(ilot|île|ile|passe de|passe d')\s+/i, '').trim();
 }
 
-function _renderVoteUI() {
+async function _renderVoteUI() {
   var box = document.getElementById('swell-cmp-vote');
   if (!box || !_pendingVote) return;
   var comp = _swellMode === 'secondary' ? 'secondary' : 'primary';
@@ -4135,11 +4233,17 @@ function _renderVoteUI() {
   // à partir de « maintenant ») ne veut pas dire qu'il couvre ce créneau précis
   // (repéré en testant une session d'hier : les 5 modèles semblaient "actifs"
   // alors qu'aucun n'avait réellement de point proche → vote trompeur évité ici).
-  var active = SWELL_MODELS.filter(function(m) {
+  // Repli sur l'archive (model_forecast_cache) pour les modèles sans point live
+  // proche — étend la fenêtre "récente" au fil du temps sans backfill rétroactif.
+  var kind = 'swell_' + comp;
+  var checks = await Promise.all(SWELL_MODELS.map(async function(m) {
     var pts = _swellCache && _swellCache[m.key] && _swellCache[m.key][comp];
-    if (!pts || !pts.length) return false;
-    return pts.some(function(p) { return Math.abs(p.ms - _pendingVote.targetMs) < 4 * 3600000; });
-  });
+    var live = pts && pts.length && pts.some(function(p) { return Math.abs(p.ms - _pendingVote.targetMs) < 4 * 3600000; });
+    if (live) return true;
+    var cached = await _lookupModelCache(SPOTS[currentSpot], m.key, kind, _pendingVote.dateStr, _pendingVote.targetMs);
+    return !!cached;
+  }));
+  var active = SWELL_MODELS.filter(function(m, i) { return checks[i]; });
   if (!active.length) {
     box.style.display = 'block';
     box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">🌊 Aucun modèle n\'a de données proches de l\'heure de cette session ('
@@ -4163,17 +4267,35 @@ async function _castModelVote(modelKey) {
   var statusEl = document.getElementById('swell-cmp-vote-status');
   if (statusEl) statusEl.textContent = 'Enregistrement…';
   var comp = _swellMode === 'secondary' ? 'secondary' : 'primary';
+  var kind = 'swell_' + comp;
   var predictions = {};
-  SWELL_MODELS.forEach(function(m) {
+  await Promise.all(SWELL_MODELS.map(async function(m) {
     var pts = _swellCache && _swellCache[m.key] && _swellCache[m.key][comp];
-    if (!pts || !pts.length) return;
     var best = null, bd = 4 * 3600000;
-    pts.forEach(function(p) { var df = Math.abs(p.ms - _pendingVote.targetMs); if (df < bd) { bd = df; best = p; } });
-    if (best) predictions[m.key] = { h: best.h, t: best.t, dir: best.dir };
-  });
+    if (pts && pts.length) {
+      pts.forEach(function(p) { var df = Math.abs(p.ms - _pendingVote.targetMs); if (df < bd) { bd = df; best = p; } });
+    }
+    if (best) { predictions[m.key] = { h: best.h, t: best.t, dir: best.dir }; return; }
+    var cached = await _lookupModelCache(SPOTS[currentSpot], m.key, kind, _pendingVote.dateStr, _pendingVote.targetMs);
+    if (cached) predictions[m.key] = cached;
+  }));
   var vote = { votedModel: modelKey, votedAt: new Date().toISOString(), swellMode: comp, spot: _pendingVote.spotName, date: _pendingVote.dateStr, predictions: predictions };
-  var ok = await saveModelReliability(_pendingVote.sessionId, vote);
   var modelLbl = modelKey ? (SWELL_MODELS.find(function(m) { return m.key === modelKey; }) || {}).label : 'Aucun';
+  if (_pendingVote.pending) {
+    // Session pas encore créée : mis de côté par spot+date, le Journal
+    // l'associera au vrai id à l'enregistrement (cf. _attachPendingModelVote).
+    var ok2 = true;
+    try {
+      var store = JSON.parse(localStorage.getItem('model-reliability-pending') || '{}');
+      store[_pendingVote.spotName + '|' + _pendingVote.dateStr] = vote;
+      localStorage.setItem('model-reliability-pending', JSON.stringify(store));
+    } catch (e) { ok2 = false; }
+    if (statusEl) statusEl.innerHTML = ok2
+      ? '✓ <b style="color:var(--accent);">' + escapeHtml(modelLbl || '—') + '</b> sera associé à ta session à sa création · <a href="index.html" style="color:var(--accent);">← Retour au Journal</a>'
+      : '⚠ Échec de l\'enregistrement, réessaie.';
+    return;
+  }
+  var ok = await saveModelReliability(_pendingVote.sessionId, vote);
   if (statusEl) statusEl.innerHTML = ok
     ? '✓ Enregistré : <b style="color:var(--accent);">' + escapeHtml(modelLbl || '—') + '</b> · <a href="index.html?openSession=' + encodeURIComponent(_pendingVote.sessionId) + '" style="color:var(--accent);">← Retour au Journal</a>'
     : '⚠ Échec de l\'enregistrement, réessaie.';
@@ -4192,6 +4314,15 @@ async function _renderSwellCompare() {
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
   _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2] };
   _drawSwellCompare();
+  // Archivage best-effort (table optionnelle, no-op si absente) — ne bloque
+  // jamais le rendu, lancé après coup sans attendre.
+  try {
+    Object.keys(_swellCache).forEach(function(key) {
+      var comp = _swellCache[key];
+      if (comp && comp.primary && comp.primary.length) _cacheModelPoints(_spotForFetch, key, 'swell_primary', comp.primary, 'h', 't');
+      if (comp && comp.secondary && comp.secondary.length) _cacheModelPoints(_spotForFetch, key, 'swell_secondary', comp.secondary, 'h', 't');
+    });
+  } catch (e) {}
 }
 
 function _setSwellMode(mode) {
@@ -7977,6 +8108,14 @@ async function _renderAromeCompare(j) {
   function clip(a) { return a.filter(function(p) { return p.ms >= t0 && p.ms <= t1; }); }
   obs = clip(obs); pageNc = clip(pageNc); pageGfs = clip(pageGfs); aro = clip(aro); cachePts = clip(cachePts); aromeCachePts = clip(aromeCachePts);
   bomWind = clip(bomWind); ecmwfWind = clip(ecmwfWind);
+  // Archivage best-effort côté vent, même principe que le comparatif houle
+  // (table optionnelle, no-op si absente) — pas de mesures (obs), ce sont des
+  // observations et non un modèle à comparer.
+  try {
+    [['nc', pageNc], ['gfs', pageGfs], ['bom', bomWind], ['ecmwf', ecmwfWind], ['arome', aro]].forEach(function(pair) {
+      if (pair[1] && pair[1].length) _cacheModelPoints(SPOTS[currentSpot], pair[0], 'wind', pair[1], 'kt', null);
+    });
+  } catch (e) {}
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
   if (!el2 || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
   var W = el2.clientWidth || 600, H = 210; // agrandi : lisibilité avant tout
@@ -13945,10 +14084,11 @@ function ensoRender() {
     } catch(e) {}
   }, 6000);
 
-  // Lien profond depuis le Journal (?voteSession=...) : bascule sur le bon
-  // spot + positionne le curseur, une fois le boot normal bien lancé (évite
-  // de courir après le chargement du token qui relance loadForecast(currentSpot)).
-  if (location.search.indexOf('voteSession=') >= 0) {
+  // Lien profond depuis le Journal (?voteSession=... ou ?votePending=1 pour
+  // une session en cours de création) : bascule sur le bon spot + positionne
+  // le curseur, une fois le boot normal bien lancé (évite de courir après le
+  // chargement du token qui relance loadForecast(currentSpot)).
+  if (location.search.indexOf('voteSession=') >= 0 || location.search.indexOf('votePending=') >= 0) {
     setTimeout(function() { try { _initSwellVoteFromUrl(); } catch(e) { console.warn('[voteFromUrl]', e && e.message); } }, 900);
   }
 })();
