@@ -4042,8 +4042,10 @@ function findBestMatch(text) {
   Object.entries(window._profileCache || {}).forEach(function(entry) {
     var uid = entry[0], username = entry[1];
     var normU = normalizeAlias(username);
-    // Match exact
-    if (normU === norm) { best = { uid: uid, username: username, dist: 0, exact: true }; return; }
+    // Match exact — verrouille bestDist à 0 : sans ça, un match partiel/Levenshtein
+    // itéré APRÈS (d < Infinity) écrasait le match exact (ex: "Anne" écrasé par
+    // "Anne-Lou"). Avec bestDist=0, les d≥1 suivants ne peuvent plus le supplanter.
+    if (normU === norm) { best = { uid: uid, username: username, dist: 0, exact: true }; bestDist = 0; return; }
     // Match partiel (contient)
     if (normU.includes(norm) || norm.includes(normU)) {
       var d = Math.abs(normU.length - norm.length);
