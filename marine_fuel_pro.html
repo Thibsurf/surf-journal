@@ -1581,28 +1581,20 @@ function isFuelLog(l){
 }
 
 // ── Import logs depuis CSV ──────────────────────────────────────────────────
-// Détecte le type de log à créer depuis la description (au-delà de Dépense/Remboursement)
-// Retourne un objet {type, isAdvance} :
-//  - type : 'cruise'|'refuel'|'bidon_fill'|'expense'|'reimburse'
-//  - isAdvance : true si c'était à l'origine un remboursement (= split mode 'advance')
-function classifyLog(desc, csvType){
+// Détecte le type de log à créer depuis la description, pour les lignes qui ne
+// sont PAS des remboursements (l'appelant filtre déjà isRemb avant d'appeler ceci).
+// Retourne directement le type : 'refuel'|'bidon_fill'|'expense'
+function guessLogType(desc, csvType){
   const d=(desc||'').toLowerCase();
-  const isRemb=csvType&&csvType.toLowerCase().includes('rembours');
 
   // Détection essence/bidon (priorité haute)
   // Note : "durit essence" = plomberie, pas de l'essence ; "bidon 10L" sans "essence" = achat bidon physique (équipement)
   const isFuelDesc=/^essence\b|^essence$|essence (?:fp|consommée|consommee|sortie|gold|signal|station|moselle|port|vata|bateau|rinçage|rincage)|plein essence|plein bateau|plein station|station moselle/.test(d);
   const isBidonRefill=/(?:plein|remplissage)\s+bidon|essence bidon|bidon (?:plein|rempli)/.test(d);
 
-  if(isFuelDesc){
-    return {type:'refuel', isAdvance:isRemb};
-  }
-  if(isBidonRefill){
-    return {type:'bidon_fill', isAdvance:isRemb};
-  }
-  // Pas de l'essence : type basé sur le CSV
-  if(isRemb)return {type:'reimburse', isAdvance:false};
-  return {type:'expense', isAdvance:false};
+  if(isFuelDesc)return 'refuel';
+  if(isBidonRefill)return 'bidon_fill';
+  return 'expense';
 }
 
 function guessCategoryFromDesc(desc){
@@ -1820,7 +1812,7 @@ async function executeImportLogs(){
     if(finalType==='expense')payload.category=guessCategoryFromDesc(item.desc);
     // Litres + prix : pour refuel et bidon_fill (calcul depuis prix mensuel NC)
     if(finalType==='refuel'||finalType==='bidon_fill'){
-      const lp=guessLitersAndPrice(item.desc,item.amount,item.date);
+      const lp=guessLitersAndPrice(item.amount,item.date);
       payload.liters=lp.liters;
       payload.price=lp.price;
     }
