@@ -518,7 +518,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
     <div id="wg-arome-body" style="padding:2px 10px 8px;min-height:60px;"></div>
   </div>
 
-  <div class="card" style="margin-bottom:12px;">
+  <div class="card" id="pwr-card" style="margin-bottom:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
       <div class="section-label" style="margin-bottom:0;" title="P ≈ ½·Hs²·T — même formule que la colonne « Energy » de Windguru (affichée en kJ chez eux)">⚡ Puissance (kW/m · ½Hs²T, formule Windguru)</div>
       <div id="pwr-ref-status" style="font-size:9px;color:var(--muted);line-height:1.4;"></div>
@@ -5867,33 +5867,9 @@ function _buildShareDayPayload() {
     : DAY_FR_W[dd.getUTCDay()]+' '+dd.getUTCDate()+'/'+(dd.getUTCMonth()+1);
   var dateStr = dd.getUTCFullYear()+'-'+String(dd.getUTCMonth()+1).padStart(2,'0')+'-'+String(dd.getUTCDate()).padStart(2,'0');
 
-  // Séries horaires du jour, meteo.nc + GFS séparément (mêmes indices que le
-  // widget principal ne suffisent pas : _ncFcastData/_omFcastData ont chacun
-  // leurs propres tableaux, on regroupe chacun par jour indépendamment).
-  // Aperçu MULTI-JOURS (façon widget gw-overview) : une entrée par jour NC, du
-  // jour courant jusqu'à ~7 j (en incluant le jour focalisé), chacune avec sa
-  // série horaire (houle totale + vent + rafales). Modèle = celui affiché dans le
-  // widget (d = _gwActiveData), pour coller à l'écran.
-  var _todayKey = nowNC.getUTCFullYear()+'-'+nowNC.getUTCMonth()+'-'+nowNC.getUTCDate();
-  var _startIdx = 0;
-  for (var _k = 0; _k < days.length; _k++) { if (days[_k].key === _todayKey) { _startIdx = _k; break; } }
-  var _endIdx = Math.min(days.length, Math.max(_startIdx + 6, dayIdx + 1));
-  var _s0 = Math.max(_startIdx, _endIdx - 7);
-  var daysSeries = days.slice(_s0, _endIdx).map(function(day, wi) {
-    var absIdx = _s0 + wi, dd0 = day.dateObj;
-    var dms = Date.UTC(dd0.getUTCFullYear(), dd0.getUTCMonth(), dd0.getUTCDate());
-    var diff = Math.round((dms - todayMs) / 864e5);
-    return {
-      label: diff === 0 ? 'Auj' : diff === 1 ? 'Dem' : DAY_FR_W[dd0.getUTCDay()] + ' ' + dd0.getUTCDate(),
-      isToday: day.key === _todayKey,
-      isFocus: absIdx === dayIdx,
-      series: day.indices.map(function(i) {
-        return { h: d.dates[i].getUTCHours(), tot: d.totH ? d.totH[i] : null,
-          ws: d.wSpd ? d.wSpd[i] : null, wg: d.wGst ? d.wGst[i] : null };
-      }).sort(function(a, b) { return a.h - b.h; })
-    };
-  });
-
+  // Le partage capture désormais le widget RÉEL (html2canvas, cf. shareSpotCard) —
+  // ce payload ne sert plus qu'à construire la ligne de résumé texte
+  // (ShareCard.buildSummary) et à retrouver la marée du jour (dateStr).
   var hsV = d.sw1h[gi], TV = d.sw1t[gi], dirV = d.sw1d[gi], wsV = d.wSpd[gi], wgV = d.wGst ? d.wGst[gi] : null, wdV = d.wDir[gi], pV = d.pwr ? d.pwr[gi] : null;
   var surf = (typeof calcSurfScore === 'function') ? calcSurfScore(hsV, TV, dirV, wsV, wgV, wdV, pV) : null;
 
@@ -5904,57 +5880,138 @@ function _buildShareDayPayload() {
     ws: wsV, wg: wgV, wd: wdV, p: pV,
     score: surf ? surf.score : null, scoreLabel: surf ? surf.label : '',
     onshoreLimit: (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.onshoreLimit : 45),
-    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135),
-    seriesSrc: (typeof _gwIsNC === 'function' && _gwIsNC()) ? 'meteo.nc' : 'GFS',
-    daysSeries: daysSeries
+    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135)
   };
 }
 
-// PROMPT 4 — génère et partage la carte résumé du spot (PNG 1080² + texte WhatsApp).
+// ── Partage : capture des VRAIS widgets (html2canvas) plutôt qu'un dessin
+// maison ────────────────────────────────────────────────────────────────
+// Ancienne version : un canvas entièrement redessiné à la main (ShareCard.draw)
+// — courbes qui débordaient du cadre, jour ambigu (retour utilisateur : « rien
+// ne va, courbes en dehors, quel jour ? »). Nouvelle approche : on capture le
+// widget RÉEL tel qu'affiché à l'écran (déjà stylé, déjà juste) — #gw-widget
+// (jour actif visible via les onglets Aujourd'hui/Demain/J+n, houle+vent+marée+
+// soleil heure par heure) et #pwr-card (Puissance) — puis on les empile dans
+// un seul PNG avec un en-tête/pied minimal. Zéro risque de rendu cassé : c'est
+// littéralement ce que l'utilisateur voit avant de cliquer Partager.
+// Promise plutôt qu'un callback : évite le bug où shareSpotCard() retournait
+// tôt pendant le chargement CDN puis se relançait en récursif — le bouton
+// (réactivé par le finally() de l'appel initial) clignotait avant de se
+// redésactiver le temps du vrai second appel. Ici tout reste dans UNE seule
+// exécution linéaire de shareSpotCard, un seul try/finally.
+function _shareEnsureHtml2Canvas() {
+  if (typeof html2canvas !== 'undefined') return Promise.resolve();
+  return new Promise(function(resolve, reject) {
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = function() { resolve(); };
+    s.onerror = function() { reject(new Error('Module capture indisponible (réseau ?)')); };
+    document.head.appendChild(s);
+  });
+}
+function _shareCaptureEl(el) {
+  return html2canvas(el, {
+    backgroundColor: '#0d1f3c',
+    scale: Math.min(window.devicePixelRatio || 1, 2),
+    useCORS: true, allowTaint: true, logging: false,
+    // windowWidth explicite : sans ça, html2canvas clone le DOM dans un iframe
+    // hors-écran dont la largeur peut différer du viewport réel — la capture
+    // sur mobile risquait de ne pas correspondre à ce qui est affiché à l'écran.
+    windowWidth: document.documentElement.clientWidth,
+    // Boutons purement interactifs (📸 Capture du widget) : inutiles — et
+    // trompeurs — dans une image statique envoyée à quelqu'un d'autre.
+    ignoreElements: function(node) { return node.classList && node.classList.contains('gw-tool-btn'); }
+  });
+}
 async function shareSpotCard() {
-  if (!window.ShareCard) { try { showToast('Module partage indisponible'); } catch(_){} return; }
-  // Jour actuellement affiché dans le widget (Aujourd'hui/Demain/J+n déjà
-  // choisi par l'utilisateur là-haut) — repli sur l'ancien instantané "maintenant"
-  // si le widget n'est pas actif (spot sans correspondance, page pas encore chargée).
-  var sctx = _buildShareDayPayload() || window._shareCtx;
-  if (!sctx || !sctx.spotName) { try { showToast('Données pas encore prêtes'); } catch(_){} return; }
+  var wgt = document.getElementById('gw-widget');
+  if (!wgt || wgt.style.display === 'none') { try { showToast('Widget pas encore chargé'); } catch(_){} return; }
 
   var btn = document.getElementById('share-spot-btn');
   var old = btn ? btn.innerHTML : null;
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ génération…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ capture…'; }
 
   try {
-    // Marée du JOUR partagé (pas "prochaine depuis maintenant" — sctx.dateStr
-    // absent = repli ancien comportement) + BMS (source unifiée du PROMPT 2).
-    var tide = null;
-    try { tide = sctx.dateStr ? ShareCard.tidesForDay(_ncTideCache, sctx.dateStr) : ShareCard.nextTides(_ncTideCache); } catch(_){}
-    var bms = null;  try { bms = await getActiveBMS(); } catch(_){}
-    var data = Object.assign({}, sctx, { tide: tide, bms: bms });
+    if (typeof html2canvas === 'undefined') {
+      if (btn) btn.innerHTML = '⏳ module…';
+      await _shareEnsureHtml2Canvas();
+      if (btn) btn.innerHTML = '⏳ capture…';
+    }
+    var spotName = (SPOTS[currentSpot] && SPOTS[currentSpot].name) || 'Spot';
+    // Ligne de résumé texte (WhatsApp/partage natif) — logique inchangée,
+    // ShareCard.buildSummary() ne dessine rien, juste du texte.
+    var summaryLine = '🏄 ' + spotName + ' — via thibsurf.github.io';
+    try {
+      var sctx = _buildShareDayPayload() || window._shareCtx;
+      if (sctx && window.ShareCard) {
+        var tide = null;
+        try { tide = sctx.dateStr ? ShareCard.tidesForDay(_ncTideCache, sctx.dateStr) : ShareCard.nextTides(_ncTideCache); } catch(_){}
+        var bms = null; try { bms = await getActiveBMS(); } catch(_){}
+        summaryLine = ShareCard.buildSummary(Object.assign({}, sctx, { tide: tide, bms: bms })).textLine;
+      }
+    } catch(_){}
 
-    var summary = ShareCard.buildSummary(data);
-    var canvas = document.createElement('canvas');
-    ShareCard.draw(canvas, data);
+    // Capture des widgets réels, dans l'ordre d'affichage sur la page.
+    var shots = [await _shareCaptureEl(wgt)];
+    var pwrCard = document.getElementById('pwr-card');
+    // offsetParent null = carte cachée (display:none) : pas de houle chargée
+    // pour ce spot, inutile de capturer un graphe vide.
+    if (pwrCard && pwrCard.offsetParent !== null) {
+      try { shots.push(await _shareCaptureEl(pwrCard)); } catch(e) { console.warn('[share] capture puissance', e); }
+    }
 
-    var blob = await new Promise(function(res){ canvas.toBlob(res, 'image/png', 0.95); });
+    // Composition verticale : en-tête (spot + date), les captures empilées
+    // telles quelles (déjà stylées en cartes arrondies), pied de page.
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var pad = Math.round(20 * dpr), gap = Math.round(16 * dpr);
+    var headerH = Math.round(56 * dpr), footerH = Math.round(34 * dpr);
+    var W = Math.max.apply(null, shots.map(function(c){ return c.width; })) + pad * 2;
+    var H = headerH + shots.reduce(function(s,c){ return s + c.height; }, 0) + gap * (shots.length - 1) + footerH + pad;
+
+    var out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    var octx = out.getContext('2d');
+    var grad = octx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0d1f3c'); grad.addColorStop(1, '#0a1628');
+    octx.fillStyle = grad; octx.fillRect(0, 0, W, H);
+
+    octx.textAlign = 'left'; octx.fillStyle = '#e8eef4';
+    octx.font = '700 ' + Math.round(22 * dpr) + 'px "Playfair Display", Georgia, serif';
+    octx.fillText(spotName, pad, Math.round(34 * dpr));
+    octx.fillStyle = '#7a94aa'; octx.font = '400 ' + Math.round(12 * dpr) + 'px "DM Sans", sans-serif';
+    var dnow = new Date(Date.now() + 11 * 3600000);
+    octx.fillText(dnow.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' }) + ' · Surf NC', pad, Math.round(52 * dpr));
+
+    var y = headerH;
+    shots.forEach(function(c) {
+      octx.drawImage(c, pad, y);
+      y += c.height + gap;
+    });
+
+    octx.textAlign = 'center'; octx.fillStyle = '#3d5468';
+    octx.font = '400 ' + Math.round(11 * dpr) + 'px "DM Sans", sans-serif';
+    octx.fillText('via thibsurf.github.io', W / 2, H - Math.round(12 * dpr));
+
+    var blob = await new Promise(function(res){ out.toBlob(res, 'image/png', 0.95); });
     if (!blob) throw new Error('toBlob null');
-    var slug = (sctx.spotName||'spot').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    var slug = spotName.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
       .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     var file = new File([blob], 'surf-'+slug+'.png', { type:'image/png' });
 
     // Partage natif si supporté (mobile), sinon téléchargement + copie du résumé texte.
     if (navigator.canShare && navigator.canShare({ files:[file] })) {
-      await navigator.share({ files:[file], text: summary.textLine });
+      await navigator.share({ files:[file], text: summaryLine });
     } else {
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a'); a.href = url; a.download = file.name;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
-      try { _copyToClipboard(summary.textLine); } catch(_){}
+      try { _copyToClipboard(summaryLine); } catch(_){}
       try { showToast('Image téléchargée + résumé copié 📋'); } catch(_){}
     }
   } catch(e) {
     console.warn('[share]', e);
-    try { showToast('Partage impossible'); } catch(_){}
+    try { showToast('Partage impossible : ' + (e && e.message || e)); } catch(_){}
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = old; }
   }
