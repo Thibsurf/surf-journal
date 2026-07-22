@@ -2980,9 +2980,11 @@ function mg_drawSwellWind(ctx,D,C,x,y,w,h){
   ctx.beginPath(); ctx.moveTo(iX,wBot+dv/2); ctx.lineTo(iX+iW,wBot+dv/2); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Scales
-  var maxHs  = Math.ceil(Math.max(2.0,Math.max.apply(null,D.houle))*1.22/0.5)*0.5;
-  var maxW   = Math.ceil(Math.max(20, Math.max.apply(null,D.rafales))*1.2/5)*5;
+  // Scales — max arrondi pour que les 3 divisions (g=0..3) tombent sur des
+  // graduations RONDES : Hs sur un multiple de 1,5 (→ pas de 0,5) et vent sur un
+  // multiple de 15 (→ pas de 5). Évitait avant des libellés type 1,7m / 23nds.
+  var maxHs  = Math.max(1.5, Math.ceil(Math.max.apply(null,D.houle)*1.18/1.5)*1.5);
+  var maxW   = Math.max(30,  Math.ceil(Math.max.apply(null,D.rafales)*1.12/15)*15);
 
   function xP(i)   { return iX+(i+.5)/n*iW; }
   function yW(v)   { return wBot-(v/maxW)*wBH; }
