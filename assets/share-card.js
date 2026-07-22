@@ -368,13 +368,13 @@
       ctx.textAlign = 'right'; ctx.font = '600 20px ' + FB; ctx.fillStyle = C.faint;
       ctx.fillText('prévision ' + seriesSrc, W - M, meteoY - 8);
       ctx.textAlign = 'left'; ctx.font = '600 22px ' + FB; ctx.fillStyle = C.muted;
-      ctx.fillText('📈 HOULE & VENT — ' + (d.dayLabel || 'jour'), M, meteoY - 8);
+      ctx.fillText('📈 HOULE & VENT — ' + (d.dayLabel || "aujourd'hui"), M, meteoY - 8);
       meteogram(ctx, M, meteoY, W - 2 * M, meteoH, series, d.hour, isToday, nowH);
     }
 
     // ── Marée (vraie courbe, interpolée par les extrêmes du jour) ──
     ctx.textAlign = 'left'; ctx.font = '600 22px ' + FB; ctx.fillStyle = C.muted;
-    ctx.fillText('🌙 MARÉE — ' + (d.dayLabel || 'jour'), M, tideY - 8);
+    ctx.fillText('🌙 MARÉE — ' + (d.dayLabel || "aujourd'hui"), M, tideY - 8);
     roundCard(M, tideY, W - 2 * M, tideH);
     var tide = d.tide;
     var evs = (tide && tide.events || []).map(function(e){
