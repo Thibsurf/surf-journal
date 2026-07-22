@@ -11531,7 +11531,7 @@ async function _fetchNavBMS() {
           +'border-radius:7px;padding:9px 11px;margin-bottom:7px;">'
           +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
           +'<span style="background:#e05c5c;color:white;font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;">⚠️ BMS '+b.label+'</span>'
-          +(b.numDate?'<span style="font-size:8px;color:var(--faint);">'+escapeHtml(b.numDate)+'</span>':'')
+          +(b.numDate?'<span style="font-size:9px;color:var(--muted);">'+escapeHtml(b.numDate)+'</span>':'')
           +'</div>'
           +(b.nature?'<div style="font-size:9px;font-weight:700;color:#e8a057;margin-bottom:4px;line-height:1.4;">'+escapeHtml(b.nature)+'</div>':'')
           +(b.zones&&b.zones.length?'<div style="font-size:8.5px;color:var(--text);line-height:1.6;max-height:90px;overflow-y:auto;border-top:1px solid rgba(255,255,255,.08);padding-top:4px;">'
