@@ -70,6 +70,13 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
   .logo-suffix{display:none;}
   #data-source-badge .ds-txt{display:none;}
   #data-source-badge{padding:2px 6px;}
+  /* Liens inter-app réduits à leur icône : sur téléphone, texte + logo + badge +
+     token + hamburger dépassaient la largeur et poussaient tout le document en
+     débordement horizontal (nav = flex sans wrap). L'icône seule suffit (titre au survol). */
+  .nav-link-txt{display:none;}
+  /* Padding horizontal du conteneur réduit sur mobile : 1.5rem coûtait ~12% de la
+     largeur d'un écran 390px — récupéré au profit des graphes et tableaux. */
+  .container{padding:1.4rem .85rem;}
   /* Graphe d'ensemble : scrollable horizontalement au lieu d'écraser 5 jours
      dans la largeur de l'écran (cf. largeur fixe calculée en JS, _gwDrawOverview) */
   .gw-chart-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -362,9 +369,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 <body>
 
 <nav>
-  <a href="https://thibsurf.github.io/surf-journal/" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Retour au journal">← Journal</a>
-  <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;" title="Sorties">🏄 Sorties</a>
-  <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" style="color:#e8c44a;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;padding:3px 8px;border:1px solid rgba(232,196,74,.35);border-radius:12px;background:rgba(232,196,74,.08);" title="Gestion carburant bateau">⛽ Fuel</a>
+  <a href="https://thibsurf.github.io/surf-journal/" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Retour au journal">←<span class="nav-link-txt"> Journal</span></a>
+  <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Sorties">🏄<span class="nav-link-txt"> Sorties</span></a>
+  <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" style="color:#e8c44a;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;padding:3px 8px;border:1px solid rgba(232,196,74,.35);border-radius:12px;background:rgba(232,196,74,.08);flex-shrink:0;" title="Gestion carburant bateau">⛽<span class="nav-link-txt"> Fuel</span></a>
   <div class="logo">Surf <span>NC</span><span class="logo-suffix"> — Prévisions</span></div>
   <div class="nav-tabs-group" id="nav-tabs-group">
     <button class="nav-tab active" onclick="showTab('forecast',this);closeNavMenu()">📊 Prévisions</button>
