@@ -2926,22 +2926,22 @@ function _buildSecondaryCharts(d) {
     var wGstData = (d.wGst||[]).map(function(v){ return (v && v>0) ? v : null; });
     var wGstPtR  = (d.wGst||[]).map(function(v){ return (v && v>0) ? 5 : 0; });
     var gustDataset = d.wGstFromGFS
-      ? { label:'Rafales Open-Meteo (kt)',
+      ? { label:'Rafales Open-Meteo (nds)',
           data:d.wGst||[], borderColor:'rgba(224,92,92,.6)', backgroundColor:'transparent',
           borderWidth:1, pointRadius:0, tension:0.3, borderDash:[4,3], order:2 }
-      : { label:'Rafales meteo.nc (kt)',
+      : { label:'Rafales meteo.nc (nds)',
           data: wGstData, borderWidth:0, tension:0, showLine:false,
           pointRadius: wGstPtR, pointHoverRadius:7, pointStyle:'circle',
           pointBackgroundColor:'rgba(61,186,138,0.8)',
           pointBorderColor:'rgba(61,186,138,0.95)',
           pointBorderWidth:1.5, order:1 };
     charts['c-wind']=new Chart(cvW,{type:'line',plugins:[crossW, makeSecDayPlugin('c-wind')],data:{labels:d.lbl,datasets:[
-      {label:'Vent moy (kt)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,order:3},
+      {label:'Vent moy (nds)',data:d.wSpd||[],borderColor:'#e8a057',backgroundColor:'rgba(232,160,87,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,order:3},
       gustDataset,
     ]},options:{responsive:true,maintainAspectRatio:false,
       layout:{padding:{bottom:22,top:18}}, // top:18 pour que les rafales ne débordent pas
       plugins:{legend:{display:true,labels:{color:'#7a94aa',font:{size:9},boxWidth:10}},tooltip:{enabled:false}},
-      scales:{x:xOpts,y:{min:0,suggestedMax:Math.ceil(maxGst*1.25),ticks:{color:'#7a94aa',callback:function(v){return v+'kt';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+      scales:{x:xOpts,y:{min:0,suggestedMax:Math.ceil(maxGst*1.25),ticks:{color:'#7a94aa',callback:function(v){return v+'nds';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
     cvW._hoverBound = false;
     _ensureTooltipEl('c-wind', cvW.closest('.card'));
     _addChartHover(cvW, 'c-wind', d.lbl.length);
@@ -3630,8 +3630,8 @@ function renderObs(data, spot, used) {
   el.innerHTML='<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">'
     +'<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">'+svgArrow(wd,'#e8a057')
     +'<div style="font-size:9px;color:var(--faint);">'+compass(wd)+'</div></div>'
-    +'<div><div style="font-size:1.5rem;font-weight:700;color:'+windCol(wsKt)+';font-family:var(--font-d);line-height:1;">'+(wsKt||'—')+' <span style="font-size:11px;color:var(--muted);">kt</span></div>'
-    +'<div style="font-size:10px;color:var(--muted);">Rafales '+(wgKt||'—')+' kt</div></div>'
+    +'<div><div style="font-size:1.5rem;font-weight:700;color:'+windCol(wsKt)+';font-family:var(--font-d);line-height:1;">'+(wsKt||'—')+' <span style="font-size:11px;color:var(--muted);">nds</span></div>'
+    +'<div style="font-size:10px;color:var(--muted);">Rafales '+(wgKt||'—')+' nds</div></div>'
     +(t!==null?'<div style="margin-left:auto;text-align:right;"><div style="font-size:1.2rem;font-weight:600;font-family:var(--font-d);">'+t.toFixed(1)+'°</div><div style="font-size:9px;color:var(--faint);">air · '+hStr+'</div></div>':'')
     +'</div><div style="font-size:9px;color:var(--faint);margin-top:3px;">'
       +((used&&used.station)?used.station.name:(spot.obsName||spot.name))
@@ -4698,7 +4698,7 @@ async function _renderWeeklyStats() {
     body.innerHTML =
       '<div class="stats-row" style="margin-bottom:12px;">'
       + '<div class="sc"><div class="sc-label">Houle moy.</div><div class="sc-val">' + (wkHs != null ? wkHs.toFixed(1) : '—') + '<span style="font-size:.6em;">m</span></div></div>'
-      + '<div class="sc"><div class="sc-label">Vent moy.</div><div class="sc-val">' + (wkWind != null ? Math.round(wkWind) : '—') + '<span style="font-size:.6em;">kt</span></div></div>'
+      + '<div class="sc"><div class="sc-label">Vent moy.</div><div class="sc-val">' + (wkWind != null ? Math.round(wkWind) : '—') + '<span style="font-size:.6em;">nds</span></div></div>'
       + '<div class="sc"><div class="sc-label">Houle max</div><div class="sc-val">' + (maxHs ? maxHs.toFixed(1) : '—') + '<span style="font-size:.6em;">m</span></div></div>'
       + '<div class="sc"><div class="sc-label">Jours archivés</div><div class="sc-val">' + days.length + '<span style="font-size:.6em;">/7</span></div></div>'
       + '</div>'
@@ -4908,7 +4908,7 @@ function _describeSession(s) {
   var h2 = new Date(s.endMs).getUTCHours();
   var p = s.peakH;
   var limite = 'conditions stables';
-  if (p.ws > (SCORE_PARAMS.windMalusKt || 18)) limite = 'vent fort (' + Math.round(p.ws) + 'kt)';
+  if (p.ws > (SCORE_PARAMS.windMalusKt || 18)) limite = 'vent fort (' + Math.round(p.ws) + 'nds)';
   else if (p.wg > (SCORE_PARAMS.gustMalusKt || 25)) limite = 'rafales';
   else if (p.T && p.T < (SCORE_PARAMS.minPeriod || 8)) limite = 'période courte (' + p.T + 's)';
   else if (p.tide && (p.tide.level01 < 0.2 || p.tide.level01 > 0.85)) limite = 'marée extrême';
@@ -4919,7 +4919,7 @@ function _describeSession(s) {
     spot: s.spotName, spotIdx: s.spotIdx, startMs: s.startMs,
     jour: jour, creneau: h1 + 'h–' + h2 + 'h',
     taille: (p.hs != null ? p.hs.toFixed(1) + 'm' : '—'),
-    vent: (p.ws != null ? Math.round(p.ws) + 'kt ' + (typeof compass === 'function' ? compass(p.wDir) : '') : '—'),
+    vent: (p.ws != null ? Math.round(p.ws) + 'nds ' + (typeof compass === 'function' ? compass(p.wDir) : '') : '—'),
     maree: p.tide ? (Math.round(p.tide.level01 * 100) + '% ' + (p.tide.phase === 'rising' ? '↑' : '↓')) : '—',
     score: Math.round(s.mean * 10) / 10,
     note: limite,
@@ -5232,7 +5232,7 @@ function renderCompare() {
 
       + '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:var(--text);">'
       +   '<span>🌊 ' + (m.hs != null ? (+m.hs).toFixed(1) + 'm' : '—') + (m.T ? ' @' + Math.round(m.T) + 's' : '') + ' ' + dirArrow + (m.swDir != null ? compass(m.swDir) : '') + '</span>'
-      +   '<span style="color:var(--muted);">💨 ' + (m.ws != null ? Math.round(m.ws) + 'kt' : '—') + ' ' + wArrow + (m.wDir != null ? compass(m.wDir) : '')
+      +   '<span style="color:var(--muted);">💨 ' + (m.ws != null ? Math.round(m.ws) + 'nds' : '—') + ' ' + wArrow + (m.wDir != null ? compass(m.wDir) : '')
       +     (wr ? ' <span style="color:' + wr.col + ';font-weight:600;">' + wr.txt + '</span>' : '') + '</span>'
       +   '<span style="color:var(--muted);">🌙 ' + tideTxt + '</span>'
       +   '<span style="color:var(--accent);">⏱ ' + (m.windowLabel || '—') + '</span>'
@@ -5654,7 +5654,7 @@ function updateHsHover(i){
     +(d.sw2h[i]?'<span>🟦 H2 <b style="color:#6ab4d4;">'+v(d.sw2h[i],'m')+'</b></span>':'')
     +'<span style="color:rgba(232,160,87,.8);">Mer vent <b>'+v(d.wndH[i],'m')+'</b></span>'
     +'<span style="color:rgba(255,255,255,.4);">Tot <b>'+v(d.totH[i],'m')+'</b></span>'
-    +'<span style="color:'+windCol(d.wSpd[i])+';">💨 <b>'+v(d.wSpd[i]?Math.round(d.wSpd[i]):null,' kt')+'</b>'+(d.wGst[i]?' <span style="color:rgba(224,92,92,.8);">(raf. '+Math.round(d.wGst[i])+(d.wGstFromGFS?' GFS':'')+' kt)</span>':'')+'</span>'
+    +'<span style="color:'+windCol(d.wSpd[i])+';">💨 <b>'+v(d.wSpd[i]?Math.round(d.wSpd[i]):null,' nds')+'</b>'+(d.wGst[i]?' <span style="color:rgba(224,92,92,.8);">(raf. '+Math.round(d.wGst[i])+(d.wGstFromGFS?' GFS':'')+' nds)</span>':'')+'</span>'
     +svgArrow(d.wDir[i],'#e8a057')+' <span style="color:var(--muted);">'+compass(d.wDir[i])+'</span>'
     +(d.sst&&d.sst[i]?'<span style="color:#4fa3c7;">🌡 <b>'+d.sst[i].toFixed(1)+'°</b></span>':'')
     +'</div>';
@@ -5745,7 +5745,7 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
   var _calmKt = SCORE_PARAMS.windCalmKt || 13;
   if(ws && ws > _calmKt) {
     score = Math.max(0, score - 1);
-    details.push('Moutons/clapot ('+Math.round(ws)+'kt &gt; '+_calmKt+'kt)');
+    details.push('Moutons/clapot ('+Math.round(ws)+'nds &gt; '+_calmKt+'nds)');
     if(ws > SCORE_PARAMS.windMalusKt) {
       score = Math.max(0, score - 1);
       details.push('Vent fort — nav difficile');
@@ -5766,20 +5766,20 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
       // Onshore: malus selon force
       if(ws > SCORE_PARAMS.windMalusKt) {
         score = Math.max(0, score - 2);
-        details.push('Onshore fort ('+Math.round(ws)+'kt, '+Math.round(angleDiff)+'°)');
+        details.push('Onshore fort ('+Math.round(ws)+'nds, '+Math.round(angleDiff)+'°)');
       } else if(ws > 8) {
         score = Math.max(0, score - 1);
-        details.push('Onshore modéré ('+Math.round(ws)+'kt)');
+        details.push('Onshore modéré ('+Math.round(ws)+'nds)');
       }
     } else if(angleDiff > SCORE_PARAMS.offshoreMin) {
       // Offshore: bonus seulement si le plan d'eau reste propre (≤ seuil
       // moutons) — offshore fort = vague peignée mais lagon/navigation dégradés
       if(ws >= 5 && ws <= _calmKt) {
         score = Math.min(5, score + 1);
-        details.push('Offshore idéal ('+Math.round(ws)+'kt)');
+        details.push('Offshore idéal ('+Math.round(ws)+'nds)');
       } else if(ws > 20) {
         score = Math.max(0, score - 1);
-        details.push('Offshore trop fort ('+Math.round(ws)+'kt)');
+        details.push('Offshore trop fort ('+Math.round(ws)+'nds)');
       }
     }
     // Sideshore (entre 45 et 135°): neutre
@@ -5788,7 +5788,7 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
   // Rafales excessives
   if(wg && wg > SCORE_PARAMS.gustMalusKt) {
     score = Math.max(0, score - 1);
-    details.push('Rafales '+Math.round(wg)+'kt');
+    details.push('Rafales '+Math.round(wg)+'nds');
   }
 
   score = Math.max(0, Math.min(5, Math.round(score)));
@@ -5822,8 +5822,8 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p){
        hs2.toFixed(2)+'m',
        _omFcastData&&_omFcastData.sw2h&&_omFcastData.sw2h[0]>0?'<span style="font-size:9px;color:var(--faint);">GFS: '+_omFcastData.sw2h[0].toFixed(2)+'m</span>':'',
        hsCol(hs2)) : '')+
-    sc('Vent',(ws?Math.round(ws):'—')+' kt',
-       (wd!==null&&wd!==undefined ? svgArrow(wd,'#e8a057')+' '+compass(wd)+' · ' : '')+'Raf. '+(wg?Math.round(wg):'—')+' kt',
+    sc('Vent',(ws?Math.round(ws):'—')+' nds',
+       (wd!==null&&wd!==undefined ? svgArrow(wd,'#e8a057')+' '+compass(wd)+' · ' : '')+'Raf. '+(wg?Math.round(wg):'—')+' nds',
        windCol(ws))+
     sc('Puissance',(p||'—')+' kW/m','',scCol)+
     sc('Score <button onclick="showScoreSettings()" style="background:none;border:none;cursor:pointer;font-size:9px;color:var(--faint);padding:0 2px;" title="Regler">⚙</button>',
@@ -6019,7 +6019,7 @@ function renderMeteoStrip(ncForecast) {
       +'<div style="font-size:20px;line-height:1.1;margin:1px 0;">'+icon2emoji(f.weather_icon)+'</div>'
       +'<div style="font-size:11px;font-weight:600;color:var(--text);">'+(f.T?Math.round(f.T):'—')+'°</div>'
       +(rain>0?'<div style="font-size:8px;color:#4fa3c7;margin-top:1px;">'+rain.toFixed(1)+'mm</div>':'<div style="font-size:8px;color:transparent;">·</div>')
-      +(ws?'<div style="font-size:8px;color:rgba(232,160,87,.85);">'+ws+'kt</div>':'')
+      +(ws?'<div style="font-size:8px;color:rgba(232,160,87,.85);">'+ws+'nds</div>':'')
       +'</div>';
   });
   html += '</div>';
@@ -6282,7 +6282,7 @@ function renderRose(idx) {
   });
   if(wdir!==null&&wdir!==undefined&&wspd!==null) arrows.push({
     deg:wdir, mag:Math.max(wNorm, 0.25), col:'rgba(232,160,87,.9)',
-    label:Math.round(wspd||0)+'kt', sub:Math.round(wdir)+'°', period:null, lw:2
+    label:Math.round(wspd||0)+'nds', sub:Math.round(wdir)+'°', period:null, lw:2
   });
 
   // Anti-collision : si deux flèches < 25° d'écart → décaler de ±12°
@@ -6397,7 +6397,7 @@ function renderRose(idx) {
         + ' de '+cardDir(sw2d)+' '+Math.round(sw2d)+'°</span>';
     if(wspd!==null)
       legHtml += '<span style="color:#e8a057;font-size:10px;">'
-        + '💨 <b>'+Math.round(wspd)+'kt</b>'
+        + '💨 <b>'+Math.round(wspd)+'nds</b>'
         + (wdir!=null?' de '+cardDir(wdir)+' '+Math.round(wdir)+'°':'')
         + '</span>';
     legHtml += '</div>';
@@ -6454,8 +6454,8 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
       +'<td>'+svgArrow(sw1d[i],'#4fa3c7')+' <span style="white-space:nowrap;">'+compass(sw1d[i])+'<span style="color:var(--faint);font-size:9px;margin-left:2px;">'+(sw1d[i]!==null&&sw1d[i]!==undefined?Math.round(sw1d[i])+'°':'')+'</span></span></td>'
       +'<td style="color:'+hsCol(sw2h[i])+'">'+fmt(sw2h[i],'m')+'</td>'
       +'<td style="color:rgba(232,160,87,.8)">'+fmt(wnd,'m')+'</td>'
-      +'<td style="color:'+windCol(wSpd[i])+'">'+fmt(wSpd[i]?Math.round(wSpd[i]):null,' kt')+'</td>'
-      +'<td style="color:'+windCol(wGst[i])+'">'+fmt(wGst[i]?Math.round(wGst[i]):null,' kt')+'</td>'
+      +'<td style="color:'+windCol(wSpd[i])+'">'+fmt(wSpd[i]?Math.round(wSpd[i]):null,' nds')+'</td>'
+      +'<td style="color:'+windCol(wGst[i])+'">'+fmt(wGst[i]?Math.round(wGst[i]):null,' nds')+'</td>'
       +'<td>'+svgArrow(wDir[i],'#e8a057')+' <span style="white-space:nowrap;">'+compass(wDir[i])+'<span style="color:var(--faint);font-size:9px;margin-left:2px;">'+(wDir[i]!==null&&wDir[i]!==undefined?Math.round(wDir[i])+'°':'')+'</span></span></td>'
       +'<td style="color:'+pwrCol(p)+'">'+( p?p:'—')+'</td>'
       +'<td class="s'+sc2+'" style="letter-spacing:1px;">'+sdots+'</td>'
@@ -6689,7 +6689,7 @@ function _gwDrawOverview() {
     ctx.fillStyle = 'rgba(122,148,170,.8)'; ctx.fillText(hsStep < 1 ? hv.toFixed(1) : String(hv), padL-4, yH(hv));
   }
   ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(61,186,138,.9)';  ctx.fillText('Vent (kt)',  padL+2, windTop-6);
+  ctx.fillStyle = 'rgba(61,186,138,.9)';  ctx.fillText('Vent (nds)',  padL+2, windTop-6);
   ctx.fillStyle = 'rgba(79,163,199,.95)'; ctx.fillText('Houle (m)', padL+2, hsTop-6);
 
   // Barres houle : totale (bleu accent) derrière, primaire (bleu clair) devant — sommets arrondis
@@ -6833,7 +6833,7 @@ function _gwDrawVectors(fi) {
   if (s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.4), col:'#4fc3e8',
     info:'🌊 '+s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':'')+' '+compass(s1d)+' '+Math.round(s1d)+'°', lw:3.2 });
   if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.35), col:'#e8a057',
-    info:'💨 '+Math.round(ws)+'kt '+compass(wd2)+' '+Math.round(wd2)+'°', lw:2.6 });
+    info:'💨 '+Math.round(ws)+'nds '+compass(wd2)+' '+Math.round(wd2)+'°', lw:2.6 });
 
   var infoHtml = arrows.map(function(ar){
     return '<span style="color:'+ar.col+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+ar.info+'</span>';
@@ -6912,7 +6912,7 @@ function _gwSetHover(gi) {
     var wdv = d.wDir && d.wDir[gi], s1dv = d.sw1d && d.sw1d[gi];
     var ccv2 = d.cld && d.cld[gi], rrv = d.rain && d.rain[gi];
     el.innerHTML = '<b style="color:var(--accent)">'+_gwFmtSlot(d, gi)+'</b>'
-      + ' · <span style="color:#3dba8a">vent '+(ws!=null?Math.round(ws)+' kt':'—')
+      + ' · <span style="color:#3dba8a">vent '+(ws!=null?Math.round(ws)+' nds':'—')
       + (wg!=null?' (raf '+Math.round(wg)+')':'')+' '+compass(wdv)+(wdv!=null?' '+Math.round(wdv)+'°':'')+'</span>'
       + ' · <span style="color:#4fa3c7">houle '+(s1!=null?s1.toFixed(1)+' m':'—')
       + (t1?' '+Math.round(t1)+' s':'')+' '+compass(s1dv)+(s1dv!=null?' '+Math.round(s1dv)+'°':'')+'</span>'
@@ -7072,7 +7072,7 @@ function _gwRenderGrid(d, day) {
 
   var html = '';
   html += _gwLbl(1,'Heure');
-  html += _gwLbl(2,'💨 Vent','Vent moyen (kt) + rafales');
+  html += _gwLbl(2,'💨 Vent','Vent moyen (nds) + rafales');
   html += _gwLbl(3,'Dir.');
   html += _gwLbl(4,'🌊 Tot.','Houle totale (m)');
   html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
@@ -7103,7 +7103,7 @@ function _gwRenderGrid(d, day) {
     var showG = wg!=null && wg>=5 && ws!=null && wg>ws+1;
     html += '<div class="gw-cell"'+gia+' style="grid-row:2;grid-column:'+col+';'+vBg(_gwAlpha(windCol(ws),.14))+'">'
       + '<span class="v" style="color:'+windCol(ws)+';">'+(ws!=null?Math.round(ws):'—')+'</span>'
-      + '<span class="u">'+(showG?'<span style="color:'+windCol(wg)+';font-weight:700;">'+Math.round(wg)+'g</span>':'kt')+'</span></div>';
+      + '<span class="u">'+(showG?'<span style="color:'+windCol(wg)+';font-weight:700;">'+Math.round(wg)+'g</span>':'nds')+'</span></div>';
 
     var wd = d.wDir && d.wDir[fi];
     html += '<div class="gw-cell"'+gia+' style="grid-row:3;grid-column:'+col+';'+nBg+'">'+(wd!=null?svgArrow(wd,'#e8a057')
@@ -7771,7 +7771,7 @@ function addMapLegend(map) {
       '<div style="font-weight:600;color:#4fa3c7;margin-bottom:4px;font-size:11px;">Légende</div>'
       +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;"><div style="width:10px;height:10px;border-radius:50%;background:#4fa3c7;border:2px solid rgba(255,255,255,0.8);flex-shrink:0;"></div>Spot surf</div>'
       +'<div style="display:flex;align-items:center;gap:6px;margin-top:2px;">'
-      +'<svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0"><circle cx="9" cy="9" r="8" fill="rgba(6,16,30,0.88)" stroke="#e8c44a" stroke-width="1.5"/><g transform="rotate(0,9,9)"><line x1="9" y1="14" x2="9" y2="5" stroke="#e8c44a" stroke-width="1.8" stroke-linecap="round"/><polygon points="9,3 7,7 9,5 11,7" fill="#e8c44a"/></g><text x="9" y="12" text-anchor="middle" font-size="4" font-family="monospace" fill="#e8c44a" font-weight="700">kt</text></svg>'
+      +'<svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0"><circle cx="9" cy="9" r="8" fill="rgba(6,16,30,0.88)" stroke="#e8c44a" stroke-width="1.5"/><g transform="rotate(0,9,9)"><line x1="9" y1="14" x2="9" y2="5" stroke="#e8c44a" stroke-width="1.8" stroke-linecap="round"/><polygon points="9,3 7,7 9,5 11,7" fill="#e8c44a"/></g><text x="9" y="12" text-anchor="middle" font-size="4" font-family="monospace" fill="#e8c44a" font-weight="700">nds</text></svg>'
       +'Station vent obs.</div>'
       +'<div style="font-size:9px;color:rgba(160,195,220,0.5);margin-top:3px;padding-top:3px;border-top:1px solid rgba(79,163,199,.15);">Flèche = direction du vent</div>'
       +'<div style="font-size:9px;color:rgba(160,195,220,0.5);margin-top:2px;">🌧 Pluie 1h dans l\'info-bulle station · carte globale → onglet 🌊 Windy</div>';
@@ -7902,7 +7902,7 @@ async function _loadAromeWidget(wgId) {
     return '<td colspan="' + d.n + '" style="padding:3px;text-align:center;font-weight:700;color:var(--accent);border-left:2px solid rgba(79,163,199,.35);background:rgba(79,163,199,.06);">' + DAYS_FR[wd] + ' ' + d.k + '</td>';
   }).join('') + '</tr>';
   _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:9px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
-  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">💨 kt</td>' + cols.map(function(c) {
+  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">💨 nds</td>' + cols.map(function(c) {
     var v = j.WINDSPD[c.i];
     return td(v != null ? '<b>' + Math.round(v) + '</b>' : '—', v != null ? 'background:' + windCol(v) + ';' : '');
   }).join('') + '</tr>';
@@ -8078,7 +8078,7 @@ function _aromeHoverInfo(info) {
     + String(nc.getUTCDate()).padStart(2, '0') + '/' + String(nc.getUTCMonth() + 1).padStart(2, '0')
     + ' · ' + String(nc.getUTCHours()).padStart(2, '0') + 'h</b>'];
   if (info.kt != null) {
-    var w = '💨 <b style="color:var(--accent);">' + Math.round(info.kt) + ' kt</b>';
+    var w = '💨 <b style="color:var(--accent);">' + Math.round(info.kt) + ' nds</b>';
     if (info.gust != null) w += ' <span style="color:#e8874a;">(raf. ' + Math.round(info.gust) + ')</span>';
     if (info.dir != null) w += ' ' + CPTS[Math.round(info.dir / 22.5) % 16];
     parts.push(w);
@@ -8100,7 +8100,7 @@ function _aromeHoverInfo(info) {
       });
       if (bi >= 0 && bd <= 95 * 60000 && fd.wSpd[bi] != null) {
         var pk = fd.wSpd[bi], ec = (info.kt != null) ? Math.round(info.kt - pk) : null;
-        parts.push('<span style="color:#e8a057;">' + (isOm ? 'GFS' : 'meteo.nc') + ' : <b>' + Math.round(pk) + ' kt</b>'
+        parts.push('<span style="color:#e8a057;">' + (isOm ? 'GFS' : 'meteo.nc') + ' : <b>' + Math.round(pk) + ' nds</b>'
           + (ec != null ? ' <span style="color:var(--faint);">(AROME ' + (ec >= 0 ? '+' : '') + ec + ')</span>' : '') + '</span>');
       }
     }
@@ -8395,8 +8395,8 @@ async function _renderAromeCompare(j) {
       + (stDistKm != null ? ' (~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km)' : '')
       + ' — un écart peut refléter cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle.</div>';
     el.innerHTML = '🎯 Le plus proche des mesures (' + cands[0].r.n + ' points croisés) : <b style="color:var(--ok);">' + cands[0].label
-      + '</b> (écart moyen ' + cands[0].r.avg.toFixed(1) + ' kt) · '
-      + cands.slice(1).map(function(c) { return c.label + ' ' + c.r.avg.toFixed(1) + ' kt (' + c.r.n + ')'; }).join(' · ')
+      + '</b> (écart moyen ' + cands[0].r.avg.toFixed(1) + ' nds) · '
+      + cands.slice(1).map(function(c) { return c.label + ' ' + c.r.avg.toFixed(1) + ' nds (' + c.r.n + ')'; }).join(' · ')
       + caveat;
   })();
 
@@ -8500,14 +8500,14 @@ async function _renderAromeCompare(j) {
     var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pNc = nearest(pageNc, ms, 105 * 60000), pGfs = nearest(pageGfs, ms, 105 * 60000), pCache = nearest(cachePts, ms), pAroCache = nearest(aromeCachePts, ms);
     var pBom = nearest(bomWind, ms, 105 * 60000), pEcmwf = nearest(ecmwfWind, ms, 105 * 60000);
     ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
-      + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> kt</span>' : '')
-      + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> kt</span>' : '')
-      + (!pAro && pAroCache ? ' · <span style="color:#4fa3c7;">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> kt</span>' : '')
-      + (pNc ? ' · <span style="color:#e8a057;">meteo.nc <b>' + Math.round(pNc.kt) + '</b> kt</span>' : '')
-      + (!pNc && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> kt</span>' : '')
-      + (pGfs ? ' · <span style="color:#a99ff8;">GFS <b>' + Math.round(pGfs.kt) + '</b> kt</span>' : '')
-      + (pBom ? ' · <span style="color:#e05c5c;">BOM <b>' + Math.round(pBom.kt) + '</b> kt</span>' : '')
-      + (pEcmwf ? ' · <span style="color:#7dd3fc;">ECMWF <b>' + Math.round(pEcmwf.kt) + '</b> kt</span>' : '');
+      + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> nds</span>' : '')
+      + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> nds</span>' : '')
+      + (!pAro && pAroCache ? ' · <span style="color:#4fa3c7;">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> nds</span>' : '')
+      + (pNc ? ' · <span style="color:#e8a057;">meteo.nc <b>' + Math.round(pNc.kt) + '</b> nds</span>' : '')
+      + (!pNc && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> nds</span>' : '')
+      + (pGfs ? ' · <span style="color:#a99ff8;">GFS <b>' + Math.round(pGfs.kt) + '</b> nds</span>' : '')
+      + (pBom ? ' · <span style="color:#e05c5c;">BOM <b>' + Math.round(pBom.kt) + '</b> nds</span>' : '')
+      + (pEcmwf ? ' · <span style="color:#7dd3fc;">ECMWF <b>' + Math.round(pEcmwf.kt) + '</b> nds</span>' : '');
   }
   function findNearestColIdx(ms) {
     if (!window._aromeColInfo) return null;
@@ -8603,7 +8603,7 @@ function windArrowIcon(deg, kt) {
     + '</g>'
     // Badge kt en dessous, fond légèrement différent pour lisibilité
     + '<rect x="4" y="34" width="28" height="11" rx="5" fill="rgba(6,16,30,0.85)" stroke="' + col + '" stroke-width="0.8"/>'
-    + '<text x="18" y="43" text-anchor="middle" font-size="8.5" font-family="monospace" fill="' + col + '" font-weight="700">' + ktStr + 'kt</text>'
+    + '<text x="18" y="43" text-anchor="middle" font-size="8.5" font-family="monospace" fill="' + col + '" font-weight="700">' + ktStr + 'nds</text>'
     + '</svg>';
   return L.divIcon({ className: '', html: svg, iconSize: [36, 46], iconAnchor: [18, 17] });
 }
@@ -8628,7 +8628,7 @@ function renderForecastStrip(props, chartEl, statsEl) {
     var lastDir = next24[0] && next24[0].wind_direction != null ? CPTS[Math.round(next24[0].wind_direction/22.5)%16] : '—';
     var maxWs = wsArr.length ? Math.round(Math.max.apply(null,wsArr)) : null;
     statsEl.innerHTML = [
-      { lbl:'Vent max 24h', val: maxWs != null ? maxWs+' kt' : '—', col:'#4fa3c7' },
+      { lbl:'Vent max 24h', val: maxWs != null ? maxWs+' nds' : '—', col:'#4fa3c7' },
       { lbl:'Temp. matin',  val: tArr.length ? Math.round(tArr[0])+'°C' : '—', col:'#e8874a' },
       { lbl:'Direction',    val: lastDir, col:'var(--muted)' },
       { lbl:'Source',       val: 'meteo.nc', col:'var(--faint)' },
@@ -8686,7 +8686,7 @@ function renderForecastStrip(props, chartEl, statsEl) {
       html += '<td style="padding:3px 4px;text-align:center;border-left:1px solid rgba(255,255,255,.04);">'
         + '<div style="font-size:14px;line-height:1.2;">' + icon + '</div>'
         + '<div style="font-size:8px;color:var(--muted);">' + (slot.T != null ? Math.round(slot.T) + '°' : '') + '</div>'
-        + (wsKt != null ? '<div style="font-size:9px;font-weight:600;color:' + wCol + ';">' + wsKt + 'kt</div>' : '')
+        + (wsKt != null ? '<div style="font-size:9px;font-weight:600;color:' + wCol + ';">' + wsKt + 'nds</div>' : '')
         + (dirLbl ? '<div style="font-size:8px;color:var(--faint);">' + dirLbl + '</div>' : '')
         + rain
         + '</td>';
@@ -8753,7 +8753,7 @@ function _fetchObsWind(s, m) {
       + '<div style="font-weight:600;font-size:11px;color:#c8e6ff;margin-bottom:4px;">' + s.name + '</div>'
       + '<div style="display:flex;align-items:baseline;gap:4px;">'
       + '<span style="font-size:22px;font-weight:700;color:' + col + ';line-height:1;">' + Math.round(spd) + '</span>'
-      + '<span style="font-size:11px;color:#7aafd4;">kt</span>'
+      + '<span style="font-size:11px;color:#7aafd4;">nds</span>'
       + (gst ? '<span style="font-size:10px;color:#e8874a;margin-left:4px;">raf.' + Math.round(gst) + '</span>' : '')
       + '</div>'
       + '<div style="font-size:11px;color:#aac8e0;margin-top:2px;">' + cpt + ' &nbsp;' + Math.round(dir) + '°</div>'
@@ -8899,7 +8899,7 @@ function renderBeaufortScale() {
     div.addEventListener('mouseenter', function() {
       div.style.opacity = '1';
       div.style.transform = 'scaleY(1.25)';
-      if (lbl) lbl.textContent = 'Bf' + b.b + ' · ' + b.kt + ' kt';
+      if (lbl) lbl.textContent = 'Bf' + b.b + ' · ' + b.kt + ' nds';
       if (lbl) lbl.style.color = b.col;
       if (desc) desc.innerHTML = '<span style="color:' + b.col + ';font-weight:600;">' + b.desc + '</span>'
         + ' — ' + b.detail;
@@ -9165,7 +9165,7 @@ async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
 
   });
 
-  svg.push('<text x="'+pad.l+'" y="12" font-size="8" fill="rgba(160,195,220,.4)">kt</text>');
+  svg.push('<text x="'+pad.l+'" y="12" font-size="8" fill="rgba(160,195,220,.4)">nds</text>');
 
   var svgEl = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" style="display:block;width:100%;max-width:'+W+'px;">'
     + svg.join('') + '</svg>';
@@ -9185,8 +9185,8 @@ async function renderFcstComparisonChart(station, obsRecent, chartEl, statsEl) {
     statsEl.innerHTML = [
       {lbl: 'Jours comparés', val: diffs.length + ' / ' + allDates.length, col: 'var(--accent)'},
       {lbl: 'Source cache', val: srcLabel, col: '#3dba8a'},
-      {lbl: 'Écart moy (NC–obs)', val: meanDiff != null ? (meanDiff>0?'+':'')+meanDiff+' kt' : '—', col: diffCol(meanDiff)},
-      {lbl: 'RMSE vent', val: rmse != null ? rmse + ' kt' : '—', col: diffCol(rmse)},
+      {lbl: 'Écart moy (NC–obs)', val: meanDiff != null ? (meanDiff>0?'+':'')+meanDiff+' nds' : '—', col: diffCol(meanDiff)},
+      {lbl: 'RMSE vent', val: rmse != null ? rmse + ' nds' : '—', col: diffCol(rmse)},
     ].map(function(c){
       return '<div style="flex:1;padding:7px 4px;border-right:1px solid var(--border);text-align:center;min-width:55px;">'
         +'<div style="font-size:7px;color:var(--faint);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em;">'+c.lbl+'</div>'
@@ -9288,9 +9288,9 @@ function renderObsHistoryChart(s, h) {
     var CPTS=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
     var cpt = lastRow.wd != null ? CPTS[Math.round(lastRow.wd/22.5)%16] : null;
     statCards = [
-      { lbl:'Moy.', val: avg!=null?avg+' kt':'—', col:'#4fa3c7' },
-      { lbl:'Rafale max', val: wgArr.length?Math.round(Math.max.apply(null,wgArr))+' kt':'—', col:'#e05c5c' },
-      { lbl:'Maintenant', val: lastRow.ws!=null?Math.round(lastRow.ws)+' kt':'—', col:'#3dba8a' }, // ws déjà en kt
+      { lbl:'Moy.', val: avg!=null?avg+' nds':'—', col:'#4fa3c7' },
+      { lbl:'Rafale max', val: wgArr.length?Math.round(Math.max.apply(null,wgArr))+' nds':'—', col:'#e05c5c' },
+      { lbl:'Maintenant', val: lastRow.ws!=null?Math.round(lastRow.ws)+' nds':'—', col:'#3dba8a' }, // ws déjà en kt
       { lbl:'Direction', val: cpt&&lastRow.wd!=null?cpt+' '+Math.round(lastRow.wd)+'°':'—', col:'var(--muted)' }
     ];
   } else if (param === 'temp' && hasTemp) {
@@ -9459,7 +9459,7 @@ function renderObsHistoryChart(s, h) {
     }
   });
 
-  var unitLabel = {wind:'kt',temp:'°C',pres:'hPa',rain:'mm'}[param]||'';
+  var unitLabel = {wind:'nds',temp:'°C',pres:'hPa',rain:'mm'}[param]||'';
   var line2Color = param==='wind'?'rgba(224,92,92,.8)':'rgba(255,200,100,.7)';
   var line2Label = param==='wind'?'Rafales':param==='temp'?'Ressenti':'';
 
@@ -12064,7 +12064,7 @@ async function _renderCachedModelsBlock(spot, date) {
         + '<td style="padding:5px 4px;text-align:center;font-size:11px;font-weight:600;">' + (sw.val != null ? sw.val.toFixed(1) + 'm' : '—') + '</td>'
         + '<td style="padding:5px 4px;text-align:center;font-size:11px;">' + (sw.period != null ? Math.round(sw.period) + 's' : '—') + '</td>'
         + '<td style="padding:5px 4px;text-align:center;font-size:10px;color:var(--muted);white-space:nowrap;">' + dirLbl(sw.dir) + '</td>'
-        + '<td style="padding:5px 4px;text-align:center;font-size:11px;">' + (wd.val != null ? Math.round(wd.val) + 'kt' : '—') + '</td>'
+        + '<td style="padding:5px 4px;text-align:center;font-size:11px;">' + (wd.val != null ? Math.round(wd.val) + 'nds' : '—') + '</td>'
         + '</tr>';
     }).join('');
     return '<div style="background:rgba(79,163,199,.05);border:1px solid rgba(79,163,199,.18);border-radius:10px;padding:11px 13px;margin-bottom:10px;">'
@@ -12179,7 +12179,7 @@ async function loadPastConditions() {
           +'<td style="padding:3px 4px;color:'+hsCol+';font-weight:600;text-align:center;">'+(s.hs!=null?s.hs+'m':'—')+'</td>'
           +'<td style="padding:3px 4px;text-align:center;">'+(s.period!=null?Math.round(s.period)+'s':'—')+'</td>'
           +'<td style="padding:3px 4px;color:var(--muted);text-align:center;">'+(s.swellDir!=null?compass[Math.round(((s.swellDir%360)+360)%360/22.5)%16]:'—')+'</td>'
-          +'<td style="padding:3px 4px;color:'+wCol+';text-align:center;">'+(s.windKt!=null?s.windKt+'kt'+(s.windGst?' ('+s.windGst+')'  :''):'—')+'</td>'
+          +'<td style="padding:3px 4px;color:'+wCol+';text-align:center;">'+(s.windKt!=null?s.windKt+'nds'+(s.windGst?' ('+s.windGst+')'  :''):'—')+'</td>'
           +'<td style="padding:3px 4px;color:var(--accent);text-align:center;font-weight:600;">'+(s.pwr!=null?s.pwr:'—')+'</td>'
           +'</tr>';
       });
@@ -12199,7 +12199,7 @@ async function loadPastConditions() {
       +_pastCell('🌊 Houle', val(d2.hs,'m'), d2.hs ? (d2.hs<0.5?'var(--muted)':d2.hs<1.2?'#4fa3c7':d2.hs<2?'#3dba8a':'#a99ff8') : 'var(--muted)')
       +_pastCell('⏱ Période', val(d2.period,'s'), 'var(--text)')
       +_pastCell('🧭 Dir. houle', dir(d2.swellDir), 'var(--text)')
-      +_pastCell('💨 Vent', val(d2.windKt,'kt'), d2.windKt ? (d2.windKt<12?'#3dba8a':d2.windKt<20?'#e8a057':'#e05c5c') : 'var(--muted)')
+      +_pastCell('💨 Vent', val(d2.windKt,'nds'), d2.windKt ? (d2.windKt<12?'#3dba8a':d2.windKt<20?'#e8a057':'#e05c5c') : 'var(--muted)')
       +_pastCell('🧭 Dir. vent', dir(d2.windDir), 'var(--text)')
       +(d2.hs&&d2.period?_pastCell('⚡ Puissance', (0.5*d2.hs*d2.hs*d2.period).toFixed(1)+' kW/m', 'var(--accent)'):'')
       +'</div>'
@@ -12268,7 +12268,7 @@ async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
         +'<td style="padding:3px 4px;color:'+hsC+';font-weight:600;text-align:center;">'+(hs!=null?hs+'m':'—')+'</td>'
         +'<td style="padding:3px 4px;text-align:center;">'+(per!=null?Math.round(per)+'s':'—')+'</td>'
         +'<td style="padding:3px 4px;color:var(--muted);text-align:center;">'+dirStr(sDir)+'</td>'
-        +'<td style="padding:3px 4px;color:'+wC+';text-align:center;">'+(ws!=null?Math.round(ws)+'kt'+(wg?' ('+Math.round(wg)+')':''):'—')+'</td>'
+        +'<td style="padding:3px 4px;color:'+wC+';text-align:center;">'+(ws!=null?Math.round(ws)+'nds'+(wg?' ('+Math.round(wg)+')':''):'—')+'</td>'
         +'<td style="padding:3px 4px;color:var(--accent);text-align:center;font-weight:600;">'+(pwr||'—')+'</td>'
         +'</tr>';
     });
@@ -12366,7 +12366,7 @@ async function _fillJournalStatsBox(spot) {
     + (st.nGood ? ' · ' + st.nGood + ' très bonne' + (st.nGood>1?'s':'') + ' (★≥4)' : '') + '</b>');
   if (st.hs) lines.push('🌊 Bonnes sessions : Hs ' + st.hs.min.toFixed(1) + '–' + st.hs.max.toFixed(1) + 'm (méd ' + st.hs.med.toFixed(1) + 'm)'
     + (st.T ? ' · période méd ' + Math.round(st.T.med) + 's' : ''));
-  if (st.wind) lines.push('💨 Vent surfé : méd ' + Math.round(st.wind.med) + 'kt · P90 ' + Math.round(st.wind.p90) + 'kt'
+  if (st.wind) lines.push('💨 Vent surfé : méd ' + Math.round(st.wind.med) + 'nds · P90 ' + Math.round(st.wind.p90) + 'nds'
     + ' <span style="color:var(--faint);">(peu de vent = nav + plan d\'eau propres)</span>');
   // Suggestions vs valeurs actuelles — n'affiche que les écarts
   var diffs = [];
@@ -12539,15 +12539,15 @@ function showSpotSettings(forceOpen) {
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
     +'padding:6px;color:var(--text);font-size:11px;"></div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">'
-    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;" title="Au-dessus : malus moutons/clapot/navigation, quelle que soit la direction">Seuil moutons (kt)</div>'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;" title="Au-dessus : malus moutons/clapot/navigation, quelle que soit la direction">Seuil moutons (nds)</div>'
     +'<input type="number" id="ss-calm" value="'+(p.windCalmKt||13)+'" min="5" max="25" step="1" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
     +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div>'
-    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Vent fort (kt)</div>'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Vent fort (nds)</div>'
     +'<input type="number" id="ss-wind" value="'+p.windMalusKt+'" min="5" max="40" step="1" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
     +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div>'
-    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Rafales (kt)</div>'
+    +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Rafales (nds)</div>'
     +'<input type="number" id="ss-gust" value="'+p.gustMalusKt+'" min="5" max="50" step="1" '
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
     +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div></div>'
@@ -12800,10 +12800,10 @@ function showScoreSettings() {
 
     // ── SECTION VENT ──
     +'<div style="font-size:10px;font-weight:700;color:#e8a057;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">💨 Vent</div>'
-    +sliderRow('Seuil moutons/clapot (kt)','windCalmKt',(p.windCalmKt!=null?p.windCalmKt:13),5,25,1,' kt')
+    +sliderRow('Seuil moutons/clapot (nds)','windCalmKt',(p.windCalmKt!=null?p.windCalmKt:13),5,25,1,' nds')
     +'<div style="font-size:9px;color:var(--faint);margin:-6px 0 10px;">Au-dessus : malus quelle que soit la direction (navigation, moutons, clapot)</div>'
-    +sliderRow('Vent max avant malus (kt)','windMalusKt',p.windMalusKt,5,30,1,' kt')
-    +sliderRow('Rafales max (kt)','gustMalusKt',p.gustMalusKt,10,40,1,' kt')
+    +sliderRow('Vent max avant malus (nds)','windMalusKt',p.windMalusKt,5,30,1,' nds')
+    +sliderRow('Rafales max (nds)','gustMalusKt',p.gustMalusKt,10,40,1,' nds')
 
     // Direction idéale du vent (compas) — on veut du vent OFFSHORE
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">'
@@ -13048,10 +13048,10 @@ function updateNavIndicator(wSpd, wGst, wDir, totH, swDir, visM) {
   var verdict, vCol, vDetail;
   if (goOk) {
     verdict = '✅ Navigation favorable'; vCol = '#3dba8a';
-    vDetail = 'Vent Bft ' + bf.b + ' (' + bf.label + ') · Mer ' + ss.label + (wsKt ? ' · ' + wsKt + 'kt' : '') + (wgKt ? ' raf. ' + wgKt + 'kt' : '') + (cardinalDir !== '—' ? ' · ' + cardinalDir : '');
+    vDetail = 'Vent Bft ' + bf.b + ' (' + bf.label + ') · Mer ' + ss.label + (wsKt ? ' · ' + wsKt + 'nds' : '') + (wgKt ? ' raf. ' + wgKt + 'nds' : '') + (cardinalDir !== '—' ? ' · ' + cardinalDir : '');
   } else if (warnOk) {
     verdict = '⚠️ Navigation déconseillée'; vCol = '#e8a057';
-    vDetail = 'Vent Bft ' + bf.b + ' (' + bf.label + ') · Mer ' + ss.label + (wsKt ? ' · ' + wsKt + 'kt' : '') + ' — vigilance';
+    vDetail = 'Vent Bft ' + bf.b + ' (' + bf.label + ') · Mer ' + ss.label + (wsKt ? ' · ' + wsKt + 'nds' : '') + ' — vigilance';
   } else {
     verdict = '🚫 Navigation dangereuse'; vCol = '#e05c5c';
     vDetail = 'Vent Bft ' + bf.b + ' (' + bf.label + ') · Mer ' + ss.label + ' — rester à quai';
@@ -13070,7 +13070,7 @@ function updateNavIndicator(wSpd, wGst, wDir, totH, swDir, visM) {
   // Jauge vent : Bft 0-12 → réservoir, couleur progressive
   var windPct = bf.b / 12;
   var windBarCol = bf.b <= 3 ? '#3dba8a' : bf.b <= 5 ? '#4fa3c7' : bf.b <= 7 ? '#e8a057' : '#e05c5c';
-  var windLblTxt = wsKt != null ? wsKt + ' kt' : '—';
+  var windLblTxt = wsKt != null ? wsKt + ' nds' : '—';
   if (wgKt != null) windLblTxt += ' <span style="font-size:10px;color:var(--faint);">raf. ' + wgKt + '</span>';
   if (cardinalDir !== '—') windLblTxt += ' <span style="font-size:10px;color:var(--muted);">' + cardinalDir + '</span>';
   set('nav-wind-lbl', '<span style="color:' + windBarCol + ';">' + windLblTxt + '</span>');
@@ -13132,7 +13132,7 @@ async function updateNavBMSBanner() {
     +   '<span style="font-size:10px;color:var(--text);">— '+escapeHtml(nature)+'</span>'
     + '</div>'
     + (bms.updateLabel
-        ? '<div style="font-size:8.5px;color:var(--faint);margin-top:3px;">'+escapeHtml(bms.updateLabel)+'</div>'
+        ? '<div style="font-size:9.5px;color:var(--muted);margin-top:3px;">'+escapeHtml(bms.updateLabel)+'</div>'
         : '')
     + '<button type="button" onclick="openNavBMSDetail()" '
     +   'style="margin-top:6px;background:none;border:1px solid '+bd+';color:'+col+';font-size:9px;'

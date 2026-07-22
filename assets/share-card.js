@@ -1,6 +1,6 @@
 /* share-card.js — Génère une FIGURE de partage (PNG, largeur 1080, hauteur auto)
    façon widget du site : météogramme du jour (barres de houle + courbe de vent &
-   rafales, double axe m/kt) + vraie courbe de marée interpolée + bandeau stats +
+   rafales, double axe m/nds) + vraie courbe de marée interpolée + bandeau stats +
    BMS. Vanilla canvas, zéro dépendance, palette/typo du thème. Aussi une ligne
    texte de résumé. Exposé : window.ShareCard = { draw, buildSummary, nextTides,
    tidesForDay, windRel, COMPASS }.
@@ -113,7 +113,7 @@
     var wr = windRel(d.wd, d.dir, d.ws, d.onshoreLimit, d.offshoreMin);
     var parts = [];
     if (d.tot != null) parts.push((+d.tot).toFixed(1) + 'm' + (d.T ? ' @' + Math.round(d.T) + 's' : '') + (d.dir != null ? ' ' + compass(d.dir) : ''));
-    if (d.ws != null) parts.push('vent ' + Math.round(d.ws) + 'kt' + (wr.txt ? ' ' + wr.txt : ''));
+    if (d.ws != null) parts.push('vent ' + Math.round(d.ws) + 'nds' + (wr.txt ? ' ' + wr.txt : ''));
     if (d.tide && d.tide.stateLabel) parts.push(d.tide.stateLabel);
     if (d.score != null) parts.push('score ' + d.score + '/5');
     var line = '🏄 ' + (d.spotName || 'Spot') + ' ' + dStr + ' — ' + parts.join(', ');
@@ -164,7 +164,7 @@
   }
 
   // Météogramme d'une journée façon widget du site : barres de houle totale
-  // (bleu) + courbe de vent (orange) & rafales (tireté), double axe m / kt,
+  // (bleu) + courbe de vent (orange) & rafales (tireté), double axe m / nds,
   // repères horaires, marqueur de l'heure représentative. pts = série du jour
   // [{h, tot, ws, wg, wd}] (heure NC 0-23). Retour: y de bas de panneau.
   function meteogram(ctx, x, y, w, h, pts, focusH, isToday, nowH) {
@@ -200,7 +200,7 @@
       ctx.fillStyle = 'rgba(122,148,170,.85)';
       ctx.fillText((stepSw < 1 ? s.toFixed(1) : s) + '', gx - 10, yy + 7);
     }
-    // Axe droit vent (kt)
+    // Axe droit vent (nds)
     ctx.textAlign = 'left'; ctx.fillStyle = C.warm;
     var stepKt = maxKt > 30 ? 10 : 5;
     for (var k = 0; k <= maxKt; k += stepKt) {
@@ -254,7 +254,7 @@
 
     // Légende compacte (chip en haut à gauche) — lève l'ambiguïté barres/lignes
     (function legend() {
-      var segs = [['▮ houle (m)', C.accent], ['━ vent', C.warm], ['┄ raf. (kt)', 'rgba(232,160,87,.6)']];
+      var segs = [['▮ houle (m)', C.accent], ['━ vent', C.warm], ['┄ raf. (nds)', 'rgba(232,160,87,.6)']];
       ctx.font = '600 17px ' + FB; ctx.textAlign = 'left';
       var tot = 0, pad = 14; segs.forEach(function(s){ tot += ctx.measureText(s[0]).width + pad; });
       var lx = gx + 6, ly = gy + 8, ch = 26;
@@ -342,7 +342,7 @@
     roundCard(sx[1], statsY, cw, statsH);
     miniLabel('💨 VENT', sx[1]);
     ctx.fillStyle = C.text; ctx.font = '700 62px ' + FD; ctx.textAlign = 'left';
-    ctx.fillText((d.ws != null ? Math.round(d.ws) : '—') + ' kt', sx[1] + 24, statsY + 100);
+    ctx.fillText((d.ws != null ? Math.round(d.ws) : '—') + ' nds', sx[1] + 24, statsY + 100);
     ctx.fillStyle = C.muted; ctx.font = '400 24px ' + FB;
     ctx.fillText('raf. ' + (d.wg != null ? Math.round(d.wg) : '—') + (d.wd != null ? ' · ' + compass(d.wd) : ''), sx[1] + 24, statsY + 134);
     if (d.wd != null) arrow(ctx, sx[1] + cw - 40, statsY + 54, 34, d.wd, C.warm);
