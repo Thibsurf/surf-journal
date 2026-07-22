@@ -2030,7 +2030,7 @@ function buildMitonBox(s) {
   var isDriver = currentUser && s.created_by === currentUser.id;
 
   var html = '<div class="miton-section">'
-    + '<div class="miton-title">' + String.fromCodePoint(0x1F950) + ' Arret mitron</div>'
+    + '<div class="miton-title">' + String.fromCodePoint(0x1F950) + ' Arrêt mitron</div>'
     + '<div class="miton-place">' + escapeHtml(s.miton) + '</div>';
 
   if (orders.length) {
@@ -2051,7 +2051,7 @@ function buildMitonBox(s) {
 
   if (currentUser) {
     html += '<div class="miton-add">'
-      + '<input id="miton-input-'+s.id+'" placeholder="ex: 2 pains au chocolat + cafe" data-sid="'+s.id+'" data-act="miton-keypress">'
+      + '<input id="miton-input-'+s.id+'" placeholder="ex: 2 pains au chocolat + café" data-sid="'+s.id+'" data-act="miton-keypress">'
       + '<button data-act="miton-add" data-sid="'+s.id+'">+ Commander</button>'
       + '</div>';
   }
@@ -2083,7 +2083,7 @@ async function addMitonOrder(sortieId) {
     if (res && res.error) { toast('❌ Commande NON enregistrée : ' + res.error.message, 'err'); return; }
     input.value = '';
     await loadSorties();
-    toast('Commande ajoutee', 'ok');
+    toast('Commande ajoutée', 'ok');
   } catch(e) { toast('Erreur: ' + e.message, 'err'); }
   finally { addMitonOrder._busy = false; }
 }
@@ -3479,7 +3479,7 @@ function downloadMeteogramImg() {
     var a = document.createElement('a');
     a.href = url; a.download = name; a.click();
     URL.revokeObjectURL(url);
-    toast('Image telechargee', 'ok');
+    toast('Image téléchargée', 'ok');
   }, 'image/png');
 }
 
@@ -3489,7 +3489,7 @@ async function copyMeteogramImg() {
   cv.toBlob(async function(blob) {
     try {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      toast('Image copiee', 'ok');
+      toast('Image copiée', 'ok');
     } catch(e) { toast('Copie non supportee - utilise Telecharger', 'err'); }
   }, 'image/png');
 }
@@ -3505,7 +3505,7 @@ async function shareMeteogramImg() {
         await navigator.share({
           files: [file],
           title: 'Meteogramme - ' + (s ? s.spot : ''),
-          text: 'Conditions prevues pour ' + (s ? s.spot + ' le ' + s.date_start : '')
+          text: 'Conditions prévues pour ' + (s ? s.spot + ' le ' + s.date_start : '')
         });
       } else { downloadMeteogramImg(); }
     } catch(e) { console.warn(e); }
