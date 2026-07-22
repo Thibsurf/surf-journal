@@ -5539,7 +5539,15 @@ function showSpotDetail(spotName) {
     if (c3) {
       var windMap={};
       sessions.forEach(function(s){if(s.wind_dir&&s.quality){if(!windMap[s.wind_dir])windMap[s.wind_dir]=[];windMap[s.wind_dir].push(s.quality);}});
-      var windDirs=Object.keys(windMap).sort();
+      // Ordre de la rose (N→NNE→NE→…) et non alphabétique : on trie par degré du
+      // token compas de tête (wind_dir peut valoir « NE » ou « NE (45°) »), avec
+      // repli sur un angle numérique, les valeurs inconnues reléguées en fin.
+      function _wdKey(v){
+        var m=String(v).trim().toUpperCase().match(/^[NSEO]{1,3}/);
+        if(m && _cardDeg[m[0]]!=null) return _cardDeg[m[0]];
+        var n=parseFloat(v); return isNaN(n)?9999:(((n%360)+360)%360);
+      }
+      var windDirs=Object.keys(windMap).sort(function(a,b){return _wdKey(a)-_wdKey(b);});
       var windAvg=windDirs.map(function(d){var a=windMap[d];return +(a.reduce(function(x,y){return x+y;},0)/a.length).toFixed(1);});
       var windN=windDirs.map(function(d){return windMap[d].length;});
       spotCharts.push(new Chart(c3,{type:'bar',
