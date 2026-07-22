@@ -169,6 +169,14 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   .gw-lbl{font-size:8px;}
   #gw-widget .gw-head{flex-direction:column;align-items:stretch;}
 }
+/* Comparatifs modèles (houle/vent) : sur téléphone, la rose de direction passe
+   SOUS le graphe pour lui rendre toute la largeur (avant : rose à droite = ~80px
+   volés au canvas, courbes tassées). */
+.cmp-chart-row{display:flex;gap:10px;align-items:flex-start;}
+@media(max-width:520px){
+  .cmp-chart-row{flex-direction:column;align-items:stretch;}
+  .cmp-chart-row #arome-cmp-rose{align-self:center;margin-top:4px;}
+}
 
 /* QUICK LINKS */
 .links{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem;}
@@ -4450,12 +4458,18 @@ function _drawSwellCompare() {
   var t0 = Math.min.apply(null, allPts.map(function(p){ return p.ms; }));
   var t1 = Math.max.apply(null, allPts.map(function(p){ return p.ms; }));
 
-  var W = (cv.parentElement && cv.parentElement.clientWidth) || 600, H = 210;
+  var W = (cv.parentElement && cv.parentElement.clientWidth) || 600;
+  // Téléphone (fenêtre étroite, jusqu'à 5 courbes superposées sur 10 jours) : on
+  // allonge le graphe pour donner de l'air vertical aux séries, et on grossit les
+  // polices d'axe (9px devenait dur à lire sur mobile).
+  var narrow = W < 500;
+  var H = narrow ? 270 : 210;
+  var axFont = (narrow ? '11px' : '9px') + ' DM Sans,sans-serif';
   var dpr = window.devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
   var maxH = Math.max(1, Math.max.apply(null, allPts.map(function(p){ return p.h; })) * 1.2);
-  var padL = 32, padR = 8, padT = 12, padB = 20;
+  var padL = narrow ? 34 : 32, padR = 8, padT = 12, padB = narrow ? 22 : 20;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
   function Y(h) { return padT + (1 - h / maxH) * (H - padT - padB); }
 
@@ -4474,7 +4488,7 @@ function _drawSwellCompare() {
     var rgbm = col.match(/rgba?\(([\d.]+),([\d.]+),([\d.]+)/);
     if (rgbm) { ctx.fillStyle = 'rgba(' + rgbm[1] + ',' + rgbm[2] + ',' + rgbm[3] + ',.05)'; ctx.fill(); }
     // Ligne
-    ctx.strokeStyle = col; ctx.lineWidth = 2.3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = col; ctx.lineWidth = narrow ? 2.8 : 2.3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(X(pts[0].ms), Y(pts[0].h));
     for (var j = 1; j < pts.length - 1; j++) {
       var mx2 = (X(pts[j].ms) + X(pts[j + 1].ms)) / 2, my2 = (Y(pts[j].h) + Y(pts[j + 1].h)) / 2;
@@ -4498,9 +4512,9 @@ function _drawSwellCompare() {
       }
     }
     ctx.save(); ctx.translate(11, H / 2); ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center'; ctx.font = '9px DM Sans,sans-serif'; ctx.fillStyle = 'rgba(122,148,170,.7)';
+    ctx.textAlign = 'center'; ctx.font = axFont; ctx.fillStyle = 'rgba(122,148,170,.7)';
     ctx.fillText('Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), 0, 0); ctx.restore();
-    ctx.textAlign = 'right'; ctx.font = '9px DM Sans,sans-serif';
+    ctx.textAlign = 'right'; ctx.font = axFont;
     var hStep = maxH > 4 ? 1 : 0.5;
     for (var g = 0; g <= maxH; g += hStep) {
       var gy = Y(g);
@@ -7935,7 +7949,7 @@ async function _loadAromeWidget(wgId) {
           + '<button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:auto;">▲ Masquer l\'historique</button>'
           + '</div>'
         : '<div style="margin-bottom:6px;"><button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:3px 9px;border-radius:10px;cursor:pointer;">▼ Afficher l\'historique archivé (jusqu\'à 8j)</button></div>')
-    + '<div style="display:flex;gap:10px;align-items:flex-start;">'
+    + '<div class="cmp-chart-row">'
     + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
     + '</div>'
@@ -8295,13 +8309,19 @@ async function _renderAromeCompare(j) {
   } catch (e) {}
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
   if (!el2 || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
-  var W = el2.clientWidth || 600, H = 210; // agrandi : lisibilité avant tout
+  var W = el2.clientWidth || 600;
+  // Sur téléphone la fenêtre est étroite ET porte 5-6 courbes superposées : on
+  // gagne en lisibilité verticale en allongeant le graphe (place pour que les
+  // séries se séparent) plutôt qu'en gardant la hauteur desktop.
+  var narrow = W < 500;
+  var H = narrow ? 270 : 210;
+  var axFont = (narrow ? '11px' : '9px') + ' DM Sans,sans-serif';
   var dpr = window.devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.cursor = 'crosshair';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
   var allKt = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}), bomWind.map(function(p){return p.kt;}), ecmwfWind.map(function(p){return p.kt;}));
   var maxKt = Math.max.apply(null, allKt) * 1.15;
-  var padL = 26, padR = 6, padT = 10, padB = 18;
+  var padL = narrow ? 30 : 26, padR = 6, padT = 10, padB = narrow ? 22 : 18;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
   function Y(kt) { return padT + (1 - kt / maxKt) * (H - padT - padB); }
   obs.sort(function(a,b){return a.ms-b.ms;}); pageNc.sort(function(a,b){return a.ms-b.ms;}); pageGfs.sort(function(a,b){return a.ms-b.ms;}); aro.sort(function(a,b){return a.ms-b.ms;});
@@ -8357,7 +8377,7 @@ async function _renderAromeCompare(j) {
     ctx.fillStyle = 'rgba(61,186,138,.05)';
     ctx.fillRect(X(t0), padT, X(now) - X(t0), H - padT - padB);
     // Grille horizontale 5 kt
-    ctx.textAlign = 'right'; ctx.font = '9px DM Sans,sans-serif';
+    ctx.textAlign = 'right'; ctx.font = axFont;
     for (var g = 0; g <= maxKt; g += 5) {
       var gy = Y(g);
       ctx.strokeStyle = g === 0 ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.055)'; ctx.lineWidth = 1;
@@ -8402,22 +8422,23 @@ async function _renderAromeCompare(j) {
       ctx.lineTo(X(pts[pts.length - 1].ms), Y(pts[pts.length - 1].kt));
       ctx.stroke(); ctx.setLineDash([]);
     }
-    drawSmooth(pageNc, 'rgba(232,160,87,.9)', 1.8, [6, 4]);
-    drawSmooth(pageGfs, 'rgba(169,159,248,.9)', 1.8, [6, 4]);
-    drawSmooth(bomWind, 'rgba(224,92,92,.9)', 1.8, [2, 3]);
-    drawSmooth(ecmwfWind, 'rgba(125,211,252,.9)', 1.8, [2, 3]);
+    var lwMod = narrow ? 2.2 : 1.8;
+    drawSmooth(pageNc, 'rgba(232,160,87,.9)', lwMod, [6, 4]);
+    drawSmooth(pageGfs, 'rgba(169,159,248,.9)', lwMod, [6, 4]);
+    drawSmooth(bomWind, 'rgba(224,92,92,.9)', lwMod, [2, 3]);
+    drawSmooth(ecmwfWind, 'rgba(125,211,252,.9)', lwMod, [2, 3]);
     // marqueurs sur les créneaux réels (3h) — les courbes sont interpolées
     ctx.fillStyle = 'rgba(232,160,87,.9)';
     pageNc.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
     ctx.fillStyle = 'rgba(169,159,248,.9)';
     pageGfs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
-    drawSmooth(aro, 'rgba(79,163,199,.95)', 2.2);
+    drawSmooth(aro, 'rgba(79,163,199,.95)', narrow ? 2.6 : 2.2);
     // Marqueurs AROME : drawSmooth() ne trace rien si <2 points (créneau frais
     // ou fenêtre qui clippe presque tout) — sans ce fallback la série disparaît
     // du graphe sans aucune trace alors que la légende la liste toujours.
     ctx.fillStyle = 'rgba(79,163,199,.95)';
     aro.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
-    drawSmooth(obs, 'rgba(61,186,138,.95)', 2.4);
+    drawSmooth(obs, 'rgba(61,186,138,.95)', narrow ? 2.8 : 2.4);
     // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
     ctx.strokeStyle = 'rgba(232,160,87,.9)'; ctx.lineWidth = 1.4;
     cachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.6, 0, Math.PI * 2); ctx.stroke(); });
