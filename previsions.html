@@ -5870,18 +5870,29 @@ function _buildShareDayPayload() {
   // Séries horaires du jour, meteo.nc + GFS séparément (mêmes indices que le
   // widget principal ne suffisent pas : _ncFcastData/_omFcastData ont chacun
   // leurs propres tableaux, on regroupe chacun par jour indépendamment).
-  function daySeries(fc) {
-    if (!fc || !fc.dates) return [];
-    var byDay = _gwGroupDays(fc);
-    var match = byDay.filter(function(x){ return x.dateObj.getUTCFullYear()===dd.getUTCFullYear()
-      && x.dateObj.getUTCMonth()===dd.getUTCMonth() && x.dateObj.getUTCDate()===dd.getUTCDate(); })[0];
-    if (!match) return [];
-    return match.indices.map(function(i){
-      return { h: fc.dates[i].getUTCHours(), ms: fc.dates[i].getTime(),
-        hs: fc.sw1h ? fc.sw1h[i] : null, tot: fc.totH ? fc.totH[i] : (fc.sw1h ? fc.sw1h[i] : null),
-        ws: fc.wSpd ? fc.wSpd[i] : null, wg: fc.wGst ? fc.wGst[i] : null, wd: fc.wDir ? fc.wDir[i] : null };
-    }).sort(function(a,b){ return a.h - b.h; });
-  }
+  // Aperçu MULTI-JOURS (façon widget gw-overview) : une entrée par jour NC, du
+  // jour courant jusqu'à ~7 j (en incluant le jour focalisé), chacune avec sa
+  // série horaire (houle totale + vent + rafales). Modèle = celui affiché dans le
+  // widget (d = _gwActiveData), pour coller à l'écran.
+  var _todayKey = nowNC.getUTCFullYear()+'-'+nowNC.getUTCMonth()+'-'+nowNC.getUTCDate();
+  var _startIdx = 0;
+  for (var _k = 0; _k < days.length; _k++) { if (days[_k].key === _todayKey) { _startIdx = _k; break; } }
+  var _endIdx = Math.min(days.length, Math.max(_startIdx + 6, dayIdx + 1));
+  var _s0 = Math.max(_startIdx, _endIdx - 7);
+  var daysSeries = days.slice(_s0, _endIdx).map(function(day, wi) {
+    var absIdx = _s0 + wi, dd0 = day.dateObj;
+    var dms = Date.UTC(dd0.getUTCFullYear(), dd0.getUTCMonth(), dd0.getUTCDate());
+    var diff = Math.round((dms - todayMs) / 864e5);
+    return {
+      label: diff === 0 ? 'Auj' : diff === 1 ? 'Dem' : DAY_FR_W[dd0.getUTCDay()] + ' ' + dd0.getUTCDate(),
+      isToday: day.key === _todayKey,
+      isFocus: absIdx === dayIdx,
+      series: day.indices.map(function(i) {
+        return { h: d.dates[i].getUTCHours(), tot: d.totH ? d.totH[i] : null,
+          ws: d.wSpd ? d.wSpd[i] : null, wg: d.wGst ? d.wGst[i] : null };
+      }).sort(function(a, b) { return a.h - b.h; })
+    };
+  });
 
   var hsV = d.sw1h[gi], TV = d.sw1t[gi], dirV = d.sw1d[gi], wsV = d.wSpd[gi], wgV = d.wGst ? d.wGst[gi] : null, wdV = d.wDir[gi], pV = d.pwr ? d.pwr[gi] : null;
   var surf = (typeof calcSurfScore === 'function') ? calcSurfScore(hsV, TV, dirV, wsV, wgV, wdV, pV) : null;
@@ -5894,7 +5905,8 @@ function _buildShareDayPayload() {
     score: surf ? surf.score : null, scoreLabel: surf ? surf.label : '',
     onshoreLimit: (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.onshoreLimit : 45),
     offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135),
-    ncSeries: daySeries(_ncFcastData), gfsSeries: daySeries(_omFcastData)
+    seriesSrc: (typeof _gwIsNC === 'function' && _gwIsNC()) ? 'meteo.nc' : 'GFS',
+    daysSeries: daysSeries
   };
 }
 

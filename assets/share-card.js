@@ -8,12 +8,13 @@
    data attendu par draw()/buildSummary() :
    { spotName, ts|(dayLabel,dateObj,hour), hs, T, dir, hs2, tot, ws, wg, wd, p,
      score, scoreLabel, tide:{events:[{type,ms,h}],stateLabel?}, bms:{active,niveau,nature,severity}|null,
-     onshoreLimit, offshoreMin,
-     ncSeries:[{h,ms,hs,tot,ws,wg,wd}], gfsSeries:[{h,ms,hs,tot,ws,wg,wd}] }
-   ncSeries (sinon gfsSeries) = série horaire du jour partagé, alimente le
-   météogramme (tot pour les barres, ws/wg pour les courbes). dayLabel/dateObj/
-   hour : partage d'un jour du widget (previsions.html, _buildShareDayPayload) —
-   sinon repli "maintenant" (ts seul) : stats + marée sans météogramme.
+     onshoreLimit, offshoreMin, seriesSrc:'meteo.nc'|'GFS',
+     daysSeries:[{label, isToday, isFocus, series:[{h,tot,ws,wg}]}] }
+   daysSeries = aperçu multi-jours (une colonne par jour NC) qui alimente le
+   météogramme (tot→barres, ws/wg→courbes) ; le jour focalisé (celui des stats)
+   est surligné. dayLabel/dateObj/hour : jour choisi dans le widget
+   (previsions.html, _buildShareDayPayload) — sinon repli "maintenant" (ts seul,
+   pas de daysSeries) : stats + marée sans météogramme.
 */
 (function () {
   'use strict';
@@ -163,126 +164,118 @@
     return null;
   }
 
-  // Météogramme d'une journée façon widget du site : barres de houle totale
-  // (bleu) + courbe de vent (orange) & rafales (tireté), double axe m / nds,
-  // repères horaires, marqueur de l'heure représentative. pts = série du jour
-  // [{h, tot, ws, wg, wd}] (heure NC 0-23). Retour: y de bas de panneau.
-  function meteogram(ctx, x, y, w, h, pts, focusH, isToday, nowH) {
-    // Fond panneau
+  // Météogramme MULTI-JOURS façon widget gw-overview : barres de houle totale
+  // (bleu) + courbe de vent (orange) & rafales (tireté), double axe m/nds. Les
+  // jours sont posés côte à côte (colonnes de 24 h) ; le jour focalisé est
+  // surligné, « maintenant » marqué dans la colonne du jour même. days =
+  // [{label, isToday, isFocus, series:[{h,tot,ws,wg}]}]. Retour : y bas du panneau.
+  function meteogram(ctx, x, y, w, h, days, nowH) {
     ctx.fillStyle = C.surface; roundRect(ctx, x, y, w, h, 24); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 2; ctx.stroke();
-    var padL = 66, padR = 62, padT = 30, padB = 46;
+    var padL = 58, padR = 54, padT = 42, padB = 22;
     var gx = x + padL, gw = w - padL - padR, gy = y + padT, gh = h - padT - padB;
-    var swPts = (pts || []).filter(function(p){ return p.tot != null; });
-    var wsPts = (pts || []).filter(function(p){ return p.ws != null; });
-    if (!swPts.length && !wsPts.length) {
+    var N = (days || []).length;
+    // Aplatissement en points à « heure globale » g = jourIndex*24 + h
+    var all = [];
+    (days || []).forEach(function(day, di) {
+      (day.series || []).forEach(function(p) { all.push({ g: di * 24 + p.h, tot: p.tot, ws: p.ws, wg: p.wg }); });
+    });
+    var swPts = all.filter(function(p){ return p.tot != null; });
+    var wsPts = all.filter(function(p){ return p.ws != null; });
+    if (!N || (!swPts.length && !wsPts.length)) {
       ctx.fillStyle = C.faint; ctx.font = '400 26px ' + FB; ctx.textAlign = 'center';
-      ctx.fillText('Série du jour indisponible', x + w / 2, y + h / 2); return y + h;
+      ctx.fillText('Prévision indisponible', x + w / 2, y + h / 2); return y + h;
     }
-    var maxSw = Math.max(0.8, Math.max.apply(null, swPts.map(function(p){ return p.tot; })) * 1.28);
+    var TH = N * 24;
+    var maxSw = Math.max(0.8, Math.max.apply(null, swPts.map(function(p){ return p.tot; })) * 1.25);
     var gustV = wsPts.map(function(p){ return p.wg != null ? p.wg : p.ws; });
-    var maxKt = Math.max(10, Math.max.apply(null, gustV) * 1.18);
-    function X(hh) { return gx + (hh / 24) * gw; }
+    var maxKt = Math.max(10, Math.max.apply(null, gustV) * 1.15);
+    function X(g) { return gx + (g / TH) * gw; }
     function Ys(v) { return gy + gh - (v / maxSw) * gh; }
     function Yw(v) { return gy + gh - (v / maxKt) * gh; }
 
-    // Bandes nuit (avant 6h / après 18h) — repère visuel du site
-    ctx.fillStyle = 'rgba(0,0,0,.16)';
-    ctx.fillRect(X(0), gy, X(6) - X(0), gh);
-    ctx.fillRect(X(18), gy, X(24) - X(18), gh);
-    // Grille horizontale (houle) + axe gauche en m
-    ctx.textAlign = 'right'; ctx.font = '400 20px ' + FB;
+    // Surlignage jour focalisé + bandes nuit (avant 6h / après 18h) par jour
+    days.forEach(function(day, di) {
+      if (day.isFocus) { ctx.fillStyle = 'rgba(79,163,199,.08)'; ctx.fillRect(X(di * 24), gy, X((di + 1) * 24) - X(di * 24), gh); }
+      ctx.fillStyle = 'rgba(0,0,0,.16)';
+      ctx.fillRect(X(di * 24), gy, X(di * 24 + 6) - X(di * 24), gh);
+      ctx.fillRect(X(di * 24 + 18), gy, X((di + 1) * 24) - X(di * 24 + 18), gh);
+    });
+    // Grille + axe gauche (m)
+    ctx.textAlign = 'right'; ctx.font = '400 19px ' + FB;
     var stepSw = maxSw > 3 ? 1 : 0.5;
-    for (var s = 0; s <= maxSw; s += stepSw) {
-      var yy = Ys(s);
+    for (var sv = 0; sv <= maxSw; sv += stepSw) {
+      var yy = Ys(sv);
       ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(gx, yy); ctx.lineTo(gx + gw, yy); ctx.stroke();
-      ctx.fillStyle = 'rgba(122,148,170,.85)';
-      ctx.fillText((stepSw < 1 ? s.toFixed(1) : s) + '', gx - 10, yy + 7);
+      ctx.fillStyle = 'rgba(122,148,170,.85)'; ctx.fillText((stepSw < 1 ? sv.toFixed(1) : sv) + '', gx - 8, yy + 6);
     }
-    // Axe droit vent (nds)
-    ctx.textAlign = 'left'; ctx.fillStyle = C.warm;
-    var stepKt = maxKt > 30 ? 10 : 5;
-    for (var k = 0; k <= maxKt; k += stepKt) {
-      ctx.fillStyle = 'rgba(232,160,87,.75)';
-      ctx.fillText(k + '', gx + gw + 10, Yw(k) + 7);
-    }
-    // Repères horaires (0/6/12/18/24) + libellés
-    ctx.textAlign = 'center'; ctx.font = '600 20px ' + FB;
-    [0, 6, 12, 18, 24].forEach(function(hh) {
-      ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(X(hh), gy); ctx.lineTo(X(hh), gy + gh); ctx.stroke();
-      ctx.fillStyle = 'rgba(122,148,170,.9)';
-      ctx.fillText(String(hh).padStart(2, '0') + 'h', X(hh), y + h - 14);
+    // Axe droit (nds)
+    ctx.textAlign = 'left'; var stepKt = maxKt > 30 ? 10 : 5;
+    for (var kv = 0; kv <= maxKt; kv += stepKt) { ctx.fillStyle = 'rgba(232,160,87,.75)'; ctx.fillText(kv + '', gx + gw + 8, Yw(kv) + 6); }
+
+    // Séparateurs + libellés de jour (en tête de chaque colonne)
+    days.forEach(function(day, di) {
+      var x0 = X(di * 24);
+      if (di > 0) { ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, gy); ctx.lineTo(x0, gy + gh); ctx.stroke(); }
+      ctx.textAlign = 'center'; ctx.font = (day.isFocus ? '700 ' : '600 ') + '19px ' + FB;
+      ctx.fillStyle = day.isFocus ? C.accent : 'rgba(122,148,170,.95)';
+      ctx.fillText(day.label, X(di * 24 + 12), y + 26);
     });
 
-    // Barres de houle totale (bleu, dégradé vertical) — le pas de la série (3h nc
-    // ou 1h gfs) dicte la largeur de barre.
-    var stepH = swPts.length > 1 ? (swPts[1].h - swPts[0].h) || 3 : 3;
-    var bw = Math.max(6, (stepH / 24) * gw * 0.62);
+    // Barres de houle totale (dégradé bleu) — largeur d'après le pas de la série
+    var stepH = 3;
+    if (swPts.length > 1) { for (var q = 1; q < swPts.length; q++) { var dg = swPts[q].g - swPts[q - 1].g; if (dg > 0) { stepH = dg; break; } } }
+    var bw = Math.max(4, (stepH / TH) * gw * 0.6);
     swPts.forEach(function(p) {
-      var bx = X(p.h) - bw / 2, by = Ys(p.tot), bh = gy + gh - by;
+      var bx = X(p.g) - bw / 2, by = Ys(p.tot), bh = gy + gh - by;
       var gr = ctx.createLinearGradient(0, by, 0, gy + gh);
-      gr.addColorStop(0, 'rgba(79,163,199,.85)'); gr.addColorStop(1, 'rgba(79,163,199,.28)');
-      ctx.fillStyle = gr; roundRect(ctx, bx, by, bw, Math.max(2, bh), 5); ctx.fill();
+      gr.addColorStop(0, 'rgba(79,163,199,.85)'); gr.addColorStop(1, 'rgba(79,163,199,.26)');
+      ctx.fillStyle = gr; roundRect(ctx, bx, by, bw, Math.max(2, bh), 3); ctx.fill();
     });
-
-    // Courbe de rafales (tireté clair) puis vent moyen (plein) — lissage quadratique
+    // Courbes vent + rafales, continues sur toute la fenêtre (lissage quadratique)
     function smooth(arr, YY, col, lw, dash) {
-      if (arr.length < 2) {
-        if (arr.length === 1) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(arr[0].h), YY(arr[0].v), lw, 0, Math.PI * 2); ctx.fill(); }
-        return;
-      }
-      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      if (dash) ctx.setLineDash(dash);
-      ctx.beginPath(); ctx.moveTo(X(arr[0].h), YY(arr[0].v));
-      for (var i = 1; i < arr.length - 1; i++) {
-        var mx = (X(arr[i].h) + X(arr[i + 1].h)) / 2, my = (YY(arr[i].v) + YY(arr[i + 1].v)) / 2;
-        ctx.quadraticCurveTo(X(arr[i].h), YY(arr[i].v), mx, my);
-      }
-      ctx.lineTo(X(arr[arr.length - 1].h), YY(arr[arr.length - 1].v));
-      ctx.stroke(); ctx.setLineDash([]);
+      if (arr.length < 2) { if (arr.length === 1) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(arr[0].g), YY(arr[0].v), lw, 0, Math.PI * 2); ctx.fill(); } return; }
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; if (dash) ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(X(arr[0].g), YY(arr[0].v));
+      for (var i = 1; i < arr.length - 1; i++) { var mx = (X(arr[i].g) + X(arr[i + 1].g)) / 2, my = (YY(arr[i].v) + YY(arr[i + 1].v)) / 2; ctx.quadraticCurveTo(X(arr[i].g), YY(arr[i].v), mx, my); }
+      ctx.lineTo(X(arr[arr.length - 1].g), YY(arr[arr.length - 1].v)); ctx.stroke(); ctx.setLineDash([]);
     }
-    // Rafale valide seulement si >= vent moyen (une rafale sous le vent = donnée
-    // aberrante, sinon le tireté plongeait sous la courbe pleine en fin de série).
-    var gustArr = wsPts.filter(function(p){ return p.wg != null && p.wg >= p.ws; }).map(function(p){ return { h: p.h, v: p.wg }; });
-    var windArr = wsPts.map(function(p){ return { h: p.h, v: p.ws }; });
-    smooth(gustArr, Yw, 'rgba(232,160,87,.5)', 3, [10, 7]);
-    smooth(windArr, Yw, C.warm, 5, null);
-    ctx.fillStyle = C.warm;
-    windArr.forEach(function(p){ ctx.beginPath(); ctx.arc(X(p.h), Yw(p.v), 4, 0, Math.PI * 2); ctx.fill(); });
+    // Rafale valide seulement si >= vent moyen (sinon le tireté plonge sous le vent).
+    var gustArr = wsPts.filter(function(p){ return p.wg != null && p.wg >= p.ws; }).map(function(p){ return { g: p.g, v: p.wg }; });
+    var windArr = wsPts.map(function(p){ return { g: p.g, v: p.ws }; });
+    smooth(gustArr, Yw, 'rgba(232,160,87,.5)', 2.5, [9, 6]);
+    smooth(windArr, Yw, C.warm, 4, null);
 
-    // Légende compacte (chip en haut à gauche) — lève l'ambiguïté barres/lignes
+    // « maintenant » dans la colonne du jour courant
+    var todayIdx = -1; days.forEach(function(day, di){ if (day.isToday) todayIdx = di; });
+    if (todayIdx >= 0 && nowH != null) {
+      var ng = todayIdx * 24 + nowH;
+      ctx.strokeStyle = 'rgba(253,224,104,.85)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(X(ng), gy); ctx.lineTo(X(ng), gy + gh); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(253,224,104,.95)'; ctx.font = '600 16px ' + FB; ctx.textAlign = 'center';
+      ctx.fillText('maintenant', Math.min(Math.max(X(ng), gx + 44), gx + gw - 44), gy + gh + 15);
+    }
+    // Légende compacte (chip)
     (function legend() {
       var segs = [['▮ houle (m)', C.accent], ['━ vent', C.warm], ['┄ raf. (nds)', 'rgba(232,160,87,.6)']];
-      ctx.font = '600 17px ' + FB; ctx.textAlign = 'left';
-      var tot = 0, pad = 14; segs.forEach(function(s){ tot += ctx.measureText(s[0]).width + pad; });
-      var lx = gx + 6, ly = gy + 8, ch = 26;
-      ctx.fillStyle = 'rgba(13,31,60,.72)'; roundRect(ctx, lx - 6, ly, tot + 6, ch, 8); ctx.fill();
+      ctx.font = '600 16px ' + FB; ctx.textAlign = 'left';
+      var tw = 0, pad = 13; segs.forEach(function(s){ tw += ctx.measureText(s[0]).width + pad; });
+      var lx = gx + 6, ly = gy + 6, ch = 24;
+      ctx.fillStyle = 'rgba(13,31,60,.78)'; roundRect(ctx, lx - 6, ly, tw + 6, ch, 7); ctx.fill();
       var cx = lx + 4;
-      segs.forEach(function(s){ ctx.fillStyle = s[1]; ctx.fillText(s[0], cx, ly + 18); cx += ctx.measureText(s[0]).width + pad; });
+      segs.forEach(function(s){ ctx.fillStyle = s[1]; ctx.fillText(s[0], cx, ly + 17); cx += ctx.measureText(s[0]).width + pad; });
     })();
-
-    // Marqueur heure représentative (ou "maintenant" si aujourd'hui)
-    var markH = (isToday && nowH != null) ? nowH : focusH;
-    if (markH != null && markH >= 0 && markH <= 24) {
-      ctx.strokeStyle = 'rgba(253,224,104,.85)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]);
-      ctx.beginPath(); ctx.moveTo(X(markH), gy); ctx.lineTo(X(markH), gy + gh); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(253,224,104,.95)'; ctx.font = '600 19px ' + FB; ctx.textAlign = 'center';
-      ctx.fillText(isToday ? 'maintenant' : 'vers ' + String(Math.round(markH)).padStart(2, '0') + 'h',
-        Math.min(Math.max(X(markH), gx + 54), gx + gw - 54), gy + 6);
-    }
     return y + h;
   }
 
   function draw(canvas, d) {
     var W = 1080, M = 56;
     var wr = windRel(d.wd, d.dir, d.ws, d.onshoreLimit, d.offshoreMin);
-    // Série du jour : meteo.nc en priorité, sinon GFS (une seule série tracée —
-    // le comparatif multimodèle vit dans l'app, ici on veut une figure lisible).
-    var series = (d.ncSeries && d.ncSeries.length) ? d.ncSeries : (d.gfsSeries || []);
-    var seriesSrc = (d.ncSeries && d.ncSeries.length) ? 'meteo.nc' : 'GFS';
-    var hasSeries = series && series.length;
+    // Aperçu multi-jours (façon widget gw-overview) : une colonne par jour NC.
+    var daysSeries = (d.daysSeries && d.daysSeries.length) ? d.daysSeries : null;
+    var seriesSrc = d.seriesSrc || 'modèle';
+    var hasSeries = !!daysSeries;
     var bmsOn = !!(d.bms && d.bms.active);
 
     // ── Layout vertical (hauteur calculée d'après le contenu) ──
@@ -364,12 +357,13 @@
     var isToday = (d.dayLabel === "Aujourd'hui") || (!d.dayLabel && !d.dateObj);
     var nowH = nowNC.getUTCHours() + nowNC.getUTCMinutes() / 60;
     if (hasSeries) {
-      // Légende source, en tête du panneau
+      // Titre + source, en tête du panneau. La journée focalisée (celle des stats
+      // ci-dessus) est repérée dans le météogramme par sa colonne surlignée.
       ctx.textAlign = 'right'; ctx.font = '600 20px ' + FB; ctx.fillStyle = C.faint;
       ctx.fillText('prévision ' + seriesSrc, W - M, meteoY - 8);
       ctx.textAlign = 'left'; ctx.font = '600 22px ' + FB; ctx.fillStyle = C.muted;
-      ctx.fillText('📈 HOULE & VENT — ' + (d.dayLabel || "aujourd'hui"), M, meteoY - 8);
-      meteogram(ctx, M, meteoY, W - 2 * M, meteoH, series, d.hour, isToday, nowH);
+      ctx.fillText('📈 HOULE & VENT — ' + daysSeries.length + ' jours', M, meteoY - 8);
+      meteogram(ctx, M, meteoY, W - 2 * M, meteoH, daysSeries, nowH);
     }
 
     // ── Marée (vraie courbe, interpolée par les extrêmes du jour) ──
