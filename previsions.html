@@ -1011,7 +1011,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <path d="M17,15 a7.5,7.5 0 0 1 -7.5,-7.5" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/>
       </g></svg>
     </div>
-    <div class="leg-txt"><b style="color:#f87171;">Cyclone tropical (sévère)</b><i>Vent moyen 10 min &gt; 117 km/h (&gt;63 kt) — symbole plein</i></div>
+    <div class="leg-txt"><b style="color:#f87171;">Cyclone tropical (sévère)</b><i>Vent moyen 10 min &gt; 117 km/h (&gt;63 nds) — symbole plein</i></div>
   </div>
   <div class="leg-row">
     <div class="leg-sym">
@@ -1021,7 +1021,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <path d="M17,15 a7.5,7.5 0 0 1 -7.5,-7.5" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
       </g></svg>
     </div>
-    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale modérée à forte</b><i>61–117 km/h · Cat 1 ou 2 (33–63 kt) — centre creux</i></div>
+    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale modérée à forte</b><i>61–117 km/h · Cat 1 ou 2 (33–63 nds) — centre creux</i></div>
   </div>
   <div class="leg-row">
     <div class="leg-sym">
@@ -1030,7 +1030,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
         <circle cx="17" cy="11" r="4.5" fill="#ef4444"/>
       </svg>
     </div>
-    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale faible · perturbation</b><i>&lt; 61 km/h (&lt;33 kt) — disque simple, pas de bras</i></div>
+    <div class="leg-txt"><b style="color:#fca5a5;">Dépression tropicale faible · perturbation</b><i>&lt; 61 km/h (&lt;33 nds) — disque simple, pas de bras</i></div>
   </div>
 
   <!-- ═══ FRONTS ═══ -->
@@ -14330,8 +14330,12 @@ function ensoRender() {
     height: 280,
     margin: { l: 44, r: 16, t: 10, b: 70 },
     legend: { orientation: 'h', y: -0.28, font: { size: 9 } },
-    xaxis: Object.assign({}, LAYOUT.xaxis, { title: { text: 'Anomalie ONI (°C)', standoff: 8 } }),
-    yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'Nb mois' }),
+    // type:'linear' explicite : les graphes temporels ci-dessus (Chart 1/2) font
+    // écrire type:'date' par Plotly DANS l'objet LAYOUT.xaxis partagé (Plotly mute
+    // le layout qu'on lui passe). Sans ça, l'histogramme héritait de l'axe date et
+    // affichait les anomalies (~-2 à +3) comme des millisecondes → « 11:00:00 ».
+    xaxis: Object.assign({}, LAYOUT.xaxis, { type: 'linear', autorange: true, title: { text: 'Anomalie ONI (°C)', standoff: 8 } }),
+    yaxis: Object.assign({}, LAYOUT.yaxis, { type: 'linear', autorange: true, title: 'Nb mois' }),
   }), CFG);
 
 
