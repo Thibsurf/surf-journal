@@ -5877,7 +5877,9 @@ function _buildShareDayPayload() {
       && x.dateObj.getUTCMonth()===dd.getUTCMonth() && x.dateObj.getUTCDate()===dd.getUTCDate(); })[0];
     if (!match) return [];
     return match.indices.map(function(i){
-      return { h: fc.dates[i].getUTCHours(), hs: fc.sw1h ? fc.sw1h[i] : null, ws: fc.wSpd ? fc.wSpd[i] : null };
+      return { h: fc.dates[i].getUTCHours(), ms: fc.dates[i].getTime(),
+        hs: fc.sw1h ? fc.sw1h[i] : null, tot: fc.totH ? fc.totH[i] : (fc.sw1h ? fc.sw1h[i] : null),
+        ws: fc.wSpd ? fc.wSpd[i] : null, wg: fc.wGst ? fc.wGst[i] : null, wd: fc.wDir ? fc.wDir[i] : null };
     }).sort(function(a,b){ return a.h - b.h; });
   }
 
@@ -8174,19 +8176,31 @@ async function _renderAromeCompare(j) {
   var cv = document.getElementById('arome-cmp');
   if (!wrap || !cv) return;
   // 1. Mesures : station associée (ou plus proche avec vent) — même source que 📡
-  var obs = [], stName = '';
+  var obs = [], stName = '', stDistKm = null;
+  var _spotObj = SPOTS[currentSpot];
   try {
-    var r = await _loadObsWind(SPOTS[currentSpot]);
+    var r = await _loadObsWind(_spotObj);
     var hist = r && r.data && r.data.properties && r.data.properties.history;
     if (hist && hist.length) {
       stName = r.station ? r.station.name : '';
+      // Distance spot↔station : les modèles sont échantillonnés AU SPOT, la mesure
+      // vient de cette station (souvent à plusieurs km) — un écart peut refléter
+      // la distance et non l'erreur du modèle. On l'affiche pour rendre le caveat
+      // quantitatif (haversine simplifiée, suffisante à cette échelle).
+      if (r.station && r.station.lat != null && _spotObj) {
+        var dLat = (r.station.lat - _spotObj.lat) * 111;
+        var dLon = (r.station.lon - _spotObj.lon) * 111 * Math.cos(_spotObj.lat * Math.PI / 180);
+        stDistKm = Math.sqrt(dLat * dLat + dLon * dLon);
+      }
       hist.forEach(function(e) {
         if (e && e.time && e.wind_speed != null) obs.push({ ms: new Date(e.time).getTime(), kt: e.wind_speed * 1.944, dir: e.wind_direction });
       });
     }
   } catch(e) {}
   var stEl = document.getElementById('arome-cmp-st');
-  if (stEl) stEl.textContent = stName ? '(' + stName + ')' : '(station indispo)';
+  if (stEl) stEl.textContent = stName
+    ? '(' + stName + (stDistKm != null ? ' · ~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km du spot' : '') + ')'
+    : '(station indispo)';
   // 1bis. BOM (Australie) et ECMWF (via Windguru) — mêmes sources que le
   // comparatif houle, mais leurs champs vent respectifs.
   var _spotForWind = SPOTS[currentSpot];
@@ -8373,9 +8387,17 @@ async function _renderAromeCompare(j) {
       return;
     }
     cands.sort(function(a, b) { return a.r.avg - b.r.avg; });
+    // Caveat spatial : les modèles sont pris AU SPOT, la mesure à la station
+    // (souvent à plusieurs km) — un écart peut refléter la distance, pas
+    // seulement l'erreur du modèle. Rendu quantitatif via stDistKm si connu.
+    var caveat = '<div style="margin-top:6px;font-size:9.5px;color:var(--faint);line-height:1.45;">'
+      + '⚠ Modèles échantillonnés <b>au spot</b> · mesures à la station <b>' + (stName || '?') + '</b>'
+      + (stDistKm != null ? ' (~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km)' : '')
+      + ' — un écart peut refléter cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle.</div>';
     el.innerHTML = '🎯 Le plus proche des mesures (' + cands[0].r.n + ' points croisés) : <b style="color:var(--ok);">' + cands[0].label
       + '</b> (écart moyen ' + cands[0].r.avg.toFixed(1) + ' kt) · '
-      + cands.slice(1).map(function(c) { return c.label + ' ' + c.r.avg.toFixed(1) + ' kt (' + c.r.n + ')'; }).join(' · ');
+      + cands.slice(1).map(function(c) { return c.label + ' ' + c.r.avg.toFixed(1) + ' kt (' + c.r.n + ')'; }).join(' · ')
+      + caveat;
   })();
 
   function draw(hoverMs) {

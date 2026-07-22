@@ -1,14 +1,19 @@
-/* share-card.js — Génère une carte résumé spot (PNG 1080×1200) + une ligne texte
-   pour partage WhatsApp. Vanilla canvas, zéro dépendance, palette/typo du thème.
-   Exposé : window.ShareCard = { draw, buildSummary, nextTides, tidesForDay, windRel, COMPASS }.
+/* share-card.js — Génère une FIGURE de partage (PNG, largeur 1080, hauteur auto)
+   façon widget du site : météogramme du jour (barres de houle + courbe de vent &
+   rafales, double axe m/kt) + vraie courbe de marée interpolée + bandeau stats +
+   BMS. Vanilla canvas, zéro dépendance, palette/typo du thème. Aussi une ligne
+   texte de résumé. Exposé : window.ShareCard = { draw, buildSummary, nextTides,
+   tidesForDay, windRel, COMPASS }.
 
    data attendu par draw()/buildSummary() :
    { spotName, ts|(dayLabel,dateObj,hour), hs, T, dir, hs2, tot, ws, wg, wd, p,
      score, scoreLabel, tide:{events:[{type,ms,h}],stateLabel?}, bms:{active,niveau,nature,severity}|null,
-     onshoreLimit, offshoreMin, ncSeries:[{h,hs,ws}], gfsSeries:[{h,hs,ws}] }
-   dayLabel/dateObj/hour/ncSeries/gfsSeries : partage d'un jour du widget
-   (previsions.html, _buildShareDayPayload) — sinon repli sur l'ancien mode
-   "maintenant" (ts seul, pas de mini-graphe).
+     onshoreLimit, offshoreMin,
+     ncSeries:[{h,ms,hs,tot,ws,wg,wd}], gfsSeries:[{h,ms,hs,tot,ws,wg,wd}] }
+   ncSeries (sinon gfsSeries) = série horaire du jour partagé, alimente le
+   météogramme (tot pour les barres, ws/wg pour les courbes). dayLabel/dateObj/
+   hour : partage d'un jour du widget (previsions.html, _buildShareDayPayload) —
+   sinon repli "maintenant" (ts seul) : stats + marée sans météogramme.
 */
 (function () {
   'use strict';
@@ -142,189 +147,307 @@
     ctx.restore();
   }
 
-  // Mini-graphe multimodèle (meteo.nc trait plein, GFS tireté) pour la
-  // journée partagée — demandé pour donner une tendance sur le jour, pas
-  // juste un chiffre instantané. ncPts/gfsPts : [{h, val}], h = heure NC 0-23.
-  function sparkline(ctx, x, y, w, h, ncPts, gfsPts, valKey, col) {
-    ncPts = (ncPts || []).filter(function(p){ return p[valKey] != null; });
-    gfsPts = (gfsPts || []).filter(function(p){ return p[valKey] != null; });
-    if (!ncPts.length && !gfsPts.length) return;
-    var maxV = Math.max(1, Math.max.apply(null, ncPts.concat(gfsPts).map(function(p){ return p[valKey]; })) * 1.15);
-    function X(hh) { return x + (hh / 24) * w; }
-    function Y(v) { return y + h - (v / maxV) * h; }
-    // Grille légère + repères 0h/12h/24h
-    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
-    [0, 12, 24].forEach(function(hh){ ctx.beginPath(); ctx.moveTo(X(hh), y); ctx.lineTo(X(hh), y + h); ctx.stroke(); });
-    function line(pts, dash) {
-      if (pts.length < 2) return;
-      ctx.strokeStyle = col; ctx.lineWidth = dash ? 3 : 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      if (dash) ctx.setLineDash([8, 6]);
-      ctx.beginPath(); ctx.moveTo(X(pts[0].h), Y(pts[0][valKey]));
-      for (var i = 1; i < pts.length; i++) ctx.lineTo(X(pts[i].h), Y(pts[i][valKey]));
+  // Interpolation cosinus entre extrêmes de marée consécutifs (forme réelle du
+  // flot/jusant, bien plus honnête que l'ancien sinus générique). Renvoie la
+  // hauteur à l'heure NC hh (0-24) ou null hors couverture des events.
+  function tideHeightAt(evs, hh) {
+    if (!evs || evs.length < 2) return null;
+    for (var i = 0; i < evs.length - 1; i++) {
+      var a = evs[i], b = evs[i + 1];
+      if (hh >= a.hNc && hh <= b.hNc && b.hNc > a.hNc) {
+        var t = (hh - a.hNc) / (b.hNc - a.hNc);
+        var e = (1 - Math.cos(t * Math.PI)) / 2;            // easing cosinus
+        return a.h + (b.h - a.h) * e;
+      }
+    }
+    return null;
+  }
+
+  // Météogramme d'une journée façon widget du site : barres de houle totale
+  // (bleu) + courbe de vent (orange) & rafales (tireté), double axe m / kt,
+  // repères horaires, marqueur de l'heure représentative. pts = série du jour
+  // [{h, tot, ws, wg, wd}] (heure NC 0-23). Retour: y de bas de panneau.
+  function meteogram(ctx, x, y, w, h, pts, focusH, isToday, nowH) {
+    // Fond panneau
+    ctx.fillStyle = C.surface; roundRect(ctx, x, y, w, h, 24); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 2; ctx.stroke();
+    var padL = 66, padR = 62, padT = 30, padB = 46;
+    var gx = x + padL, gw = w - padL - padR, gy = y + padT, gh = h - padT - padB;
+    var swPts = (pts || []).filter(function(p){ return p.tot != null; });
+    var wsPts = (pts || []).filter(function(p){ return p.ws != null; });
+    if (!swPts.length && !wsPts.length) {
+      ctx.fillStyle = C.faint; ctx.font = '400 26px ' + FB; ctx.textAlign = 'center';
+      ctx.fillText('Série du jour indisponible', x + w / 2, y + h / 2); return y + h;
+    }
+    var maxSw = Math.max(0.8, Math.max.apply(null, swPts.map(function(p){ return p.tot; })) * 1.28);
+    var gustV = wsPts.map(function(p){ return p.wg != null ? p.wg : p.ws; });
+    var maxKt = Math.max(10, Math.max.apply(null, gustV) * 1.18);
+    function X(hh) { return gx + (hh / 24) * gw; }
+    function Ys(v) { return gy + gh - (v / maxSw) * gh; }
+    function Yw(v) { return gy + gh - (v / maxKt) * gh; }
+
+    // Bandes nuit (avant 6h / après 18h) — repère visuel du site
+    ctx.fillStyle = 'rgba(0,0,0,.16)';
+    ctx.fillRect(X(0), gy, X(6) - X(0), gh);
+    ctx.fillRect(X(18), gy, X(24) - X(18), gh);
+    // Grille horizontale (houle) + axe gauche en m
+    ctx.textAlign = 'right'; ctx.font = '400 20px ' + FB;
+    var stepSw = maxSw > 3 ? 1 : 0.5;
+    for (var s = 0; s <= maxSw; s += stepSw) {
+      var yy = Ys(s);
+      ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(gx, yy); ctx.lineTo(gx + gw, yy); ctx.stroke();
+      ctx.fillStyle = 'rgba(122,148,170,.85)';
+      ctx.fillText((stepSw < 1 ? s.toFixed(1) : s) + '', gx - 10, yy + 7);
+    }
+    // Axe droit vent (kt)
+    ctx.textAlign = 'left'; ctx.fillStyle = C.warm;
+    var stepKt = maxKt > 30 ? 10 : 5;
+    for (var k = 0; k <= maxKt; k += stepKt) {
+      ctx.fillStyle = 'rgba(232,160,87,.75)';
+      ctx.fillText(k + '', gx + gw + 10, Yw(k) + 7);
+    }
+    // Repères horaires (0/6/12/18/24) + libellés
+    ctx.textAlign = 'center'; ctx.font = '600 20px ' + FB;
+    [0, 6, 12, 18, 24].forEach(function(hh) {
+      ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(X(hh), gy); ctx.lineTo(X(hh), gy + gh); ctx.stroke();
+      ctx.fillStyle = 'rgba(122,148,170,.9)';
+      ctx.fillText(String(hh).padStart(2, '0') + 'h', X(hh), y + h - 14);
+    });
+
+    // Barres de houle totale (bleu, dégradé vertical) — le pas de la série (3h nc
+    // ou 1h gfs) dicte la largeur de barre.
+    var stepH = swPts.length > 1 ? (swPts[1].h - swPts[0].h) || 3 : 3;
+    var bw = Math.max(6, (stepH / 24) * gw * 0.62);
+    swPts.forEach(function(p) {
+      var bx = X(p.h) - bw / 2, by = Ys(p.tot), bh = gy + gh - by;
+      var gr = ctx.createLinearGradient(0, by, 0, gy + gh);
+      gr.addColorStop(0, 'rgba(79,163,199,.85)'); gr.addColorStop(1, 'rgba(79,163,199,.28)');
+      ctx.fillStyle = gr; roundRect(ctx, bx, by, bw, Math.max(2, bh), 5); ctx.fill();
+    });
+
+    // Courbe de rafales (tireté clair) puis vent moyen (plein) — lissage quadratique
+    function smooth(arr, YY, col, lw, dash) {
+      if (arr.length < 2) {
+        if (arr.length === 1) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(arr[0].h), YY(arr[0].v), lw, 0, Math.PI * 2); ctx.fill(); }
+        return;
+      }
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      if (dash) ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(X(arr[0].h), YY(arr[0].v));
+      for (var i = 1; i < arr.length - 1; i++) {
+        var mx = (X(arr[i].h) + X(arr[i + 1].h)) / 2, my = (YY(arr[i].v) + YY(arr[i + 1].v)) / 2;
+        ctx.quadraticCurveTo(X(arr[i].h), YY(arr[i].v), mx, my);
+      }
+      ctx.lineTo(X(arr[arr.length - 1].h), YY(arr[arr.length - 1].v));
       ctx.stroke(); ctx.setLineDash([]);
     }
-    line(ncPts, false);
-    line(gfsPts, true);
+    // Rafale valide seulement si >= vent moyen (une rafale sous le vent = donnée
+    // aberrante, sinon le tireté plongeait sous la courbe pleine en fin de série).
+    var gustArr = wsPts.filter(function(p){ return p.wg != null && p.wg >= p.ws; }).map(function(p){ return { h: p.h, v: p.wg }; });
+    var windArr = wsPts.map(function(p){ return { h: p.h, v: p.ws }; });
+    smooth(gustArr, Yw, 'rgba(232,160,87,.5)', 3, [10, 7]);
+    smooth(windArr, Yw, C.warm, 5, null);
+    ctx.fillStyle = C.warm;
+    windArr.forEach(function(p){ ctx.beginPath(); ctx.arc(X(p.h), Yw(p.v), 4, 0, Math.PI * 2); ctx.fill(); });
+
+    // Légende compacte (chip en haut à gauche) — lève l'ambiguïté barres/lignes
+    (function legend() {
+      var segs = [['▮ houle (m)', C.accent], ['━ vent', C.warm], ['┄ raf. (kt)', 'rgba(232,160,87,.6)']];
+      ctx.font = '600 17px ' + FB; ctx.textAlign = 'left';
+      var tot = 0, pad = 14; segs.forEach(function(s){ tot += ctx.measureText(s[0]).width + pad; });
+      var lx = gx + 6, ly = gy + 8, ch = 26;
+      ctx.fillStyle = 'rgba(13,31,60,.72)'; roundRect(ctx, lx - 6, ly, tot + 6, ch, 8); ctx.fill();
+      var cx = lx + 4;
+      segs.forEach(function(s){ ctx.fillStyle = s[1]; ctx.fillText(s[0], cx, ly + 18); cx += ctx.measureText(s[0]).width + pad; });
+    })();
+
+    // Marqueur heure représentative (ou "maintenant" si aujourd'hui)
+    var markH = (isToday && nowH != null) ? nowH : focusH;
+    if (markH != null && markH >= 0 && markH <= 24) {
+      ctx.strokeStyle = 'rgba(253,224,104,.85)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(X(markH), gy); ctx.lineTo(X(markH), gy + gh); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(253,224,104,.95)'; ctx.font = '600 19px ' + FB; ctx.textAlign = 'center';
+      ctx.fillText(isToday ? 'maintenant' : 'vers ' + String(Math.round(markH)).padStart(2, '0') + 'h',
+        Math.min(Math.max(X(markH), gx + 54), gx + gw - 54), gy + 6);
+    }
+    return y + h;
   }
 
   function draw(canvas, d) {
-    var W = 1080, H = 1200, M = 60;
+    var W = 1080, M = 56;
+    var wr = windRel(d.wd, d.dir, d.ws, d.onshoreLimit, d.offshoreMin);
+    // Série du jour : meteo.nc en priorité, sinon GFS (une seule série tracée —
+    // le comparatif multimodèle vit dans l'app, ici on veut une figure lisible).
+    var series = (d.ncSeries && d.ncSeries.length) ? d.ncSeries : (d.gfsSeries || []);
+    var seriesSrc = (d.ncSeries && d.ncSeries.length) ? 'meteo.nc' : 'GFS';
+    var hasSeries = series && series.length;
+    var bmsOn = !!(d.bms && d.bms.active);
+
+    // ── Layout vertical (hauteur calculée d'après le contenu) ──
+    var headerTop = 56, headerH = 118;
+    var statsY = headerTop + headerH + 24, statsH = 176;
+    var meteoY = statsY + statsH + 26, meteoH = hasSeries ? 380 : 0;
+    var tideY = meteoY + (hasSeries ? meteoH + 26 : 0), tideH = 210;
+    var bmsY = tideY + tideH + 24, bmsH = bmsOn ? 84 : 0;
+    var footerY = (bmsOn ? bmsY + bmsH : tideY + tideH) + 52;
+    var H = footerY + 20;
+
     canvas.width = W; canvas.height = H;
     var ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.textBaseline = 'alphabetic';
-
-    // Fond dégradé océan
     var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, C.deep); g.addColorStop(1, C.ocean);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
-    var wr = windRel(d.wd, d.dir, d.ws, d.onshoreLimit, d.offshoreMin);
+    function roundCard(x, y, w, h, r) {
+      ctx.fillStyle = C.surface; roundRect(ctx, x, y, w, h, r || 22); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 2; ctx.stroke();
+    }
 
     // ── Header ──
-    ctx.fillStyle = C.text;
-    ctx.font = '700 30px ' + FB; ctx.textAlign = 'left';
-    ctx.fillText('🏄', M, 95);
-    ctx.fillStyle = C.text; ctx.font = '700 66px ' + FD;
-    ctx.fillText(String(d.spotName || 'Spot'), M + 56, 100);
-    // dateObj/dayLabel présents = partage d'un jour du widget (pas forcément
-    // "maintenant") → heure REPRÉSENTATIVE affichée comme "vers XXh", jamais
-    // une heure précise qui laisserait croire à une mesure en temps réel.
+    ctx.textAlign = 'left'; ctx.font = '700 34px ' + FB; ctx.fillStyle = C.text;
+    ctx.fillText('🏄', M, headerTop + 46);
+    ctx.font = '700 60px ' + FD; ctx.fillStyle = C.text;
+    ctx.fillText(String(d.spotName || 'Spot'), M + 58, headerTop + 52);
     var dateStr;
     if (d.dateObj) {
-      var wd = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][d.dateObj.getUTCDay()];
-      dateStr = (d.dayLabel && d.dayLabel !== wd ? d.dayLabel + ' — ' : '') + wd + ' ' + d.dateObj.getUTCDate()
-              + ' ' + ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'][d.dateObj.getUTCMonth()]
-              + (d.hour != null ? ' · vers ' + String(d.hour).padStart(2,'0') + 'h' : '');
+      var wdn = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][d.dateObj.getUTCDay()];
+      dateStr = (d.dayLabel && d.dayLabel !== wdn ? d.dayLabel + ' — ' : '') + wdn + ' ' + d.dateObj.getUTCDate()
+              + ' ' + ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'][d.dateObj.getUTCMonth()];
     } else {
       var dt = new Date(d.ts || Date.now());
       dateStr = dt.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' })
               + ' · ' + String(dt.getHours()).padStart(2,'0') + 'h' + String(dt.getMinutes()).padStart(2,'0');
     }
-    ctx.fillStyle = C.muted; ctx.font = '400 30px ' + FB;
-    ctx.fillText(dateStr, M, 150);
-    ctx.strokeStyle = C.border || 'rgba(255,255,255,.1)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(M, 178); ctx.lineTo(W - M, 178); ctx.stroke();
+    ctx.font = '400 28px ' + FB; ctx.fillStyle = C.muted;
+    ctx.fillText(dateStr, M, headerTop + 96);
 
-    // ── Cartes Houle + Vent (2 colonnes) ── cardH agrandi (300→380) pour
-    // loger le mini-graphe multimodèle du jour sans écraser le reste.
-    var cardY = 210, cardH = 380, cw = (W - 2 * M - 30) / 2, x1 = M, x2 = M + cw + 30;
-    var hasSeries = (d.ncSeries && d.ncSeries.length) || (d.gfsSeries && d.gfsSeries.length);
-    function card(x, y, w, h) { ctx.fillStyle = C.surface; roundRect(ctx, x, y, w, h, 24); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 2; ctx.stroke(); }
-    function label(txt, x, y) { ctx.fillStyle = C.muted; ctx.font = '600 22px ' + FB; ctx.textAlign = 'left';
-      ctx.fillText(txt.toUpperCase(), x, y); }
-    function sparkLegend(x, y) {
-      if (!hasSeries) return;
-      ctx.font = '400 18px ' + FB; ctx.textAlign = 'left';
-      ctx.fillStyle = C.text; ctx.fillText('━ meteo.nc', x, y);
-      ctx.fillStyle = C.muted; ctx.fillText('┄ GFS', x + 130, y);
-    }
-
+    // ── Bandeau stats : 3 mini-cartes (Houle / Vent / Score) ──
+    var gap = 24, cw = (W - 2 * M - 2 * gap) / 3;
+    var sx = [M, M + cw + gap, M + 2 * (cw + gap)];
+    function miniLabel(txt, x) { ctx.fillStyle = C.muted; ctx.font = '600 20px ' + FB; ctx.textAlign = 'left';
+      ctx.fillText(txt, x + 24, statsY + 36); }
     // Houle
-    card(x1, cardY, cw, cardH);
-    label('🌊 Houle', x1 + 28, cardY + 44);
-    ctx.fillStyle = C.text; ctx.font = '700 92px ' + FD; ctx.textAlign = 'left';
-    ctx.fillText((d.tot != null ? (+d.tot).toFixed(1) : '—') + ' m', x1 + 28, cardY + 150);
-    ctx.fillStyle = C.muted; ctx.font = '400 30px ' + FB;
-    ctx.fillText((d.T ? Math.round(d.T) + ' s' : '—') + (d.dir != null ? '  ·  ' + compass(d.dir) : ''), x1 + 28, cardY + 200);
-    arrow(ctx, x1 + cw - 60, cardY + 80, 46, d.dir, C.accent);
-    if (d.hs2 > 0.1) { ctx.fillStyle = C.faint; ctx.font = '400 24px ' + FB;
-      ctx.fillText('houle 2 : ' + (+d.hs2).toFixed(1) + ' m', x1 + 28, cardY + 234); }
-    sparkLegend(x1 + 28, cardY + cardH - 92);
-    sparkline(ctx, x1 + 28, cardY + cardH - 78, cw - 56, 60, d.ncSeries, d.gfsSeries, 'hs', C.accent);
-
+    roundCard(sx[0], statsY, cw, statsH);
+    miniLabel('🌊 HOULE', sx[0]);
+    ctx.fillStyle = C.text; ctx.font = '700 62px ' + FD; ctx.textAlign = 'left';
+    ctx.fillText((d.tot != null ? (+d.tot).toFixed(1) : '—') + ' m', sx[0] + 24, statsY + 100);
+    ctx.fillStyle = C.muted; ctx.font = '400 24px ' + FB;
+    ctx.fillText((d.T ? Math.round(d.T) + ' s' : '—') + (d.dir != null ? ' · ' + compass(d.dir) : ''), sx[0] + 24, statsY + 134);
+    if (d.dir != null) arrow(ctx, sx[0] + cw - 40, statsY + 54, 34, d.dir, C.accent);
     // Vent
-    card(x2, cardY, cw, cardH);
-    label('💨 Vent', x2 + 28, cardY + 44);
-    ctx.fillStyle = C.text; ctx.font = '700 92px ' + FD; ctx.textAlign = 'left';
-    ctx.fillText((d.ws != null ? Math.round(d.ws) : '—') + ' kt', x2 + 28, cardY + 150);
-    ctx.fillStyle = C.muted; ctx.font = '400 30px ' + FB;
-    ctx.fillText('raf. ' + (d.wg != null ? Math.round(d.wg) : '—') + ' kt' + (d.wd != null ? '  ·  ' + compass(d.wd) : ''), x2 + 28, cardY + 200);
-    arrow(ctx, x2 + cw - 60, cardY + 80, 46, d.wd, C.warm);
-    if (wr.txt) { // pastille verdict
-      ctx.font = '700 26px ' + FB; var pw = ctx.measureText(wr.txt).width + 40;
-      ctx.fillStyle = wr.col; roundRect(ctx, x2 + 28, cardY + 220, pw, 44, 22); ctx.fill();
-      ctx.fillStyle = C.ocean; ctx.textAlign = 'left'; ctx.fillText(wr.txt, x2 + 48, cardY + 250);
-    }
-    sparkLegend(x2 + 28, cardY + cardH - 92);
-    sparkline(ctx, x2 + 28, cardY + cardH - 78, cw - 56, 60, d.ncSeries, d.gfsSeries, 'ws', C.warm);
-
-    // ── Marée ──
-    var tY = cardY + cardH + 30, tH = 200;
-    card(M, tY, W - 2 * M, tH);
-    label('🌙 Marée', M + 28, tY + 44);
-    var tide = d.tide;
-    if (tide) {
-      ctx.textAlign = 'left';
-      var ty2 = tY + 110;
-      // events (commun aux deux modes : "prochaine" via nextTides, ou "du jour
-      // partagé" via tidesForDay qui peut en avoir jusqu'à 4/jour — on n'affiche
-      // que la 1re PM et la 1re BM trouvées, résumé pensé pour tenir sur la carte).
-      var evs = tide.events || [];
-      var pmEv = evs.filter(function(e){ return e.type==='pm'; })[0] || tide.nextPM || null;
-      var bmEv = evs.filter(function(e){ return e.type==='bm'; })[0] || tide.nextBM || null;
-      if (pmEv) { ctx.fillStyle = C.accent; ctx.font = '700 34px ' + FB;
-        ctx.fillText('▲ PM ' + _ncHM(pmEv.ms), M + 28, ty2);
-        ctx.fillStyle = C.faint; ctx.font = '400 24px ' + FB;
-        if (pmEv.h != null) ctx.fillText(pmEv.h.toFixed(2) + ' m', M + 28, ty2 + 36); }
-      if (bmEv) { ctx.fillStyle = C.muted; ctx.font = '700 34px ' + FB;
-        ctx.fillText('▼ BM ' + _ncHM(bmEv.ms), M + 300, ty2);
-        ctx.fillStyle = C.faint; ctx.font = '400 24px ' + FB;
-        if (bmEv.h != null) ctx.fillText(bmEv.h.toFixed(2) + ' m', M + 300, ty2 + 36); }
-      if (tide.stateLabel) { ctx.fillStyle = C.text; ctx.font = '400 28px ' + FB; ctx.textAlign = 'right';
-        ctx.fillText(tide.stateLabel, W - M - 28, tY + 50); }
-      else if (evs.length > 2) { ctx.fillStyle = C.faint; ctx.font = '400 22px ' + FB; ctx.textAlign = 'right';
-        ctx.fillText('+' + (evs.length - 2) + ' autre(s) ce jour', W - M - 28, tY + 50); }
-      // mini courbe sinus
-      var cxs = W - M - 320, cw2 = 280, cyc = tY + 130, amp = 36;
-      ctx.strokeStyle = C.accent; ctx.lineWidth = 4; ctx.beginPath();
-      for (var px = 0; px <= cw2; px += 6) {
-        var ph = (px / cw2) * Math.PI * 2;
-        var yy = cyc - Math.sin(ph) * amp * (tide.rising ? 1 : -1);
-        if (px === 0) ctx.moveTo(cxs + px, yy); else ctx.lineTo(cxs + px, yy);
-      }
-      ctx.stroke();
-      // Point "maintenant" seulement si le jour partagé EST aujourd'hui —
-      // pour un jour futur (dayLabel != "Aujourd'hui") ce marqueur mentirait.
-      if (!d.dayLabel || d.dayLabel === "Aujourd'hui") {
-        ctx.fillStyle = C.warm; ctx.beginPath(); ctx.arc(cxs + cw2 * 0.5, cyc, 8, 0, Math.PI * 2); ctx.fill();
-      }
-    } else {
-      ctx.fillStyle = C.faint; ctx.font = '400 28px ' + FB; ctx.textAlign = 'left';
-      ctx.fillText('Marées indisponibles', M + 28, tY + 110);
-    }
-
-    // ── Score ──
-    var sY = tY + tH + 30, sH = 120;
-    card(M, sY, W - 2 * M, sH);
-    label('Score session', M + 28, sY + 44);
+    roundCard(sx[1], statsY, cw, statsH);
+    miniLabel('💨 VENT', sx[1]);
+    ctx.fillStyle = C.text; ctx.font = '700 62px ' + FD; ctx.textAlign = 'left';
+    ctx.fillText((d.ws != null ? Math.round(d.ws) : '—') + ' kt', sx[1] + 24, statsY + 100);
+    ctx.fillStyle = C.muted; ctx.font = '400 24px ' + FB;
+    ctx.fillText('raf. ' + (d.wg != null ? Math.round(d.wg) : '—') + (d.wd != null ? ' · ' + compass(d.wd) : ''), sx[1] + 24, statsY + 134);
+    if (d.wd != null) arrow(ctx, sx[1] + cw - 40, statsY + 54, 34, d.wd, C.warm);
+    if (wr.txt) { ctx.font = '700 19px ' + FB; var pw = ctx.measureText(wr.txt).width + 28;
+      ctx.fillStyle = wr.col; roundRect(ctx, sx[1] + 24, statsY + 148, pw, 28, 14); ctx.fill();
+      ctx.fillStyle = C.ocean; ctx.textAlign = 'left'; ctx.fillText(wr.txt, sx[1] + 38, statsY + 167); }
+    // Score
+    roundCard(sx[2], statsY, cw, statsH);
+    miniLabel('SCORE', sx[2]);
     var sc = (d.score != null) ? d.score : 0;
     var scCols = ['#3d5468','#7a94aa','#4fa3c7','#3dba8a','#e8a057','#7b6cf6'];
-    ctx.textAlign = 'left'; ctx.font = '700 56px ' + FB;
-    var dotX = M + 28;
     for (var i = 0; i < 5; i++) { ctx.fillStyle = i < sc ? scCols[sc] : 'rgba(255,255,255,.12)';
-      ctx.beginPath(); ctx.arc(dotX + i * 64 + 24, sY + 86, 22, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = scCols[sc]; ctx.font = '700 44px ' + FD; ctx.textAlign = 'right';
-    ctx.fillText((d.scoreLabel || '') + '  ' + sc + '/5', W - M - 28, sY + 96);
+      ctx.beginPath(); ctx.arc(sx[2] + 40 + i * 44, statsY + 82, 16, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = scCols[sc]; ctx.font = '700 30px ' + FD; ctx.textAlign = 'left';
+    ctx.fillText((d.scoreLabel || '') + ' · ' + sc + '/5', sx[2] + 24, statsY + 132);
 
-    // ── Bandeau BMS (si actif) ──
-    var footY = H - 50;
-    if (d.bms && d.bms.active) {
-      var bY = sY + sH + 24, bH = 70;
+    // ── Météogramme du jour (la figure façon site) ──
+    var nowNC = new Date(Date.now() + 11 * 3600000);
+    var isToday = (d.dayLabel === "Aujourd'hui") || (!d.dayLabel && !d.dateObj);
+    var nowH = nowNC.getUTCHours() + nowNC.getUTCMinutes() / 60;
+    if (hasSeries) {
+      // Légende source, en tête du panneau
+      ctx.textAlign = 'right'; ctx.font = '600 20px ' + FB; ctx.fillStyle = C.faint;
+      ctx.fillText('prévision ' + seriesSrc, W - M, meteoY - 8);
+      ctx.textAlign = 'left'; ctx.font = '600 22px ' + FB; ctx.fillStyle = C.muted;
+      ctx.fillText('📈 HOULE & VENT — ' + (d.dayLabel || 'jour'), M, meteoY - 8);
+      meteogram(ctx, M, meteoY, W - 2 * M, meteoH, series, d.hour, isToday, nowH);
+    }
+
+    // ── Marée (vraie courbe, interpolée par les extrêmes du jour) ──
+    ctx.textAlign = 'left'; ctx.font = '600 22px ' + FB; ctx.fillStyle = C.muted;
+    ctx.fillText('🌙 MARÉE — ' + (d.dayLabel || 'jour'), M, tideY - 8);
+    roundCard(M, tideY, W - 2 * M, tideH);
+    var tide = d.tide;
+    var evs = (tide && tide.events || []).map(function(e){
+      var dt2 = new Date(e.ms + 11 * 3600000);            // ms UTC → heure NC
+      return { h: e.h, hNc: dt2.getUTCHours() + dt2.getUTCMinutes() / 60, ms: e.ms, type: e.type };
+    }).sort(function(a, b){ return a.hNc - b.hNc; });
+    if (evs.length) {
+      // Courbe pleine largeur : chaque extrême est déjà étiqueté (heure + hauteur),
+      // donc plus de colonne texte redondante à gauche (elle serrait tout).
+      var tpL = 50, tpR = 44, tpT = 52, tpB = 42;
+      var tgx = M + tpL, tgw = (W - 2 * M) - tpL - tpR, tgy = tideY + tpT, tgh = tideH - tpT - tpB;
+      var hs2 = evs.map(function(e){ return e.h; });
+      var hMin = Math.min.apply(null, hs2) - 0.12, hMax = Math.max.apply(null, hs2) + 0.12;
+      if (hMax - hMin < 0.5) { hMax = hMin + 0.5; }
+      function clampX(v){ return Math.min(Math.max(v, tgx + 42), tgx + tgw - 42); }
+      function TX(hh) { return tgx + (hh / 24) * tgw; }
+      function TY(v) { return tgy + tgh - ((v - hMin) / (hMax - hMin)) * tgh; }
+      // repères horaires
+      ctx.textAlign = 'center'; ctx.font = '400 18px ' + FB;
+      [0, 6, 12, 18, 24].forEach(function(hh){
+        ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(TX(hh), tgy); ctx.lineTo(TX(hh), tgy + tgh); ctx.stroke();
+        ctx.fillStyle = 'rgba(122,148,170,.8)'; ctx.fillText(String(hh).padStart(2,'0') + 'h', TX(hh), tideY + tideH - 14);
+      });
+      // courbe interpolée + remplissage
+      var pathPts = [];
+      for (var hh = 0; hh <= 24; hh += 0.5) {
+        var hv = tideHeightAt(evs, hh);
+        if (hv == null) hv = (hh < evs[0].hNc) ? evs[0].h : evs[evs.length - 1].h; // extension plate aux bords
+        pathPts.push({ x: TX(hh), y: TY(hv) });
+      }
+      ctx.beginPath(); ctx.moveTo(pathPts[0].x, tgy + tgh);
+      pathPts.forEach(function(p){ ctx.lineTo(p.x, p.y); });
+      ctx.lineTo(pathPts[pathPts.length - 1].x, tgy + tgh); ctx.closePath();
+      ctx.fillStyle = 'rgba(79,163,199,.12)'; ctx.fill();
+      ctx.beginPath(); pathPts.forEach(function(p, i){ i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+      ctx.strokeStyle = C.accent; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.stroke();
+      // marqueurs PM/BM : PM étiqueté au-dessus, BM en-dessous, x clampé aux bords
+      evs.forEach(function(e){
+        var isPM = e.type === 'pm';
+        var px = TX(e.hNc), lx = clampX(px), py = TY(e.h);
+        ctx.fillStyle = isPM ? C.accent : C.muted;
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.textAlign = 'center';
+        ctx.font = '700 24px ' + FB; ctx.fillStyle = isPM ? C.accent : C.muted;
+        ctx.fillText((isPM ? '▲ ' : '▼ ') + _ncHM(e.ms), lx, isPM ? py - 20 : py + 36);
+        ctx.fillStyle = C.faint; ctx.font = '400 19px ' + FB;
+        ctx.fillText(e.h.toFixed(2) + ' m', lx, isPM ? py - 44 : py + 58);
+      });
+      // marqueur heure du jour (représentative / maintenant)
+      var mH = isToday ? nowH : d.hour;
+      if (mH != null) { ctx.strokeStyle = 'rgba(253,224,104,.8)'; ctx.lineWidth = 2.5; ctx.setLineDash([6,5]);
+        ctx.beginPath(); ctx.moveTo(TX(mH), tgy); ctx.lineTo(TX(mH), tgy + tgh); ctx.stroke(); ctx.setLineDash([]); }
+    } else {
+      ctx.fillStyle = C.faint; ctx.font = '400 26px ' + FB; ctx.textAlign = 'left';
+      ctx.fillText('Marées indisponibles', M + 24, tideY + tideH / 2);
+    }
+
+    // ── Bandeau BMS ──
+    if (bmsOn) {
       var red = d.bms.severity === 'red';
-      ctx.fillStyle = red ? 'rgba(224,92,92,.18)' : 'rgba(232,160,87,.18)';
-      roundRect(ctx, M, bY, W - 2 * M, bH, 16); ctx.fill();
+      ctx.fillStyle = red ? 'rgba(224,92,92,.16)' : 'rgba(232,160,87,.16)';
+      roundRect(ctx, M, bmsY, W - 2 * M, bmsH, 16); ctx.fill();
       ctx.strokeStyle = red ? C.bad : C.warm; ctx.lineWidth = 2; ctx.stroke();
       var zone = d.bms.niveau === 'both' ? 'Lagon & Large' : d.bms.niveau === 'large' ? 'Large' : 'Lagon';
       var nat = (d.bms.nature || '').replace(/^Avis de\s*/i, '');
-      ctx.fillStyle = red ? C.bad : C.warm; ctx.font = '700 30px ' + FB; ctx.textAlign = 'left';
-      ctx.fillText('⚠️  BMS ' + zone + (nat ? ' — ' + nat : ''), M + 24, bY + 46);
+      ctx.fillStyle = red ? C.bad : C.warm; ctx.font = '700 28px ' + FB; ctx.textAlign = 'left';
+      ctx.fillText('⚠️  BMS ' + zone + (nat ? ' — ' + nat : ''), M + 24, bmsY + bmsH / 2 + 10);
     }
 
     // ── Footer ──
-    ctx.fillStyle = C.faint; ctx.font = '400 26px ' + FB; ctx.textAlign = 'center';
-    ctx.fillText('via thibsurf.github.io', W / 2, footY);
+    ctx.fillStyle = C.faint; ctx.font = '400 24px ' + FB; ctx.textAlign = 'center';
+    ctx.fillText('via thibsurf.github.io · UTC+11', W / 2, footerY);
   }
 
   window.ShareCard = { draw: draw, buildSummary: buildSummary, nextTides: nextTides, tidesForDay: tidesForDay, windRel: windRel, COMPASS: COMPASS };
