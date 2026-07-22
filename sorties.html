@@ -970,7 +970,7 @@ nav a.back:hover{color:var(--text);}
         <input type="number" class="form-input" id="fb-period" step="1" min="0" max="30" placeholder="ex: 12">
       </div>
       <div class="form-group">
-        <label class="form-label">Vent (kt)</label>
+        <label class="form-label">Vent (nds)</label>
         <input type="number" class="form-input" id="fb-wind" step="1" min="0" max="60" placeholder="ex: 10">
       </div>
       <div class="form-group">
@@ -1474,7 +1474,7 @@ async function loadMeteoForSortie(s) {
     };
     el.innerHTML = (hs ? '<div class="m-item"><span class="v" style="' + hsColor + '">🌊 ' + hs.toFixed(1) + 'm</span><span class="l">Houle' + (sDir !== null ? ' ' + dirArrow(sDir) : '') + '</span></div>' : '')
       + (per ? '<div class="m-item"><span class="v">⏱ ' + Math.round(per) + 's</span><span class="l">Période</span></div>' : '')
-      + (ws ? '<div class="m-item"><span class="v' + (ws >= 20 ? '" style="color:var(--warm)' : '') + '">💨 ' + Math.round(ws) + 'kt</span><span class="l">Vent' + (wd !== null ? ' ' + dirArrow(wd) + ' ' + degCompass(wd) : '') + '</span></div>' : '')
+      + (ws ? '<div class="m-item"><span class="v' + (ws >= 20 ? '" style="color:var(--warm)' : '') + '">💨 ' + Math.round(ws) + 'nds</span><span class="l">Vent' + (wd !== null ? ' ' + dirArrow(wd) + ' ' + degCompass(wd) : '') + '</span></div>' : '')
       + '<div class="meteo-source" title="' + escapeHtml(coords.name) + ' (' + lat.toFixed(2) + ', ' + lon.toFixed(2) + ')">' + srcLabel + '</div>'
       + '<a href="https://thibsurf.github.io/surf-journal/previsions.html" target="_blank" style="font-size:10px;color:var(--text-muted);text-decoration:none;align-self:center;">↗ NC</a>';
   } catch(e) {
@@ -2893,7 +2893,7 @@ function mg_drawHeader(ctx,D,C,x,y,w,h) {
     {ic:'wave', col:C.accent, lb:'HS MAX',      val:maxHs.toFixed(1)+'m'},
     {ic:'clk',  col:C.ok,     lb:'PÉRIODE',     val:avgP+'s'},
     {ic:'arr',  col:'#a99ff8',lb:'DIR. HOULE',  val:mg_dCard(avgSD)+' '+avgSD+'°', ang:avgSD},
-    {ic:'wnd',  col:C.warn,   lb:'VENT MOY.',   val:avgW+'kt '+mg_dCard(avgWD),    ang:avgWD}
+    {ic:'wnd',  col:C.warn,   lb:'VENT MOY.',   val:avgW+'nds '+mg_dCard(avgWD),    ang:avgWD}
   ];
   var cw=(w-80)/4;
   cells.forEach(function(c,ci){
@@ -3009,12 +3009,12 @@ function mg_drawSwellWind(ctx,D,C,x,y,w,h){
     var wgy=wTop+(g/3)*wBH;
     mg_gridLine(ctx,iX,wgy,iW);
     ctx.fillStyle=C.warn;mg_sf(ctx,400,17,'DM Sans');
-    ctx.fillText((maxW*(1-g/3)).toFixed(0)+'kt', iX+iW+8, wgy+6);
+    ctx.fillText((maxW*(1-g/3)).toFixed(0)+'nds', iX+iW+8, wgy+6);
   }
   ctx.save();
   ctx.translate(x+w-12,wTop+wBH/2); ctx.rotate(Math.PI/2);
   ctx.fillStyle=C.warn;mg_sf(ctx,500,17,'DM Sans'); ctx.textAlign='center';
-  ctx.fillText('Vent (kt)',0,0); ctx.restore();
+  ctx.fillText('Vent (nds)',0,0); ctx.restore();
 
   // Colonnes de NUIT ombrées (signature du widget prévisions : lecture immédiate
   // des créneaux hors jour) — avant la bande session pour rester dessous
