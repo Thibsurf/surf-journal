@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NC Surf Token",
-  "version": "10.0",
+  "version": "10.1",
   "description": "Capture token meteo.nc → sync Worker Cloudflare → surf-journal",
   "icons": {
     "16": "icons/icon16.png",

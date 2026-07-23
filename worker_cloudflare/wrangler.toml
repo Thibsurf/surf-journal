@@ -10,6 +10,10 @@ id = "e9372c7921294e63ab6af2cc72654770"
 [vars]
 # URL Supabase (publique). La clé anon est un secret : wrangler secret put SUPABASE_ANON_KEY
 SUPABASE_URL = "https://tiiptlozingmgzcnexpu.supabase.co"
+# Clé requise sur POST /token (header X-Push-Key), doit matcher WORKER_PUSH_KEY
+# dans extension/background.js et WORKER_PUSH_KEY dans index.html :
+# wrangler secret put PUSH_SECRET
+#   → 019768ceac62406ad51fd34c9f26f7589356dc43
 
 [triggers]
 crons = ["*/5 * * * *"]

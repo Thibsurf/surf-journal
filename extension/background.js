@@ -3,6 +3,9 @@
 
 var WORKER_URL   = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
 var STORAGE_KEY  = 'nc_surf_token';
+// Clé partagée attendue par le worker sur POST /token (doit matcher le secret
+// PUSH_SECRET configuré côté Cloudflare : wrangler secret put PUSH_SECRET).
+var WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 
 // ── État interne du SW (en mémoire, réinitialisé si SW redémarre) ─────────────
 var _lastSyncedToken = null;   // évite les syncs en double
@@ -114,7 +117,7 @@ function storeAndSync(token, source) {
 function syncToWorker(token, cb) {
   fetch(WORKER_URL + '/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Push-Key': WORKER_PUSH_KEY },
     body: JSON.stringify({ token: token })
   }).then(function(r) {
     if (!r.ok) console.warn('[NC v10] Worker /token HTTP', r.status);

@@ -159,13 +159,22 @@ export default {
       }
 
       // ── /token POST — rétrocompat extension Chrome ───────────────────────────
+      // Écriture protégée par clé partagée (header X-Push-Key) : sans elle, n'importe
+      // qui connaissant l'URL du worker pouvait écraser le token partagé par tous les
+      // utilisateurs (DoS silencieux) ou y injecter n'importe quoi. La clé n'est pas un
+      // vrai secret (visible dans le code client de l'extension et de index.html) mais
+      // elle stoppe l'abus trivial/automatisé — cohérent avec le niveau de risque ici.
       if (
         (url.pathname === "/token" || url.pathname === "/token-sync") &&
         request.method === "POST"
       ) {
+        if (!env.PUSH_SECRET || request.headers.get("X-Push-Key") !== env.PUSH_SECRET) {
+          return json({ ok: false, error: "unauthorized" }, 401);
+        }
         const body = await request.json();
         if (!body.token) return json({ ok: false, error: "missing token" }, 400);
         const trimmed = body.token.trim();
+        if (!trimmed.startsWith("eyJ")) return json({ ok: false, error: "invalid token format" }, 400);
         await env.KV_BINDING.put("jwt", trimmed, { expirationTtl: 3600 });
         await pushTokenToSupabase(env, trimmed); // propage le token de l'extension vers Supabase
         console.log("[Worker] Token externe stocké (extension), longueur:", trimmed.length);
