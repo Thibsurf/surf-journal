@@ -3,6 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>
+// Mode « widget » : ?widget=1 dans l'URL — n'affiche que le météogramme
+// (#gw-widget), sans nav ni chrome, pour être capturé par une appli de
+// widget Android (type Widgery/Web Widget) sur l'écran d'accueil ou,
+// via Good Lock → LockStar, sur l'écran de verrouillage. Tag posé au plus
+// tôt (avant le <body>) pour éviter un flash du layout complet au chargement.
+if (location.search.indexOf('widget=1') >= 0) {
+  document.documentElement.classList.add('widget-mode');
+}
+</script>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#4fa3c7">
 <meta name="mobile-web-app-capable" content="yes">
@@ -15,6 +25,17 @@
 <link rel="icon" href="favicon.ico">
 <link rel="stylesheet" href="pwa.css">
 <title>Prévisions Surf NC</title>
+<meta name="description" content="Prévisions marine locales pour la Nouvelle-Calédonie : houle, vent, marées, SST, UV — données meteo.nc, le modèle AROME calibré NC.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://thibsurf.github.io/surf-journal/previsions.html">
+<meta property="og:title" content="Prévisions Surf NC">
+<meta property="og:description" content="Prévisions marine locales pour la Nouvelle-Calédonie : houle, vent, marées, SST, UV — données meteo.nc, le modèle AROME calibré NC.">
+<meta property="og:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Prévisions Surf NC">
+<meta name="twitter:description" content="Prévisions marine locales pour la Nouvelle-Calédonie : houle, vent, marées, SST, UV — données meteo.nc, le modèle AROME calibré NC.">
+<meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'"/>
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -357,6 +378,18 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 @keyframes rotHoraire{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 @keyframes eyePulse{from{r:8}to{r:10}}
 @keyframes convLeft{0%,100%{transform:translateX(0);opacity:.6}50%{transform:translateX(11px);opacity:1}}
+
+/* ── MODE WIDGET (?widget=1) : uniquement le météogramme, sans chrome ── */
+html.widget-mode nav,
+html.widget-mode #token-sync-status,
+html.widget-mode #quick-nav-menu,
+html.widget-mode .container > *:not(#gw-widget),
+html.widget-mode #gw-widget .gw-tools,
+html.widget-mode #gw-ov-readout { display:none !important; }
+html.widget-mode body { background:var(--ocean); }
+html.widget-mode body::before { display:none; }
+html.widget-mode .container { max-width:480px; margin:0 auto; padding:8px; }
+html.widget-mode #gw-widget { margin-bottom:0; }
 @keyframes convRight{0%,100%{transform:translateX(0);opacity:.6}50%{transform:translateX(-11px);opacity:1}}
 @keyframes riseCol{0%{transform:translateY(6px);opacity:.4}60%{opacity:1}100%{transform:translateY(-8px);opacity:0}}
 .sym-spin{animation:cycloneSpin 4s linear infinite;display:inline-block;transform-origin:center;}
@@ -505,8 +538,18 @@ table.ft .night td{background:rgba(0,0,0,.15);}
       </div>
     </div>
     <div style="position:relative;width:100%;"><canvas id="swell-cmp" style="width:100%;display:block;cursor:crosshair;"></canvas></div>
-    <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles</div>
+    <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)</div>
     <div id="swell-cmp-vote" style="display:none;margin-top:10px;padding:10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;"></div>
+  </div>
+
+  <!-- Petit encart « fourchette inter-modèles » : min/max Hs/période/direction houle
+       et vent/direction vent à l'instant lu (survol de l'un ou l'autre graphe juste
+       au-dessus/en dessous), avec repère simplifié meilleur/pire cas. Alimenté par
+       _renderCmpExtremes() (previsions.html JS), sans fetch réseau propre — repose
+       sur _swellCache et _aromeCmpCache déjà chargés par les comparatifs houle/vent. -->
+  <div class="card" id="cmp-extremes-card" style="margin-bottom:12px;padding:10px 14px;display:none;">
+    <div class="section-label" style="margin-bottom:6px;" title="Étendue entre les prévisions des différents modèles disponibles pour ce spot — plus l'écart est grand, plus les modèles sont en désaccord.">📊 Fourchette inter-modèles</div>
+    <div id="cmp-extremes-body" style="font-size:11px;color:var(--muted);"></div>
   </div>
 
   <!-- 2ᵉ FIGURE PRINCIPALE (après le widget houle/marée) : AROME puis Puissance -->
@@ -1744,7 +1787,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 </div>
 </div>
 
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8"></script>
 <!-- Token meteo.nc partagé (classique, doit charger avant le script principal) -->
 <script src="assets/nc-token.js"></script>
 <script src="assets/app-cache.js"></script>
@@ -4058,6 +4101,170 @@ var SWELL_MODELS = [
 var _swellMode = 'primary'; // 'primary' | 'secondary'
 var _swellCache = null;     // { nc:{primary,secondary}, gfs:{...}, bom:{...}, mf:{...} } — repeuplé par fetch, redessiné sans réseau au toggle
 
+// ─── Zoom réutilisable pour les mini-graphes canvas « faits main » houle/vent
+// multi-modèles (ces graphes ne sont PAS du Chart.js — dessin manuel — donc pas de
+// plugin zoom tout fait). Bouton (marche partout, y compris sans geste tactile),
+// molette (desktop, centrée sur le curseur) et pincement à 2 doigts (mobile).
+// Le survol à 1 doigt existant (lecture des valeurs) n'est jamais touché : seul un
+// geste à 2 doigts déclenche le zoom → aucune régression du comportement actuel.
+// zoomState {a,b} : fraction [0,1] de la plage temporelle complète actuellement
+// affichée — partagé avec la fonction de dessin hôte, qui doit relire zoomState et
+// redessiner SANS refetch réseau (cf. _drawSwellCompare / _drawAromeCompareFromCache).
+function _attachCmpZoom(cv, zoomState, redraw) {
+  if (cv._zoomAttached) { _updateZoomBtn(cv, zoomState); return; }
+  cv._zoomAttached = true;
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.style.cssText = 'position:absolute;top:2px;right:2px;z-index:2;background:rgba(6,16,30,.75);'
+    + 'border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:2px 8px;'
+    + 'font-size:9.5px;font-family:var(--font-b);cursor:pointer;line-height:1.5;';
+  (cv.parentElement || cv).appendChild(btn);
+  cv._zoomBtn = btn;
+  function zoomAt(fx, factor) {
+    var a = zoomState.a, b = zoomState.b, w = b - a;
+    var fixed = a + fx * w;
+    var nw = Math.min(1, Math.max(0.03, w / factor));
+    var na = fixed - fx * nw, nb = fixed + (1 - fx) * nw;
+    if (na < 0) { nb -= na; na = 0; }
+    if (nb > 1) { na -= (nb - 1); nb = 1; }
+    zoomState.a = Math.max(0, na); zoomState.b = Math.min(1, nb);
+    redraw(); _updateZoomBtn(cv, zoomState);
+  }
+  function reset() { zoomState.a = 0; zoomState.b = 1; redraw(); _updateZoomBtn(cv, zoomState); }
+  btn.onclick = function() {
+    var zoomed = zoomState.a > 0.001 || zoomState.b < 0.999;
+    if (zoomed) reset(); else zoomAt(0.5, 2.2);
+  };
+  cv.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    var rect = cv.getBoundingClientRect();
+    var fx = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    zoomAt(fx, e.deltaY < 0 ? 1.35 : 1 / 1.35);
+  }, { passive: false });
+  cv.addEventListener('dblclick', reset);
+  var lastPinchDist = null, lastTapMs = 0;
+  cv.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 2) {
+      var dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+    } else if (e.touches.length === 1) {
+      var now = Date.now();
+      if (now - lastTapMs < 320) reset();
+      lastTapMs = now;
+    }
+  }, { passive: true });
+  cv.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      var ta = e.touches[0], tb = e.touches[1];
+      var dx = ta.clientX - tb.clientX, dy = ta.clientY - tb.clientY;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (lastPinchDist) {
+        var rect = cv.getBoundingClientRect();
+        var midX = (ta.clientX + tb.clientX) / 2;
+        var fx = Math.min(1, Math.max(0, (midX - rect.left) / rect.width));
+        zoomAt(fx, dist / lastPinchDist);
+      }
+      lastPinchDist = dist;
+    }
+  }, { passive: false });
+  cv.addEventListener('touchend', function(e) { if (e.touches.length < 2) lastPinchDist = null; });
+  _updateZoomBtn(cv, zoomState);
+}
+function _updateZoomBtn(cv, zoomState) {
+  var btn = cv._zoomBtn; if (!btn) return;
+  var zoomed = zoomState.a > 0.001 || zoomState.b < 0.999;
+  btn.textContent = zoomed ? '↺ dézoomer' : '🔍 zoom';
+  btn.title = zoomed ? 'Revenir à la vue complète (ou double-tap/double-clic)'
+    : 'Zoomer pour mieux distinguer les courbes — molette, pincement à 2 doigts, ou ce bouton (double-tap/double-clic pour réinitialiser)';
+}
+
+// ─── Encart « fourchette inter-modèles » : à l'instant lu (survol houle OU vent —
+// liaison bidirectionnelle déjà en place —, sinon « maintenant »), étendue min/max
+// entre TOUS les modèles dispo pour Hs/période/direction houle et vitesse/direction
+// vent, avec un repère simplifié « meilleur cas / pire cas ». Lu uniquement depuis
+// les caches déjà en mémoire (_swellCache / _aromeCmpCache) : aucun fetch réseau.
+var CPTS16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+function _compassLbl(deg) { return CPTS16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
+// Étendue angulaire minimale couvrant un jeu de directions (gère le passage 360°→0°) :
+// on cherche le plus grand « trou » entre directions triées, l'arc utile est le reste.
+function _circularSpan(dirs) {
+  if (!dirs.length) return null;
+  if (dirs.length === 1) return { lo: dirs[0], hi: dirs[0] };
+  var s = dirs.slice().sort(function(a, b) { return a - b; });
+  var maxGap = -1, gapIdx = 0;
+  for (var i = 0; i < s.length; i++) {
+    var next = (i + 1 < s.length) ? s[i + 1] : s[0] + 360;
+    var gap = next - s[i];
+    if (gap > maxGap) { maxGap = gap; gapIdx = i; }
+  }
+  return { lo: s[(gapIdx + 1) % s.length], hi: s[gapIdx] };
+}
+function _nearestPt(pts, ms, tol) {
+  var best = null, bd = tol || 4 * 3600000;
+  (pts || []).forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
+  return best;
+}
+function _renderCmpExtremes(atMs) {
+  var card = document.getElementById('cmp-extremes-card');
+  var box = document.getElementById('cmp-extremes-body');
+  if (!card || !box) return;
+  var ms = atMs != null ? atMs : Date.now();
+  var comp = _swellMode === 'secondary' ? 'secondary' : 'primary';
+  var swellPts = [];
+  if (_swellCache) SWELL_MODELS.forEach(function(m) {
+    var arr = _swellCache[m.key] && _swellCache[m.key][comp];
+    var p = _nearestPt(arr, ms);
+    if (p) swellPts.push({ label: m.label, h: p.h, t: p.t, dir: p.dir });
+  });
+  var windPts = [];
+  var wc = _aromeCmpCache;
+  if (wc) [['AROME', wc.aro], ['meteo.nc', wc.pageNc], ['GFS', wc.pageGfs], ['BOM', wc.bomWind], ['ECMWF', wc.ecmwfWind]].forEach(function(pair) {
+    var p = _nearestPt(pair[1], ms, 5400000);
+    if (p) windPts.push({ label: pair[0], kt: p.kt, dir: p.dir });
+  });
+  if (swellPts.length < 2 && windPts.length < 2) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  function rangeOf(arr, key) {
+    var withVal = arr.filter(function(p) { return p[key] != null; });
+    if (!withVal.length) return null;
+    var lo = withVal.reduce(function(a, p) { return p[key] < a[key] ? p : a; });
+    var hi = withVal.reduce(function(a, p) { return p[key] > a[key] ? p : a; });
+    return { lo: lo[key], hi: hi[key], loLbl: lo.label, hiLbl: hi.label };
+  }
+  var hR = rangeOf(swellPts, 'h'), tR = rangeOf(swellPts, 't'), kR = rangeOf(windPts, 'kt');
+  var hDirSpan = _circularSpan(swellPts.map(function(p) { return p.dir; }).filter(function(v) { return v != null; }));
+  var wDirSpan = _circularSpan(windPts.map(function(p) { return p.dir; }).filter(function(v) { return v != null; }));
+
+  var dNC = new Date(ms + 11 * 3600000);
+  var lblMs = String(dNC.getUTCDate()).padStart(2, '0') + '/' + (dNC.getUTCMonth() + 1) + ' ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h';
+
+  function pill(txt) { return '<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:3px 8px;white-space:nowrap;">' + txt + '</span>'; }
+  var pills = [];
+  if (hR) pills.push(pill('🌊 Hs <b style="color:var(--text);">' + hR.lo.toFixed(1) + '–' + hR.hi.toFixed(1) + 'm</b>'));
+  if (tR) pills.push(pill('⏱ <b style="color:var(--text);">' + Math.round(tR.lo) + '–' + Math.round(tR.hi) + 's</b>'));
+  if (hDirSpan) { var hLo = _compassLbl(hDirSpan.lo), hHi = _compassLbl(hDirSpan.hi); pills.push(pill('🧭 houle <b style="color:var(--text);">' + hLo + (hLo === hHi ? '' : '–' + hHi) + '</b>')); }
+  if (kR) pills.push(pill('💨 <b style="color:var(--text);">' + Math.round(kR.lo) + '–' + Math.round(kR.hi) + 'nds</b>'));
+  if (wDirSpan) { var wLo = _compassLbl(wDirSpan.lo), wHi = _compassLbl(wDirSpan.hi); pills.push(pill('🧭 vent <b style="color:var(--text);">' + wLo + (wLo === wHi ? '' : '–' + wHi) + '</b>')); }
+
+  // Repère simplifié : on combine, indépendamment, le vent le plus faible avec la
+  // période la plus longue disponibles (= configuration la plus « propre » possible
+  // si CES modèles-là ont raison) et inversement (vent fort + période courte = la
+  // plus agitée) — chaque valeur reste attribuée à SON modèle, jamais mélangées en
+  // une fausse prévision composite.
+  var verdict = '';
+  if (kR && tR) {
+    verdict = '<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px;font-size:10.5px;">'
+      + '<div><span style="color:#3dba8a;">🌤 Meilleur cas</span> — vent <b>' + Math.round(kR.lo) + ' nds</b> (' + kR.loLbl + ') · période <b>' + Math.round(tR.hi) + 's</b> (' + tR.hiLbl + ') <span style="color:var(--faint);">→ mer plus propre si ces modèles ont raison</span></div>'
+      + '<div><span style="color:#e05c5c;">🌧 Pire cas</span> — vent <b>' + Math.round(kR.hi) + ' nds</b> (' + kR.hiLbl + ') · période <b>' + Math.round(tR.lo) + 's</b> (' + tR.loLbl + ') <span style="color:var(--faint);">→ mer plus hachée si ces modèles ont raison</span></div>'
+      + '</div>';
+  }
+  box.innerHTML = '<div style="font-size:9px;color:var(--faint);margin-bottom:5px;">Fourchette entre modèles au ' + lblMs + '</div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + pills.join('') + '</div>'
+    + verdict;
+}
+
 function _swellToPts(d, comp) {
   if (!d || !d.dates) return [];
   // Houle 2 meteo.nc = résidu calculé (Hs-H1-Hvent) quand le flux ne l'expose
@@ -4342,6 +4549,7 @@ async function _renderSwellCompare() {
   var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch), _fetchEcmwfWave(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
   _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2] };
+  _swellZoom.a = 0; _swellZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
   _drawSwellCompare();
   // Archivage best-effort (table optionnelle, no-op si absente) — ne bloque
   // jamais le rendu, lancé après coup sans attendre.
@@ -4462,8 +4670,13 @@ function _drawSwellCompare() {
   }
 
   var allPts = [].concat.apply([], activeModels.map(function(m){ return series[m.key]; }));
-  var t0 = Math.min.apply(null, allPts.map(function(p){ return p.ms; }));
-  var t1 = Math.max.apply(null, allPts.map(function(p){ return p.ms; }));
+  var t0Full = Math.min.apply(null, allPts.map(function(p){ return p.ms; }));
+  var t1Full = Math.max.apply(null, allPts.map(function(p){ return p.ms; }));
+  // Zoom (bouton/molette/pincement, cf. _attachCmpZoom) : fenêtre affichée = fraction
+  // [a,b] de la plage complète, persistée dans _swellZoom entre les redraws.
+  var t0 = t0Full + _swellZoom.a * (t1Full - t0Full);
+  var t1 = t0Full + _swellZoom.b * (t1Full - t0Full);
+  var zoomed = _swellZoom.a > 0.001 || _swellZoom.b < 0.999;
 
   var W = (cv.parentElement && cv.parentElement.clientWidth) || 600;
   // Téléphone (fenêtre étroite, jusqu'à 5 courbes superposées sur 10 jours) : on
@@ -4475,10 +4688,25 @@ function _drawSwellCompare() {
   var dpr = window.devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-  var maxH = Math.max(1, Math.max.apply(null, allPts.map(function(p){ return p.h; })) * 1.2);
+  _attachCmpZoom(cv, _swellZoom, _drawSwellCompare);
+  // Domaine Y : par défaut identique à avant (base 0, max sur TOUTE la série). En
+  // zoom, on rescale sur les seuls points VISIBLES dans [t0,t1] — c'est ce qui
+  // sépare vraiment les courbes proches (demande utilisateur), pas juste le zoom
+  // temporel seul.
+  var maxH, minH = 0;
+  if (zoomed) {
+    var visH = allPts.filter(function(p){ return p.ms >= t0 && p.ms <= t1; }).map(function(p){ return p.h; });
+    if (visH.length) {
+      var hiH = Math.max.apply(null, visH), loH = Math.min.apply(null, visH);
+      var padH = Math.max(0.15, (hiH - loH) * 0.15);
+      maxH = hiH + padH; minH = Math.max(0, loH - padH);
+    } else { maxH = Math.max(1, Math.max.apply(null, allPts.map(function(p){ return p.h; })) * 1.2); }
+  } else {
+    maxH = Math.max(1, Math.max.apply(null, allPts.map(function(p){ return p.h; })) * 1.2);
+  }
   var padL = narrow ? 34 : 32, padR = 8, padT = 12, padB = narrow ? 22 : 20;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
-  function Y(h) { return padT + (1 - h / maxH) * (H - padT - padB); }
+  function Y(h) { return padT + (1 - (h - minH) / (maxH - minH)) * (H - padT - padB); }
 
   function drawSmooth(pts, col) {
     if (pts.length < 2) return;
@@ -4522,8 +4750,8 @@ function _drawSwellCompare() {
     ctx.textAlign = 'center'; ctx.font = axFont; ctx.fillStyle = 'rgba(122,148,170,.7)';
     ctx.fillText('Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), 0, 0); ctx.restore();
     ctx.textAlign = 'right'; ctx.font = axFont;
-    var hStep = maxH > 4 ? 1 : 0.5;
-    for (var g = 0; g <= maxH; g += hStep) {
+    var hStep = (maxH - minH) > 4 ? 1 : 0.5;
+    for (var g = Math.ceil(minH / hStep) * hStep; g <= maxH; g += hStep) {
       var gy = Y(g);
       ctx.strokeStyle = 'rgba(255,255,255,.055)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
@@ -4563,6 +4791,7 @@ function _drawSwellCompare() {
   draw(null);
   renderNowRow(Date.now());
   _drawSwellRose(Date.now());
+  _renderCmpExtremes(Date.now());
 
   // Dessin + relevé à un instant donné, factorisé pour être appelé aussi bien
   // par le survol natif que par window._swellCmpCursorTo (lien avec le
@@ -4571,6 +4800,7 @@ function _drawSwellCompare() {
     draw(ms);
     renderNowRow(ms);
     _drawSwellRose(ms);
+    _renderCmpExtremes(ms);
     var ro = document.getElementById('swell-cmp-readout');
     if (ro) {
       var dNC = new Date(ms + 11 * 36e5);
@@ -4593,8 +4823,9 @@ function _drawSwellCompare() {
     draw(null);
     renderNowRow(Date.now());
     _drawSwellRose(Date.now());
+    _renderCmpExtremes(Date.now());
     var ro = document.getElementById('swell-cmp-readout');
-    if (ro) ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles';
+    if (ro) ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)';
   }
   cv.onmousemove = function(e) {
     var rect = cv.getBoundingClientRect();
@@ -4612,8 +4843,11 @@ function _drawSwellCompare() {
     resetSwellView();
     if (window._aromeCmpCursorTo) window._aromeCmpCursorTo(null);
   };
+  // 1 seul doigt = survol (inchangé) ; 2 doigts = pincement de zoom (cf.
+  // _attachCmpZoom, addEventListener séparé) — sans ce garde, un pincement
+  // aurait AUSSI fait sauter le curseur de survol sur le 1er doigt.
   cv.ontouchstart = cv.ontouchmove = function(ev) {
-    if (ev.touches && ev.touches[0]) cv.onmousemove({ clientX: ev.touches[0].clientX });
+    if (ev.touches && ev.touches.length === 1) cv.onmousemove({ clientX: ev.touches[0].clientX });
   };
   // Positionnement programmatique du curseur (lien profond depuis le Journal,
   // cf. _initSwellVoteFromUrl, et désormais le comparatif vent). ms hors
@@ -7882,6 +8116,13 @@ function _wgIdForSpot(s) {
 }
 var _wgLoadedFor = null;
 var _aromeData = null; // dernier jeu AROME chargé (purgé quand le spot n'a pas de correspondance)
+// Cache des séries déjà FETCHÉES pour le comparatif vent (obs/AROME/meteo.nc/GFS/BOM/
+// ECMWF) — permet de redessiner (zoom, encart extrêmes) sans re-fetch réseau. Repeuplé
+// uniquement par _renderAromeCompare(). _aromeZoom : fenêtre temporelle affichée, en
+// fraction [0,1] de la plage complète — {a:0,b:1} = pas de zoom.
+var _aromeCmpCache = null;
+var _aromeZoom = { a: 0, b: 1 };
+var _swellZoom = { a: 0, b: 1 };
 // Le graphe comparatif vent n'étend sa fenêtre à l'historique archivé (jusqu'à
 // 8j) que si l'utilisateur le demande (bouton) — par défaut ça écrasait les
 // courbes récentes de points morts dès l'ouverture (retour utilisateur).
@@ -7962,45 +8203,50 @@ async function _loadAromeWidget(wgId) {
   var _tdCi = -1; // index de colonne courant, incrémenté par rangée via _tdReset
   function _tdReset() { _tdCi = -1; }
   function td(html, style) { _tdCi++; return '<td data-ci="' + _tdCi + '" style="padding:3px 4px;text-align:center;border-left:1px solid rgba(255,255,255,.04);white-space:nowrap;' + (style || '') + '">' + html + '</td>'; }
-  var h = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:10px;color:var(--text);min-width:100%;">';
-  h += '<tr>' + '<td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:9px;">jour</td>' + dayCells.map(function(d) {
+  // Tableau AROME (jour/heure/vent/rafales/dir/pluie/T°) — construit à part de la
+  // comparaison vent (cmpHtml juste en dessous) pour pouvoir les assembler dans
+  // l'ORDRE INVERSE de la génération : le graphe comparatif d'abord, le tableau
+  // ensuite (demande utilisateur : garder le graphe houle du dessus et celui-ci
+  // vent visibles sur le même écran mobile, sans le gros tableau entre les deux).
+  var tableHtml = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:10px;color:var(--text);min-width:100%;">';
+  tableHtml += '<tr>' + '<td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:9px;">jour</td>' + dayCells.map(function(d) {
     // Jour de semaine dérivé du vrai epoch (ms0, faux-local +11h) plutôt que
     // reconstruit depuis "jour/mois" + année courante supposée — cette dernière
     // se trompait à cheval sur le nouvel an (31 déc / 1er janv).
     var wd = new Date(d.ms0 + 11 * 3600000).getUTCDay();
     return '<td colspan="' + d.n + '" style="padding:3px;text-align:center;font-weight:700;color:var(--accent);border-left:2px solid rgba(79,163,199,.35);background:rgba(79,163,199,.06);">' + DAYS_FR[wd] + ' ' + d.k + '</td>';
   }).join('') + '</tr>';
-  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:9px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
-  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">💨 nds</td>' + cols.map(function(c) {
+  _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:9px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
+  _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">💨 nds</td>' + cols.map(function(c) {
     var v = j.WINDSPD[c.i];
     return td(v != null ? '<b>' + Math.round(v) + '</b>' : '—', v != null ? 'background:' + windCol(v) + ';' : '');
   }).join('') + '</tr>';
-  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">raf.</td>' + cols.map(function(c) {
+  _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">raf.</td>' + cols.map(function(c) {
     var v = j.GUST[c.i];
     return td(v != null ? Math.round(v) : '—', v != null ? 'color:#e8874a;background:' + windCol(v) + ';' : '');
   }).join('') + '</tr>';
-  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">dir</td>' + cols.map(function(c) {
+  _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">dir</td>' + cols.map(function(c) {
     var d = j.WINDDIR[c.i];
     if (d == null) return td('—');
     return td('<span style="display:inline-block;transform:rotate(' + Math.round(d) + 'deg);">↓</span><br><span style="font-size:8px;color:var(--faint);">' + CPTS[Math.round(d / 22.5) % 16] + '</span>');
   }).join('') + '</tr>';
-  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">🌧 mm</td>' + cols.map(function(c) {
+  _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">🌧 mm</td>' + cols.map(function(c) {
     // cumul 2h (pas horaire du modèle)
     var v = 0, any = false;
     [c.i, c.i + 1].forEach(function(k) { if (j.APCP1[k] != null) { v += j.APCP1[k]; any = true; } });
     if (!any || v < 0.05) return td('<span style="color:rgba(255,255,255,.12);">·</span>');
     return td('<b style="color:#7dd3fc;">' + (v < 10 ? v.toFixed(1) : Math.round(v)) + '</b>', 'background:rgba(125,211,252,.10);');
   }).join('') + '</tr>';
-  _tdReset(); h += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">🌡 °C</td>' + cols.map(function(c) {
+  _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">🌡 °C</td>' + cols.map(function(c) {
     var v = j.TMP[c.i];
     return td(v != null ? Math.round(v) + '°' : '—', 'color:var(--faint);');
   }).join('') + '</tr>';
-  h += '</table></div>';
-  h += '<div id="arome-hover-bar" style="min-height:15px;margin-top:5px;font-size:10px;color:var(--muted);">← Survolez une colonne : détail du créneau + comparaison meteo.nc</div>';
+  tableHtml += '</table></div>';
+  tableHtml += '<div id="arome-hover-bar" style="min-height:15px;margin-top:5px;font-size:10px;color:var(--muted);">← Survolez une colonne : détail du créneau + comparaison meteo.nc</div>';
   var initNC = new Date(j.init * 1000 + 11 * 3600000);
-  h += '<div style="font-size:9px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '') + ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a></div>';
+  tableHtml += '<div style="font-size:9px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '') + ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a></div>';
   // Comparatif vent : mesures station (passé) vs AROME/meteo.nc/GFS/BOM/ECMWF
-  h += '<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:8px;">'
+  var cmpHtml = '<div style="border-top:1px solid rgba(255,255,255,.06);padding-top:8px;margin-bottom:8px;">'
     + '<b style="color:var(--text);font-size:11.5px;display:block;margin-bottom:6px;">🆚 Vent : mesuré vs modèles</b>'
     // Rangée 1 : séries en direct (celles tracées en trait plein/tireté sur le
     // graphe). Rangée 2, visuellement séparée : marqueurs de points archivés
@@ -8028,17 +8274,17 @@ async function _loadAromeWidget(wgId) {
           + '</div>'
         : '<div style="margin-bottom:6px;"><button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:3px 9px;border-radius:10px;cursor:pointer;">▼ Afficher l\'historique archivé (jusqu\'à 8j)</button></div>')
     + '<div class="cmp-chart-row">'
-    + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;"><canvas id="arome-cmp"></canvas></div>'
+    + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;position:relative;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
     + '</div>'
-    + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour lire les valeurs au même instant</div>'
+    + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour lire les valeurs au même instant (molette/pincement = zoomer)</div>'
     // Sous les courbes de vent (et non au-dessus, où c'était facile à manquer) :
     // seul le vent a une vraie mesure au sol pour comparer les modèles — la
     // houle n'a pas d'instrument équivalent, d'où le vote subjectif après-coup
     // (Journal → "Modèle de houle le plus fiable") au lieu d'une corrélation ici.
     + '<div id="arome-cmp-corr" style="font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);"></div>'
     + '</div>';
-  body.innerHTML = h;
+  body.innerHTML = cmpHtml + tableHtml;
   _aromeData = j;
   // Détail par colonne pour le bandeau de survol (mêmes calculs que les cellules)
   window._aromeColInfo = cols.map(function(c) {
@@ -8397,8 +8643,41 @@ async function _renderAromeCompare(j) {
       if (pair[1] && pair[1].length) _cacheModelPoints(SPOTS[currentSpot], pair[0], 'wind', pair[1], 'kt', null);
     });
   } catch (e) {}
+  // Cache des séries déjà fetchées → permet de redessiner (zoom, encart extrêmes,
+  // lien croisé avec le comparatif houle) SANS refaire tous les appels réseau
+  // ci-dessus. _toggleAromeCmpHistory(), lui, redemande un _renderAromeCompare
+  // complet car étendre l'historique peut nécessiter un t0 différent.
+  _aromeCmpCache = {
+    obs: obs, pageNc: pageNc, pageGfs: pageGfs, aro: aro, cachePts: cachePts, aromeCachePts: aromeCachePts,
+    bomWind: bomWind, ecmwfWind: ecmwfWind, bomCachePts: bomCachePts, ecmwfCachePts: ecmwfCachePts,
+    obsBias: obsBias, cachePtsBias: cachePtsBias, aromeCachePtsBias: aromeCachePtsBias,
+    gfsCachePtsBias: gfsCachePtsBias, bomCachePtsBias: bomCachePtsBias, ecmwfCachePtsBias: ecmwfCachePtsBias,
+    stName: stName, stDistKm: stDistKm, t0: t0, t1: t1, now: now
+  };
+  _aromeZoom.a = 0; _aromeZoom.b = 1; // nouvelles données → on repart de la vue complète
+  _drawAromeCompareFromCache();
+}
+
+// Dessin (sans fetch réseau) à partir de _aromeCmpCache — appelé au chargement
+// initial, à chaque redraw de zoom (cf. _attachCmpZoom) et par le lien croisé avec
+// le comparatif houle (window._aromeCmpCursorTo, plus bas).
+function _drawAromeCompareFromCache() {
+  var c = _aromeCmpCache; if (!c) return;
+  var obs = c.obs, pageNc = c.pageNc, pageGfs = c.pageGfs, aro = c.aro, cachePts = c.cachePts, aromeCachePts = c.aromeCachePts,
+      bomWind = c.bomWind, ecmwfWind = c.ecmwfWind, bomCachePts = c.bomCachePts, ecmwfCachePts = c.ecmwfCachePts,
+      obsBias = c.obsBias, cachePtsBias = c.cachePtsBias, aromeCachePtsBias = c.aromeCachePtsBias,
+      gfsCachePtsBias = c.gfsCachePtsBias, bomCachePtsBias = c.bomCachePtsBias, ecmwfCachePtsBias = c.ecmwfCachePtsBias,
+      stName = c.stName, stDistKm = c.stDistKm, now = c.now;
+  var cv = document.getElementById('arome-cmp');
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
-  if (!el2 || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
+  if (!el2 || !cv || (!aro.length && !obs.length)) { if (el2) el2.style.display = 'none'; return; }
+  // Zoom (bouton/molette/pincement) : fenêtre affichée = fraction [a,b] de la plage
+  // complète du dernier fetch (c.t0/c.t1), persistée dans _aromeZoom entre redraws.
+  var t0Full = c.t0, t1Full = c.t1;
+  var zs = _aromeZoom;
+  var t0 = t0Full + zs.a * (t1Full - t0Full);
+  var t1 = t0Full + zs.b * (t1Full - t0Full);
+  var zoomed = zs.a > 0.001 || zs.b < 0.999;
   var W = el2.clientWidth || 600;
   // Sur téléphone la fenêtre est étroite ET porte 5-6 courbes superposées : on
   // gagne en lisibilité verticale en allongeant le graphe (place pour que les
@@ -8409,11 +8688,29 @@ async function _renderAromeCompare(j) {
   var dpr = window.devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.cursor = 'crosshair';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-  var allKt = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}), bomWind.map(function(p){return p.kt;}), ecmwfWind.map(function(p){return p.kt;}));
-  var maxKt = Math.max.apply(null, allKt) * 1.15;
+  _attachCmpZoom(cv, _aromeZoom, _drawAromeCompareFromCache);
+  // Domaine Y : identique à avant par défaut (base 0, max sur toute la fenêtre
+  // affichée). En zoom, rescale sur les seuls points VISIBLES dans [t0,t1] — c'est
+  // ce qui sépare vraiment les courbes proches (demande utilisateur).
+  var maxKt, minKt = 0;
+  if (zoomed) {
+    var visKt = [].concat(obs, pageNc, pageGfs, aro, cachePts, aromeCachePts, bomWind, ecmwfWind)
+      .filter(function(p) { return p.ms >= t0 && p.ms <= t1; }).map(function(p) { return p.kt; });
+    if (visKt.length) {
+      var hiKt = Math.max.apply(null, visKt), loKt = Math.min.apply(null, visKt);
+      var padKt = Math.max(1, (hiKt - loKt) * 0.18);
+      maxKt = hiKt + padKt; minKt = Math.max(0, loKt - padKt);
+    } else {
+      var allKt0 = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}));
+      maxKt = Math.max.apply(null, allKt0) * 1.15;
+    }
+  } else {
+    var allKt = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}), bomWind.map(function(p){return p.kt;}), ecmwfWind.map(function(p){return p.kt;}));
+    maxKt = Math.max.apply(null, allKt) * 1.15;
+  }
   var padL = narrow ? 30 : 26, padR = 6, padT = 10, padB = narrow ? 22 : 18;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
-  function Y(kt) { return padT + (1 - kt / maxKt) * (H - padT - padB); }
+  function Y(kt) { return padT + (1 - (kt - minKt) / (maxKt - minKt)) * (H - padT - padB); }
   obs.sort(function(a,b){return a.ms-b.ms;}); pageNc.sort(function(a,b){return a.ms-b.ms;}); pageGfs.sort(function(a,b){return a.ms-b.ms;}); aro.sort(function(a,b){return a.ms-b.ms;});
   bomWind.sort(function(a,b){return a.ms-b.ms;}); ecmwfWind.sort(function(a,b){return a.ms-b.ms;});
 
@@ -8474,9 +8771,11 @@ async function _renderAromeCompare(j) {
     // Fond passé (mesures) légèrement teinté
     ctx.fillStyle = 'rgba(61,186,138,.05)';
     ctx.fillRect(X(t0), padT, X(now) - X(t0), H - padT - padB);
-    // Grille horizontale 5 kt
+    // Grille horizontale (pas adaptatif : 5 kt par défaut, plus serré une fois zoomé
+    // sur une fenêtre de valeurs étroite)
     ctx.textAlign = 'right'; ctx.font = axFont;
-    for (var g = 0; g <= maxKt; g += 5) {
+    var ktStep = (maxKt - minKt) > 25 ? 5 : (maxKt - minKt) > 10 ? 2 : 1;
+    for (var g = Math.ceil(minKt / ktStep) * ktStep; g <= maxKt; g += ktStep) {
       var gy = Y(g);
       ctx.strokeStyle = g === 0 ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.055)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
@@ -8553,6 +8852,7 @@ async function _renderAromeCompare(j) {
     }
   }
   draw(null);
+  _renderCmpExtremes(Date.now());
 
   // Valeurs au survol : curseur + lecture des séries au plus proche (±90 min)
   function nearest(pts, ms, tol) {
@@ -8630,6 +8930,7 @@ async function _renderAromeCompare(j) {
     draw(ms);
     updateReadout(ms);
     _drawWindRose(ms);
+    _renderCmpExtremes(ms);
     if (window._aromeSetTableCol) window._aromeSetTableCol(findNearestColIdx(ms));
     // Lien avec le comparatif houle (demande utilisateur) : survoler l'un
     // déplace le curseur de l'autre, pour lire vent et houle au même instant
@@ -8640,6 +8941,7 @@ async function _renderAromeCompare(j) {
     draw(null);
     updateReadout(null);
     _drawWindRose(now);
+    _renderCmpExtremes(Date.now());
     if (window._aromeSetTableCol) window._aromeSetTableCol(null);
     if (window._swellCmpCursorTo) window._swellCmpCursorTo(null);
   };
@@ -8650,11 +8952,14 @@ async function _renderAromeCompare(j) {
   window._aromeCmpCursorTo = function(ms) {
     if (ms != null && (ms < t0 || ms > t1)) ms = null;
     draw(ms); updateReadout(ms); _drawWindRose(ms == null ? now : ms);
+    _renderCmpExtremes(ms == null ? Date.now() : ms);
   };
   _drawWindRose(now);
-  // Mobile : le doigt déplace le curseur (le scroll vertical reste possible)
+  // 1 seul doigt = survol (inchangé) ; 2 doigts = pincement de zoom (cf.
+  // _attachCmpZoom, addEventListener séparé) — sans ce garde, un pincement aurait
+  // AUSSI fait sauter le curseur de survol sur le 1er doigt.
   cv.ontouchstart = cv.ontouchmove = function(ev) {
-    if (ev.touches && ev.touches[0]) cv.onmousemove({ clientX: ev.touches[0].clientX });
+    if (ev.touches && ev.touches.length === 1) cv.onmousemove({ clientX: ev.touches[0].clientX });
   };
 }
 
