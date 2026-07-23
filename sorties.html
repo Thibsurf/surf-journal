@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
 <title>Sorties surf — Surf NC</title>
+<meta name="description" content="Organise tes sorties surf ou bateau entre potes : covoiturage, répartition sur les bateaux, Tricount intégré pour partager les frais.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://thibsurf.github.io/surf-journal/sorties.html">
+<meta property="og:title" content="Sorties surf — Surf NC">
+<meta property="og:description" content="Organise tes sorties surf ou bateau entre potes : covoiturage, répartition sur les bateaux, Tricount intégré pour partager les frais.">
+<meta property="og:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Sorties surf — Surf NC">
+<meta name="twitter:description" content="Organise tes sorties surf ou bateau entre potes : covoiturage, répartition sur les bateaux, Tricount intégré pour partager les frais.">
+<meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#4fa3c7">
 <meta name="mobile-web-app-capable" content="yes">
@@ -899,6 +910,32 @@ nav a.back:hover{color:var(--text);}
   </div>
 </div>
 
+<!-- Modal ajout calendrier -->
+<div class="modal" id="modal-calendar" style="display:none;">
+  <div class="modal-content" style="max-width:440px;">
+    <div class="modal-header">
+      <div class="modal-title">📅 Ajouter au calendrier</div>
+      <button class="modal-close" onclick="closeModal('modal-calendar')">×</button>
+    </div>
+    <div class="share-btns">
+      <a href="#" id="cal-google" target="_blank" rel="noopener" class="share-btn">
+        <span class="icon">🗓️</span>
+        <div>
+          <div style="font-weight:700;">Google Calendar</div>
+          <div class="share-sub">Le plus fiable sur Android — ouvre directement l'appli</div>
+        </div>
+      </a>
+      <button class="share-btn" id="cal-ics" onclick="downloadSortieIcs()">
+        <span class="icon">⬇️</span>
+        <div>
+          <div style="font-weight:700;">Fichier .ics</div>
+          <div class="share-sub">iPhone (Calendrier), Outlook, ou tout autre agenda</div>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal inscription détails -->
 <div class="modal" id="modal-inscription" style="display:none;">
   <div class="modal-content" style="max-width:440px;">
@@ -1044,7 +1081,7 @@ nav a.back:hover{color:var(--text);}
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8"></script>
 <!-- Token meteo.nc partagé (mêmes globals que previsions.html) -->
 <script src="assets/nc-token.js"></script>
 <script>
@@ -1286,6 +1323,7 @@ function sortieCard(s) {
       + '</div>'
       + '<div class="actions-secondary">'
       + '<button class="btn-sm btn-share" onclick="openMeteogram(\'' + s.id + '\')">📊 Météo</button>'
+      + (!isPast ? '<button class="btn-sm btn-share" onclick="openCalendarModal(\'' + s.id + '\')">📅 Calendrier</button>' : '')
       + '<button class="btn-sm btn-share" style="background:rgba(37,211,102,.08);border-color:rgba(37,211,102,.3);color:#3dba8a;" onclick="openShare(\'' + s.id + '\')">📤 Partager</button>'
       + (currentUser ? '<button class="btn-sm" style="background:rgba(123,108,246,.1);border-color:rgba(123,108,246,.3);color:#a99ff8;" onclick="openQuickExpense(\'' + s.id + '\')">💰 Dépense</button>' : '')
       + (currentUser ? '<button class="btn-sm" style="background:rgba(79,163,199,.06);border-color:rgba(79,163,199,.2);color:var(--accent);" onclick="addExistingUser(\'' + s.id + '\')" title="Ajouter membre">👥</button>' : '')
@@ -1741,6 +1779,96 @@ async function saveInscription(sortieId, inscription) {
 // ════════════════════════════════════════════════════════════════
 // SHARE — météogramme thumb + partage natif image
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// AJOUT AU CALENDRIER (Google Calendar + .ics — iOS/Outlook/Android)
+// ════════════════════════════════════════════════════════════════
+var _calendarSortie = null;
+
+function openCalendarModal(sortieId) {
+  var s = allSorties.find(function(x){ return x.id === sortieId; });
+  if (!s) return;
+  _calendarSortie = s;
+  var g = document.getElementById('cal-google');
+  if (g) g.href = _googleCalendarUrl(s);
+  document.getElementById('modal-calendar').style.display = 'flex';
+}
+
+// Avec heure (time_start/time_end en "HH:MM") → événement daté ; sinon journée
+// entière (fin exclusive = lendemain de date_end, norme iCal/Google).
+function _icsDatesForSortie(s) {
+  var d0 = s.date_start, d1 = s.date_end || s.date_start;
+  if (s.time_start) {
+    var start = d0.replace(/-/g,'') + 'T' + s.time_start.slice(0,5).replace(':','') + '00';
+    var end = d1.replace(/-/g,'') + 'T' + (s.time_end || s.time_start).slice(0,5).replace(':','') + '00';
+    return { allDay:false, start:start, end:end };
+  }
+  var endExclusive = new Date(d1 + 'T00:00:00Z'); endExclusive.setUTCDate(endExclusive.getUTCDate()+1);
+  var endStr = endExclusive.toISOString().slice(0,10).replace(/-/g,'');
+  return { allDay:true, start:d0.replace(/-/g,''), end:endStr };
+}
+
+function _sortieCalTitle(s) {
+  return (s.type === 'camping' ? '⛺ ' : '🏄 ') + (s.spot || 'Sortie surf');
+}
+
+function _sortieCalDetails(s) {
+  var lines = [];
+  if (s.launch_point) lines.push('Départ : ' + s.launch_point);
+  lines.push('Détails et inscription : https://thibsurf.github.io/surf-journal/sorties.html');
+  return lines.join('\n');
+}
+
+// "YYYYMMDDTHHMMSS" en heure locale NC (UTC+11 fixe, pas de DST — même convention
+// que le reste du fichier) → "YYYYMMDDTHHMMSSZ" UTC pour DTSTART/DTEND ICS.
+function _localNcToUtcIcs(local) {
+  var y=+local.slice(0,4), mo=+local.slice(4,6)-1, da=+local.slice(6,8),
+      h=+local.slice(9,11), mi=+local.slice(11,13);
+  var ms = Date.UTC(y,mo,da,h,mi) - 11*3600000;
+  return new Date(ms).toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+}
+
+function _googleCalendarUrl(s) {
+  var d = _icsDatesForSortie(s);
+  var params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: _sortieCalTitle(s),
+    details: _sortieCalDetails(s),
+    location: s.launch_point || s.spot || ''
+  });
+  params.set('dates', d.allDay ? (d.start + '/' + d.end)
+    : (_localNcToUtcIcs(d.start) + '/' + _localNcToUtcIcs(d.end)));
+  return 'https://www.google.com/calendar/render?' + params.toString();
+}
+
+function _icsEscape(s) {
+  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+}
+
+function downloadSortieIcs() {
+  var s = _calendarSortie; if (!s) return;
+  var d = _icsDatesForSortie(s);
+  var uid = 'sortie-' + s.id + '@surf-journal';
+  var now = new Date().toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+  var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Coups de Surf NC//sorties//FR',
+    'CALSCALE:GREGORIAN', 'BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:' + now];
+  if (d.allDay) lines.push('DTSTART;VALUE=DATE:' + d.start, 'DTEND;VALUE=DATE:' + d.end);
+  else lines.push('DTSTART:' + _localNcToUtcIcs(d.start), 'DTEND:' + _localNcToUtcIcs(d.end));
+  lines.push(
+    'SUMMARY:' + _icsEscape(_sortieCalTitle(s)),
+    'DESCRIPTION:' + _icsEscape(_sortieCalDetails(s)),
+    'LOCATION:' + _icsEscape(s.launch_point || s.spot || ''),
+    'END:VEVENT', 'END:VCALENDAR'
+  );
+  var blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'sortie-' + (s.spot || 'surf').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-') + '-' + s.date_start + '.ics';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  toast('Fichier .ics téléchargé ✓', 'ok');
+}
+
 function openShare(sortieId) {
   const s = allSorties.find(x => x.id === sortieId);
   if (!s) return;

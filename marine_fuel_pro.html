@@ -13,9 +13,20 @@
 <link rel="icon" href="favicon.ico">
 <link rel="stylesheet" href="pwa.css">
 <title>Marine Fuel – Pro</title>
+<meta name="description" content="Suivi carburant et coûts partagés pour copropriétaires de bateau : pleins, consommation réelle, répartition automatique des coûts.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html">
+<meta property="og:title" content="Marine Fuel – Pro">
+<meta property="og:description" content="Suivi carburant et coûts partagés pour copropriétaires de bateau : pleins, consommation réelle, répartition automatique des coûts.">
+<meta property="og:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Marine Fuel – Pro">
+<meta name="twitter:description" content="Suivi carburant et coûts partagés pour copropriétaires de bateau : pleins, consommation réelle, répartition automatique des coûts.">
+<meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- Cœur pur testable : soldes, bidons event-sourcés, FOB (voir test_fuel.html) -->
 <script src="assets/fuel-core.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
@@ -1099,11 +1110,12 @@ let _chartsDirty=false; // true si bidons/logs ont changé pendant que l'onglet 
 function toast(msg,type='ok'){
   const el=document.getElementById('toast');
   el.className='toast '+type;
-  el.innerHTML=(type==='ok'?'✅':'❌')+' '+msg;
+  el.textContent=(type==='ok'?'✅':'❌')+' '+msg;
   el.classList.add('show');
   setTimeout(()=>el.classList.remove('show'),3200);
 }
 function modal(id,show){document.getElementById(id).classList.toggle('show',show);}
+function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function fmt(n){return n!=null?Number(n).toLocaleString('fr-FR'):'—';}
 function fmtDate(d){return new Date(d).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});}
 function fmtDateShort(d){return new Date(d).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});}
@@ -1375,7 +1387,7 @@ function refreshMemberSelects(){
     if(sel){
       const curVal=sel.value;
       sel.innerHTML='<option value="">—</option>'+
-        _members.map(m=>`<option value="${m.id}">${m.label}</option>`).join('');
+        _members.map(m=>`<option value="${m.id}">${escapeHtml(m.label)}</option>`).join('');
       if(curVal)sel.value=curVal;
     }
   });
@@ -1395,8 +1407,8 @@ function showManageMembers(){
   const membersHtml=_members.map(m=>{
     const isMe=m.id===user.id;
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-      <span style="flex:1;font-size:12px;">${isMe?'⭐ ':''}<b>${m.label}</b><br><span style="font-size:9px;color:var(--muted);font-family:monospace;">${m.id.slice(0,12)}…</span></span>
-      ${!isMe?`<button onclick="renameMember('${m.id}','${m.label.replace(/'/g,"\\'")}',this)" style="background:rgba(79,163,199,.1);border:1px solid rgba(79,163,199,.3);color:var(--accent);border-radius:5px;font-size:10px;padding:3px 8px;cursor:pointer;">Renommer</button>`:''}
+      <span style="flex:1;font-size:12px;">${isMe?'⭐ ':''}<b>${escapeHtml(m.label)}</b><br><span style="font-size:9px;color:var(--muted);font-family:monospace;">${m.id.slice(0,12)}…</span></span>
+      ${!isMe?`<button onclick="renameMember('${m.id}',this)" style="background:rgba(79,163,199,.1);border:1px solid rgba(79,163,199,.3);color:var(--accent);border-radius:5px;font-size:10px;padding:3px 8px;cursor:pointer;">Renommer</button>`:''}
     </div>`;
   }).join('');
 
@@ -1424,6 +1436,7 @@ function showManageMembers(){
 // prefix : la même UI vit dans DEUX endroits (dialogue 👥 du bateau = 'mm',
 // modal 👥 de la barre du haut = 'mm2') → ids préfixés pour ne pas se marcher dessus.
 let _mmSearchTimer=null;
+let _lastProfileSearch={}; // id -> username, alimenté par searchProfileForBoat, lu par addProfileToBoat
 function _addMemberSectionHtml(prefix){
   return `<div style="border-top:1px solid var(--border);padding-top:12px;">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">➕ Ajouter un membre</div>
@@ -1450,17 +1463,19 @@ function searchProfileForBoat(prefix){
     const memberIds=_members.map(m=>m.id);
     box.innerHTML=data.map(p=>{
       const already=memberIds.includes(p.id);
+      _lastProfileSearch[p.id]=p.username||'Surfeur';
       return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-        <span style="flex:1;font-size:13px;"><b>${p.username||'Surfeur'}</b></span>
+        <span style="flex:1;font-size:13px;"><b>${escapeHtml(p.username||'Surfeur')}</b></span>
         ${already
           ?'<span style="font-size:10px;color:var(--green);">✓ déjà membre</span>'
-          :`<button onclick="addProfileToBoat('${p.id}','${(p.username||'Surfeur').replace(/'/g,"\\'")}')" style="background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.35);color:var(--green);border-radius:6px;font-size:12px;padding:6px 14px;cursor:pointer;font-weight:600;white-space:nowrap;">+ Ajouter</button>`}
+          :`<button onclick="addProfileToBoat('${p.id}')" style="background:rgba(61,186,138,.12);border:1px solid rgba(61,186,138,.35);color:var(--green);border-radius:6px;font-size:12px;padding:6px 14px;cursor:pointer;font-weight:600;white-space:nowrap;">+ Ajouter</button>`}
       </div>`;
     }).join('');
   },300);
 }
 
-async function addProfileToBoat(uid,username){
+async function addProfileToBoat(uid){
+  const username=_lastProfileSearch[uid]||'Surfeur';
   if(!boat){toast('Aucun bateau sélectionné','err');return;}
   const {error}=await sb.from('boat_members').upsert({boat_id:boat.id,user_id:uid,role:'member'},{onConflict:'boat_id,user_id'});
   if(error&&!error.message.includes('duplicate')){toast('❌ Refus serveur : '+error.message,'err');return;}
@@ -1499,7 +1514,9 @@ async function addMemberToBoat(){
   loadLogs();
 }
 
-function renameMember(uid, currentName, btn){
+function renameMember(uid, btn){
+  const m=_members.find(x=>x.id===uid);
+  const currentName=m?m.label:'';
   const newName=prompt('Nouveau surnom pour '+currentName+' :', currentName);
   if(!newName||!newName.trim())return;
   _memberNicknames[uid]=newName.trim();
@@ -1662,7 +1679,7 @@ async function previewImportLogs(event){
   // Pré-remplir les selects de membres
   ['importIdA','importIdB'].forEach(id=>{
     const sel=document.getElementById(id);
-    sel.innerHTML='<option value="">—</option>'+_members.map(m=>`<option value="${m.id}">${m.label} (${m.id.slice(0,8)})</option>`).join('');
+    sel.innerHTML='<option value="">—</option>'+_members.map(m=>`<option value="${m.id}">${escapeHtml(m.label)} (${m.id.slice(0,8)})</option>`).join('');
   });
   // Pré-sélection : matcher par nom si possible
   const nameA=document.getElementById('importNameA').value.toLowerCase();
@@ -1871,7 +1888,7 @@ function previewPurge(){
   }
   let html=`<div style="color:var(--warn);margin-bottom:6px"><b>${matches.length}</b> log(s) seraient supprimés :</div>`;
   matches.slice(0,30).forEach(l=>{
-    html+=`<div>${fmtDateShort(l.created_at)} · ${l.type} · ${l.total_price?fmt(l.total_price)+' XPF':l.liters?l.liters+'L':''} · ${(l.note||'').slice(0,50)}</div>`;
+    html+=`<div>${fmtDateShort(l.created_at)} · ${l.type} · ${l.total_price?fmt(l.total_price)+' XPF':l.liters?l.liters+'L':''} · ${escapeHtml((l.note||'').slice(0,50))}</div>`;
   });
   if(matches.length>30)html+=`<div style="color:var(--muted)">… et ${matches.length-30} autres</div>`;
   out.innerHTML=html;
@@ -1972,7 +1989,7 @@ function openToolsModal(){
   // Pré-remplir les selects de membres
   ['importIdA','importIdB'].forEach(id=>{
     const sel=document.getElementById(id);
-    if(sel)sel.innerHTML='<option value="">—</option>'+_members.map(m=>`<option value="${m.id}">${m.label} (${m.id.slice(0,8)})</option>`).join('');
+    if(sel)sel.innerHTML='<option value="">—</option>'+_members.map(m=>`<option value="${m.id}">${escapeHtml(m.label)} (${m.id.slice(0,8)})</option>`).join('');
   });
   // Section migration legacy : visible seulement si des marqueurs existent encore (1.2)
   const hasLegacy=allLogs.some(l=>l.note&&/SPLIT:|__REMB__|__REMB_TO:/.test(l.note));
@@ -1995,7 +2012,7 @@ function previewLegacyMigration(){
     +plan.slice(0,40).map(p=>{
       const tags=[];
       if(p.r.split)tags.push('split→colonne');
-      if(p.r.reimburse_to)tags.push('remb→'+((_members.find(m=>m.id===p.r.reimburse_to)||{}).label||'?'));
+      if(p.r.reimburse_to)tags.push('remb→'+escapeHtml((_members.find(m=>m.id===p.r.reimburse_to)||{}).label||'?'));
       if(!tags.length)tags.push('note nettoyée');
       return '<div style="padding:4px 0;border-bottom:1px solid var(--s3)">'+fmtDateShort(p.l.created_at)+' · '+p.l.type
         +(p.l.total_price?' · '+fmt(Math.round(p.l.total_price))+'XPF':'')+' — '+tags.join(', ')
@@ -2078,11 +2095,11 @@ function showDiagnostic(){
   html+=`<div>Part théorique (50/50) : <b>${fmt(Math.round(totalShareable/_members.length))} XPF</b></div>`;
   html+='<div style="margin-top:8px"><b>💰 Payé par membre (dépenses partagées) :</b></div>';
   _members.forEach(m=>{
-    html+=`<div style="padding-left:8px">${m.label} : <b style="color:var(--a2)">${fmt(Math.round(paid[m.id]))} XPF</b></div>`;
+    html+=`<div style="padding-left:8px">${escapeHtml(m.label)} : <b style="color:var(--a2)">${fmt(Math.round(paid[m.id]))} XPF</b></div>`;
   });
   html+='<div style="margin-top:8px"><b>💸 Remboursements donnés :</b></div>';
   _members.forEach(m=>{
-    html+=`<div style="padding-left:8px">${m.label} → autre : <b style="color:var(--purple)">${fmt(Math.round(rembPaid[m.id]))} XPF</b></div>`;
+    html+=`<div style="padding-left:8px">${escapeHtml(m.label)} → autre : <b style="color:var(--purple)">${fmt(Math.round(rembPaid[m.id]))} XPF</b></div>`;
   });
 
   // Warnings
@@ -2090,7 +2107,7 @@ function showDiagnostic(){
     html+=`<div style="margin-top:14px;padding:8px;background:rgba(245,158,11,.1);border:1px solid var(--warn);border-radius:6px;color:var(--warn)">⚠️ <b>${buckets.shareable_no_payer.length} dépense(s) SANS payeur</b> (total: ${fmt(Math.round(buckets.shareable_no_payer.reduce((s,l)=>s+l.total_price,0)))} XPF) — comptées dans le total mais non attribuées, ce qui FAUSSE les soldes :</div>`;
     html+='<div style="font-size:.62rem;max-height:120px;overflow-y:auto;padding-left:8px">';
     buckets.shareable_no_payer.slice(0,15).forEach(l=>{
-      html+=`<div>${fmtDateShort(l.created_at)} · ${l.type} · ${fmt(l.total_price)} XPF · ${(l.note||'').slice(0,40)}</div>`;
+      html+=`<div>${fmtDateShort(l.created_at)} · ${l.type} · ${fmt(l.total_price)} XPF · ${escapeHtml((l.note||'').slice(0,40))}</div>`;
     });
     if(buckets.shareable_no_payer.length>15)html+=`<div>… et ${buckets.shareable_no_payer.length-15} autres</div>`;
     html+='</div>';
@@ -2104,7 +2121,7 @@ function showDiagnostic(){
     html+=`<div style="margin-top:8px;padding:8px;background:rgba(245,158,11,.1);border:1px solid var(--warn);border-radius:6px;color:var(--warn)">⚠️ <b>${buckets.reimburse_no_payer.length} remboursement(s) SANS payeur</b> (total: ${fmt(Math.round(totalRembNoPayer))} XPF) :</div>`;
     html+='<div style="font-size:.62rem;max-height:80px;overflow-y:auto;padding-left:8px">';
     buckets.reimburse_no_payer.slice(0,10).forEach(l=>{
-      html+=`<div>${fmtDateShort(l.created_at)} · ${fmt(l.total_price)} XPF · ${(l.note||'').slice(0,40)}</div>`;
+      html+=`<div>${fmtDateShort(l.created_at)} · ${fmt(l.total_price)} XPF · ${escapeHtml((l.note||'').slice(0,40))}</div>`;
     });
     html+='</div>';
   }
@@ -2245,7 +2262,7 @@ function renderMembersList(){
     const editBtn=`<button class="btn btn-ghost btn-xs" onclick="setMemberNickname('${m.id}')" style="margin-left:6px" title="Surnom local">✏️</button>`;
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.83rem">
       <span>${ico}</span>
-      <span style="flex:1">${m.label}${hasNick?'<span style="color:var(--muted);font-size:.62rem;margin-left:4px">(surnom local)</span>':''}</span>
+      <span style="flex:1">${escapeHtml(m.label)}${hasNick?'<span style="color:var(--muted);font-size:.62rem;margin-left:4px">(surnom local)</span>':''}</span>
       <code style="font-size:.62rem;color:var(--muted)">${m.id.slice(0,8)}…</code>${editBtn}
     </div>`;
   }).join('');
@@ -2537,7 +2554,7 @@ function renderLogs(){
     if(l.weight_kg)sub.push('⚖️ '+l.weight_kg+'kg');
     if(l.paid_by){
       const m=_members.find(x=>x.id===l.paid_by);
-      if(m)sub.push('💵 '+m.label);
+      if(m)sub.push('💵 '+escapeHtml(m.label));
     }
     // Indicateur de split personnalisé
     let hasSplit=false;
@@ -2548,7 +2565,7 @@ function renderLogs(){
     // Nettoyer la note : retirer SPLIT:{...} et __REMB__ avant affichage
     if(l.note){
       const cleanNote=l.note.replace(/SPLIT:\{[^}]*\}/g,'').replace(/__REMB__/g,'').replace(/\s+/g,' ').trim();
-      if(cleanNote)sub.push('📝 '+cleanNote);
+      if(cleanNote)sub.push('📝 '+escapeHtml(cleanNote));
     }
     return `<div class="log-item">
       <span class="log-badge ${badgeClass}">${badgeLabel}</span>
@@ -2636,7 +2653,7 @@ function refreshBidonTargetSelect(){
   // Tri : ceux avec de la place en premier
   opts.sort((a,b)=>(b.space>0.5?1:0)-(a.space>0.5?1:0));
   sel.innerHTML='<option value="new">➕ Nouveau bidon (créé automatiquement)</option>'+
-    opts.map(o=>`<option value="${o.idx}">🛢 ${o.label}</option>`).join('');
+    opts.map(o=>`<option value="${o.idx}">🛢 ${escapeHtml(o.label)}</option>`).join('');
   if(cur)sel.value=cur;
 }
 
@@ -2662,7 +2679,7 @@ function refreshRefuelBidonSelect(){
     _bidons.map((b,i)=>{
       const space=b.cap-b.level;
       const lbl=(b.note?b.note+' · ':'')+b.cap+'L ('+b.level.toFixed(1)+'/'+b.cap+'L'+(space>0.5?', +'+space.toFixed(1)+'L possible':' plein')+')';
-      return `<option value="${i}">🛢 ${lbl}</option>`;
+      return `<option value="${i}">🛢 ${escapeHtml(lbl)}</option>`;
     }).join('');
   if(cur)sel.value=cur;
 }
@@ -2734,7 +2751,7 @@ function renderSplitInputs(){
       if(others.length){
         const share=Math.round(total/others.length);
         const payerLbl=_members.find(m=>m.id===payerId)?.label||'?';
-        totalLbl.innerHTML=`Part : <span style="color:var(--a2)">${fmt(share)} XPF</span> × ${others.length} (sans ${payerLbl})`;
+        totalLbl.innerHTML=`Part : <span style="color:var(--a2)">${fmt(share)} XPF</span> × ${others.length} (sans ${escapeHtml(payerLbl)})`;
       }else totalLbl.innerHTML='<span style="color:var(--warn)">Aucun autre membre</span>';
     }else if(total>0&&!payerId){
       totalLbl.innerHTML='<span style="color:var(--warn)">⚠️ Renseigne "Payé par" d\'abord</span>';
@@ -2745,7 +2762,7 @@ function renderSplitInputs(){
   inputsEl.style.display='block';
   inputsEl.innerHTML=_members.map((m,i)=>
     `<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:6px">
-      <label style="font-size:.8rem;color:var(--txt)">${m.label}</label>
+      <label style="font-size:.8rem;color:var(--txt)">${escapeHtml(m.label)}</label>
       <input type="number" data-split-member="${m.id}" step="1" min="0" placeholder="0" style="width:120px;padding:7px 10px;font-size:.82rem" oninput="updateSplitTotal()">
     </div>`
   ).join('')+
@@ -3105,7 +3122,7 @@ function renderEditSplitInputs(){
       const others=_members.filter(m=>m.id!==payerId);
       const payerLbl=_members.find(m=>m.id===payerId)?.label||'?';
       const sharePerOther=others.length?Math.round(total/others.length):total;
-      totalLbl.innerHTML='<b>'+payerLbl+'</b> a avancé — chaque autre lui doit <span style="color:var(--warn)">'+fmt(sharePerOther)+' XPF</span>';
+      totalLbl.innerHTML='<b>'+escapeHtml(payerLbl)+'</b> a avancé — chaque autre lui doit <span style="color:var(--warn)">'+fmt(sharePerOther)+' XPF</span>';
     }else if(total>0&&!payerId){
       totalLbl.innerHTML='<span style="color:var(--warn)">⚠️ Renseigne "Payé par" pour voir le détail</span>';
     }else totalLbl.textContent='';
@@ -3117,7 +3134,7 @@ function renderEditSplitInputs(){
   inputsEl.innerHTML=_members.map(m=>{
     const v=split?.shares?.[m.id]||'';
     return `<div style="display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;margin-bottom:6px">
-      <label style="font-size:.8rem;color:var(--txt)">${m.label}</label>
+      <label style="font-size:.8rem;color:var(--txt)">${escapeHtml(m.label)}</label>
       <input type="number" data-edit-split-member="${m.id}" step="1" min="0" value="${v}" placeholder="0" style="padding:7px 10px;font-size:.82rem" oninput="updateEditSplitTotal()">
     </div>`;
   }).join('')+
@@ -3276,7 +3293,7 @@ function maybeOfferBidonMigration(){
     // Des bidons cloud existent déjà (un log porte un bidon_id) → marquer fait, ne pas reproposer
     if(allLogs.some(l=>l.bidon_id)){localStorage.setItem('marine-bidons-migrated','1');return;}
     if(document.getElementById('bidonMigrateModal')?.classList.contains('show'))return;
-    const recap=_bidonsLegacy.map(b=>`• ${b.note||(b.cap+'L')} : ${(+b.level||0).toFixed(1)} / ${b.cap} L`).join('<br>');
+    const recap=_bidonsLegacy.map(b=>`• ${escapeHtml(b.note||(b.cap+'L'))} : ${(+b.level||0).toFixed(1)} / ${b.cap} L`).join('<br>');
     const el=document.getElementById('bidonMigrateRecap'); if(el)el.innerHTML=recap;
     modal('bidonMigrateModal',true);
   }catch(e){}
@@ -3324,7 +3341,7 @@ function renderBidons(){
     return `<div class="bidon" onclick="editBidonLevel(${i})">
       ${svg}
       <div class="bidon-val">${b.level.toFixed(1)} / ${b.cap} L</div>
-      <div class="bidon-lbl">${b.note||b.cap+'L'}</div>
+      <div class="bidon-lbl">${escapeHtml(b.note||b.cap+'L')}</div>
     </div>`;
   }).join('');
 
@@ -3368,7 +3385,7 @@ function updateFillBidonSelect(){
   const sel=document.getElementById('bidon-fill-src');
   if(!sel)return;
   sel.innerHTML=_bidons.length
-    ?_bidons.map((b,i)=>`<option value="${i}">${b.note||b.cap+'L'} (${b.level.toFixed(1)}/${b.cap}L)</option>`).join('')
+    ?_bidons.map((b,i)=>`<option value="${i}">${escapeHtml(b.note||b.cap+'L')} (${b.level.toFixed(1)}/${b.cap}L)</option>`).join('')
     :'<option value="">Aucun bidon</option>';
 }
 
@@ -3534,7 +3551,7 @@ function updateBidonSourceSelect(){
   const sel=document.getElementById('bidon-pour-src');
   if(!sel)return;
   sel.innerHTML=_bidons.length
-    ?_bidons.map((b,i)=>`<option value="${i}">${b.note||b.cap+'L bidon'} (${b.level.toFixed(1)}L dispo)</option>`).join('')
+    ?_bidons.map((b,i)=>`<option value="${i}">${escapeHtml(b.note||b.cap+'L bidon')} (${b.level.toFixed(1)}L dispo)</option>`).join('')
     :'<option value="">Aucun bidon</option>';
 }
 
@@ -3565,7 +3582,7 @@ function openUnattributedFix(){
   if(!logs.length){ el.innerHTML='<div class="empty" style="padding:20px"><span class="eico">✓</span>Toutes les dépenses ont un payeur</div>'; }
   else{
     el.innerHTML=logs.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(l=>{
-      const opts=_members.map(m=>`<option value="${m.id}">${m.label}</option>`).join('');
+      const opts=_members.map(m=>`<option value="${m.id}">${escapeHtml(m.label)}</option>`).join('');
       const unknown=l.paid_by&&!_members.some(m=>m.id===l.paid_by);
       const safeNote=(l.note||'').replace(/</g,'&lt;').slice(0,45);
       return `<div class="log-item">
@@ -3601,20 +3618,20 @@ function renderBalanceHero(){
   const owedToMe=bal.transfers.find(t=>t.toId===meId);
   let big,col,action='';
   if(iOwe){ col='#f43f5e';
-    big=`💸 Tu dois <b>${fmt(iOwe.amt)} XPF</b> à ${iOwe.to}`;
-    action=`<button class="btn btn-primary btn-full" style="margin-top:10px" onclick="quickReimburse('${iOwe.toId}',${iOwe.amt})">✓ J'ai remboursé ${iOwe.to}</button>`;
+    big=`💸 Tu dois <b>${fmt(iOwe.amt)} XPF</b> à ${escapeHtml(iOwe.to)}`;
+    action=`<button class="btn btn-primary btn-full" style="margin-top:10px" onclick="quickReimburse('${iOwe.toId}',${iOwe.amt})">✓ J'ai remboursé ${escapeHtml(iOwe.to)}</button>`;
   }else if(owedToMe){ col='#10b981';
-    big=`💰 ${owedToMe.from} te doit <b>${fmt(owedToMe.amt)} XPF</b>`;
+    big=`💰 ${escapeHtml(owedToMe.from)} te doit <b>${fmt(owedToMe.amt)} XPF</b>`;
   }else if(meId&&_members.some(m=>m.id===meId)){ col='var(--a)'; big=`✓ Comptes à l'équilibre`; }
   else{ // utilisateur hors membres : montrer le 1er transfert global
     const t=bal.transfers[0];
     col=t?'var(--a2)':'var(--a)';
-    big=t?`${t.from} doit <b>${fmt(t.amt)} XPF</b> à ${t.to}`:`✓ Comptes à l'équilibre`;
+    big=t?`${escapeHtml(t.from)} doit <b>${fmt(t.amt)} XPF</b> à ${escapeHtml(t.to)}`:`✓ Comptes à l'équilibre`;
   }
   const detail=bal.rows.map(r=>{
     const c=r.total>500?'#10b981':r.total<-500?'#f43f5e':'var(--muted2)';
     return `<div style="display:flex;justify-content:space-between;font-size:.74rem;padding:3px 0;border-bottom:1px solid var(--s3)">
-      <span>${r.label}${r.id===meId?' (moi)':''}</span>
+      <span>${escapeHtml(r.label)}${r.id===meId?' (moi)':''}</span>
       <span style="font-family:var(--mono)">payé ${fmt(Math.round(r.paid))} · dû ${fmt(Math.round(r.owed))} · <b style="color:${c}">${r.total>=0?'+':''}${fmt(Math.round(r.total))}</b></span></div>`;
   }).join('');
   el.innerHTML=`<div class="card" style="border-color:${col};border-width:1.5px">
@@ -3725,9 +3742,9 @@ function openQuick(kind){
     const iOwe=bal.transfers.find(t=>t.fromId===meId)||bal.transfers[0];
     if(!_members.length){ b.innerHTML='<div class="empty">Aucun membre</div>'; }
     else{
-      const opts=_members.filter(m=>m.id!==meId).map(m=>`<option value="${m.id}" ${iOwe&&m.id===iOwe.toId?'selected':''}>${m.label}</option>`).join('');
+      const opts=_members.filter(m=>m.id!==meId).map(m=>`<option value="${m.id}" ${iOwe&&m.id===iOwe.toId?'selected':''}>${escapeHtml(m.label)}</option>`).join('');
       b.innerHTML=`
-        ${iOwe?`<div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">Solde : tu dois <b>${fmt(iOwe.amt)} XPF</b> à ${iOwe.to}</div>`:''}
+        ${iOwe?`<div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">Solde : tu dois <b>${fmt(iOwe.amt)} XPF</b> à ${escapeHtml(iOwe.to)}</div>`:''}
         <div class="field"><label>À</label><select id="q-to">${opts}</select></div>
         <div class="field"><label>Montant (XPF)</label><input id="q-amt" type="number" step="1" inputmode="numeric" value="${iOwe?iOwe.amt:''}"></div>
         <button class="btn btn-primary btn-full" onclick="saveQuickRemb()">✓ Enregistrer le remboursement</button>`;
@@ -3921,7 +3938,7 @@ function renderCharts(){
           const paidPct=totalBoatExpense?Math.min(1,r.paid/totalBoatExpense):0;
           return `<div class="bal-card" style="border-color:${r.total>500?'rgba(16,185,129,.25)':r.total<-500?'rgba(244,63,94,.2)':'var(--border)'}">
             <div class="bal-card-head">
-              <div class="bal-name">${r.m.label}</div>
+              <div class="bal-name">${escapeHtml(r.m.label)}</div>
               <div class="bal-total" style="color:${col}">${sign}${fmt(Math.round(r.total))} XPF</div>
             </div>
             <div class="bal-bar-wrap">

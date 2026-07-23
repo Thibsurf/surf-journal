@@ -16,9 +16,20 @@
 <link rel="shortcut icon" href="icons/icon-192x192.png?v=6">
 <link rel="stylesheet" href="pwa.css">
 <title>Coups de surf NC</title>
+<meta name="description" content="Journal de sessions, prévisions marine locales et organisation des sorties — un seul compte, fait par des surfeurs NC pour les surfeurs NC.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://thibsurf.github.io/surf-journal/">
+<meta property="og:title" content="Coups de Surf NC">
+<meta property="og:description" content="Journal de sessions, prévisions marine locales et organisation des sorties — un seul compte, fait par des surfeurs NC pour les surfeurs NC.">
+<meta property="og:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Coups de Surf NC">
+<meta name="twitter:description" content="Journal de sessions, prévisions marine locales et organisation des sorties — un seul compte, fait par des surfeurs NC pour les surfeurs NC.">
+<meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 :root {
@@ -463,6 +474,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const APP_NAME = 'Coups de surf NC';
 // Worker Cloudflare — proxy meteo.nc avec cache + token auto
 const WORKER_URL = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
+// Clé partagée attendue par le worker sur POST /token (doit matcher le secret
+// PUSH_SECRET configuré côté Cloudflare : wrangler secret put PUSH_SECRET).
+const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 
 </script>
 
@@ -4726,7 +4740,7 @@ function applyManualToken() {
   if (typeof WORKER_URL !== 'undefined' && WORKER_URL && !WORKER_URL.includes('TON-WORKER')) {
     fetch(WORKER_URL + '/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Push-Key': WORKER_PUSH_KEY },
       body: JSON.stringify({ token: val, updated_at: new Date().toISOString() })
     }).catch(function() {}); // silencieux
   }
