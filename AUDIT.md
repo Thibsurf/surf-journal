@@ -288,3 +288,25 @@ Tout commité sur `main`, rien poussé/déployé (à toi de vérifier et pusher)
 Non traité dans cette passe (nécessite validation ou effort plus large, cf. liste "À valider" plus haut) :
 migration `index.html`→`nc-token.js`, sweep `font-size`, découpage de `previsions.html`, CI pour
 `test_fuel.html`, `test_tricount.html`.
+
+---
+
+## Comparatifs multi-modèles — 2026-07-24
+
+Ajouté au comparatif VENT et HOULE de `previsions.html` (commité, non déployé) :
+- **Cases à cocher** dans la légende (afficher/masquer chaque modèle, sans refetch, persisté localStorage).
+- **Mode « au point de mesure »** (bouton `wcmp-loc-btn`) : ré-échantillonne meteo.nc/GFS/BOM aux
+  coordonnées de la station → corrélation sans biais de distance. Séries station gardées en cache
+  mémoire par station (`_windStationCache`). AROME/ECMWF masqués (liés à un spot Windguru, non
+  ré-échantillonnables à une lat/lon libre).
+- **Corrélation de direction** (écart angulaire moyen) en plus de la vitesse, dans le badge.
+
+**Pistes de suite (non faites) :**
+- **AROME ré-échantillonnable partout** : Météo-France publie les runs AROME Outre-Mer NC en GRIB2
+  sur un bucket S3 public **sans clé** (`meteofrance-pnt.s3.rbx.io.cloud.ovh.net/pnt/<RUN>/arome-om/
+  NCALED/0025/...`, cf. package Python `meteofetch`, data.gouv.fr). Grille 0,025°. Permettrait AROME au
+  point de mesure (et de lâcher la dépendance Windguru). MAIS ~17 Mo/fichier/échéance → à décoder
+  **côté worker** (parser GRIB2 + extraire le point le plus proche + cache), jamais dans le navigateur.
+- **Archivage station** : le mode station ne construit pas encore d'historique de corrélation (seul le
+  recul « live » compte). Étendre `model_forecast_cache` avec des points échantillonnés à la station
+  (clé station) donnerait la même profondeur que le mode spot.
