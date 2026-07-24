@@ -310,3 +310,109 @@ Ajouté au comparatif VENT et HOULE de `previsions.html` (commité, non déploy�
 - **Archivage station** : le mode station ne construit pas encore d'historique de corrélation (seul le
   recul « live » compte). Étendre `model_forecast_cache` avec des points échantillonnés à la station
   (clé station) donnerait la même profondeur que le mode spot.
+
+---
+
+## AROME OM NC au point de mesure — FAIT (2026-07-24)
+
+Suite directe des deux pistes ci-dessus. Vérifié empiriquement (pas dans la doc `meteofetch`, en
+téléchargeant/décodant de vrais GRIB2) avant d'écrire le code :
+
+- Classe `AromeOutreMerNouvelleCaledonie` confirmée (grille NCALED 0,025°, 491×521 points, lat
+  -26..-13.75, lon 158.5..171.5), **49 échéances horaires H+0..H+48**.
+- `freq_update` réel = **3h** (00/03/06/09/12/15/18/21Z), pas 6h comme supposé initialement — mais
+  latence de publication observée **~12h** sur ce domaine Outre-Mer (le run "le plus récent complet"
+  au moment du test était déjà vieux de 4 cycles). D'où l'usage de `get_latest_forecast_time()` qui
+  retombe sur le dernier run réellement publié plutôt que de viser une heure fixe de cron.
+- **Un seul paquet suffit : SP1** (~1.5-2.5 Mo/fichier, ~90 Mo pour le run entier, PAS 17 Mo/fichier
+  comme estimé au 24/07 — cette taille correspond en fait aux paquets HP1/IP1/IP3 qu'on n'utilise pas).
+  Contient déjà `si10`/`wdir10` (vitesse+direction du vent calculées par Météo-France, pas besoin de
+  dériver `u10`/`v10`), `max_i10fg` (rafale), `t2m`, `r2`, `prmsl`, `tp` (pluie cumulée depuis le début
+  du run). `max_i10fg`/`tp` sont absents à H+0 (accumulation nulle) → `null` géré proprement.
+- **Pas de MFWAM régional Nouvelle-Calédonie dans `meteofetch`** : seules les classes `MFWAM0025`
+  (France élargie) et `MFWAM01` (Europe puis Globe depuis le run 06Z du 25/03/25) existent — aucune
+  ne couvre spécifiquement la NC en haute résolution. Le comparatif houle utilise déjà le MFWAM
+  **global** via Open-Meteo (`meteofrance_wave`, clé `mf`, "MF global" dans la légende) — c'est le
+  seul MFWAM accessible sans sortir de `meteofetch`/data.gouv.fr. Rien construit ici pour la houle.
+
+Livré :
+- `ingestion/fetch_arome.py` (+ `requirements.txt`) : décodage GRIB2, isolé du reste du repo (JS)
+  car `meteofetch` est GPL-2.0. Écrit dans `model_forecast_cache` (clé modèle `aro`, kind `wind`) à
+  la lat/lon de **chaque spot** (`shared_spots`) **et de chaque station d'observation** (23 stations,
+  dupliquées depuis `OBS_STATIONS` de `previsions.html` — pas de table dédiée en base).
+- Job GitHub Actions `arome` ajouté à `cache-model-forecasts.yml` (même planning que le job Node
+  existant : 07:00/20:00 UTC).
+- `previsions.html` : `aro` retiré de `WIND_UNRESAMPLABLE` (seul `ecmwf` reste lié à un spot Windguru
+  fixe) ; `_fetchWindAtStation` lit désormais `model_forecast_cache` (fenêtre -8j/+2j) pour AROME à la
+  station ; `_drawAromeCompareFromCache`/`corrSeries` mis à jour en conséquence.
+- Testé de bout en bout : run réel (téléchargement + décodage + upsert Supabase vérifié par requête
+  directe), puis harnais headless (Chrome, injection + dump-dom, cf. [[verif-visuelle-headless]]) —
+  0 erreur JS, mode station affiche bien 49 points AROME (Phare Amédée) au lieu de 0, mode spot
+  inchangé (48 points, comme avant).
+
+Non fait (hors scope de cette passe, cf. pistes ci-dessus si repris un jour) : les points archivés
+côté client (`aromeCachePts`, alimentés par le widget Windguru à chaque visite, clé `arome` — distincte
+de la clé `aro` de ce pipeline) ne sont pas fusionnés avec l'archive GRIB2 en mode spot ; les deux
+sources coexistent sans se contredire mais sans se compléter non plus pour l'instant.
+
+---
+
+## AROME en mode SPOT (repli Windguru) + MARC-WW3 régional — FAIT (2026-07-24/25)
+
+Suite à la demande de rendre AROME disponible en mode spot **en complément** de Windguru (qui ne
+couvre pas tous les spots — seuls 7 noms reconnus par `_wgIdForSpot`, cf. `previsions.html:8131`) :
+
+- `updateAromeCard()`/`_loadAromeWidget()` refactorés : Windguru reste la source PRIMAIRE quand
+  disponible (fraîcheur, `TCDC` cloud cover en plus) ; en son absence (pas de `wgId`, ou
+  `AROME_NOT_AVAILABLE`), repli sur `_fetchAromeArchive(spot)` qui lit `model_forecast_cache`
+  (clé `aro`, écrite par `ingestion/fetch_arome.py`) à la lat/lon du spot et reconstruit un objet
+  compatible avec le format Windguru (`init`/`hours`/`WINDSPD`/...) — **même tableau, même
+  comparatif**, réutilisés tels quels (`_renderAromeCardData(j, wgId, body)`, factorisée des deux
+  flux). `j.model` distingue la source affichée dans le pied de tableau ("Run DD/MM HHh NC · <source>").
+- Le run AROME (date de mise à jour) est maintenant embarqué dans `hours[].run` côté ingestion
+  (pas de colonne dédiée : un `ALTER TABLE` via PostgREST avec la clé anon a été testé et refusé —
+  `model_forecast_cache` n'expose que les colonnes existantes). Affiché tel quel par le rendu
+  commun, identique au format Windguru.
+- Testé en vrai sur un spot sans Windguru ("Passe de Boulari", `wg:null`) : run réel injecté dans
+  `model_forecast_cache`, puis harnais headless (`selectSpotFromMap`, pas `loadForecast` directement
+  — sinon `updateAromeCard()` lit encore l'ancien `currentSpot`, piège rencontré pendant le test) —
+  0 erreur JS, tableau + comparatif remplis avec le modèle "AROME OM NC (archive GRIB2 Météo-France,
+  décodée directement)", run affiché correctement (23h NC = 12h UTC + 11h, cohérent).
+
+**MARC-WW3 Nouvelle-Calédonie** (piste apportée par l'utilisateur, dataset Ifremer/CNRS-IRD-UBO,
+THREDDS `tds1.ifremer.fr`) — vérifié en vrai avant d'écrire le code :
+- C'est bien un **WaveWatch III RÉGIONAL** sur la Nouvelle-Calédonie (pas "juste WW3 global") :
+  grille 3 arcmin/0,05° (~5,5 km, 221×181 points, lat -24..-13 et lon 162..171 **ascendantes** —
+  attention, sens inverse de BOM), forcé par le vent ECMWF opérationnel. Plus fin que BOM (0,125°)
+  et que le MFWAM global déjà intégré (clé `mf`) — devient le modèle le plus fin du comparatif houle.
+- Dataset `..._FULL_TIME_SERIE` = agrégation THREDDS qui **grandit à chaque run** (42879 pas de 3h
+  au moment du test, jusqu'à ~J+1,7 seulement) → la longueur réelle est toujours relue via `.dds`
+  avant de calculer les index, jamais figée en dur.
+- Valeurs en Int16 compressé (`scale_factor`/`add_offset`, ex. hs ×0,002, dir ×0,1) — décodées
+  manuellement, contrairement à BOM dont le flux est déjà en flottant natif.
+- **CORS ouvert** mais seulement visible avec un header `Origin` (un `curl` nu sans `Origin` ne
+  montre PAS `access-control-allow-origin`, ce qui a d'abord fait croire à tort que CORS était
+  fermé — un vrai fetch navigateur envoie toujours `Origin`, donc ça fonctionne en direct, testé
+  en headless avec requête réseau réelle, pas mockée).
+- Intégré comme les autres modèles houle : `_fetchMarcWave(spot)` (fetch live, previsions.html),
+  `fetchMarc(spot)` (même logique, réplique Node dans `cache-model-forecasts.mjs` pour
+  l'archivage 2×/jour), clé modèle `marc`, ajouté à `SWELL_MODELS` — légende/checkbox/tracé/
+  archivage 100% génériques (contrairement au comparatif VENT, pas de câblage supplémentaire
+  nécessaire). Testé en vrai (headless, requête réseau réelle) : 64 points récupérés à Passe de
+  Dumbéa (Hs 1.4-2.3 m, période 6.8-8.1 s, direction 193-203° — cohérent avec les autres modèles
+  du run). Houle secondaire non disponible (variables bulk hs/t02/dir seulement, pas de partition
+  houle/mer du vent séparée — comme BOM).
+- **Vent (uwnd/vwnd) collecté côté ingestion Node** (`fetchMarc().wind`, archivé dans
+  `model_forecast_cache` clé `marc`/kind `wind`) mais **PAS branché dans le comparatif vent**
+  (previsions.html) — contrairement à la houle, le comparatif vent n'est pas data-driven (légende
+  HTML figée par modèle, plusieurs tableaux de variables séparés par clé en dur) ; le câblage
+  demanderait de toucher ~6 endroits différents (légende, `_fetchWindAtStation`, `corrSeries`,
+  boucles de tracé, `_updateWindCmpControls`). Laissé de côté cette passe faute de temps — les
+  données sont déjà en base si repris plus tard, seul le rendu manque.
+- Limite de validation : pas de Node.js dans cet environnement de dev → `cache-model-forecasts.mjs`
+  n'a pas pu être exécuté tel quel. La logique (regex de parsing, décodage scale/offset, calcul
+  d'index, conversion de dates) a été vérifiée par un test isolé (mock de `fetch` rejouant de
+  vraies réponses THREDDS capturées) dans un vrai moteur JS (Chrome headless), et l'accès réseau/
+  format réel vérifié séparément par `curl`/Python. La version `previsions.html` (`_fetchMarcWave`),
+  elle, a été testée en conditions réelles (requête réseau live) — les deux implémentations
+  partagent la même logique de parsing.

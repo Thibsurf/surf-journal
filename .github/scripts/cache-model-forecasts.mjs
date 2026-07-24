@@ -90,6 +90,86 @@ async function fetchBom(spot) {
   } catch (e) { console.warn('[BOM]', spot.name, e.message); return { swell: [], wind: [] }; }
 }
 
+// ── MARC-WW3 Nouvelle-Calédonie (Ifremer/CNRS-IRD-UBO, WaveWatch III régional
+// 3 arcmin ≈ 5,5 km, forcé par le vent ECMWF opérationnel) — houle ET vent ───
+// THREDDS/OPeNDAP public, sans clé. Vérifié empiriquement le 2026-07-25 (pas de
+// doc utilisateur, juste les attributs .das) :
+// - grille NCALED 0,05° (161x181->221x181 pts), lat -24..-13 ASCENDANTE, lon
+//   162..171 ASCENDANTE (contrairement à BOM qui est en lat décroissante).
+// - dataset "FULL_TIME_SERIE" = agrégation THREDDS glissante qui grandit à
+//   chaque nouveau run (42879 pas de 3h au moment du test, jusqu'à ~J+1,7) →
+//   TOUJOURS relire la longueur réelle via .dds avant de calculer les index,
+//   ne jamais coder en dur le dernier index.
+// - valeurs stockées en Int16 compressé (scale_factor/add_offset) : l'interface
+//   ASCII renvoie les entiers BRUTS, à décoder nous-mêmes (contrairement à BOM
+//   dont les valeurs sont déjà en flottant natif).
+// - hs (m), t02 (période moyenne, s), dir ("from", degrés) : houle. uwnd/vwnd
+//   (m/s, est/nord) : vent au point de grille — même résolution que la houle,
+//   en bonus pour le comparatif vent.
+const MARC_BASE = 'https://tds1.ifremer.fr/thredds/dodsC/MARC-WW3_CALEDONIE_3MIN-FOR_FULL_TIME_SERIE';
+const MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1 };
+const MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", cf. .das
+async function fetchMarcTimeLen() {
+  try {
+    const r = await fetchWithTimeout(MARC_BASE + '.dds');
+    const t = await r.text();
+    const m = t.match(/time\s*=\s*(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  } catch (e) { console.warn('[MARC] dds', e.message); return null; }
+}
+async function fetchMarc(spot) {
+  try {
+    const N = await fetchMarcTimeLen();
+    if (!N) return { swell: [], wind: [] };
+    const NSTEPS = 64; // ~8j à 3h : recul archivé + prévision dispo (horizon court, ~J+1,7 observé)
+    const t0 = Math.max(0, N - NSTEPS), t1 = N - 1;
+    const latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
+    const lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
+    const vars = ['hs', 't02', 'dir', 'uwnd', 'vwnd'];
+    const url = MARC_BASE + `.ascii?time%5B${t0}:1:${t1}%5D,` + vars.map(v =>
+      `${v}%5B${t0}:1:${t1}%5D%5B${latIdx}:1:${latIdx}%5D%5B${lonIdx}:1:${lonIdx}%5D`
+    ).join(',');
+    const r = await fetchWithTimeout(url, 20000);
+    const text = await r.text();
+    function parseFlat(name) {
+      const mm = text.match(new RegExp(name + '\\[\\d+\\]\\s*\\n([^\\n]+)'));
+      return mm ? mm[1].split(',').map(s => parseFloat(s.trim())) : [];
+    }
+    function parseGrid(name) {
+      const mm = text.match(new RegExp(name + '\\.' + name + '\\[\\d+\\]\\[1\\]\\[1\\]([\\s\\S]*?)(?:\\n\\n|$)'));
+      if (!mm) return [];
+      const out = [];
+      const lineRe = /\[(\d+)\]\[0\],\s*([\-\d.]+)/g;
+      let lm;
+      while ((lm = lineRe.exec(mm[1]))) out[+lm[1]] = parseFloat(lm[2]);
+      return out;
+    }
+    const times = parseFlat('time');
+    const hsRaw = parseGrid('hs'), t02Raw = parseGrid('t02'), dirRaw = parseGrid('dir');
+    const uRaw = parseGrid('uwnd'), vRaw = parseGrid('vwnd');
+    const swell = [], wind = [];
+    for (let i = 0; i < times.length; i++) {
+      const ms = MARC_EPOCH_MS + times[i] * 86400000;
+      if (hsRaw[i] != null && !isNaN(hsRaw[i])) {
+        swell.push({
+          ms, val: hsRaw[i] * MARC_SCALE.hs,
+          period: t02Raw[i] != null ? t02Raw[i] * MARC_SCALE.t02 : null,
+          dir: dirRaw[i] != null ? dirRaw[i] * MARC_SCALE.dir : null,
+        });
+      }
+      if (uRaw[i] != null && vRaw[i] != null && !isNaN(uRaw[i]) && !isNaN(vRaw[i])) {
+        const u = uRaw[i] * MARC_SCALE.uwnd, v = vRaw[i] * MARC_SCALE.vwnd;
+        const spdKt = Math.sqrt(u * u + v * v) * 1.944;
+        // Convention météo "d'où vient le vent" (comme partout ailleurs dans l'app),
+        // u/v étant la composante EST/NORD vers laquelle le vent souffle.
+        const wdir = (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360;
+        wind.push({ ms, val: spdKt, dir: wdir });
+      }
+    }
+    return { swell, wind };
+  } catch (e) { console.warn('[MARC]', spot.name, e.message); return { swell: [], wind: [] }; }
+}
+
 // ── Météo-France global (MFWAM) via Open-Meteo — houle seulement ───────
 async function fetchMfWave(spot) {
   try {
@@ -261,8 +341,8 @@ async function run() {
   console.log(ncToken ? '[nc] token trouvé — meteo.nc inclus' : '[nc] pas de token Supabase — meteo.nc sauté (alimenté par les visites de l\'app)');
   for (const spot of SPOTS) {
     console.log(`--- ${spot.name} ---`);
-    const [bom, mfWave, gfsWave, gfsWind, ecmwf, nc] = await Promise.all([
-      fetchBom(spot), fetchMfWave(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot), fetchMeteoNc(spot, ncToken),
+    const [bom, mfWave, gfsWave, gfsWind, ecmwf, nc, marc] = await Promise.all([
+      fetchBom(spot), fetchMfWave(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot), fetchMeteoNc(spot, ncToken), fetchMarc(spot),
     ]);
     const rows = [
       ...toRows(spot, 'nc', 'swell_primary', nc.swell),
@@ -274,6 +354,8 @@ async function run() {
       ...toRows(spot, 'gfs', 'wind', gfsWind),
       ...toRows(spot, 'ecmwf', 'swell_primary', ecmwf.swell),
       ...toRows(spot, 'ecmwf', 'wind', ecmwf.wind),
+      ...toRows(spot, 'marc', 'swell_primary', marc.swell),
+      ...toRows(spot, 'marc', 'wind', marc.wind),
     ];
     // Supabase limite la taille d'un batch insert — ce volume (~10j × 6
     // modèles/kind max) reste largement en dessous, mais on découpe par

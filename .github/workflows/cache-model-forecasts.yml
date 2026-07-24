@@ -18,3 +18,21 @@ jobs:
           node-version: '20'
       - name: Fetch + archive model forecasts
         run: node .github/scripts/cache-model-forecasts.mjs
+
+  # AROME Outre-Mer Nouvelle-Calédonie : décodage direct des GRIB2 Météo-France
+  # (meteofetch, GPL-2.0 — isolé dans ingestion/, cf. ingestion/requirements.txt).
+  # Job Python séparé du job Node ci-dessus, même planning. Le run AROME réel
+  # (freq_update=3h) est retrouvé dynamiquement par le script (latence de
+  # publication observée jusqu'à ~12h sur ce domaine Outre-Mer) — inutile de
+  # caler le cron sur une heure précise de run.
+  arome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r ingestion/requirements.txt
+      - name: Fetch + archive AROME OM NC
+        run: python ingestion/fetch_arome.py

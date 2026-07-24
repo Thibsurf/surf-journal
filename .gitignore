@@ -11,3 +11,7 @@ thibsurf_nav/tiles_shom_final/
 *.zip
 nc-token-extension*.zip
 nc-token-extension-v10.zip
+
+# Python (ingestion/)
+__pycache__/
+*.pyc

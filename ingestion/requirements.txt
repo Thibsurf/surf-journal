@@ -1,0 +1,8 @@
+# meteofetch est GPL-2.0 — isolé dans ce dossier pour ne pas imposer cette
+# licence au reste du repo (JS). Aucune clé API : `meteofetch` télécharge les
+# GRIB2 depuis le bucket S3 public de Météo-France sans authentification.
+# cfgrib/eccodes(lib) sont installés automatiquement en dépendances et
+# embarquent leur binaire (pas d'apt-get requis sur ubuntu-latest, vérifié).
+meteofetch==0.5.8
+pandas
+requests
