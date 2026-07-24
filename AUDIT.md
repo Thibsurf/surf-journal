@@ -511,3 +511,28 @@ Sources/Aoupinie → 0 point (masqués, comme attendu) ; Nouméa/Yaté (côtiers
 
 Re-testé de bout en bout après ces correctifs : ingestion réelle relancée sur les 30 points, aucune
 régression, toujours 90 lignes upsertées avec succès.
+
+### Vérification explicite demandée : houle au spot, jamais à la station de mesure du vent
+
+Point soulevé : la houle (MARC/BOM/MF/GFS/ECMWF) doit être extraite aux **spots marins**, jamais
+aux **points de mesure du vent** (`OBS_STATIONS`, dont certains sont terrestres — La Tontouta,
+Montagne des Sources, Aoupinie). Vérifié que c'était déjà le cas dans tout le code (aucune
+correction nécessaire, mais vérification demandée explicitement donc faite en profondeur, pas
+supposée) :
+- `cache-model-forecasts.mjs` : tous les fetchers houle (`fetchBom`, `fetchMfWave`, `fetchGfsWave`,
+  `fetchEcmwf`, `fetchMarc`) ne sont appelés que dans `for (const spot of spots)`, où `spots` vient
+  de `fetchSpots()` (shared_spots) — jamais de `STATIONS`/`OBS_STATIONS`.
+- `previsions.html` : tous les fetchers houle (`_fetchBomWw3`, `_fetchMeteoFranceWave`,
+  `_fetchEcmwfWave`, `_fetchMarcWave`) ne sont appelés qu'avec `SPOTS[currentSpot]`. Le comparatif
+  houle (`_drawSwellCompare`/`SWELL_MODELS`) n'a pas de mode "station" (contrairement au vent) —
+  vérifié en vrai que `_swellCache` ne change JAMAIS quand on bascule `_windCmpAtStation` (testé :
+  `_swellCache.marc[0]` identique avant/après le toggle).
+- `ingestion/fetch_arome.py` combine bien `spots + STATIONS`, mais exclusivement pour le vent
+  (`kind="wind"`) — AROME ne produit aucune donnée de houle.
+- Vérifié aussi que les 7 spots réels retournent tous des données MARC valides (aucun n'est sur un
+  point terre/masqué de la grille 5,5 km) : Hs entre 0,24 et 1,65 m selon le spot, cohérent.
+
+Amélioration de robustesse apportée : commentaires "INVARIANT" ajoutés aux 3 points d'entrée
+(`_drawSwellCompare`, `cache-model-forecasts.mjs:run()`, `fetch_arome.py:run()`) documentant
+explicitement cette séparation spot/station — pour qu'un futur ajout de modèle houle ne puisse pas
+la casser par erreur en copiant par inadvertance le pattern spots+stations du vent.

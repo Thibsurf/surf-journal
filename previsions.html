@@ -4629,6 +4629,13 @@ async function _renderSwellCompare() {
   var gfsData = { primary: _swellToPts(_omFcastData, 1), secondary: _swellToPts(_omFcastData, 2) };
   if (ncData.primary.length < 2 && gfsData.primary.length < 2) { card.style.display = 'none'; return; }
   card.style.display = 'block';
+  // INVARIANT : la houle est TOUJOURS échantillonnée au SPOT, jamais à une station
+  // de mesure du vent (OBS_STATIONS) — contrairement au comparatif vent qui, lui, a
+  // un mode « au point de mesure ». Un point de mesure vent (souvent une station
+  // météo terrestre, ex. aéroport de La Tontouta) n'a aucune pertinence pour une
+  // hauteur de houle. Vérifié : _swellCache ne change jamais quand on bascule
+  // _windCmpAtStation (les deux comparatifs sont indépendants par construction —
+  // le vent peut re-échantillonner, la houle ne le fait jamais).
   var _spotForFetch = SPOTS[currentSpot];
   var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch), _fetchEcmwfWave(_spotForFetch), _fetchMarcWave(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné

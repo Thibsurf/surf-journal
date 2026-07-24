@@ -247,6 +247,11 @@ def run():
     logger.info("Run retenu: %s", run_iso)
 
     spots = fetch_spots()
+    # INVARIANT : spots + STATIONS n'est valable QUE pour le vent (kind="wind",
+    # seule donnée produite ici). AROME ne produit pas de houle — cache-model-
+    # forecasts.mjs (BOM/MF/GFS/ECMWF/MARC), lui, n'échantillonne la houle qu'aux
+    # spots marins, jamais aux stations de mesure du vent (dont certaines sont
+    # terrestres, ex. aéroport de La Tontouta — sans pertinence pour une houle).
     points = dedup_points(spots + STATIONS)
     logger.info("%d point(s) à traiter (%d spots + %d stations, dédupliqués)", len(points), len(spots), len(STATIONS))
 

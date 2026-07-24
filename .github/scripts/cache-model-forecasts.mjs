@@ -365,6 +365,12 @@ async function run() {
   console.log(`=== Cache modèles météo — ${new Date().toISOString()} ===`);
   const ncToken = await getNcToken();
   console.log(ncToken ? '[nc] token trouvé — meteo.nc inclus' : '[nc] pas de token Supabase — meteo.nc sauté (alimenté par les visites de l\'app)');
+  // INVARIANT : `spots` = spots marins (shared_spots) UNIQUEMENT. La houle (BOM/MF/
+  // GFS/ECMWF/MARC) n'a de sens qu'à un point de mer — jamais aux stations de mesure
+  // du vent (OBS_STATIONS, côté previsions.html), qui incluent des points terrestres
+  // (ex. aéroport de La Tontouta) sans aucune pertinence pour une hauteur de houle.
+  // ingestion/fetch_arome.py, lui, combine spots+stations mais UNIQUEMENT pour le
+  // vent (kind='wind') — jamais pour la houle.
   const spots = await fetchSpots();
   console.log(`[spots] ${spots.length} point(s) à traiter`);
   for (const spot of spots) {
