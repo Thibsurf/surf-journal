@@ -15,9 +15,8 @@
 const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
 
-// Spots prioritaires = DEFAULT_SPOTS de previsions.html (les points marins
-// pré-configurés de l'app, pas les spots persos ajoutés par les utilisateurs).
-const SPOTS = [
+// Repli si shared_spots est injoignable — ne doit jamais bloquer le job.
+const FALLBACK_SPOTS = [
   { name: 'Passe de Dumbéa',  lat: -22.35, lon: 166.24 },
   { name: 'Ilot Ténia',       lat: -22.01, lon: 165.94 },
   { name: 'Passe de Boulari', lat: -22.50, lon: 166.44 },
@@ -26,6 +25,29 @@ const SPOTS = [
   { name: 'Îlot Maître',      lat: -22.36, lon: 166.38 },
   { name: 'Baie de Sainte Marie', lat: -22.29, lon: 166.46 },
 ];
+
+// Spots = TOUS ceux de shared_spots (id='default'), pas seulement les 7
+// pré-configurés — sinon un spot ajouté par un utilisateur sur la carte
+// (SPOTS.push + saveSpots() dans previsions.html, déjà synchronisé vers
+// Supabase automatiquement) n'aurait jamais d'archive multi-modèle malgré
+// des prévisions "live" fonctionnelles à chaque visite. Même source que
+// ingestion/fetch_arome.py (aucune table `spots` relationnelle, juste ce
+// blob JSON) — gardé en phase avec ce script.
+async function fetchSpots() {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/shared_spots?id=eq.default&select=spots`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } },
+    );
+    const rows = await r.json();
+    const spots = rows?.[0]?.spots ? JSON.parse(rows[0].spots) : null;
+    if (!spots?.length) throw new Error('shared_spots vide ou introuvable');
+    return spots.filter(s => s.lat != null && s.lon != null).map(s => ({ name: s.name, lat: s.lat, lon: s.lon }));
+  } catch (e) {
+    console.warn('[spots] shared_spots indisponible, repli sur la liste figée:', e.message);
+    return FALLBACK_SPOTS;
+  }
+}
 
 const BOM_WW3_BASE = 'https://ocean-thredds01.spc.int/thredds/dodsC/POP/model/regional/bom/forecast/hourly/wavewatch3_latest/latest_merged.nc';
 
@@ -339,7 +361,9 @@ async function run() {
   console.log(`=== Cache modèles météo — ${new Date().toISOString()} ===`);
   const ncToken = await getNcToken();
   console.log(ncToken ? '[nc] token trouvé — meteo.nc inclus' : '[nc] pas de token Supabase — meteo.nc sauté (alimenté par les visites de l\'app)');
-  for (const spot of SPOTS) {
+  const spots = await fetchSpots();
+  console.log(`[spots] ${spots.length} point(s) à traiter`);
+  for (const spot of spots) {
     console.log(`--- ${spot.name} ---`);
     const [bom, mfWave, gfsWave, gfsWind, ecmwf, nc, marc] = await Promise.all([
       fetchBom(spot), fetchMfWave(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot), fetchMeteoNc(spot, ncToken), fetchMarc(spot),

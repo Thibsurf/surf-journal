@@ -416,3 +416,40 @@ THREDDS `tds1.ifremer.fr`) — vérifié en vrai avant d'écrire le code :
   format réel vérifié séparément par `curl`/Python. La version `previsions.html` (`_fetchMarcWave`),
   elle, a été testée en conditions réelles (requête réseau live) — les deux implémentations
   partagent la même logique de parsing.
+
+---
+
+## Correctifs suite au premier retour utilisateur — 2026-07-24 (suite)
+
+1. **"AROME pas visible pour tous les spots" / "windguru fallback sans courbe"** : diagnostic en
+   vrai (headless, boucle sur tous les spots + comptage de pixels dessinés sur le canvas) — le CODE
+   fonctionnait déjà correctement (courbes présentes pour les 4 spots Windguru testés), le problème
+   était un **manque de données** : le job GitHub Actions n'avait encore jamais tourné en prod, seuls
+   2-3 points avaient été peuplés manuellement pendant les tests de cette session. Corrigé en lançant
+   `ingestion/fetch_arome.py` en vrai (sans restriction) : les 30 points (7 spots + 23 stations) ont
+   maintenant une archive AROME. Confirmé visuellement (capture d'écran) sur un spot sans Windguru
+   (Baie de Ste Marie) : tableau + comparatif + badge de corrélation remplis, run affiché.
+   Piège rencontré pendant le diagnostic : appeler `loadForecast(i)` directement (au lieu de
+   `selectSpotFromMap(i)`) laisse `updateAromeCard()` lire l'ancien `currentSpot` (elle est appelée
+   en tout début de `loadForecast`, avant que `currentSpot` soit mis à jour) — faux négatif de test,
+   pas un bug de l'app.
+
+2. **Spots créés sur la carte** : vérifié que `startAddSpot()`/`SPOTS.push(newSpot); saveSpots();`
+   synchronise déjà automatiquement TOUT nouveau spot vers Supabase (`shared_spots`, table unique
+   partagée) — aucune UI "partager" à construire, c'est déjà le comportement par défaut. En
+   revanche, `cache-model-forecasts.mjs` (archivage GFS/BOM/ECMWF/MF/MARC) utilisait une liste de
+   7 spots **figée en dur**, donc un nouveau spot n'aurait jamais eu d'historique archivé malgré des
+   prévisions "live" fonctionnelles. Corrigé : `fetchSpots()` lit désormais `shared_spots`
+   dynamiquement (même source que `ingestion/fetch_arome.py`), avec repli sur l'ancienne liste figée
+   si Supabase est injoignable. Tout nouveau spot ajouté sur la carte est donc automatiquement
+   couvert par l'archive multi-modèle vent ET houle, sans action supplémentaire.
+
+3. **Vent MARC dans le comparatif** (précédemment reporté, données déjà collectées mais pas
+   affichées) : branché — `_fetchMarcWind(spot)` (previsions.html, live) + `fetchMarc().wind`
+   (cache-model-forecasts.mjs, déjà fait) alimentent désormais la légende, le tracé, la rose des
+   vents, le badge de corrélation vitesse/direction et le mode station (MARC est ré-échantillonnable
+   à toute lat/lon, comme AROME — seul ECMWF reste lié à un spot Windguru fixe). Au passage, une
+   mention obsolète "AROME/ECMWF indisponibles ici" (héritée d'avant que AROME devienne
+   ré-échantillonnable) a été corrigée dans le badge de corrélation en mode station.
+   Testé en vrai (headless, requêtes réseau live) : 23 points MARC en mode spot ET en mode station,
+   0 erreur JS, badge de corrélation classant AROME/BOM/GFS/meteo.nc/MARC ensemble.

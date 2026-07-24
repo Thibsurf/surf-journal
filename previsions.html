@@ -4097,7 +4097,7 @@ async function _fetchEcmwfWave(spot) {
 // ici, comme BOM). Dataset "FULL_TIME_SERIE" = agrégation THREDDS qui grandit
 // à chaque run → on relit toujours sa longueur réelle via .dds, jamais figée.
 var MARC_BASE = 'https://tds1.ifremer.fr/thredds/dodsC/MARC-WW3_CALEDONIE_3MIN-FOR_FULL_TIME_SERIE';
-var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1 };
+var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1 };
 var MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", cf. .das
 async function _fetchMarcWave(spot) {
   var ctrl = new AbortController();
@@ -4295,8 +4295,8 @@ function _renderCmpExtremes(atMs) {
     // on saute les modèles décochés dans la légende (_windCmpHidden).
     var atSt = _windCmpAtStation && wc.station;
     var wdefs = atSt
-      ? [['meteo.nc', 'nc', wc.station.nc], ['GFS', 'gfs', wc.station.gfs], ['BOM', 'bom', wc.station.bom]]
-      : [['AROME', 'aro', wc.aro], ['meteo.nc', 'nc', wc.pageNc], ['GFS', 'gfs', wc.pageGfs], ['BOM', 'bom', wc.bomWind], ['ECMWF', 'ecmwf', wc.ecmwfWind]];
+      ? [['AROME', 'aro', wc.station.aro], ['meteo.nc', 'nc', wc.station.nc], ['GFS', 'gfs', wc.station.gfs], ['BOM', 'bom', wc.station.bom], ['MARC', 'marc', wc.station.marc]]
+      : [['AROME', 'aro', wc.aro], ['meteo.nc', 'nc', wc.pageNc], ['GFS', 'gfs', wc.pageGfs], ['BOM', 'bom', wc.bomWind], ['ECMWF', 'ecmwf', wc.ecmwfWind], ['MARC', 'marc', wc.marcWind]];
     wdefs.forEach(function(d) {
       if (_windCmpHidden[d[1]]) return;
       var p = _nearestPt(d[2], ms, 5400000);
@@ -8224,8 +8224,8 @@ function _toggleAromeCmpHistory() {
 // _windCmpHidden : séries décochées dans la légende (persisté — « je ne veux voir que
 // GFS+ECMWF » survit au changement de spot/session). _windCmpAtStation : false = modèles
 // pris AU SPOT (défaut) ; true = ré-échantillonnés aux coordonnées de la STATION de
-// mesure → corrélation sans biais de distance. AROME/ECMWF sont liés à un id de spot
-// Windguru (non ré-échantillonnables à une lat/lon libre) → masqués dans ce mode.
+// mesure → corrélation sans biais de distance. Seul ECMWF est lié à un id de spot
+// Windguru (non ré-échantillonnable à une lat/lon libre) → masqué dans ce mode.
 // _windStationCache : séries station déjà fetchées, par station → pas de refetch au
 // va-et-vient du toggle (« garder ça en cache » demandé).
 var _windCmpHidden = (function(){ try { return JSON.parse(localStorage.getItem('windCmpHidden')||'{}') || {}; } catch(e){ return {}; } })();
@@ -8256,7 +8256,7 @@ async function _toggleWindCmpStation() {
 async function _fetchWindAtStation(stLat, stLon) {
   var key = stLat.toFixed(3) + '_' + stLon.toFixed(3);
   if (_windStationCache[key]) return _windStationCache[key];
-  var out = { nc: [], gfs: [], bom: [], aro: [] };
+  var out = { nc: [], gfs: [], bom: [], aro: [], marc: [] };
   await Promise.all([
     // GFS (Open-Meteo) — vent horaire en nds (gfs_seamless), timezone GMT = vrai UTC.
     (async function(){
@@ -8272,6 +8272,9 @@ async function _fetchWindAtStation(stLat, stLon) {
     })(),
     // BOM WW3 — même grille que le spot, indices dérivés de la lat/lon station.
     (async function(){ try { out.bom = await _fetchBomWind({ lat: stLat, lon: stLon }); } catch(e) { out.bom = []; } })(),
+    // MARC-WW3 — grille libre comme GFS/meteo.nc (contrairement à AROME dont
+    // seule l'archive existe côté station).
+    (async function(){ try { out.marc = await _fetchMarcWind({ lat: stLat, lon: stLon }); } catch(e) { out.marc = []; } })(),
     // meteo.nc — endpoint /forecast à lat/lon libre (4 créneaux/jour), vent déjà en nds.
     (async function(){
       try {
@@ -8331,7 +8334,7 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
       ? 'Modèles ré-échantillonnés à la station' + (stName ? ' <b>' + stName + '</b>' : '') + ' · ECMWF indispo ici'
       : (hasStation ? 'Modèles au spot · clic pour comparer <b>à la station' + dkm + '</b> (corrélation sans biais de distance)' : 'Station de mesure inconnue — comparaison au spot uniquement');
   }
-  ['obs', 'aro', 'nc', 'gfs', 'bom', 'ecmwf'].forEach(function(k) {
+  ['obs', 'aro', 'nc', 'gfs', 'bom', 'ecmwf', 'marc'].forEach(function(k) {
     var sp = document.getElementById('wcmp-leg-' + k);
     if (!sp) return;
     var unavailable = atStation && WIND_UNRESAMPLABLE[k];
@@ -8534,6 +8537,7 @@ function _renderAromeCardData(j, wgId, body) {
     + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#a99ff8;font-weight:700;">╌</span> GFS</span>'
     + '<span id="wcmp-leg-bom" onclick="_toggleWindCmpModel(\'bom\')" title="Bureau of Meteorology (Australie) — vent WaveWatch III régional, grille 0,125° (~14 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#e05c5c;font-weight:700;">╌</span> BOM</span>'
     + '<span id="wcmp-leg-ecmwf" onclick="_toggleWindCmpModel(\'ecmwf\')" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#7dd3fc;font-weight:700;">╌</span> ECMWF</span>'
+    + '<span id="wcmp-leg-marc" onclick="_toggleWindCmpModel(\'marc\')" title="MARC-WW3 Nouvelle-Calédonie (Ifremer) — vent ECMWF au point de grille, résolution 0,05° (~5,5 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#f0c674;font-weight:700;">╌</span> MARC</span>'
     + '</div>'
     // Historique archivé (jusqu'à 8j) masqué par défaut — l'afficher d'entrée
     // écrasait les courbes récentes de points morts (retour utilisateur). Le
@@ -8758,6 +8762,51 @@ async function _fetchEcmwfWind(spot) {
   } catch (e) { console.warn('[ECMWF wind]', e && e.message); return []; }
   finally { clearTimeout(tt); }
 }
+// MARC-WW3 NC — vent ECMWF opérationnel au point de grille (uwnd/vwnd, même
+// résolution 5,5 km que la houle, cf. _fetchMarcWave). Contrairement à AROME/
+// ECMWF (Windguru), ré-échantillonnable à n'importe quelle lat/lon → PAS dans
+// WIND_UNRESAMPLABLE, disponible aussi en mode station.
+async function _fetchMarcWind(spot) {
+  var ctrl = new AbortController();
+  var tt = setTimeout(function(){ ctrl.abort(); }, 12000);
+  try {
+    var ddsR = await fetch(MARC_BASE + '.dds', { signal: ctrl.signal });
+    var ddsText = await ddsR.text();
+    var lenM = ddsText.match(/time\s*=\s*(\d+)/);
+    if (!lenM) throw new Error('longueur time introuvable');
+    var N = parseInt(lenM[1], 10);
+    var NSTEPS = 64;
+    var t0 = Math.max(0, N - NSTEPS), t1 = N - 1;
+    var latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
+    var lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
+    var url = MARC_BASE + '.ascii?time%5B' + t0 + ':1:' + t1 + '%5D,uwnd%5B' + t0 + ':1:' + t1 + '%5D%5B' + latIdx + ':1:' + latIdx + '%5D%5B' + lonIdx + ':1:' + lonIdx
+      + '%5D,vwnd%5B' + t0 + ':1:' + t1 + '%5D%5B' + latIdx + ':1:' + latIdx + '%5D%5B' + lonIdx + ':1:' + lonIdx + '%5D';
+    var r = await fetch(url, { signal: ctrl.signal });
+    var text = await r.text();
+    function parseFlat(name) {
+      var mm = text.match(new RegExp(name + '\\[\\d+\\]\\s*\\n([^\\n]+)'));
+      return mm ? mm[1].split(',').map(function(s){ return parseFloat(s.trim()); }) : [];
+    }
+    function parseGrid(name) {
+      var mm = text.match(new RegExp(name + '\\.' + name + '\\[\\d+\\]\\[1\\]\\[1\\]([\\s\\S]*?)(?:\\n\\n|$)'));
+      if (!mm) return [];
+      var out = [], lineRe = /\[(\d+)\]\[0\],\s*([\-\d.]+)/g, lm;
+      while ((lm = lineRe.exec(mm[1]))) out[+lm[1]] = parseFloat(lm[2]);
+      return out;
+    }
+    var times = parseFlat('time'), uRaw = parseGrid('uwnd'), vRaw = parseGrid('vwnd');
+    var pts = [];
+    for (var i = 0; i < times.length; i++) {
+      if (uRaw[i] == null || vRaw[i] == null || isNaN(uRaw[i]) || isNaN(vRaw[i])) continue;
+      var u = uRaw[i] * MARC_SCALE.uwnd, v = vRaw[i] * MARC_SCALE.vwnd;
+      var spdKt = Math.sqrt(u * u + v * v) * 1.944;
+      var wdir = (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360;
+      pts.push({ ms: MARC_EPOCH_MS + times[i] * 86400000, kt: spdKt, dir: wdir });
+    }
+    return pts;
+  } catch (e) { console.warn('[MARC wind]', e && e.message); return []; }
+  finally { clearTimeout(tt); }
+}
 
 // Mini-graphe comparatif : -24h de MESURES de la station associée au spot,
 // +48h d'AROME et de la prévision du tableau (meteo.nc ou GFS selon le mode).
@@ -8796,12 +8845,12 @@ async function _renderAromeCompare(j) {
   if (stEl) stEl.textContent = stName
     ? '(' + stName + (stDistKm != null ? ' · ~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km du spot' : '') + ')'
     : '(station indispo)';
-  // 1bis. BOM (Australie) et ECMWF (via Windguru) — mêmes sources que le
-  // comparatif houle, mais leurs champs vent respectifs.
+  // 1bis. BOM (Australie), ECMWF (via Windguru) et MARC (Ifremer) — mêmes
+  // sources que le comparatif houle, mais leurs champs vent respectifs.
   var _spotForWind = SPOTS[currentSpot];
-  var _windExtra = await Promise.all([_fetchBomWind(_spotForWind), _fetchEcmwfWind(_spotForWind)]);
+  var _windExtra = await Promise.all([_fetchBomWind(_spotForWind), _fetchEcmwfWind(_spotForWind), _fetchMarcWind(_spotForWind)]);
   if (SPOTS[currentSpot] !== _spotForWind) return; // spot changé pendant l'attente réseau
-  var bomWind = _windExtra[0], ecmwfWind = _windExtra[1];
+  var bomWind = _windExtra[0], ecmwfWind = _windExtra[1], marcWind = _windExtra[2];
   // 2. Prévisions du tableau — meteo.nc ET GFS séparément et TOUJOURS les deux
   // quand disponibles (avant : une seule série suivant le toggle Hs actif, donc
   // meteo.nc disparaissait dès que le toggle était sur GFS — signalé par
@@ -8833,7 +8882,7 @@ async function _renderAromeCompare(j) {
   // borné à 6j pour rester lisible (au-delà, seul ECMWF a encore des points —
   // une traîne à un seul modèle n'apporte rien et écrase l'axe des autres).
   // AROME s'arrête simplement à son dernier point, sans rien casser.
-  var t1 = [pageNc, pageGfs, bomWind, ecmwfWind].reduce(function(mx, arr) {
+  var t1 = [pageNc, pageGfs, bomWind, ecmwfWind, marcWind].reduce(function(mx, arr) {
     return arr.reduce(function(m2, p) { return Math.max(m2, p.ms); }, mx);
   }, now + 48 * 36e5);
   t1 = Math.min(t1, now + 6 * 24 * 36e5);
@@ -8843,7 +8892,7 @@ async function _renderAromeCompare(j) {
   // aromeKt/aromeGst : archivés par _saveAromeSnapshot() à chaque chargement du
   // widget AROME — la fenêtre affichée s'étend automatiquement en arrière au fil
   // des jours à mesure que l'historique s'accumule (sans backfill rétroactif).
-  var cachePts = [], aromeCachePts = [], gfsCachePts = [], bomCachePts = [], ecmwfCachePts = [];
+  var cachePts = [], aromeCachePts = [], gfsCachePts = [], bomCachePts = [], ecmwfCachePts = [], marcCachePts = [];
   try {
     if (typeof _ensureSupabaseClient === 'function' && _ensureSupabaseClient()) {
       var s0 = SPOTS[currentSpot];
@@ -8880,12 +8929,12 @@ async function _renderAromeCompare(j) {
       // 3 points concordants pour BOM/ECMWF (fenêtre live seulement).
       if (await _hasModelCacheTable()) {
         var mIds = [];
-        ['gfs', 'bom', 'ecmwf'].forEach(function(mk) { dayIds.forEach(function(ds) { mIds.push(ds + '_' + mk + '_wind'); }); });
+        ['gfs', 'bom', 'ecmwf', 'marc'].forEach(function(mk) { dayIds.forEach(function(ds) { mIds.push(ds + '_' + mk + '_wind'); }); });
         var mRes = await _tokenSbClient.from('model_forecast_cache').select('id,hours').in('id', mIds);
         if (mRes && mRes.data) mRes.data.forEach(function(row) {
           var parts = row.id.split('_'); // ds_la_lo_model_kind
           var p = parts[0].split('-'), mk = parts[3];
-          var dst = mk === 'gfs' ? gfsCachePts : mk === 'bom' ? bomCachePts : ecmwfCachePts;
+          var dst = mk === 'gfs' ? gfsCachePts : mk === 'bom' ? bomCachePts : mk === 'ecmwf' ? ecmwfCachePts : marcCachePts;
           (row.hours || []).forEach(function(hhh) {
             if (!hhh || hhh.h == null || hhh.val == null) return;
             var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)) - 11 * 3600000;
@@ -8899,40 +8948,40 @@ async function _renderAromeCompare(j) {
   // Copies complètes (avant tout clip) pour le badge de corrélation, qui doit
   // rester exhaustif même quand le GRAPHE reste sur la fenêtre récente.
   var obsBias = obs, cachePtsBias = cachePts, aromeCachePtsBias = aromeCachePts,
-      gfsCachePtsBias = gfsCachePts, bomCachePtsBias = bomCachePts, ecmwfCachePtsBias = ecmwfCachePts;
+      gfsCachePtsBias = gfsCachePts, bomCachePtsBias = bomCachePts, ecmwfCachePtsBias = ecmwfCachePts, marcCachePtsBias = marcCachePts;
   // Par défaut, la fenêtre AFFICHÉE reste récente (24h + prévision) — étendre
   // systématiquement jusqu'à 8j en arrière remplissait le graphe de points
   // archivés dès l'ouverture et écrasait les courbes (signalé par l'utilisateur).
   // Disponible à la demande via le bouton "Afficher l'historique" (cf. plus bas) ;
   // le badge de corrélation, lui, utilise toujours l'archive complète ci-dessus.
   if (_aromeCmpShowHistory) {
-    [aromeCachePts, cachePts, gfsCachePts, bomCachePts, ecmwfCachePts].forEach(function(arr) {
+    [aromeCachePts, cachePts, gfsCachePts, bomCachePts, ecmwfCachePts, marcCachePts].forEach(function(arr) {
       arr.forEach(function(p) { if (p.ms < t0) t0 = p.ms; });
     });
     t0 = Math.max(t0, now - 8 * 24 * 36e5);
   }
   function clip(a) { return a.filter(function(p) { return p.ms >= t0 && p.ms <= t1; }); }
   obs = clip(obs); pageNc = clip(pageNc); pageGfs = clip(pageGfs); aro = clip(aro); cachePts = clip(cachePts); aromeCachePts = clip(aromeCachePts);
-  bomWind = clip(bomWind); ecmwfWind = clip(ecmwfWind);
-  gfsCachePts = clip(gfsCachePts); bomCachePts = clip(bomCachePts); ecmwfCachePts = clip(ecmwfCachePts);
+  bomWind = clip(bomWind); ecmwfWind = clip(ecmwfWind); marcWind = clip(marcWind);
+  gfsCachePts = clip(gfsCachePts); bomCachePts = clip(bomCachePts); ecmwfCachePts = clip(ecmwfCachePts); marcCachePts = clip(marcCachePts);
   // Archivage best-effort côté vent, même principe que le comparatif houle
   // (table optionnelle, no-op si absente) — pas de mesures (obs), ce sont des
   // observations et non un modèle à comparer.
   try {
-    [['nc', pageNc], ['gfs', pageGfs], ['bom', bomWind], ['ecmwf', ecmwfWind], ['arome', aro]].forEach(function(pair) {
+    [['nc', pageNc], ['gfs', pageGfs], ['bom', bomWind], ['ecmwf', ecmwfWind], ['arome', aro], ['marc', marcWind]].forEach(function(pair) {
       if (pair[1] && pair[1].length) _cacheModelPoints(SPOTS[currentSpot], pair[0], 'wind', pair[1], 'kt', null);
     });
   } catch (e) {}
-  // Mode « au point de mesure » : ré-échantillonne meteo.nc/GFS/BOM aux coordonnées
-  // de la station (mis en cache par station). Sans station connue, on retombe sur le
-  // mode spot (le bouton se désactivera via _updateWindCmpControls). AROME/ECMWF
-  // (liés à un spot Windguru) restent indisponibles dans ce mode → séries vides.
+  // Mode « au point de mesure » : ré-échantillonne meteo.nc/GFS/BOM/AROME/MARC aux
+  // coordonnées de la station (mis en cache par station). Sans station connue, on
+  // retombe sur le mode spot (le bouton se désactivera via _updateWindCmpControls).
+  // Seul ECMWF (lié à un spot Windguru) reste indisponible dans ce mode → série vide.
   var stationSeries = null;
   if (stLat == null) _windCmpAtStation = false;
   if (_windCmpAtStation && stLat != null) {
     var _st = await _fetchWindAtStation(stLat, stLon);
     if (SPOTS[currentSpot] !== _spotForWind) return; // spot changé pendant l'attente réseau
-    stationSeries = { nc: clip(_st.nc), gfs: clip(_st.gfs), bom: clip(_st.bom), aro: clip(_st.aro || []) };
+    stationSeries = { nc: clip(_st.nc), gfs: clip(_st.gfs), bom: clip(_st.bom), aro: clip(_st.aro || []), marc: clip(_st.marc || []) };
   }
   // Cache des séries déjà fetchées → permet de redessiner (zoom, encart extrêmes,
   // lien croisé avec le comparatif houle) SANS refaire tous les appels réseau
@@ -8940,9 +8989,9 @@ async function _renderAromeCompare(j) {
   // complet car étendre l'historique peut nécessiter un t0 différent.
   _aromeCmpCache = {
     obs: obs, pageNc: pageNc, pageGfs: pageGfs, aro: aro, cachePts: cachePts, aromeCachePts: aromeCachePts,
-    bomWind: bomWind, ecmwfWind: ecmwfWind, bomCachePts: bomCachePts, ecmwfCachePts: ecmwfCachePts,
+    bomWind: bomWind, ecmwfWind: ecmwfWind, marcWind: marcWind, bomCachePts: bomCachePts, ecmwfCachePts: ecmwfCachePts, marcCachePts: marcCachePts,
     obsBias: obsBias, cachePtsBias: cachePtsBias, aromeCachePtsBias: aromeCachePtsBias,
-    gfsCachePtsBias: gfsCachePtsBias, bomCachePtsBias: bomCachePtsBias, ecmwfCachePtsBias: ecmwfCachePtsBias,
+    gfsCachePtsBias: gfsCachePtsBias, bomCachePtsBias: bomCachePtsBias, ecmwfCachePtsBias: ecmwfCachePtsBias, marcCachePtsBias: marcCachePtsBias,
     station: stationSeries, stHasCoords: stLat != null,
     stName: stName, stDistKm: stDistKm, t0: t0, t1: t1, now: now
   };
@@ -8956,24 +9005,24 @@ async function _renderAromeCompare(j) {
 function _drawAromeCompareFromCache() {
   var c = _aromeCmpCache; if (!c) return;
   var obs = c.obs, pageNc = c.pageNc, pageGfs = c.pageGfs, aro = c.aro, cachePts = c.cachePts, aromeCachePts = c.aromeCachePts,
-      bomWind = c.bomWind, ecmwfWind = c.ecmwfWind, bomCachePts = c.bomCachePts, ecmwfCachePts = c.ecmwfCachePts,
+      bomWind = c.bomWind, ecmwfWind = c.ecmwfWind, marcWind = c.marcWind, bomCachePts = c.bomCachePts, ecmwfCachePts = c.ecmwfCachePts, marcCachePts = c.marcCachePts,
       obsBias = c.obsBias, cachePtsBias = c.cachePtsBias, aromeCachePtsBias = c.aromeCachePtsBias,
-      gfsCachePtsBias = c.gfsCachePtsBias, bomCachePtsBias = c.bomCachePtsBias, ecmwfCachePtsBias = c.ecmwfCachePtsBias,
+      gfsCachePtsBias = c.gfsCachePtsBias, bomCachePtsBias = c.bomCachePtsBias, ecmwfCachePtsBias = c.ecmwfCachePtsBias, marcCachePtsBias = c.marcCachePtsBias,
       stName = c.stName, stDistKm = c.stDistKm, now = c.now;
   // Mode « au point de mesure » : substitue les séries ré-échantillonnées à la station.
-  // AROME (aro) vient de model_forecast_cache à la lat/lon de la station (cf.
-  // _fetchWindAtStation) — seul ECMWF reste indisponible (lié à un spot Windguru fixe).
-  // aromeCachePts (archive Windguru côté client, au SPOT) reste vidée : incohérente
-  // avec un échantillonnage à la station.
+  // AROME (aro) et MARC viennent de model_forecast_cache/THREDDS à la lat/lon de la
+  // station (cf. _fetchWindAtStation) — seul ECMWF reste indisponible (lié à un spot
+  // Windguru fixe). aromeCachePts (archive Windguru côté client, au SPOT) reste
+  // vidée : incohérente avec un échantillonnage à la station.
   var atStation = _windCmpAtStation && c.station;
   if (atStation) {
-    pageNc = c.station.nc; pageGfs = c.station.gfs; bomWind = c.station.bom; aro = c.station.aro || [];
-    ecmwfWind = []; cachePts = []; aromeCachePts = []; bomCachePts = []; ecmwfCachePts = [];
+    pageNc = c.station.nc; pageGfs = c.station.gfs; bomWind = c.station.bom; aro = c.station.aro || []; marcWind = c.station.marc || [];
+    ecmwfWind = []; cachePts = []; aromeCachePts = []; bomCachePts = []; ecmwfCachePts = []; marcCachePts = [];
   }
   _updateWindCmpControls(atStation, c.stHasCoords, stName, stDistKm);
   var cv = document.getElementById('arome-cmp');
   var el2 = document.getElementById('arome-cmp-wrap'); // le volet a pu être re-rendu
-  var anyData = obs.length || aro.length || pageNc.length || pageGfs.length || bomWind.length || ecmwfWind.length;
+  var anyData = obs.length || aro.length || pageNc.length || pageGfs.length || bomWind.length || ecmwfWind.length || marcWind.length;
   if (!el2 || !cv || !anyData) { if (el2) el2.style.display = 'none'; return; }
   el2.style.display = '';
   // Séries complètes (mode-ajustées) pour la corrélation — capturées AVANT le filtre
@@ -8983,7 +9032,8 @@ function _drawAromeCompareFromCache() {
     nc:    atStation ? pageNc  : pageNc.concat(cachePtsBias),
     gfs:   atStation ? pageGfs : pageGfs.concat(gfsCachePtsBias),
     bom:   atStation ? bomWind : bomWind.concat(bomCachePtsBias),
-    ecmwf: atStation ? [] : ecmwfWind.concat(ecmwfCachePtsBias)
+    ecmwf: atStation ? [] : ecmwfWind.concat(ecmwfCachePtsBias),
+    marc:  atStation ? marcWind : marcWind.concat(marcCachePtsBias)
   };
   // Filtre de visibilité (cases à cocher de la légende) — n'affecte que le tracé, la
   // rose et le relevé de survol, pas la corrélation (corrSeries ci-dessus).
@@ -8993,6 +9043,7 @@ function _drawAromeCompareFromCache() {
   if (_windCmpHidden.gfs) pageGfs = [];
   if (_windCmpHidden.bom) { bomWind = []; bomCachePts = []; }
   if (_windCmpHidden.ecmwf) { ecmwfWind = []; ecmwfCachePts = []; }
+  if (_windCmpHidden.marc) { marcWind = []; marcCachePts = []; }
   // Zoom (bouton/molette/pincement) : fenêtre affichée = fraction [a,b] de la plage
   // complète du dernier fetch (c.t0/c.t1), persistée dans _aromeZoom entre redraws.
   var t0Full = c.t0, t1Full = c.t1;
@@ -9016,7 +9067,7 @@ function _drawAromeCompareFromCache() {
   // ce qui sépare vraiment les courbes proches (demande utilisateur).
   var maxKt, minKt = 0;
   if (zoomed) {
-    var visKt = [].concat(obs, pageNc, pageGfs, aro, cachePts, aromeCachePts, bomWind, ecmwfWind)
+    var visKt = [].concat(obs, pageNc, pageGfs, aro, cachePts, aromeCachePts, bomWind, ecmwfWind, marcWind)
       .filter(function(p) { return p.ms >= t0 && p.ms <= t1; }).map(function(p) { return p.kt; });
     if (visKt.length) {
       var hiKt = Math.max.apply(null, visKt), loKt = Math.min.apply(null, visKt);
@@ -9027,14 +9078,14 @@ function _drawAromeCompareFromCache() {
       maxKt = Math.max.apply(null, allKt0) * 1.15;
     }
   } else {
-    var allKt = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}), bomWind.map(function(p){return p.kt;}), ecmwfWind.map(function(p){return p.kt;}));
+    var allKt = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}), bomWind.map(function(p){return p.kt;}), ecmwfWind.map(function(p){return p.kt;}), marcWind.map(function(p){return p.kt;}));
     maxKt = Math.max.apply(null, allKt) * 1.15;
   }
   var padL = narrow ? 30 : 26, padR = 6, padT = 10, padB = narrow ? 22 : 18;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
   function Y(kt) { return padT + (1 - (kt - minKt) / (maxKt - minKt)) * (H - padT - padB); }
   obs.sort(function(a,b){return a.ms-b.ms;}); pageNc.sort(function(a,b){return a.ms-b.ms;}); pageGfs.sort(function(a,b){return a.ms-b.ms;}); aro.sort(function(a,b){return a.ms-b.ms;});
-  bomWind.sort(function(a,b){return a.ms-b.ms;}); ecmwfWind.sort(function(a,b){return a.ms-b.ms;});
+  bomWind.sort(function(a,b){return a.ms-b.ms;}); ecmwfWind.sort(function(a,b){return a.ms-b.ms;}); marcWind.sort(function(a,b){return a.ms-b.ms;});
 
   // Corrélation modèle ↔ mesures : biais moyen (modèle - obs) au plus proche
   // point mesuré, sur toute la fenêtre passée où les deux existent. Répond à
@@ -9086,7 +9137,8 @@ function _drawAromeCompareFromCache() {
       { label: 'meteo.nc', pts: corrSeries.nc },
       { label: 'GFS',      pts: corrSeries.gfs },
       { label: 'BOM',      pts: corrSeries.bom },
-      { label: 'ECMWF',    pts: corrSeries.ecmwf }
+      { label: 'ECMWF',    pts: corrSeries.ecmwf },
+      { label: 'MARC',     pts: corrSeries.marc }
     ];
     var spd = defs.map(function(d){ return { label: d.label, r: biasVsObs(d.pts) }; }).filter(function(c){ return c.r != null; });
     var dir = defs.map(function(d){ return { label: d.label, r: dirBiasVsObs(d.pts) }; }).filter(function(c){ return c.r != null; });
@@ -9108,7 +9160,7 @@ function _drawAromeCompareFromCache() {
         + dir.slice(1).map(function(c) { return c.label + ' ' + Math.round(c.r.avg) + '° (' + c.r.n + ')'; }).join(' · ') + '</div>';
     }
     var caveat = atStation
-      ? '<div style="margin-top:6px;font-size:9.5px;color:var(--faint);line-height:1.45;">✓ Modèles ré-échantillonnés <b>au point de mesure</b> (station ' + (stName || '?') + ') — comparaison sans biais de distance. AROME/ECMWF indisponibles ici (liés à un spot Windguru).</div>'
+      ? '<div style="margin-top:6px;font-size:9.5px;color:var(--faint);line-height:1.45;">✓ Modèles ré-échantillonnés <b>au point de mesure</b> (station ' + (stName || '?') + ') — comparaison sans biais de distance. ECMWF indisponible ici (lié à un spot Windguru).</div>'
       : '<div style="margin-top:6px;font-size:9.5px;color:var(--faint);line-height:1.45;">⚠ Modèles échantillonnés <b>au spot</b> · mesures à la station <b>' + (stName || '?') + '</b>'
         + (stDistKm != null ? ' (~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km)' : '')
         + ' — un écart peut refléter cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle. Bascule sur « au point de mesure » pour l\'annuler.</div>';
@@ -9173,6 +9225,7 @@ function _drawAromeCompareFromCache() {
     drawSmooth(pageGfs, 'rgba(169,159,248,.9)', lwMod, [6, 4]);
     drawSmooth(bomWind, 'rgba(224,92,92,.9)', lwMod, [2, 3]);
     drawSmooth(ecmwfWind, 'rgba(125,211,252,.9)', lwMod, [2, 3]);
+    drawSmooth(marcWind, 'rgba(240,198,116,.9)', lwMod, [2, 3]);
     // marqueurs sur les créneaux réels (3h) — les courbes sont interpolées
     ctx.fillStyle = 'rgba(232,160,87,.9)';
     pageNc.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
@@ -9216,7 +9269,7 @@ function _drawAromeCompareFromCache() {
     var dNC = new Date(ms + 11 * 36e5); // affichage heure NC (convention +11h/getUTC*)
     var lbl = String(dNC.getUTCDate()).padStart(2, '0') + '/' + (dNC.getUTCMonth() + 1) + ' ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h' + String(dNC.getUTCMinutes()).padStart(2, '0');
     var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pNc = nearest(pageNc, ms, 105 * 60000), pGfs = nearest(pageGfs, ms, 105 * 60000), pCache = nearest(cachePts, ms), pAroCache = nearest(aromeCachePts, ms);
-    var pBom = nearest(bomWind, ms, 105 * 60000), pEcmwf = nearest(ecmwfWind, ms, 105 * 60000);
+    var pBom = nearest(bomWind, ms, 105 * 60000), pEcmwf = nearest(ecmwfWind, ms, 105 * 60000), pMarc = nearest(marcWind, ms, 105 * 60000);
     ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
       + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> nds</span>' : '')
       + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> nds</span>' : '')
@@ -9225,7 +9278,8 @@ function _drawAromeCompareFromCache() {
       + (!pNc && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> nds</span>' : '')
       + (pGfs ? ' · <span style="color:#a99ff8;">GFS <b>' + Math.round(pGfs.kt) + '</b> nds</span>' : '')
       + (pBom ? ' · <span style="color:#e05c5c;">BOM <b>' + Math.round(pBom.kt) + '</b> nds</span>' : '')
-      + (pEcmwf ? ' · <span style="color:#7dd3fc;">ECMWF <b>' + Math.round(pEcmwf.kt) + '</b> nds</span>' : '');
+      + (pEcmwf ? ' · <span style="color:#7dd3fc;">ECMWF <b>' + Math.round(pEcmwf.kt) + '</b> nds</span>' : '')
+      + (pMarc ? ' · <span style="color:#f0c674;">MARC <b>' + Math.round(pMarc.kt) + '</b> nds</span>' : '');
   }
   function findNearestColIdx(ms) {
     if (!window._aromeColInfo) return null;
@@ -9241,12 +9295,13 @@ function _drawAromeCompareFromCache() {
     { key: 'nc', label: 'meteo.nc', col: '#e8a057' },
     { key: 'gfs', label: 'GFS', col: '#a99ff8' },
     { key: 'bom', label: 'BOM', col: '#e05c5c' },
-    { key: 'ecmwf', label: 'ECMWF', col: '#7dd3fc' }
+    { key: 'ecmwf', label: 'ECMWF', col: '#7dd3fc' },
+    { key: 'marc', label: 'MARC', col: '#f0c674' }
   ];
   function _drawWindRose(atMs) {
     var el = document.getElementById('arome-cmp-rose');
     if (!el) return;
-    var windSeries = { obs: obs, aro: aro, nc: pageNc, gfs: pageGfs, bom: bomWind, ecmwf: ecmwfWind };
+    var windSeries = { obs: obs, aro: aro, nc: pageNc, gfs: pageGfs, bom: bomWind, ecmwf: ecmwfWind, marc: marcWind };
     var S = 80, cx = S / 2, cy = S / 2, R = 28;
     var svg = '<svg width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '">';
     svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.12)" stroke-width="1"/>';
