@@ -453,3 +453,61 @@ THREDDS `tds1.ifremer.fr`) — vérifié en vrai avant d'écrire le code :
    ré-échantillonnable) a été corrigée dans le badge de corrélation en mode station.
    Testé en vrai (headless, requêtes réseau live) : 23 points MARC en mode spot ET en mode station,
    0 erreur JS, badge de corrélation classant AROME/BOM/GFS/meteo.nc/MARC ensemble.
+
+---
+
+## Audit / re-vérification post-livraison — 2026-07-24 (suite, sur demande explicite)
+
+Passe de relecture + tests supplémentaires sur tout le travail AROME/MARC de la journée, sans
+présumer que "ça marchait déjà" — un bug réel en a résulté.
+
+### 🔴 Bug trouvé et corrigé : MARC-WW3 renvoyait des valeurs délirantes sur les points terre
+
+En testant `_fetchMarcWave`/`_fetchMarcWind` sur un point volontairement choisi à l'intérieur des
+terres (test de robustesse, pas un spot réel), les valeurs retournées étaient absurdes : Hs ≈ -65 m,
+période ≈ -327 s, direction ≈ -3277°, vent ≈ 9000 nds. Cause : WaveWatch III ne modélise pas sur
+terre — ces points sont marqués `_FillValue = -32767` (Int16 brut, cf. `.das`), et le parsing
+n'appliquait le décodage `scale_factor` qu'aux valeurs réelles **sans jamais vérifier le fill value**
+— `-32767 × 0,002 = -65,534` passait tel quel comme une "vraie" hauteur de houle.
+
+**Impact réel vérifié** : plusieurs stations d'observation utilisées par le mode "au point de
+mesure" du comparatif vent sont bel et bien à l'intérieur des terres — **La Tontouta** (aéroport),
+**Montagne des Sources**, **Aoupinie** — donc **ce bug s'est réellement déclenché en usage normal**,
+pas seulement dans un cas de test artificiel. Vérifié qu'aucune donnée corrompue n'a atteint la prod
+(`model_forecast_cache`, model=marc) : les 101 lignes déjà archivées viennent toutes de vrais spots
+côtiers testés dans les passes précédentes, aucune valeur suspecte trouvée par un scan direct.
+
+**Corrigé** dans les 3 copies du parsing (`previsions.html:_fetchMarcWave`,
+`previsions.html:_fetchMarcWind`, `cache-model-forecasts.mjs:fetchMarc`) : toute valeur brute
+`=== -32767` est convertie en `NaN` au moment du parsing plutôt qu'après décodage — les filtres
+`isNaN()` déjà en place en aval excluent alors proprement ces points (au lieu de les traiter comme
+un chiffre valide). Au passage, la période/direction houle (`t02`/`dir`) n'étaient filtrées que par
+`!= null`, pas `isNaN` — corrigé aussi (elles auraient pu passer en `NaN` alors que `hs` était valide
+mais pas elles, cas rare mais désormais géré).
+
+Revérifié en vrai (headless, requêtes réseau live) : point terre → 0 point renvoyé (proprement
+masqué) ; point océan (Passe de Dumbéa) → toujours 64 points cohérents ; La Tontouta/Montagne des
+Sources/Aoupinie → 0 point (masqués, comme attendu) ; Nouméa/Yaté (côtiers) → toujours peuplés.
+
+### Autres correctifs de robustesse (ingestion/fetch_arome.py)
+
+- **Échec silencieux masqué** : `meteofetch.get_forecast()` ne lève PAS d'exception si le
+  téléchargement échoue (même partiellement) — `_download_paquet` avale les erreurs réseau et
+  renvoie un dict vide sans le signaler. Le script aurait pu logguer "OK <spot> (0 jour(s))" pour
+  TOUS les points sans qu'aucune alerte ne remonte — le pire cas pour un job non supervisé. Ajouté :
+  vérification explicite juste après le téléchargement (`data` vide ou `si10` absent → `sys.exit(1)`
+  avec message d'erreur clair).
+- **Calcul de pluie fragile face à un trou horaire** : `tp.diff()` est positionnel, pas basé sur
+  l'écart de temps réel — si une échéance manque (fichier GRIB2 absent/corrompu), la différence
+  entre deux points non consécutifs serait attribuée à 1h, gonflant artificiellement le taux horaire
+  affiché. Ajouté une détection de l'écart réel entre échéances (`>1h ± 6 min` → `null` plutôt qu'un
+  chiffre silencieusement faux). Testé isolément (série avec trou simulé) : le point affecté par le
+  trou est bien invalidé, les autres restent corrects.
+- **Versions épinglées** : `pandas`/`requests` étaient sans version dans `requirements.txt`
+  (contrairement à la convention déjà en place ailleurs dans le repo, ex. `@supabase/supabase-js`
+  épinglé après l'audit du 23/07) — fixées aux versions testées (`pandas==2.3.3`, `requests==2.32.5`).
+- Coquille de date corrigée dans un commentaire (`cache-model-forecasts.mjs` disait "vérifié le
+  2026-07-25", écrit un jour avant par erreur de frappe).
+
+Re-testé de bout en bout après ces correctifs : ingestion réelle relancée sur les 30 points, aucune
+régression, toujours 90 lignes upsertées avec succès.

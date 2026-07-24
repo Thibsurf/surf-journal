@@ -4,5 +4,5 @@
 # cfgrib/eccodes(lib) sont installés automatiquement en dépendances et
 # embarquent leur binaire (pas d'apt-get requis sur ubuntu-latest, vérifié).
 meteofetch==0.5.8
-pandas
-requests
+pandas==2.3.3
+requests==2.32.5

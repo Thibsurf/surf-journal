@@ -114,7 +114,7 @@ async function fetchBom(spot) {
 
 // ── MARC-WW3 Nouvelle-Calédonie (Ifremer/CNRS-IRD-UBO, WaveWatch III régional
 // 3 arcmin ≈ 5,5 km, forcé par le vent ECMWF opérationnel) — houle ET vent ───
-// THREDDS/OPeNDAP public, sans clé. Vérifié empiriquement le 2026-07-25 (pas de
+// THREDDS/OPeNDAP public, sans clé. Vérifié empiriquement le 2026-07-24 (pas de
 // doc utilisateur, juste les attributs .das) :
 // - grille NCALED 0,05° (161x181->221x181 pts), lat -24..-13 ASCENDANTE, lon
 //   162..171 ASCENDANTE (contrairement à BOM qui est en lat décroissante).
@@ -163,7 +163,11 @@ async function fetchMarc(spot) {
       const out = [];
       const lineRe = /\[(\d+)\]\[0\],\s*([\-\d.]+)/g;
       let lm;
-      while ((lm = lineRe.exec(mm[1]))) out[+lm[1]] = parseFloat(lm[2]);
+      // _FillValue = -32767 (cf. .das) : point terre/masqué (WW3 ne modélise pas
+      // sur terre) — vérifié empiriquement (valeurs délirantes sans ce filtre,
+      // ex. Hs=-65m sur un point intérieur de la Grande Terre). -> NaN, que les
+      // boucles isNaN() déjà en place filtrent naturellement.
+      while ((lm = lineRe.exec(mm[1]))) { const v = parseFloat(lm[2]); out[+lm[1]] = v === -32767 ? NaN : v; }
       return out;
     }
     const times = parseFlat('time');
@@ -175,8 +179,8 @@ async function fetchMarc(spot) {
       if (hsRaw[i] != null && !isNaN(hsRaw[i])) {
         swell.push({
           ms, val: hsRaw[i] * MARC_SCALE.hs,
-          period: t02Raw[i] != null ? t02Raw[i] * MARC_SCALE.t02 : null,
-          dir: dirRaw[i] != null ? dirRaw[i] * MARC_SCALE.dir : null,
+          period: (t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null,
+          dir: (dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null,
         });
       }
       if (uRaw[i] != null && vRaw[i] != null && !isNaN(uRaw[i]) && !isNaN(vRaw[i])) {

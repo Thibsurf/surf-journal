@@ -212,6 +212,16 @@ def to_series_dict(data, lat, lon):
         rain = tp.copy()
         rain.iloc[1:] = tp.diff().iloc[1:].values
         rain = rain.clip(lower=0)  # garde-fou : un run révisé peut faire redescendre le cumul
+        # tp.diff() est POSITIONNEL, pas basé sur l'écart de temps réel : si une
+        # échéance horaire manque (fichier GRIB2 absent/corrompu pour cette
+        # heure), la différence entre deux points non consécutifs serait
+        # attribuée à 1h, gonflant artificiellement le taux horaire affiché.
+        # On invalide (null) les points dont l'écart au précédent n'est pas
+        # ~1h plutôt que d'afficher un chiffre silencieusement faux.
+        gaps_h = tp.index.to_series().diff().dt.total_seconds() / 3600
+        bad = gaps_h.notna() & ((gaps_h - 1).abs() > 0.1)
+        if bad.any():
+            rain.loc[bad] = None
 
     out = {}
     for t in si10.index:
@@ -242,6 +252,14 @@ def run():
 
     logger.info("Téléchargement paquet SP1 (49 échéances horaires, run %s)...", run_iso)
     data = AromeOutreMerNouvelleCaledonie.get_forecast(date=run_time, paquet="SP1", return_data=True, num_workers=8)
+    # get_forecast() ne lève PAS d'exception si le téléchargement échoue (même
+    # partiellement) : _download_paquet avale les erreurs réseau et renvoie []
+    # silencieusement, ce qui donnerait ici un dict vide sans qu'aucune ligne
+    # ne remonte d'erreur — le pire cas pour un job non supervisé (cf. objectif
+    # initial : "un échec silencieux est le pire cas"). On l'échoue explicitement.
+    if not data or "si10" not in data:
+        logger.error("Téléchargement/décodage SP1 vide ou incomplet (variables: %s) — abandon", sorted(data.keys()) if data else None)
+        sys.exit(1)
     logger.info("Variables reçues: %s", sorted(data.keys()))
 
     all_rows = []

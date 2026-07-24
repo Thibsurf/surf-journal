@@ -4126,7 +4126,11 @@ async function _fetchMarcWave(spot) {
       var mm = text.match(new RegExp(name + '\\.' + name + '\\[\\d+\\]\\[1\\]\\[1\\]([\\s\\S]*?)(?:\\n\\n|$)'));
       if (!mm) return [];
       var out = [], lineRe = /\[(\d+)\]\[0\],\s*([\-\d.]+)/g, lm;
-      while ((lm = lineRe.exec(mm[1]))) out[+lm[1]] = parseFloat(lm[2]);
+      // _FillValue = -32767 (cf. .das) : point terre/masqué (WW3 ne modélise pas
+      // sur terre) — vérifié empiriquement (valeurs délirantes sans ce filtre,
+      // ex. Hs=-65m sur un point intérieur de la Grande Terre). -> NaN, filtré
+      // ensuite par les vérifications isNaN() déjà en place.
+      while ((lm = lineRe.exec(mm[1]))) { var v = parseFloat(lm[2]); out[+lm[1]] = v === -32767 ? NaN : v; }
       return out;
     }
     var times = parseFlat('time');
@@ -4136,8 +4140,8 @@ async function _fetchMarcWave(spot) {
       if (hsRaw[i] == null || isNaN(hsRaw[i])) continue;
       primary.push({
         ms: MARC_EPOCH_MS + times[i] * 86400000, h: hsRaw[i] * MARC_SCALE.hs,
-        t: t02Raw[i] != null ? t02Raw[i] * MARC_SCALE.t02 : null,
-        dir: dirRaw[i] != null ? dirRaw[i] * MARC_SCALE.dir : null,
+        t: (t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null,
+        dir: (dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null,
       });
     }
     return { primary: primary, secondary: [] };
@@ -8791,7 +8795,8 @@ async function _fetchMarcWind(spot) {
       var mm = text.match(new RegExp(name + '\\.' + name + '\\[\\d+\\]\\[1\\]\\[1\\]([\\s\\S]*?)(?:\\n\\n|$)'));
       if (!mm) return [];
       var out = [], lineRe = /\[(\d+)\]\[0\],\s*([\-\d.]+)/g, lm;
-      while ((lm = lineRe.exec(mm[1]))) out[+lm[1]] = parseFloat(lm[2]);
+      // _FillValue = -32767 (cf. .das) : point terre/masqué -> NaN, cf. _fetchMarcWave.
+      while ((lm = lineRe.exec(mm[1]))) { var v = parseFloat(lm[2]); out[+lm[1]] = v === -32767 ? NaN : v; }
       return out;
     }
     var times = parseFlat('time'), uRaw = parseGrid('uwnd'), vRaw = parseGrid('vwnd');
