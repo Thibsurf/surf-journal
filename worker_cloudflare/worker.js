@@ -131,7 +131,10 @@ export default {
     const cors = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      // X-Push-Key : ajouté avec la protection de POST /token (d96dbfac) mais oublié ici —
+      // sans lui dans Allow-Headers, le préflight CORS bloque la vraie requête avant même
+      // qu'elle atteigne le handler, pour TOUT appelant cross-origin (index.html inclus).
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Push-Key",
     };
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });

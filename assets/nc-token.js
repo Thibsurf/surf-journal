@@ -12,6 +12,12 @@
 // Worker Cloudflare — source autonome + cache partagé (cache token côté serveur, cron 5 min)
 var _NC_WORKER = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
 
+// Clé partagée attendue par le worker sur POST /token (cf. worker.js, PUSH_SECRET côté
+// Cloudflare). Pas un vrai secret (visible ici, dans index.html et dans l'extension) —
+// elle stoppe l'abus trivial/automatisé, pas une attaque ciblée. Même valeur que
+// index.html:WORKER_PUSH_KEY : à garder synchronisée si elle est un jour changée côté worker.
+var _NC_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
+
 // Token Bearer courant (restauré depuis localStorage au démarrage)
 var _ncToken = (function(){
   try { return localStorage.getItem('nc-token') || null; } catch(e){ return null; }
@@ -36,7 +42,7 @@ async function _pushTokenToWorker(token) {
   try {
     var r = await fetch(_NC_WORKER + '/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Push-Key': _NC_PUSH_KEY },
       body: JSON.stringify({ token: token })
     });
     var d = await r.json();
