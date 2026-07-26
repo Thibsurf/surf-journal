@@ -539,6 +539,20 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     </div>
     <div style="position:relative;width:100%;"><canvas id="swell-cmp" style="width:100%;display:block;cursor:crosshair;"></canvas></div>
     <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:10px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)</div>
+    <!-- Spectre MARC (mer du vent + houles séparées) : seul modèle ici à distinguer les
+         trains de houle individuellement (hauteur/période/direction/dispersion angulaire)
+         — BOM/GFS/MF/ECMWF ne donnent qu'une houle globale, pas de comparatif possible,
+         donc rose à part plutôt que mélangée à celle du dessus (cf. _drawMarcSpectrumRose). -->
+    <div id="marc-spectrum-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">
+        <b style="color:var(--text);">🌊 Spectre MARC</b>
+        <span style="font-size:9px;color:var(--faint);"> — mer du vent + houles séparées, avec dispersion directionnelle (largeur du secteur)</span>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div id="marc-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur = un train de houle (rayon = hauteur, largeur = dispersion directionnelle). Flèche blanche = mer totale."></div>
+        <div id="marc-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:9.5px;flex:1;min-width:140px;"></div>
+      </div>
+    </div>
     <div id="swell-cmp-vote" style="display:none;margin-top:10px;padding:10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;"></div>
   </div>
 
@@ -4092,12 +4106,22 @@ async function _fetchEcmwfWave(spot) {
 // d'où un premier test à tort jugé "pas de CORS"). Valeurs stockées en Int16
 // compressé (scale_factor/add_offset) : décodées ici, contrairement à BOM déjà
 // en flottant natif. hs=hauteur signif. (m), t02=période moyenne (s),
-// dir=direction "d'où vient" (°) — houle TOTALE (pas de partition houle/mer du
-// vent séparée dans les variables bulk hs/t02/dir, donc pas de houle secondaire
-// ici, comme BOM). Dataset "FULL_TIME_SERIE" = agrégation THREDDS qui grandit
-// à chaque run → on relit toujours sa longueur réelle via .dds, jamais figée.
+// dir=direction "d'où vient" (°) — houle TOTALE, comparable aux autres modèles
+// (BOM/GFS/MF/ECMWF ne donnent qu'une houle globale, pas de partition —
+// vérifié empiriquement : aucun n'expose de spread directionnel ni de mer du
+// vent séparée, donc pas de comparatif multi-modèle possible sur ce point,
+// juste MARC seul, cf. plus bas le "spectre" phs*/ptp*/pdir*/pspr*).
+// Dataset "FULL_TIME_SERIE" = agrégation THREDDS qui grandit à chaque run →
+// on relit toujours sa longueur réelle via .dds, jamais figée.
 var MARC_BASE = 'https://tds1.ifremer.fr/thredds/dodsC/MARC-WW3_CALEDONIE_3MIN-FOR_FULL_TIME_SERIE';
-var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1 };
+var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1, spr: 0.1, phs: 0.002, ptp: 0.01, pdir: 0.1, pspr: 0.1 };
+// Partitions WW3 : 0 = mer du vent, 1..5 = trains de houle séparés (triés par
+// énergie décroissante par convention WW3, non garanti à 100%). Vérifié en vrai
+// (Passe de Dumbéa, 2026-07-24) : sqrt(Σ phs_i²) ≈ hs total (± arrondi) — la
+// décomposition est cohérente. Spread absent chez tous les autres modèles
+// intégrés ici (BOM/GFS via Open-Meteo/MF via Open-Meteo/ECMWF via Windguru) —
+// vérifié empiriquement, pas de comparatif multi-modèle possible, cf. spectre.
+var MARC_PARTITIONS = [0, 1, 2, 3, 4, 5];
 var MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", cf. .das
 async function _fetchMarcWave(spot) {
   var ctrl = new AbortController();
@@ -4112,7 +4136,8 @@ async function _fetchMarcWave(spot) {
     var t0 = Math.max(0, N - NSTEPS), t1 = N - 1;
     var latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
     var lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
-    var vars = ['hs', 't02', 'dir'];
+    var vars = ['hs', 't02', 'dir', 'spr'];
+    MARC_PARTITIONS.forEach(function(p) { vars.push('phs' + p, 'ptp' + p, 'pdir' + p, 'pspr' + p); });
     var url = MARC_BASE + '.ascii?time%5B' + t0 + ':1:' + t1 + '%5D,' + vars.map(function(v) {
       return v + '%5B' + t0 + ':1:' + t1 + '%5D%5B' + latIdx + ':1:' + latIdx + '%5D%5B' + lonIdx + ':1:' + lonIdx + '%5D';
     }).join(',');
@@ -4129,19 +4154,38 @@ async function _fetchMarcWave(spot) {
       // _FillValue = -32767 (cf. .das) : point terre/masqué (WW3 ne modélise pas
       // sur terre) — vérifié empiriquement (valeurs délirantes sans ce filtre,
       // ex. Hs=-65m sur un point intérieur de la Grande Terre). -> NaN, filtré
-      // ensuite par les vérifications isNaN() déjà en place.
+      // ensuite par les vérifications isNaN() déjà en place. Sert aussi pour les
+      // partitions (phs*/ptp*/pdir*/pspr*) : une partition absente (moins de
+      // trains de houle détectés que le max 0-5) est en _FillValue à tous les pas.
       while ((lm = lineRe.exec(mm[1]))) { var v = parseFloat(lm[2]); out[+lm[1]] = v === -32767 ? NaN : v; }
       return out;
     }
     var times = parseFlat('time');
-    var hsRaw = parseGrid('hs'), t02Raw = parseGrid('t02'), dirRaw = parseGrid('dir');
+    var hsRaw = parseGrid('hs'), t02Raw = parseGrid('t02'), dirRaw = parseGrid('dir'), sprRaw = parseGrid('spr');
+    var partRaw = {};
+    MARC_PARTITIONS.forEach(function(p) {
+      partRaw[p] = { h: parseGrid('phs' + p), t: parseGrid('ptp' + p), dir: parseGrid('pdir' + p), spr: parseGrid('pspr' + p) };
+    });
+    function okNum(arr, i) { return arr[i] != null && !isNaN(arr[i]); }
     var primary = [];
     for (var i = 0; i < times.length; i++) {
       if (hsRaw[i] == null || isNaN(hsRaw[i])) continue;
+      var partitions = MARC_PARTITIONS.map(function(p) {
+        var pr = partRaw[p];
+        if (!okNum(pr.h, i)) return null; // train de houle non détecté à ce pas de temps
+        return {
+          h: pr.h[i] * MARC_SCALE.phs,
+          t: okNum(pr.t, i) ? pr.t[i] * MARC_SCALE.ptp : null,
+          dir: okNum(pr.dir, i) ? pr.dir[i] * MARC_SCALE.pdir : null,
+          spread: okNum(pr.spr, i) ? pr.spr[i] * MARC_SCALE.pspr : null,
+        };
+      });
       primary.push({
         ms: MARC_EPOCH_MS + times[i] * 86400000, h: hsRaw[i] * MARC_SCALE.hs,
         t: (t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null,
         dir: (dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null,
+        spread: okNum(sprRaw, i) ? sprRaw[i] * MARC_SCALE.spr : null,
+        partitions: partitions,
       });
     }
     return { primary: primary, secondary: [] };
@@ -4715,7 +4759,85 @@ function _drawSwellCompare() {
   // flèches — avec 5 modèles les vecteurs se chevauchent souvent (directions
   // de houle proches) et du texte dessus aurait fait un pâté illisible
   // (remarque de l'utilisateur en cours de route).
+  // Spectre MARC (mer du vent + houles séparées) : seul modèle intégré ici à exposer
+  // une décomposition par train de houle avec dispersion directionnelle (spr/pspr0-5,
+  // cf. _fetchMarcWave — vérifié empiriquement qu'aucun autre modèle du comparatif ne
+  // le propose). Indépendant du toggle houle 1/2 (_swellMode) : la décomposition par
+  // partition est plus fine que ce binaire, donc toujours affichée sur la houle totale
+  // (primary), qu'on soit en vue houle 1 ou houle 2 du graphe au-dessus.
+  var MARC_PART_COLORS = ['#e8a057', '#4fa3c7', '#a99ff8', '#e05c5c', '#3dba8a', '#f0c674'];
+  var MARC_PART_LABELS = ['Mer du vent', 'Houle 1', 'Houle 2', 'Houle 3', 'Houle 4', 'Houle 5'];
+  function _drawMarcSpectrumRose(atMs) {
+    var wrap = document.getElementById('marc-spectrum-wrap');
+    var el = document.getElementById('marc-spectrum-rose');
+    var legEl = document.getElementById('marc-spectrum-legend');
+    if (!wrap || !el) return;
+    var marcPts = _swellCache && _swellCache.marc && _swellCache.marc.primary;
+    var p = marcPts && nearest(marcPts, atMs, 4 * 3600000);
+    var parts = p && p.partitions ? p.partitions
+      .map(function(pt, idx) { return pt ? { idx: idx, h: pt.h, t: pt.t, dir: pt.dir, spread: pt.spread } : null; })
+      .filter(function(x) { return x && x.dir != null; }) : [];
+    if (!parts.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    var S = 92, cx = S / 2, cy = S / 2, R = 34;
+    var svg = '<svg width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '">';
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.12)" stroke-width="1"/>';
+    [['N', 0], ['E', 90], ['S', 180], ['O', 270]].forEach(function(c) {
+      var rad = (c[1] - 90) * Math.PI / 180;
+      var lx = cx + (R + 9) * Math.cos(rad), ly = cy + (R + 9) * Math.sin(rad);
+      svg += '<text x="' + lx + '" y="' + (ly + 3) + '" text-anchor="middle" font-size="8" fill="rgba(122,148,170,.7)" font-family="DM Sans,sans-serif">' + c[0] + '</text>';
+    });
+    var maxH = Math.max.apply(null, parts.map(function(x) { return x.h; }));
+    // Les plus grands trains dessinés en premier (dessous) : les petits, souvent
+    // plus étroits (spread faible = houle propre = grande période), restent
+    // visibles par-dessus plutôt que noyés — pas besoin de case à cocher pour
+    // décongestionner (un seul modèle ici, contrairement à la rose du dessus).
+    var sorted = parts.slice().sort(function(a, b) { return b.h - a.h; });
+    sorted.forEach(function(pt) {
+      var propDeg = (pt.dir + 180) % 360; // même convention que la rose houle ci-dessus ("où ça va")
+      var centerRad = (propDeg - 90) * Math.PI / 180;
+      // Spread WW3 = mesure statistique de dispersion (écart-type angulaire), pas
+      // littéralement un demi-angle de cône — utilisé ici comme approximation
+      // visuelle raisonnable (houle "propre" = secteur étroit, "confuse" = large).
+      var halfWidthDeg = pt.spread != null ? Math.max(4, Math.min(85, pt.spread)) : 10;
+      var halfWidthRad = halfWidthDeg * Math.PI / 180;
+      var len = 8 + (R - 12) * (pt.h / maxH);
+      var a1 = centerRad - halfWidthRad, a2 = centerRad + halfWidthRad;
+      var x1 = cx + len * Math.cos(a1), y1 = cy + len * Math.sin(a1);
+      var x2 = cx + len * Math.cos(a2), y2 = cy + len * Math.sin(a2);
+      var largeArc = halfWidthDeg * 2 > 180 ? 1 : 0;
+      var col = MARC_PART_COLORS[pt.idx % MARC_PART_COLORS.length];
+      svg += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + len + ',' + len + ' 0 ' + largeArc + ' 1 ' + x2 + ',' + y2 + ' Z" fill="' + col + '" fill-opacity="0.4" stroke="' + col + '" stroke-width="1" stroke-opacity="0.85"/>';
+    });
+    // Mer totale (hs/dir global) en flèche blanche par-dessus, repère "vue d'ensemble"
+    // — même dessin que les flèches des roses multi-modèles, juste en blanc pour ne
+    // pas se confondre avec les couleurs de partition.
+    if (p.dir != null) {
+      var propDegT = (p.dir + 180) % 360;
+      var radT = (propDegT - 90) * Math.PI / 180;
+      var lenT = R - 4;
+      var x2t = cx + lenT * Math.cos(radT), y2t = cy + lenT * Math.sin(radT);
+      var x1t = cx - lenT * 0.3 * Math.cos(radT), y1t = cy - lenT * 0.3 * Math.sin(radT);
+      svg += '<line x1="' + x1t + '" y1="' + y1t + '" x2="' + x2t + '" y2="' + y2t + '" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>';
+      var ah = 4.5;
+      svg += '<polygon points="' + x2t + ',' + y2t + ' ' + (x2t - ah * Math.cos(radT - 0.4)) + ',' + (y2t - ah * Math.sin(radT - 0.4)) + ' ' + (x2t - ah * Math.cos(radT + 0.4)) + ',' + (y2t - ah * Math.sin(radT + 0.4)) + '" fill="#fff" fill-opacity="0.9"/>';
+    }
+    svg += '</svg>';
+    el.innerHTML = svg;
+    if (legEl) {
+      legEl.innerHTML = sorted.map(function(pt) {
+        return '<div style="display:flex;align-items:center;gap:5px;">'
+          + '<span style="width:7px;height:7px;border-radius:50%;background:' + MARC_PART_COLORS[pt.idx % MARC_PART_COLORS.length] + ';flex-shrink:0;"></span>'
+          + '<b style="color:var(--text);">' + pt.h.toFixed(1) + 'm</b>'
+          + (pt.t != null ? '<span style="color:var(--faint);">' + Math.round(pt.t) + 's</span>' : '')
+          + (pt.spread != null ? '<span style="color:var(--faint);">±' + Math.round(pt.spread) + '°</span>' : '')
+          + '<span style="color:var(--faint);">' + MARC_PART_LABELS[pt.idx] + '</span>'
+          + '</div>';
+      }).join('');
+    }
+  }
   function _drawSwellRose(atMs) {
+    _drawMarcSpectrumRose(atMs);
     var el = document.getElementById('swell-cmp-rose');
     var perEl = document.getElementById('swell-cmp-periods');
     if (!el) return;

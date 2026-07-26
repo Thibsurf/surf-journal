@@ -536,3 +536,49 @@ Amélioration de robustesse apportée : commentaires "INVARIANT" ajoutés aux 3 
 (`_drawSwellCompare`, `cache-model-forecasts.mjs:run()`, `fetch_arome.py:run()`) documentant
 explicitement cette séparation spot/station — pour qu'un futur ajout de modèle houle ne puisse pas
 la casser par erreur en copiant par inadvertance le pattern spots+stations du vent.
+
+---
+
+## Spectre MARC (partitions + dispersion directionnelle) — FAIT (2026-07-24)
+
+Suite à une question utilisateur sur le "spread" (dispersion angulaire) présent dans les données
+houle : vérifié en vrai avant d'implémenter, pas supposé.
+
+**Qui expose un spread directionnel ?** Seul MARC, parmi les 5 modèles houle intégrés :
+- BOM WW3 : liste complète des variables du dataset THREDDS inspectée (`tm01, sig_wav_ht,
+  mn_wav_dir, wnd_spd, sig_ht_wnd_sea, pk_wav_per, sig_ht_sw1, wnd_dir, mn_dir_sw1`) — aucun spread.
+- Open-Meteo (GFS-wave, MF global) : pas de paramètre spread dans leur API marine (testé avec
+  plusieurs noms plausibles, aucun ne renvoie de donnée réelle — juste une erreur ou un "undefined").
+- ECMWF (Windguru iapi.php) : champs `fcst` inspectés en vrai (`WVHGT/WVPER/WVDIR`,
+  `SWELL1/SWPER1/SWDIR1`, `SWELL2/SWPER2/SWDIR2`, `HTSGW/PERPW/DIRPW`) — aucun spread.
+- MARC expose `spr` (spread global, °) et surtout `phs0-5`/`ptp0-5`/`pdir0-5`/`pspr0-5` : une
+  vraie décomposition par partition WW3 (0 = mer du vent, 1-5 = trains de houle séparés par
+  énergie décroissante), chacune avec sa hauteur/période/direction/dispersion propre.
+
+Conclusion pratique : **pas de comparatif multi-modèle possible** (un seul modèle a la donnée) —
+donc pas de risque de "pâté" par superposition de plusieurs modèles. Le risque restant était la
+superposition des **partitions entre elles** (jusqu'à 6 par pas de temps).
+
+Vérifié la cohérence physique des données réelles (Passe de Dumbéa) avant de coder : hauteurs des
+partitions cohérentes en quadrature avec la hauteur totale (`√(Σ phsᵢ²) ≈ hs`, exact au pas de
+temps testé), et la houle longue période (partition 1, ~16,6 s) a un spread étroit (~9°, houle
+"propre") tandis que la mer du vent (partition 0, ~4 s) a un spread large (~28°, mer confuse) —
+cohérent avec la physique attendue. `_FillValue` géré comme pour hs/dir (cf. correctif précédent) :
+une partition absente à un pas de temps donné (moins de trains détectés que le maximum 0-5) est
+simplement omise, pas affichée comme un zéro trompeur.
+
+**Implémentation** (`previsions.html` uniquement — pas dans l'archive Node, cette rose ne sert
+qu'à l'instant survolé, pas à l'historique) :
+- `_fetchMarcWave` étendu : récupère `spr` + les 24 variables de partition dans la même requête
+  OPeNDAP combinée (coût réseau marginal, même fenêtre temporelle/point déjà interrogée).
+- Nouvelle rose séparée (`#marc-spectrum-rose`, sous le graphe houle, indépendante du toggle
+  Houle 1/Houle 2 — la décomposition par partition est plus fine que ce binaire) : un **secteur
+  (wedge)** par partition, rayon ∝ hauteur, largeur angulaire ∝ dispersion, couleur par partition,
+  partitions triées par hauteur décroissante et dessinées grandes-d'abord (les petites restent
+  visibles par-dessus sans se faire recouvrir). Flèche blanche superposée = mer totale (repère
+  vue d'ensemble). Masquée si aucune partition n'a de direction valide pour ce spot/instant.
+- Testé en vrai (headless, requêtes réseau live + capture d'écran) : rendu net avec 2-3 partitions
+  simultanées (vérifié Passe de Dumbéa, Ilot Ténia, Passe de Mato), aucun pâté visuel — le
+  screenshot montre un grand secteur net + un petit secteur distinct + la flèche blanche, tous
+  lisibles séparément. Vérifié aussi que le spectre reste affiché après bascule Houle 1 ↔ Houle 2
+  (indépendance confirmée). 0 erreur JS sur tous les spots testés.
