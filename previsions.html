@@ -9309,16 +9309,37 @@ function _drawAromeCompareFromCache() {
   // Utilise obsBias/*CachePtsBias (copies complètes, pas rognées par le
   // toggle d'affichage) pour que le badge reste aussi robuste que le graphe
   // soit en vue "récente" ou "historique complet".
+  // Renvoie {mae, bias, n} : mae = écart absolu moyen (amplitude de l'erreur),
+  // bias = écart SIGNÉ moyen modèle-obs (décalage systématique, soustractible —
+  // ex: "GFS +3 nds" veut dire qu'il retirer 3 nds à GFS bat les modèles bruts).
+  // Avant ce correctif, une seule valeur ("écart") mélangeait ces deux notions
+  // sous le nom de code "biais" alors que c'était un MAE (AUDIT-previsions.md §5.2).
   function biasVsObs(pts) {
     if (!obsBias.length || !pts.length) return null;
-    var diffs = [];
+    var diffs = [], signed = [];
     obsBias.forEach(function(o) {
       var best = null, bd = 70 * 60000;
       pts.forEach(function(p) { var df = Math.abs(p.ms - o.ms); if (df < bd) { bd = df; best = p; } });
-      if (best) diffs.push(Math.abs(best.kt - o.kt));
+      if (best) { diffs.push(Math.abs(best.kt - o.kt)); signed.push(best.kt - o.kt); }
     });
     if (diffs.length < 3) return null;
-    return { avg: diffs.reduce(function(s,v){return s+v;},0) / diffs.length, n: diffs.length };
+    return {
+      avg: diffs.reduce(function(s,v){return s+v;},0) / diffs.length,
+      bias: signed.reduce(function(s,v){return s+v;},0) / signed.length,
+      n: diffs.length
+    };
+  }
+  // Référence de persistance (§5.3) : "le vent dans leadH h = le vent maintenant".
+  // Calculable depuis les seules mesures (pas de modèle nécessaire) — sert de
+  // plancher : un modèle qui ne bat pas la persistance n'apporte rien de plus
+  // qu'un vent supposé stable, ce qui est fréquent sur l'alizé calédonien.
+  function persistenceMAE(obs, leadH) {
+    var d = [];
+    obs.forEach(function(o) {
+      var ref = nearest(obs, o.ms - leadH * 3600000, 40 * 60000);
+      if (ref) d.push(Math.abs(o.kt - ref.kt));
+    });
+    return d.length >= 3 ? d.reduce(function(s,v){return s+v;},0) / d.length : null;
   }
   // Corrélation de DIRECTION : écart angulaire moyen (0–180°) au plus proche point
   // mesuré. Ne compte que les instants où mesure ET modèle ont une direction (la
@@ -9357,9 +9378,17 @@ function _drawAromeCompareFromCache() {
       return;
     }
     spd.sort(function(a, b) { return a.r.avg - b.r.avg; });
-    var spdLine = '🎯 <b>Vitesse</b> — le plus proche (' + spd[0].r.n + ' pts) : <b style="color:var(--ok);">' + spd[0].label
-      + '</b> écart ' + spd[0].r.avg.toFixed(1) + ' nds · '
-      + spd.slice(1).map(function(c) { return c.label + ' ' + c.r.avg.toFixed(1) + ' nds (' + c.r.n + ')'; }).join(' · ');
+    // Persistance 24h (§5.3) : plancher de comparaison calculable sans aucun modèle.
+    // Un modèle qui ne bat pas ce plancher n'apporte rien de plus qu'un vent supposé
+    // stable — fréquent sur l'alizé calédonien, très persistant.
+    var persMAE = persistenceMAE(obsBias, 24);
+    var spdLine = '🎯 <b>Vitesse</b> — le plus proche (' + spd[0].r.n + ' pts) : '
+      + spd.map(function(c, i) {
+          var ss = (persMAE != null && persMAE > 0) ? ' · SS ' + (c.r.avg <= persMAE ? '+' : '') + Math.round((1 - c.r.avg / persMAE) * 100) + '%' : '';
+          var lbl = i === 0 ? '<b style="color:var(--ok);">' + c.label + '</b>' : c.label;
+          return lbl + ' MAE ' + c.r.avg.toFixed(1) + 'nds (biais ' + (c.r.bias >= 0 ? '+' : '') + c.r.bias.toFixed(1) + ')' + ss;
+        }).join(' · ')
+      + (persMAE != null ? '<div style="margin-top:2px;font-size:11px;color:var(--faint);">Référence — persistance 24h (le vent dans 24h = le vent maintenant) : MAE ' + persMAE.toFixed(1) + ' nds · SS = gain vs cette référence</div>' : '');
     var dirLine = '';
     if (dir.length >= 2) {
       dir.sort(function(a, b) { return a.r.avg - b.r.avg; });
