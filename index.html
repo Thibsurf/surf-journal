@@ -2028,8 +2028,9 @@ function openAddSession() {
   selectedForecastAccuracy = 0;
   // Reset forecast strip
   _forecastStripCache = null;
-  // Heure session par défaut = heure actuelle
-  var defHour = new Date().getHours();
+  // Heure session par défaut = heure actuelle en NC, pas celle de l'appareil
+  // (même correctif que AUDIT-previsions.md chantier 6, ici sur index.html)
+  var defHour = new Date(Date.now() + 11 * 3600000).getUTCHours();
   var sessionHourSel = document.getElementById('f-session-hour');
   if (sessionHourSel) {
     if (!sessionHourSel.options.length) {
@@ -2176,12 +2177,15 @@ function _getSessionHour() {
   return 9;
 }
 
-// Date calendaire LOCALE en YYYY-MM-DD — ne JAMAIS utiliser toISOString() pour
-// ça : c'est la date UTC, donc HIER pendant les 11 premières heures de chaque
-// journée NC (UTC+11).
+// Date calendaire NC en YYYY-MM-DD — ne JAMAIS utiliser toISOString() pour ça :
+// c'est la date UTC, donc HIER pendant les 11 premières heures de chaque
+// journée NC (UTC+11). Le défaut (d omis) lisait aussi getFullYear/getMonth/
+// getDate LOCAUX à l'APPAREIL — correct uniquement si l'OS est réglé sur
+// Pacific/Noumea, faux sinon (même correctif que AUDIT-previsions.md chantier 6,
+// ici sur index.html — "aujourd'hui" pouvait être le mauvais jour en voyage).
 function _localDayStr(d) {
-  d = d || new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  d = d || new Date(Date.now() + 11 * 3600000);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
 }
 
 // Sauvegarde les conditions meteo.nc du jour dans meteo_cache Supabase
@@ -2791,7 +2795,9 @@ function editSession() {
   var tp = document.getElementById('tide-port');
   if (tp) tp.value = s.tide_port || portFromLaunch(s.launch_point || '');
   setTimeout(function() { setupTideCanvas(); renderTideWidget(); }, 50);
-  // Heure session (pas stockée en base — ré-estime depuis les créneaux marée sauvés, sinon heure actuelle)
+  // Heure session : préférer la valeur sauvée (session_hour, cf. saveSession — les
+  // sessions créées avant ce champ n'en ont pas) ; sinon ré-estimer depuis les
+  // créneaux marée sauvés ; sinon heure NC actuelle (pas celle de l'appareil).
   var editHourSel = document.getElementById('f-session-hour');
   if (editHourSel) {
     if (!editHourSel.options.length) {
@@ -2802,7 +2808,11 @@ function editSession() {
         editHourSel.appendChild(_eopt);
       }
     }
-    editHourSel.value = String(tideRanges.length ? Math.round(tideRanges[0].start) : new Date().getHours());
+    editHourSel.value = String(
+      s.session_hour != null ? s.session_hour
+      : tideRanges.length ? Math.round(tideRanges[0].start)
+      : new Date(Date.now() + 11 * 3600000).getUTCHours()
+    );
     editHourSel.dataset.userEdited = '0';
   }
   _bindSessionHourManualFlag();
@@ -3239,6 +3249,11 @@ async function saveSession() {
       forecast_accuracy: selectedForecastAccuracy || null,
       tide_ranges: tideRanges.length > 0 ? tideRanges : null,
       tide_port: document.getElementById('tide-port') ? (document.getElementById('tide-port').value || null) : null,
+      // Sans l'heure, impossible d'apparier rétroactivement une session à la bonne
+      // heure de prévision (la brise thermique monte l'après-midi, la marée tourne
+      // en 6h) — le sélecteur existe et sert déjà au préremplissage mais n'était
+      // jamais sauvé (AUDIT-previsions.md §11.4, "meilleur rapport valeur/effort").
+      session_hour: (function(){ var e = document.getElementById('f-session-hour'); var v = e ? parseInt(e.value, 10) : NaN; return isNaN(v) ? null : v; })(),
     };
     // Validation basique : les min/max HTML5 des champs ne sont jamais
     // appliqués (pas de <form>, pas de reportValidity() sur ce bouton
