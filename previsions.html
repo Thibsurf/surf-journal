@@ -3545,16 +3545,30 @@ function _tideNormalizeDay(resp, ds) {
     var all = (t.high_tide || []).concat(t.low_tide || []);
     var zoned = all.filter(function(e){ return e && e.time && /Z$|[+-]\d{2}:\d{2}$/.test(String(e.time)); });
     if (!zoned.length) return resp; // déjà naïf → rien à faire
-    var dayStart = new Date(ds + 'T00:00:00+11:00').getTime();
-    function inDay(ms){ return ms >= dayStart && ms < dayStart + 86400000; }
-    var utcVotes = 0, localVotes = 0;
+    // Détection déterministe via le modèle harmonique indépendant (tideH, ajusté par
+    // moindres carrés sur le SHOM, cf. plus bas dans le fichier) plutôt qu'un vote sur
+    // "tombe dans le bon jour" : ce dernier se trompait dès que les 4 événements du jour
+    // tombaient tous avant 13h NC (vote pour les deux hypothèses, ou seulement "local"),
+    // ET pouvait se tromper même hors ce cas limite — confirmé sur données réelles du
+    // 27/07/2026 (croisées avec une référence marée externe) : le vote stripait le Z à
+    // tort, décalant l'affichage d'1h30 à 2h15 (AUDIT-previsions.md §6.6).
+    // Principe : une pleine/basse mer réelle a une hauteur proche d'un extremum du
+    // modèle à l'instant vrai. On teste les deux hypothèses (Z = UTC véritable, ou Z
+    // abusif sur une heure déjà locale NC) et on garde celle dont l'écart moyen entre
+    // hauteur rapportée et hauteur prédite est le plus petit.
+    var errZ = 0, errStripped = 0, n = 0;
     zoned.forEach(function(e){
-      var utc = Date.parse(e.time);
-      if (inDay(utc)) utcVotes++;
-      if (inDay(utc - 11*3600000)) localVotes++;
+      var h = e.tidal_height != null ? e.tidal_height : e.h;
+      if (h == null) return;
+      var utcMs = Date.parse(e.time);
+      var tZ = (utcMs - TIDE_EPOCH.getTime()) / 3600000;                    // Z = UTC véritable
+      var tStripped = (utcMs - 11 * 3600000 - TIDE_EPOCH.getTime()) / 3600000; // Z abusif (déjà NC local)
+      errZ += Math.abs(tideH(tZ) - h);
+      errStripped += Math.abs(tideH(tStripped) - h);
+      n++;
     });
-    if (localVotes > utcVotes) {
-      console.info('[tide] Suffixe Z abusif détecté pour ' + ds + ' (' + localVotes + '/' + zoned.length + ' locaux vs ' + utcVotes + ' UTC) — heures relues en local NC');
+    if (n && errStripped < errZ) {
+      console.info('[tide] Suffixe Z abusif détecté pour ' + ds + ' (écart harmonique moyen : local=' + (errStripped/n).toFixed(3) + 'm vs UTC=' + (errZ/n).toFixed(3) + 'm, n=' + n + ') — heures relues en local NC');
       function strip(arr){ (arr || []).forEach(function(e){
         if (e && e.time) e.time = String(e.time).replace(/Z$|[+-]\d{2}:\d{2}$/, '');
       }); }
