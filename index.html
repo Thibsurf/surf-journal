@@ -1016,6 +1016,46 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
             <input type="text" class="form-input" id="f-tide" placeholder="1.2→0.4">
           </div>
         </div>
+        <!-- Écart à la prévision (AUDIT-previsions.md §11.3) : demander l'écart plutôt que
+             la valeur absolue — bien plus fiable (le biais personnel s'annule, un seul tap),
+             et c'est un ordinal directement exploitable pour mesurer le biais d'un modèle
+             (moy(obs_delta) par modèle), contrairement à hs/period qui ne sont qu'une copie
+             de la prévision tant qu'ils ne sont pas édités à la main. -->
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">Houle — c'était comment par rapport à la prévision
+            <span id="obsdelta-ref-hs" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
+          </label>
+          <div id="f-obs-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
+            <button type="button" onclick="setObsDelta(-2)" data-delta="-2" class="obsd-btn" title="Nettement plus petit que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Petit</button>
+            <button type="button" onclick="setObsDelta(-1)" data-delta="-1" class="obsd-btn" title="Plus petit que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Petit</button>
+            <button type="button" onclick="setObsDelta(0)" data-delta="0" class="obsd-btn" title="Conforme à la prévision"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
+            <button type="button" onclick="setObsDelta(1)" data-delta="1" class="obsd-btn" title="Plus gros que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Gros</button>
+            <button type="button" onclick="setObsDelta(2)" data-delta="2" class="obsd-btn" title="Nettement plus gros que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Gros</button>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">Vent — c'était comment par rapport à la prévision
+            <span id="obsdelta-ref-wind" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
+          </label>
+          <div id="f-wind-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
+            <button type="button" onclick="setWindDelta(-2)" data-delta="-2" class="windd-btn" title="Nettement plus mou que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Mou</button>
+            <button type="button" onclick="setWindDelta(-1)" data-delta="-1" class="windd-btn" title="Plus mou que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Mou</button>
+            <button type="button" onclick="setWindDelta(0)" data-delta="0" class="windd-btn" title="Conforme à la prévision"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
+            <button type="button" onclick="setWindDelta(1)" data-delta="1" class="windd-btn" title="Plus fort que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Fort</button>
+            <button type="button" onclick="setWindDelta(2)" data-delta="2" class="windd-btn" title="Nettement plus fort que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Fort</button>
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">⚠ Ces réponses n'ont de sens que sur les jours où tu as surfé — les houles ratées par un modèle ne génèrent aucune session, donc aucune donnée (biais de sélection, cf. audit).</div>
+        </div>
         <!-- Widget marée interactif -->
         <div id="tide-widget" style="background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.15);border-radius:var(--radius-sm);padding:10px;margin-top:4px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
@@ -2026,6 +2066,8 @@ function openAddSession() {
   // Init widget marée
   tideRanges = [];
   selectedForecastAccuracy = 0;
+  setObsDelta(null); setWindDelta(null);
+  window._lastFcstModel = null;
   // Reset forecast strip
   _forecastStripCache = null;
   // Heure session par défaut = heure actuelle en NC, pas celle de l'appareil
@@ -2258,6 +2300,8 @@ function _clearAutofillFields() {
   if (hint) hint.textContent = '';
   var stInfoEl = document.getElementById('autofill-station-info');
   if (stInfoEl) stInfoEl.innerHTML = '';
+  window._lastFcstModel = null;
+  if (typeof _updateObsDeltaRef === 'function') _updateObsDeltaRef();
 }
 
 // Marque hs/période/vent comme modifiés manuellement dès que l'utilisateur les touche,
@@ -2268,7 +2312,10 @@ function _bindConditionsManualFlag() {
     var el = document.getElementById(id);
     if (!el || el._manualBound) return;
     el._manualBound = true;
-    el.addEventListener('input', function() { this.dataset.userEdited = '1'; });
+    el.addEventListener('input', function() {
+      this.dataset.userEdited = '1';
+      if (typeof _updateObsDeltaRef === 'function') _updateObsDeltaRef();
+    });
   });
 }
 
@@ -2593,6 +2640,13 @@ async function _autoFillConditions(targetDate) {
     return;
   }
 
+  // T08/T09 (AUDIT-previsions.md §11.2) : mémorise quel modèle a fourni le
+  // préremplissage, pour attribuer l'écart ressenti (obs_delta) à un modèle
+  // précis — capturé ici (au fetch), pas à la sauvegarde qui peut arriver
+  // bien après relecture du formulaire.
+  window._lastFcstModel = (data.source === 'worker' || data.source === 'direct' || data.source === 'cache_nc') ? 'nc'
+    : data.source ? 'gfs' : null;
+
   // Remplissage : toujours écraser si targetDate est fourni (changement de date),
   // sinon n'écraser que si le champ est vide (premier chargement) — MAIS jamais si
   // l'utilisateur a lui-même touché le champ (dataset.userEdited), sinon une saisie
@@ -2607,6 +2661,8 @@ async function _autoFillConditions(targetDate) {
 
   var wdEl = document.getElementById('f-wind');
   if (wdEl && wdEl.dataset.userEdited !== '1' && (_overwrite || !wdEl.value) && data.windKt != null) wdEl.value = Math.round(data.windKt);
+
+  if (typeof _updateObsDeltaRef === 'function') _updateObsDeltaRef();
 
   var _cardDegMap = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,
     S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
@@ -2828,6 +2884,10 @@ function editSession() {
   else { selectedForecastAccuracy = 0;
     document.querySelectorAll('.facc-btn').forEach(function(b){ b.style.background='transparent'; b.style.color='var(--text-muted)'; b.style.borderColor='var(--border)'; });
   }
+  setObsDelta(s.obs_delta != null ? s.obs_delta : null);
+  setWindDelta(s.wind_delta != null ? s.wind_delta : null);
+  window._lastFcstModel = s.fcst_model || null;
+  _updateObsDeltaRef();
   // Directions
   setDirFields('f-swell-dir','f-swell-dir-card','f-swell-dir-deg', s.swell_dir||'');
   setDirFields('f-wind-dir','f-wind-dir-card','f-wind-dir-deg', s.wind_dir||'');
@@ -3212,6 +3272,34 @@ function setForecastAccuracy(val) {
   });
 }
 
+// Écart à la prévision (AUDIT-previsions.md §11.3) : ordinal signé -2..+2, pas une
+// valeur absolue — capture le biais d'un modèle (moy(obs_delta)), ce que
+// forecast_accuracy (satisfaction globale, non signée) ne permet pas.
+var selectedObsDelta = null, selectedWindDelta = null;
+var DELTA_COLORS = {'-2':'#4fa3c7', '-1':'#7dd3fc', '0':'#3dba8a', '1':'#e8a057', '2':'#e05c5c'};
+function _paintDeltaBtns(cls, val) {
+  document.querySelectorAll('.' + cls).forEach(function(b) {
+    var v = b.getAttribute('data-delta');
+    if (+v === val) {
+      b.style.background = DELTA_COLORS[v]; b.style.color = '#fff'; b.style.borderColor = DELTA_COLORS[v];
+    } else {
+      b.style.background = 'transparent'; b.style.color = 'var(--text-muted)'; b.style.borderColor = 'var(--border)';
+    }
+  });
+}
+function setObsDelta(val) { selectedObsDelta = val; _paintDeltaBtns('obsd-btn', val); }
+function setWindDelta(val) { selectedWindDelta = val; _paintDeltaBtns('windd-btn', val); }
+
+// Affiche la prévision de référence dans le libellé de la question ("... par rapport
+// à la prévision (1.4m 12s)") — contamination par l'ancrage (§11.7 point 3) acceptée
+// ici : le formulaire affichait de toute façon déjà hs/period juste au-dessus.
+function _updateObsDeltaRef() {
+  var hsEl = document.getElementById('f-hs'), perEl = document.getElementById('f-period'), wEl = document.getElementById('f-wind');
+  var hsRef = document.getElementById('obsdelta-ref-hs'), windRef = document.getElementById('obsdelta-ref-wind');
+  if (hsRef) hsRef.textContent = (hsEl && hsEl.value) ? '(' + (+hsEl.value).toFixed(1) + 'm' + (perEl && perEl.value ? ' · ' + Math.round(+perEl.value) + 's' : '') + ')' : '';
+  if (windRef) windRef.textContent = (wEl && wEl.value) ? '(' + Math.round(+wEl.value) + ' nds)' : '';
+}
+
 async function saveSession() {
   const btn = document.getElementById('btn-save-session');
   try {
@@ -3254,6 +3342,12 @@ async function saveSession() {
       // en 6h) — le sélecteur existe et sert déjà au préremplissage mais n'était
       // jamais sauvé (AUDIT-previsions.md §11.4, "meilleur rapport valeur/effort").
       session_hour: (function(){ var e = document.getElementById('f-session-hour'); var v = e ? parseInt(e.value, 10) : NaN; return isNaN(v) ? null : v; })(),
+      // Écart ordinal à la prévision (AUDIT-previsions.md §11.3) + modèle ayant fourni
+      // le préremplissage (capturé au fetch par _autoFillConditions, §11.2) — permet de
+      // calculer moy(obs_delta) PAR MODÈLE une fois ~30 sessions accumulées (§11.6).
+      obs_delta: selectedObsDelta,
+      wind_delta: selectedWindDelta,
+      fcst_model: window._lastFcstModel || null,
     };
     // Validation basique : les min/max HTML5 des champs ne sont jamais
     // appliqués (pas de <form>, pas de reportValidity() sur ce bouton
@@ -6139,9 +6233,10 @@ async function exportSessionsCSV() {
     var headers = [
       'id','date','spot','spot_2','spot_3','launch_point','context',
       'duration_h','distance_nm','hs','period','swell_dir',
-      'wind_kts','wind_dir','tide','tide_port',
+      'wind_kts','wind_dir','tide','tide_port','session_hour',
       'board','quality','moves','tube_count',
       'price_cfp','observations','forecast_accuracy',
+      'obs_delta','wind_delta','fcst_model',
       'is_shared','created_at'
     ];
     var out = [headers];
@@ -6149,9 +6244,10 @@ async function exportSessionsCSV() {
       out.push([
         s.id, s.date, s.spot, s.spot_2||'', s.spot_3||'', s.launch_point||'', s.context||'',
         s.duration_h||'', s.distance_nm||'', s.hs||'', s.period||'', s.swell_dir||'',
-        s.wind_kts||'', s.wind_dir||'', s.tide||'', s.tide_port||'',
+        s.wind_kts||'', s.wind_dir||'', s.tide||'', s.tide_port||'', s.session_hour!=null?s.session_hour:'',
         s.board||'', s.quality||'', Array.isArray(s.moves)?s.moves.join('|'):(s.moves||''), s.tube_count||0,
         s.price_cfp||'', s.observations||'', s.forecast_accuracy||'',
+        s.obs_delta!=null?s.obs_delta:'', s.wind_delta!=null?s.wind_delta:'', s.fcst_model||'',
         s.is_shared?'oui':'non', s.created_at||''
       ]);
     });
