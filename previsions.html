@@ -4308,15 +4308,18 @@ function _rgbaFromHex(hex, alpha) {
 // Résolution, du plus fin au plus large (renseigne le choix des couleurs, pas un ordre
 // d'affichage) : AROME 2,5 km · MARC 5,5 km · ECMWF 9 km · BOM 14 km · GFS 28 km ·
 // MF global (résolution non communiquée par Open-Meteo) · meteo.nc régional (non documentée).
+// res = résolution affichée dans les légendes (AUDIT-previsions.md §9.4) — jusqu'ici
+// cachée dans un `title` (invisible sur mobile) alors que c'est l'information qui
+// hiérarchise la confiance entre modèles. null = non communiquée publiquement.
 var MODEL_STYLE = {
-  obs:   { label: 'mesuré',    col: '#e8eef4' },
-  aro:   { label: 'AROME',     col: '#7b6cf6' },
-  marc:  { label: 'MARC WW3',  col: '#7dd3fc' },
-  ecmwf: { label: 'ECMWF',     col: '#a99ff8' },
-  bom:   { label: 'BOM WW3',   col: '#e8a057' },
-  gfs:   { label: 'GFS',       col: '#4fa3c7' },
-  mf:    { label: 'MF global', col: '#7a94aa' },
-  nc:    { label: 'meteo.nc',  col: '#f0c674' }
+  obs:   { label: 'mesuré',    col: '#e8eef4', res: null },
+  aro:   { label: 'AROME',     col: '#7b6cf6', res: '2,5 km' },
+  marc:  { label: 'MARC WW3',  col: '#7dd3fc', res: '5,5 km' },
+  ecmwf: { label: 'ECMWF',     col: '#a99ff8', res: '9 km' },
+  bom:   { label: 'BOM WW3',   col: '#e8a057', res: '14 km' },
+  gfs:   { label: 'GFS',       col: '#4fa3c7', res: '28 km' },
+  mf:    { label: 'MF global', col: '#7a94aa', res: null },
+  nc:    { label: 'meteo.nc',  col: '#f0c674', res: null }
 };
 // ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global / ECMWF / MARC) ──
 // _ncFcastData et _omFcastData sont TOUJOURS peuplés en parallèle (cf. commentaire
@@ -4341,6 +4344,13 @@ var _swellHidden = (function(){ try { return JSON.parse(localStorage.getItem('sw
 function _toggleSwellModel(key) {
   _swellHidden[key] = !_swellHidden[key];
   try { localStorage.setItem('swellCmpHidden', JSON.stringify(_swellHidden)); } catch(e){}
+  _drawSwellCompare();
+}
+// Masquage persistant entre spots/sessions (§9.4) : facile d'oublier qu'un modèle
+// reste caché. Bouton visible seulement quand au moins un modèle est masqué.
+function _resetSwellHidden() {
+  _swellHidden = {};
+  try { localStorage.setItem('swellCmpHidden', '{}'); } catch(e){}
   _drawSwellCompare();
 }
 
@@ -4867,12 +4877,21 @@ function _drawSwellCompare() {
   var legEl = document.getElementById('swell-cmp-legend');
   if (legEl) {
     // Légende = cases à cocher : clic = afficher/masquer le modèle (sans refetch).
+    // Un seul encodage de l'état masqué — opacité + pastille creuse ; le
+    // text-decoration:line-through en plus était redondant (§9.4). Résolution
+    // affichée en clair (MODEL_STYLE.res), plus seulement cachée dans le title
+    // (invisible sur mobile).
+    var anyHidden = dataModels.some(function(m){ return !!_swellHidden[m.key]; });
     legEl.innerHTML = dataModels.map(function(m) {
       var off = !!_swellHidden[m.key];
+      var res = MODEL_STYLE[m.key] && MODEL_STYLE[m.key].res;
       return '<span onclick="_toggleSwellModel(\'' + m.key + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-pressed="' + (!off) + '" title="' + m.desc + (off ? ' — masqué, clic pour afficher' : ' — clic pour masquer') + '" '
-        + 'style="cursor:pointer;user-select:none;opacity:' + (off ? '.4' : '1') + ';' + (off ? 'text-decoration:line-through;' : '') + '">'
-        + '<span style="color:' + m.col + ';font-weight:700;">' + (off ? '☐' : '━') + '</span> ' + m.label + '</span>';
+        + 'style="cursor:pointer;user-select:none;opacity:' + (off ? '.4' : '1') + ';">'
+        + '<span style="color:' + m.col + ';font-weight:700;">' + (off ? '☐' : '━') + '</span> ' + m.label
+        + (res ? '<span style="color:var(--faint);font-size:10px;"> ' + res + '</span>' : '')
+        + '</span>';
     }).join('') || '<span style="color:var(--faint);">Aucun modèle avec de la houle ' + (comp === 'secondary' ? 'secondaire' : 'primaire') + ' pour ce spot</span>';
+    if (anyHidden) legEl.innerHTML += '<button onclick="_resetSwellHidden()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>';
   }
 
   function nearest(pts, ms, tol) {
@@ -7385,6 +7404,13 @@ function _toggleWindCmpModel(key) {
   try { localStorage.setItem('windCmpHidden', JSON.stringify(_windCmpHidden)); } catch(e){}
   _drawAromeCompareFromCache();
 }
+// Masquage persistant entre spots/sessions (§9.4) : facile d'oublier qu'un modèle
+// reste caché. Bouton visible seulement quand au moins un modèle est masqué.
+function _resetWindCmpHidden() {
+  _windCmpHidden = {};
+  try { localStorage.setItem('windCmpHidden', '{}'); } catch(e){}
+  _drawAromeCompareFromCache();
+}
 // Sélecteur segmenté explicite (§9.2/9.3) plutôt qu'un bouton bascule : les deux
 // options restent visibles en permanence, comme deux questions différentes
 // ("ce que je vais surfer" vs "ce que je peux vérifier"), pas un simple réglage.
@@ -7496,21 +7522,26 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
           ? 'Ce que tu vas surfer. Modèles échantillonnés au spot — mesures les plus proches : ' + stLine + '. Un écart inclut cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle.'
           : 'Station de mesure inconnue — comparaison au spot uniquement, aucune vérification possible ici.');
   }
+  // Un seul encodage de l'état masqué — opacité seule ; le line-through en plus
+  // était redondant avec la pastille creuse (§9.4).
+  var anyHidden = false;
   ['obs', 'aro', 'nc', 'gfs', 'bom', 'ecmwf', 'marc'].forEach(function(k) {
     var sp = document.getElementById('wcmp-leg-' + k);
     if (!sp) return;
     var unavailable = atStation && WIND_UNRESAMPLABLE[k];
     var hidden = !!_windCmpHidden[k];
+    if (hidden) anyHidden = true;
     if (unavailable) {
-      sp.style.opacity = '.28'; sp.style.textDecoration = 'none'; sp.style.cursor = 'not-allowed';
+      sp.style.opacity = '.28'; sp.style.cursor = 'not-allowed';
       sp.title = 'Indisponible en mode « au point de mesure » (lié à un spot Windguru)';
     } else {
       sp.style.opacity = hidden ? '.4' : '1';
-      sp.style.textDecoration = hidden ? 'line-through' : 'none';
       sp.style.cursor = 'pointer';
       sp.title = (k === 'obs' ? 'Mesures de la station' : k.toUpperCase()) + (hidden ? ' — masqué, clic pour afficher' : ' — clic pour masquer');
     }
   });
+  var resetBtn = document.getElementById('wcmp-leg-reset');
+  if (resetBtn) resetBtn.style.display = anyHidden ? '' : 'none';
 }
 function updateAromeCard() {
   var card = document.getElementById('wg-arome-card'); if (!card) return;
@@ -7702,12 +7733,13 @@ function _renderAromeCardData(j, wgId, body) {
     // Rangée séparée plus bas : marqueurs de points archivés (cercle creux).
     + '<div style="display:flex;gap:10px;row-gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-bottom:5px;">'
     + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.obs.col+';font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
-    + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.aro.col+';font-weight:700;">━</span> AROME 2.5</span>'
+    + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.aro.col+';font-weight:700;">━</span> AROME<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.aro.res+'</span></span>'
     + '<span id="wcmp-leg-nc" onclick="_toggleWindCmpModel(\'nc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.nc.col+';font-weight:700;">╌</span> meteo.nc</span>'
-    + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.gfs.col+';font-weight:700;">╌</span> GFS</span>'
-    + '<span id="wcmp-leg-bom" onclick="_toggleWindCmpModel(\'bom\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Bureau of Meteorology (Australie) — vent WaveWatch III régional, grille 0,125° (~14 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.bom.col+';font-weight:700;">╌</span> BOM</span>'
-    + '<span id="wcmp-leg-ecmwf" onclick="_toggleWindCmpModel(\'ecmwf\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.ecmwf.col+';font-weight:700;">╌</span> ECMWF</span>'
-    + '<span id="wcmp-leg-marc" onclick="_toggleWindCmpModel(\'marc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="MARC-WW3 Nouvelle-Calédonie (Ifremer) — vent ECMWF au point de grille, résolution 0,05° (~5,5 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.marc.col+';font-weight:700;">╌</span> MARC</span>'
+    + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.gfs.col+';font-weight:700;">╌</span> GFS<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.gfs.res+'</span></span>'
+    + '<span id="wcmp-leg-bom" onclick="_toggleWindCmpModel(\'bom\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Bureau of Meteorology (Australie) — vent WaveWatch III régional, grille 0,125° (~14 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.bom.col+';font-weight:700;">╌</span> BOM<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.bom.res+'</span></span>'
+    + '<span id="wcmp-leg-ecmwf" onclick="_toggleWindCmpModel(\'ecmwf\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.ecmwf.col+';font-weight:700;">╌</span> ECMWF<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.ecmwf.res+'</span></span>'
+    + '<span id="wcmp-leg-marc" onclick="_toggleWindCmpModel(\'marc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="MARC-WW3 Nouvelle-Calédonie (Ifremer) — vent ECMWF au point de grille, résolution 0,05° (~5,5 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.marc.col+';font-weight:700;">╌</span> MARC<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.marc.res+'</span></span>'
+    + '<button id="wcmp-leg-reset" onclick="_resetWindCmpHidden()" style="display:none;background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>'
     + '</div>'
     // Historique archivé (jusqu'à 8j) masqué par défaut — l'afficher d'entrée
     // écrasait les courbes récentes de points morts (retour utilisateur). Le
