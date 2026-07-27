@@ -4842,6 +4842,10 @@ async function _renderSwellCompare() {
   _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3] };
   _swellZoom.a = 0; _swellZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
   _drawSwellCompare();
+  // Le cône de spread MARC du widget (_gwDrawVectors, cf. widget-global.js) lit
+  // aussi _swellCache — le rafraîchir ici pour qu'il apparaisse dès que le fetch
+  // MARC résout, sans attendre un survol de la vue satellite.
+  try { if (typeof _gwHoverGi !== 'undefined' && _gwHoverGi >= 0 && typeof _gwDrawVectors === 'function') _gwDrawVectors(_gwHoverGi); } catch(_){}
   // Archivage best-effort (table optionnelle, no-op si absente) — ne bloque
   // jamais le rendu, lancé après coup sans attendre.
   try {

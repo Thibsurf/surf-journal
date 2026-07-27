@@ -384,14 +384,48 @@ function _gwDrawVectors(fi) {
   if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.35), col:'#e8a057',
     info:'💨 '+Math.round(ws)+'nds '+compass(wd2)+' '+Math.round(wd2)+'°', lw:2.6 });
 
+  // Cône d'incertitude directionnelle MARC : seul modèle du comparatif houle à
+  // exposer un spread directionnel (spr) — vérifié empiriquement (BOM/GFS/MF/ECMWF
+  // n'en fournissent pas, cf. _fetchMarcWave). Superposé à la flèche houle existante
+  // (pas une flèche de plus). _swellCache est repeuplé par _renderSwellCompare()
+  // (comparatif plus bas dans la page), donc disponible ici dès qu'il a chargé même
+  // si ce widget affiche meteo.nc/GFS comme source principale — _gwDrawVectors est
+  // rappelé au chargement (cf. fin de _renderSwellCompare) et à chaque survol.
+  var marcPt = null, marcHalfDeg = null;
+  var marcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
+  if (marcPts && marcPts.length) {
+    var atMs = d.dates[fi].getTime(), bd = 4*3600000;
+    marcPts.forEach(function(p){ var df = Math.abs(p.ms-atMs); if (df < bd) { bd = df; marcPt = p; } });
+  }
+  if (marcPt && marcPt.dir!=null && marcPt.spread!=null) {
+    // Spread WW3 = écart-type angulaire, pas un demi-angle de cône littéral — même
+    // approximation visuelle et même clamp que la rose spectrale MARC (chantier 4).
+    marcHalfDeg = Math.max(4, Math.min(85, marcPt.spread));
+  }
+
   var infoHtml = arrows.map(function(ar){
     return '<span style="color:'+ar.col+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+ar.info+'</span>';
-  }).join('');
+  }).join('') + (marcHalfDeg!=null ? '<span style="color:#4fd3e8;text-shadow:0 1px 2px rgba(0,0,0,.9);"> · 🎯 MARC ±'+Math.round(marcHalfDeg)+'°</span>' : '');
   // Anti-collision légère : écart < 22° → ±10° (deg0 = direction vraie pour le label)
   arrows.forEach(function(ar){ ar.deg0 = ar.deg; });
   for (var a=0; a<arrows.length; a++) for (var b2=a+1; b2<arrows.length; b2++) {
     var da = Math.abs(((arrows[a].deg-arrows[b2].deg)%360+540)%360-180);
     if (da < 22) { arrows[a].deg -= 10; arrows[b2].deg += 10; }
+  }
+
+  // Cône MARC dessiné AVANT les flèches pour rester dessous (annotation, pas
+  // l'information principale). Même convention de provenance que les flèches
+  // ci-dessous (aucune inversion +180 : ce widget dessine depuis l'extérieur vers
+  // le centre, ce qui donne déjà visuellement "la houle arrive de cette direction").
+  if (marcHalfDeg!=null) {
+    var wRad = (marcPt.dir-90)*Math.PI/180, wHalfRad = marcHalfDeg*Math.PI/180;
+    var wLen = Math.max(R*0.30, Math.max(marcPt.h/hMax,.4)*R*0.82);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, wLen, wRad-wHalfRad, wRad+wHalfRad);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(79,211,232,.16)';
+    ctx.fill();
   }
 
   // Même géométrie que drawArrow() de la rose Houles & Vent : la flèche part de
