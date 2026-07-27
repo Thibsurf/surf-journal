@@ -156,6 +156,16 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .gw-tool-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 9px;border-radius:var(--rs);
   cursor:pointer;font-size:11px;font-family:var(--font-b);white-space:nowrap;}
 .gw-tool-btn:hover{color:var(--text);border-color:var(--border-h);}
+/* Composant segmenté unique (AUDIT-previsions.md §9.2) — remplace les ~6 patterns de
+   bascule ad hoc (bouton seul, <span onclick>, flèches ◀▶) par un seul motif visuel,
+   accessible clavier via <button>+aria-pressed (focus/annonce lecteur d'écran gratuits). */
+.seg{display:inline-flex;background:var(--glass);border:1px solid var(--border);
+     border-radius:var(--rs);padding:2px;gap:2px;}
+.seg-b{font:500 12px/1 var(--font-b);color:var(--muted);background:none;border:0;
+       padding:7px 12px;border-radius:6px;cursor:pointer;min-height:36px;white-space:nowrap;}
+.seg-b.is-on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.3);}
+.seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+.seg-b[disabled]{opacity:.4;cursor:not-allowed;}
 /* Graphe d'ensemble (courbe vent + barres houle, façon meteo.nc) + panneau satellite */
 .gw-main{display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;}
 .gw-chart-wrap{flex:1;min-width:260px;position:relative;}
@@ -1541,7 +1551,12 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <div class="section-label" role="heading" aria-level="2" style="margin-bottom:1px;">Marées — Nouméa</div>
         <div style="font-size:11px;color:var(--faint);" id="tide-source-lbl">Courbe: interpolation cosinus entre PM/BM meteo.nc (SHOM officiel) · chargement...</div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <div class="seg" role="group" aria-label="Étendue de la courbe de marée" id="tide-days-seg">
+          <button class="seg-b" data-n="1" onclick="setTideDays(1,this)" aria-pressed="true">1 j</button>
+          <button class="seg-b" data-n="3" onclick="setTideDays(3,this)" aria-pressed="false">3 j</button>
+          <button class="seg-b" data-n="7" onclick="setTideDays(7,this)" aria-pressed="false">7 j</button>
+        </div>
         <button onclick="tideShift(-1)" style="background:var(--glass);border:1px solid var(--border);color:var(--muted);min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--rs);cursor:pointer;font-size:13px;">&#9664;</button>
         <span id="tide-curve-date" style="font-size:12px;color:var(--accent);min-width:120px;text-align:center;font-weight:500;"></span>
         <button onclick="tideShift(1)" style="background:var(--glass);border:1px solid var(--border);color:var(--muted);min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--rs);cursor:pointer;font-size:13px;">&#9654;</button>
@@ -9710,6 +9725,17 @@ function tidePointsForDate(year, month, day) {
   return pts;
 }
 
+// Point le plus proche d'une minute donnée dans un tableau trié par .min — utilisé
+// par le marqueur « maintenant » et le survol de la courbe de marée, dont le pas
+// d'échantillonnage est désormais adaptatif (AUDIT-previsions.md §8.2) et non plus
+// fixe à 3 min (recherche dichotomique, tableau déjà croissant par construction).
+function _tideNearestIdx(pts, minVal){
+  var lo=0, hi=pts.length-1;
+  while(lo<hi){ var mid=(lo+hi)>>1; if(pts[mid].min<minVal) lo=mid+1; else hi=mid; }
+  if(lo>0 && Math.abs(pts[lo-1].min-minVal) < Math.abs(pts[lo].min-minVal)) lo--;
+  return lo;
+}
+
 function findTideExtrema(pts) {
   var extr = [];
   for(var i=1; i<pts.length-1; i++) {
@@ -10169,57 +10195,68 @@ function calcSunTimes(year, month, day) {
 
 // ─── COURBE DE MARÉE ──────────────────────────────────────────────────────
 var tideDayOffset = 0;
-var tideDaysShown = 3; // nombre de jours affichés sur la courbe
+// Persisté (AUDIT-previsions.md §8.1) : la boucle multi-jours existait déjà dans
+// renderTideCurve (nDays hardcodé à 1, ~40 lignes mortes) — pilotée ici par le
+// segmented control 1j/3j/7j au lieu d'être désactivée. Défaut 1j : ne change pas
+// ce qu'un utilisateur existant voit tant qu'il n'a pas touché au contrôle.
+var tideDaysShown = (function(){
+  try { var v = +localStorage.getItem('tideDaysShown'); return (v===1||v===3||v===7) ? v : 1; }
+  catch(e){ return 1; }
+})();
 var DAY_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 
-function setTideDays(n, btn) {
-  tideDaysShown = n;
-  document.querySelectorAll('.tide-day-btn').forEach(function(b){
-    b.style.background='var(--glass)'; b.style.color='var(--muted)'; b.style.borderColor='var(--border)';
-  });
-  if(btn){btn.style.background='rgba(79,163,199,.15)';btn.style.color='var(--accent)';btn.style.borderColor='var(--accent)';}
-  renderTideCurve(tideDayOffset);
-}
-
-function tideShift(d){
-  tideDayOffset+=d;
+// Récupère (et fusionne dans _ncTideCache) les PM/BM meteo.nc couvrant la fenêtre
+// affichée [offset-1 .. offset+nDays] (+1 j de marge de chaque côté pour que
+// l'interpolation cosinus reste correcte aux bornes, cf. renderTideCurve). Centralisé
+// ici : initMaree()/tideShift()/setTideDays() fetchaient chacun une fenêtre fixe de
+// 4 jours, insuffisante dès qu'on affiche 3j/7j (la courbe se serait arrêtée en
+// plein milieu, silencieusement — exactement le type de régression que l'audit
+// demande de repérer avant de shipper une nouvelle option).
+function _tideFetchRange(offset, nDays){
   var now = new Date(Date.now() + 11 * 3600000); // jour NC courant, pas celui de l'appareil
-  var tgt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + tideDayOffset*864e5);
-  var dateStr = tgt.getUTCFullYear()+'-'
-    +String(tgt.getUTCMonth()+1).padStart(2,'0')+'-'
-    +String(tgt.getUTCDate()).padStart(2,'0');
-  var prev = new Date(tgt.getTime()-864e5);
-  var prevStr = prev.getUTCFullYear()+'-'
-    +String(prev.getUTCMonth()+1).padStart(2,'0')+'-'
-    +String(prev.getUTCDate()).padStart(2,'0');
-  var spot = SPOTS[currentSpot]||SPOTS[0];
-  var tsDays = [];
-  for(var tdi=-2; tdi<=1; tdi++) {
-    var tsD = new Date(tgt.getTime()+tdi*864e5);
-    tsDays.push(tsD.getUTCFullYear()+'-'
-      +String(tsD.getUTCMonth()+1).padStart(2,'0')+'-'
-      +String(tsD.getUTCDate()).padStart(2,'0'));
-  }
+  var base = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  var spot = SPOTS[currentSpot] || SPOTS[0];
   // ncGet (worker → fallback direct rpcache), pas ncFetch (exige un token local) :
   // sans token local, la navigation de jour en jour renvoyait une marée vide.
   // id=9881852 (station Nouméa confirmée) — pas 9881752, coquille qui pointait
   // vers un id inexistant et cassait silencieusement la marée du jour affiché.
-  var _tideStationId2 = spot.tideId || '9881852';
-  Promise.all(tsDays.map(function(ds){
-    return _fetchTideDay(_tideStationId2, ds).catch(function(){return null;});
+  var tideStationId = spot.tideId || '9881852';
+  var days = [];
+  for (var di = offset - 1; di <= offset + nDays; di++) {
+    var d2 = new Date(base + di * 864e5);
+    days.push(d2.getUTCFullYear() + '-' + String(d2.getUTCMonth()+1).padStart(2,'0') + '-' + String(d2.getUTCDate()).padStart(2,'0'));
+  }
+  return Promise.all(days.map(function(ds){
+    return _fetchTideDay(tideStationId, ds).catch(function(){ return null; });
   })).then(function(res){
-    var mergedHT2=[],mergedLT2=[];
+    var mergedHT=[], mergedLT=[];
     res.forEach(function(r){
-      if(r&&r.properties&&r.properties.tide){
-        mergedHT2=mergedHT2.concat(r.properties.tide.high_tide||[]);
-        mergedLT2=mergedLT2.concat(r.properties.tide.low_tide||[]);
+      if (r && r.properties && r.properties.tide) {
+        mergedHT = mergedHT.concat(r.properties.tide.high_tide||[]);
+        mergedLT = mergedLT.concat(r.properties.tide.low_tide||[]);
       }
     });
-    if(mergedHT2.length||mergedLT2.length) {
-      _ncTideCache={properties:{tide:{high_tide:mergedHT2,low_tide:mergedLT2}}};
-    } else {
-      _ncTideCache = null;
-    }
+    _ncTideCache = (mergedHT.length||mergedLT.length) ? {properties:{tide:{high_tide:mergedHT, low_tide:mergedLT}}} : null;
+  });
+}
+
+function setTideDays(n, btn) {
+  if (n === tideDaysShown) return;
+  tideDaysShown = n;
+  try { localStorage.setItem('tideDaysShown', String(n)); } catch(e){}
+  document.querySelectorAll('#tide-days-seg .seg-b').forEach(function(b){
+    var on = +b.dataset.n === n;
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  // La fenêtre déjà en cache ne couvre que l'étendue précédente (souvent 1j) —
+  // il faut réélargir le fetch avant de redessiner en 3j/7j.
+  _tideFetchRange(tideDayOffset, tideDaysShown).then(function(){ renderTideCurve(tideDayOffset); });
+}
+
+function tideShift(d){
+  tideDayOffset+=d;
+  _tideFetchRange(tideDayOffset, tideDaysShown).then(function(){
     renderTideCurve(tideDayOffset);
     // EPIC 3 : répercuter sur le widget (jours passés hors de sa portée → ignoré,
     // le widget clampe lui-même sur "Aujourd'hui" dans ce cas).
@@ -10372,12 +10409,24 @@ function renderTideCurve(offset) {
     evRow.innerHTML=eh;
   }
 
-  // ═══ CANVAS COURBE MULTI-JOURS ═══
+  // ═══ CANVAS COURBE MULTI-JOURS (AUDIT-previsions.md §8.1-8.4/8.7) ═══
   var cv=document.getElementById('tide-curve-chart'); if(!cv) return;
-  var nDays = 1; // 1 jour plein cadre
+  var nDays = tideDaysShown;
   var totalMin = nDays * 1440;
 
-  // Générer les points pour tous les jours affichés
+  // Dimensions connues AVANT de générer les points : nécessaire pour dériver un pas
+  // d'échantillonnage adaptatif (§8.2) — à pas fixe de 3 min, 7j donnent 6 pt/px,
+  // un coût de dessin pur sans aucune information visible en plus.
+  var W=cv.offsetWidth||600, H=200;
+  var pad={l:34,r:8,t:14,b:26};
+  var cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
+  var stepMin = Math.max(3, Math.round(totalMin / (cw * 0.7)));
+  var strideN = Math.max(1, Math.round(stepMin/3));
+
+  // Générer les points pour tous les jours affichés. Le pas natif de calcul reste
+  // 3 min (interpolation cosinus PM/BM ; tidePointsForDate() est aussi appelé par
+  // findTideExtrema()/monthlyRange() ailleurs, donc pas touché) — la décimation
+  // n'intervient qu'au remplissage d'allPts, sans changer le calcul lui-même.
   var allPts = [];
   for(var di=0; di<nDays; di++){
     var dayPts;
@@ -10413,21 +10462,30 @@ function renderTideCurve(offset) {
         dayPts = tidePointsForDate(ny2, nm2, nd2);
       }
     }
-    dayPts.forEach(function(p){ allPts.push({min: di*1440 + p.min, h: p.h, day: di}); });
+    dayPts.forEach(function(p, pi){ if(pi % strideN === 0) allPts.push({min: di*1440 + p.min, h: p.h, day: di}); });
+    if((dayPts.length-1) % strideN !== 0){
+      var lastP = dayPts[dayPts.length-1];
+      allPts.push({min: di*1440 + lastP.min, h: lastP.h, day: di});
+    }
   }
 
   // Dimensions canvas
-  var W=cv.offsetWidth||600, H=200;
   var dpr=window.devicePixelRatio||1;
   cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
   var ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,W,H);
 
   var maxH2=Math.max.apply(null,allPts.map(function(p){return p.h;}))+0.15;
-  var pad={l:34,r:8,t:14,b:26};
-  var cw=W-pad.l-pad.r, ch=H-pad.t-pad.b;
   function txM(m){return pad.l+m/totalMin*cw;}
   function tyH(h){return pad.t+ch-(h/maxH2)*ch;}
+
+  // Bandes de fond alternées par jour (remplace les traits pointillés, noyés
+  // au-delà de 3j — §8.4) : un jour sur deux légèrement teinté, le trait plein
+  // reste disponible pour la ligne « maintenant ».
+  for(var djb=1; djb<nDays; djb+=2){
+    ctx.fillStyle='rgba(255,255,255,.015)';
+    ctx.fillRect(txM(djb*1440), pad.t, txM((djb+1)*1440)-txM(djb*1440), ch);
+  }
 
   // Fond nuit pour chaque jour
   for(var dj=0;dj<nDays;dj++){
@@ -10445,20 +10503,24 @@ function renderTideCurve(offset) {
     }
   }
 
-  // Séparateurs de jours
-  for(var dj=1;dj<nDays;dj++){
-    var dx=txM(dj*1440);
-    ctx.beginPath(); ctx.moveTo(dx,pad.t); ctx.lineTo(dx,H-pad.b);
-    ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
-    // Label jour
-    var djDate=new Date(tgt.getTime()+dj*864e5);
-    var djLbl=DAY_FR[djDate.getUTCDay()]+' '+djDate.getUTCDate()+'/'+(djDate.getUTCMonth()+1);
-    ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.textAlign='left';
-    ctx.fillText(djLbl, dx+3, pad.t+10);
+  // Nom du jour sous chaque bande + séparateur plein discret (§8.3/8.4 — remplace
+  // le pointillé + label 8px à 30% d'opacité, illisible dès 3j)
+  for(var djl=0; djl<nDays; djl++){
+    var djDate=new Date(tgt.getTime()+djl*864e5);
+    var djLbl = (djl===0 && offset===0) ? "Auj." : DAY_FR[djDate.getUTCDay()]+' '+djDate.getUTCDate()+'/'+(djDate.getUTCMonth()+1);
+    ctx.font='bold 11px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)';
+    if(nDays===1){
+      ctx.textAlign='left';
+      ctx.fillText(djLbl, pad.l+2, pad.t+10);
+    } else {
+      ctx.textAlign='center';
+      ctx.fillText(djLbl, (txM(djl*1440)+txM((djl+1)*1440))/2, pad.t+10);
+      if(djl>0){
+        ctx.beginPath(); ctx.moveTo(txM(djl*1440),pad.t); ctx.lineTo(txM(djl*1440),H-pad.b);
+        ctx.strokeStyle='rgba(255,255,255,.10)'; ctx.lineWidth=1; ctx.stroke();
+      }
+    }
   }
-  // Label jour 0
-  ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.textAlign='left';
-  ctx.fillText(offset===0?"Auj.":DAY_FR[tgt.getUTCDay()]+' '+td+'/'+tm, pad.l+2, pad.t+10);
 
   // Grille horizontale
   [0,0.5,1.0,1.5].forEach(function(gh){
@@ -10466,18 +10528,25 @@ function renderTideCurve(offset) {
     var gy=tyH(gh);
     ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(W-pad.r,gy);
     ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.stroke();
-    ctx.font='9px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.3)';
+    ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)';
     ctx.textAlign='right'; ctx.fillText(gh.toFixed(1)+'m',pad.l-3,gy+3);
   });
 
-  // Heures (toutes les 6h)
-  for(var tm2=0;tm2<=totalMin;tm2+=360){
-    var hx2=txM(tm2);
-    var hLabel=String((tm2/60)%24|0).padStart(2,'0')+'h';
-    ctx.beginPath(); ctx.moveTo(hx2,H-pad.b); ctx.lineTo(hx2,H-pad.b+3);
-    ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.stroke();
-    ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.textAlign='center';
-    ctx.fillText(hLabel, hx2, H-8);
+  // Heures : cadence par étendue (§8.3) — 1j : toutes les 3h avec l'heure ; 3j :
+  // toutes les 6h mais l'heure écrite seulement à midi (le nom du jour au-dessus
+  // suffit aux autres graduations) ; 7j : plus aucune heure, le nom du jour seul.
+  if(nDays<=3){
+    var hourStep = nDays===1 ? 180 : 360;
+    for(var tm2=0;tm2<=totalMin;tm2+=hourStep){
+      var hx2=txM(tm2);
+      var hh2=(tm2/60)%24|0;
+      ctx.beginPath(); ctx.moveTo(hx2,H-pad.b); ctx.lineTo(hx2,H-pad.b+3);
+      ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.stroke();
+      if(nDays>1 && hh2!==12) continue;
+      var hLabel=String(hh2).padStart(2,'0')+'h';
+      ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)'; ctx.textAlign='center';
+      ctx.fillText(hLabel, hx2, H-8);
+    }
   }
 
   // Zone remplie
@@ -10497,9 +10566,9 @@ function renderTideCurve(offset) {
 
   // Marqueur maintenant
   var nowMinTotal = offset*1440 + nowMin;
-  if(nowMin>=0 && nowMinTotal>=0 && nowMinTotal<=totalMin){
+  if(nowMin>=0 && nowMinTotal>=0 && nowMinTotal<=totalMin && allPts.length){
     var nxT=txM(nowMinTotal);
-    var niT=Math.round(nowMinTotal/3);
+    var niT=_tideNearestIdx(allPts, nowMinTotal); // pas adaptatif (§8.2), plus un pas fixe de 3 min
     if(niT<allPts.length){
       var nyT=tyH(allPts[niT].h);
       ctx.beginPath(); ctx.moveTo(nxT,pad.t); ctx.lineTo(nxT,H-pad.b);
@@ -10554,8 +10623,8 @@ function renderTideCurve(offset) {
       if(!tooltip) return;
       // Convertir x → minute sur la courbe
       var mFrac = (mx - td2.pad.l) / (td2.W - td2.pad.l - td2.pad.r) * td2.totalMin;
-      if(mFrac<0 || mFrac>td2.totalMin) { tooltip.style.display='none'; return; }
-      var mIdx = Math.round(mFrac/3);
+      if(mFrac<0 || mFrac>td2.totalMin || !td2.allPts.length) { tooltip.style.display='none'; return; }
+      var mIdx = _tideNearestIdx(td2.allPts, mFrac); // pas adaptatif (§8.2), plus un pas fixe de 3 min
       if(mIdx<0||mIdx>=td2.allPts.length){tooltip.style.display='none';return;}
       var pt = td2.allPts[mIdx];
       var dayOff = Math.floor(pt.min/1440);
@@ -11798,36 +11867,14 @@ async function initMaree() {
   var _nowNCmaree = new Date(now.getTime() + 11*3600000);
   renderTwilightAndOrbit(_nowNCmaree.getUTCFullYear(), _nowNCmaree.getUTCMonth()+1, _nowNCmaree.getUTCDate());
   drawFishingScore();
-  var spot = SPOTS[currentSpot] || SPOTS[0];
-  var tideId = spot.tideId || '9881852';
-  var days = [];
-  for(var di=-2; di<=1; di++) {
-    // _nowNCmaree (déjà décalé +11h ci-dessus), lu en getUTC* : jour NC, jamais
-    // celui de l'appareil — le correctif "+11h/getUTC*" juste au-dessus avait
-    // manqué cette boucle (AUDIT-previsions.md §6.1, même classe de bug).
-    var dDate = new Date(_nowNCmaree.getTime() + di*864e5);
-    days.push(dDate.getUTCFullYear() + '-' + String(dDate.getUTCMonth()+1).padStart(2,'0') + '-' + String(dDate.getUTCDate()).padStart(2,'0'));
-  }
   // _fetchTideDay() (worker → fallback direct rpcache, valide la couverture de date,
   // normalise le Z abusif en interne) au lieu d'un ncFetch() direct qui exige un
-  // token local : sans token valide, les 4 jours échouaient silencieusement et la
+  // token local : sans token valide, les jours échouaient silencieusement et la
   // courbe « Marée & Pêche » basculait sur l'harmonique (aplatie) même pour aujourd'hui
   // — même bug déjà corrigé dans tideShift() et le widget principal, oublié ici.
-  var dayResults = await Promise.all(days.map(function(ds){
-    return _fetchTideDay(tideId, ds).catch(function(){return null;});
-  }));
-  var mergedHT = [], mergedLT = [];
-  dayResults.forEach(function(r){
-    if(r && r.properties && r.properties.tide) {
-      mergedHT = mergedHT.concat(r.properties.tide.high_tide||[]);
-      mergedLT = mergedLT.concat(r.properties.tide.low_tide||[]);
-    }
-  });
-  if(mergedHT.length || mergedLT.length) {
-    _ncTideCache = {properties:{tide:{high_tide:mergedHT, low_tide:mergedLT}}};
-  } else {
-    _ncTideCache = null;
-  }
+  // _tideFetchRange couvre déjà [0-1 .. 0+tideDaysShown] (§8.1) : fenêtre fixe à 4
+  // jours remplacée par une fenêtre qui suit l'étendue 1j/3j/7j choisie.
+  await _tideFetchRange(0, tideDaysShown);
   renderTideCurve(0);
   loadOpenMeteoMeteo();
 }
