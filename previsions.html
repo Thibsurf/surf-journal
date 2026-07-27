@@ -535,9 +535,9 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;" title="Compare la houle prévue par les modèles disponibles pour ce spot — utile pour juger de leur accord/désaccord sur les prochains jours.">🆚 Houle — comparatif modèles</div>
         <span id="swell-cmp-legend" style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);"></span>
       </div>
-      <div style="display:flex;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;">
-        <button id="swell-mode-1" onclick="_setSwellMode('primary')" title="Houle primaire : le train de houle dominant" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(79,163,199,.2);color:#4fa3c7;font-weight:600;transition:all .2s;">Houle 1</button>
-        <button id="swell-mode-2" onclick="_setSwellMode('secondary')" title="Houle secondaire : 2ᵉ train de houle, souvent partiellement voire pas disponible selon les modèles" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;">Houle 2</button>
+      <div class="seg" role="group" aria-label="Train de houle affiché">
+        <button id="swell-mode-1" class="seg-b is-on" onclick="_setSwellMode('primary')" title="Houle primaire : le train de houle dominant" aria-pressed="true">Houle 1</button>
+        <button id="swell-mode-2" class="seg-b" onclick="_setSwellMode('secondary')" title="Houle secondaire : 2ᵉ train de houle, souvent partiellement voire pas disponible selon les modèles" aria-pressed="false">Houle 2</button>
       </div>
     </div>
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
@@ -4856,8 +4856,10 @@ async function _renderSwellCompare() {
 function _setSwellMode(mode) {
   _swellMode = mode;
   var b1 = document.getElementById('swell-mode-1'), b2 = document.getElementById('swell-mode-2');
-  if (b1) { b1.style.background = mode === 'primary' ? 'rgba(79,163,199,.2)' : 'none'; b1.style.color = mode === 'primary' ? '#4fa3c7' : 'var(--muted)'; }
-  if (b2) { b2.style.background = mode === 'secondary' ? 'rgba(79,163,199,.2)' : 'none'; b2.style.color = mode === 'secondary' ? '#4fa3c7' : 'var(--muted)'; }
+  // Composant segmenté unique (AUDIT-previsions.md §9.2) — .seg-b.is-on + aria-pressed
+  // au lieu de styles inline recalculés à chaque bascule.
+  if (b1) { b1.classList.toggle('is-on', mode === 'primary'); b1.setAttribute('aria-pressed', String(mode === 'primary')); }
+  if (b2) { b2.classList.toggle('is-on', mode === 'secondary'); b2.setAttribute('aria-pressed', String(mode === 'secondary')); }
   _drawSwellCompare();
 }
 
