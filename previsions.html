@@ -152,14 +152,14 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   color:var(--muted);font-family:var(--font-b);font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;}
 .gw-day-btn.active{background:rgba(79,163,199,.16);border-color:var(--accent);color:var(--accent);font-weight:600;}
 .gw-day-btn:hover:not(.active){color:var(--text);border-color:var(--border-h);}
-#gw-widget .gw-tools{display:flex;gap:6px;align-items:center;}
+#gw-widget .gw-tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .gw-tool-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 9px;border-radius:var(--rs);
   cursor:pointer;font-size:11px;font-family:var(--font-b);white-space:nowrap;}
 .gw-tool-btn:hover{color:var(--text);border-color:var(--border-h);}
 /* Composant segmenté unique (AUDIT-previsions.md §9.2) — remplace les ~6 patterns de
    bascule ad hoc (bouton seul, <span onclick>, flèches ◀▶) par un seul motif visuel,
    accessible clavier via <button>+aria-pressed (focus/annonce lecteur d'écran gratuits). */
-.seg{display:inline-flex;background:var(--glass);border:1px solid var(--border);
+.seg{display:inline-flex;flex-wrap:wrap;background:var(--glass);border:1px solid var(--border);
      border-radius:var(--rs);padding:2px;gap:2px;}
 .seg-b{font:500 12px/1 var(--font-b);color:var(--muted);background:none;border:0;
        padding:7px 12px;border-radius:6px;cursor:pointer;min-height:36px;white-space:nowrap;}
@@ -4311,6 +4311,23 @@ var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1, spr: 0.
 // vérifié empiriquement, pas de comparatif multi-modèle possible, cf. spectre.
 var MARC_PARTITIONS = [0, 1, 2, 3, 4, 5];
 var MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", cf. .das
+// Fenêtre de fetch ancrée sur "maintenant", pas sur la fin du jeu de données — BUG
+// corrigé (signalé par l'utilisateur : "sur le site MARC Ifremer y'a les prévisions
+// du futur, ici ça s'arrête à aujourd'hui"). FULL_TIME_SERIE grandit à chaque run
+// (recul archivé + prévision) : prendre systématiquement les N-NSTEPS DERNIERS points
+// pouvait inclure plusieurs jours de PASSÉ avant même d'atteindre "aujourd'hui",
+// laissant à peine 1-2 jours de futur dans une fenêtre affichée plafonnée à 5 jours
+// (vérifié : le 28/07/2026, la fenêtre couvrait le 24/07 12h → 01/08 09h UTC, donc
+// ~3-4 jours déjà écoulés sur les 8 demandés). Comme NC/GFS/BOM : viser l'index le
+// plus proche de (maintenant - 6h) et avancer, jamais reculer depuis la fin du
+// tableau. Partagée par _fetchMarcWave et _fetchMarcWind (même dataset, même cadence).
+function _marcWindow(N) {
+  var NSTEPS = 64; // ~8j à 3h : recul archivé + prévision dispo
+  var STEP_MS = 0.125 * 86400000; // 3h, cadence du produit (jours -> ms)
+  var t0 = Math.max(0, Math.min(N - 1, Math.round((Date.now() - 6*3600000 - MARC_EPOCH_MS) / STEP_MS)));
+  var t1 = Math.min(N - 1, t0 + NSTEPS - 1);
+  return { t0: t0, t1: t1 };
+}
 async function _fetchMarcWave(spot) {
   var ctrl = new AbortController();
   var tt = setTimeout(function(){ ctrl.abort(); }, 12000);
@@ -4320,8 +4337,7 @@ async function _fetchMarcWave(spot) {
     var lenM = ddsText.match(/time\s*=\s*(\d+)/);
     if (!lenM) throw new Error('longueur time introuvable');
     var N = parseInt(lenM[1], 10);
-    var NSTEPS = 64; // ~8j à 3h : recul archivé + prévision dispo (horizon court, ~J+1,7 observé)
-    var t0 = Math.max(0, N - NSTEPS), t1 = N - 1;
+    var _mw = _marcWindow(N), t0 = _mw.t0, t1 = _mw.t1;
     var latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
     var lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
     // uwnd/vwnd = forçage vent RÉEL de ce run WW3 (pas une approximation) — confirmé
@@ -8099,8 +8115,7 @@ async function _fetchMarcWind(spot) {
     var lenM = ddsText.match(/time\s*=\s*(\d+)/);
     if (!lenM) throw new Error('longueur time introuvable');
     var N = parseInt(lenM[1], 10);
-    var NSTEPS = 64;
-    var t0 = Math.max(0, N - NSTEPS), t1 = N - 1;
+    var _mw = _marcWindow(N), t0 = _mw.t0, t1 = _mw.t1;
     var latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
     var lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
     var url = MARC_BASE + '.ascii?time%5B' + t0 + ':1:' + t1 + '%5D,uwnd%5B' + t0 + ':1:' + t1 + '%5D%5B' + latIdx + ':1:' + latIdx + '%5D%5B' + lonIdx + ':1:' + lonIdx

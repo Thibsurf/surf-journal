@@ -671,10 +671,12 @@ function _gwDrawVectors(fi) {
           ctx.moveTo(cx, cy);
           ctx.arc(cx, cy, len, rad-halfRad, rad+halfRad);
           ctx.closePath();
-          ctx.fillStyle = col + '2a'; // ~16% alpha (notation hex #RRGGBBAA)
+          // Alpha remonté (signalé peu visible sur PC, ~16%/50% avant) — reste
+          // discret vu la superposition des trains (les plus grands en dessous).
+          ctx.fillStyle = col + '45'; // ~27% alpha (notation hex #RRGGBBAA)
           ctx.fill();
-          ctx.strokeStyle = col + '80';
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = col + 'cc'; // ~80% alpha
+          ctx.lineWidth = 1.4;
           ctx.stroke();
         });
       }

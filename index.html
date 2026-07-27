@@ -4096,10 +4096,16 @@ function renderStats(sessions, el) {
       // exploitable dès le 1er vote — chaque vote embarque le vecteur complet des
       // prédictions (previsions.html:_castModelVote), donc rétroactive sur les votes
       // déjà collectés — c'est ce qui débloque les figures vides.
+      // BUG corrigé (signalé par l'utilisateur : une session votée mais la carte
+      // n'apparaissait pas) : ce filtre exigeait `v.votedModel` truthy, alors que
+      // "Aucun modèle fiable pour cette session" (_castInlineModelVote(null)) est un
+      // vote VALIDE avec votedModel=null — _renderModelReliabilitySection() le traite
+      // déjà comme "déjà voté" ailleurs (`vote.votedModel || vote.votedModel === null`),
+      // mais pas ce filtre-ci, qui l'excluait silencieusement de ①②③.
       var votes = [];
       sessions.forEach(function(s) {
         var v = getModelReliability(s);
-        if (v && v.votedModel && v.predictions) votes.push(v);
+        if (v && (v.votedModel || v.votedModel === null) && v.predictions) votes.push(v);
       });
       var eligibleUnvoted = 0, notEligible = 0;
       sessions.forEach(function(s) {
@@ -4180,8 +4186,11 @@ function renderStats(sessions, el) {
       // mesure réellement. Garde une valeur de contrôle : si les surfeurs plébiscitent
       // un modèle que ① désigne comme le plus biaisé, le vote mesure la présentation,
       // pas la justesse.
+      // Clé objet "null" (votedModel===null, "aucun modèle fiable") coercée en
+      // chaîne "null" par JS — sans repli explicite, MODEL_RELIABILITY_LABELS['null']
+      // est absent et affichait littéralement le texte "null" au lieu d'un libellé.
       var counts = {};
-      votes.forEach(function(v) { counts[v.votedModel] = (counts[v.votedModel] || 0) + 1; });
+      votes.forEach(function(v) { var k = v.votedModel === null ? 'null' : v.votedModel; counts[k] = (counts[k] || 0) + 1; });
       var block3 = !votes.length ? '' : (
         '<div>'
         + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
@@ -4191,7 +4200,7 @@ function renderStats(sessions, el) {
         + '</div>'
         + '<div style="font-size:11px;color:var(--text-muted);">'
         + Object.keys(counts).map(function(k) {
-            var info = MODEL_RELIABILITY_LABELS[k] || { label: k, col: '#7a94aa' };
+            var info = k === 'null' ? { label: 'Aucun modèle fiable', col: '#7a94aa' } : (MODEL_RELIABILITY_LABELS[k] || { label: k, col: '#7a94aa' });
             return '<span style="color:' + info.col + ';font-weight:600;">' + info.label + '</span> ' + Math.round(counts[k] / votes.length * 100) + '%';
           }).join(' · ')
         + '</div>'
