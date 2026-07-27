@@ -3410,8 +3410,8 @@ async function loadForecast(i) {
         if (lbl)  lbl.textContent = '📦 Cache météo ⚠';
         // Pré-sélectionner aujourd'hui si le picker est vide
         if (picker && !picker.value) {
-          var now = new Date();
-          picker.value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+          var now = new Date(Date.now() + 11 * 3600000); // "aujourd'hui" en NC, pas dans le fuseau de l'appareil
+          picker.value = now.getUTCFullYear() + '-' + String(now.getUTCMonth()+1).padStart(2,'0') + '-' + String(now.getUTCDate()).padStart(2,'0');
         }
       } else {
         if (note) note.style.display = 'none';
@@ -3432,16 +3432,17 @@ async function loadForecast(i) {
 
     if (ncTide && ncTide.properties && ncTide.properties.tide) {
       _ncTideCache = ncTide; // disponible immédiatement pour _saveForecastDays (avant le Promise.all)
-      var todayNC = new Date();
+      var todayNC = new Date(Date.now() + 11 * 3600000); // NC "now" en UTC (même convention que _nowNC0 ci-dessus)
       var extraDays = [];
 
       // J-2 → J+5 : couvre toute la fenêtre du widget global (sinon courbe plate passé J+1)
       for (var xd = -2; xd <= 5; xd++) {
         if (xd === 0) continue;
         var xDate = new Date(todayNC.getTime() + xd * 864e5);
-        // Date LOCALE (pas toISOString = UTC !) : avant 11h NC, toute la
-        // fenêtre marée du widget glissait d'un jour (même bug qu'initMaree)
-        extraDays.push(xDate.getFullYear() + '-' + String(xDate.getMonth()+1).padStart(2,'0') + '-' + String(xDate.getDate()).padStart(2,'0'));
+        // Jour NC (getUTC* sur todayNC déjà décalé +11h), jamais le fuseau de l'appareil :
+        // l'ancien getFullYear()/getMonth()/getDate() local ne redonnait le bon jour NC
+        // que si l'OS de l'appareil était réglé sur Pacific/Noumea (AUDIT-previsions.md §6.1).
+        extraDays.push(xDate.getUTCFullYear() + '-' + String(xDate.getUTCMonth()+1).padStart(2,'0') + '-' + String(xDate.getUTCDate()).padStart(2,'0'));
       }
       
       // ncGet (worker → fallback direct rpcache) et non ncFetch : sans token local,
@@ -10730,7 +10731,8 @@ function monthlyRange(year, month) {
 // ---- SUN / TWILIGHT ----
 var LAT=-22.27, LON=166.43;
 // ---- MAIN INIT ----
-var tideTableYear=new Date().getFullYear(), tideTableMonth=new Date().getMonth()+1;
+var _tideTableInitNC = new Date(Date.now() + 11 * 3600000); // mois NC courant, pas celui de l'appareil
+var tideTableYear=_tideTableInitNC.getUTCFullYear(), tideTableMonth=_tideTableInitNC.getUTCMonth()+1;
 var MONTH_FR=['','Janvier','Fevrier','Mars','Avril','Mai','Juin','Juillet','Aout','Septembre','Octobre','Novembre','Decembre'];
 var _rangeCache={};
 
@@ -10978,9 +10980,12 @@ function drawSunArc(s, year, month, day) {
   var civilD = tFrac(s.civilDawn), civilK = tFrac(s.civilDusk);
   if(!riseF || !setF) return;
 
-  var now = new Date();
-  var nowIsToday = (now.getFullYear()===year && now.getMonth()+1===month && now.getDate()===day);
-  var nowF = nowIsToday ? (now.getHours()*60+now.getMinutes())/1440 : -1;
+  // NC "now" en UTC (jamais le fuseau de l'appareil) : year/month/day reçus en paramètres
+  // sont déjà le jour NC cible (cf. renderTideCurve) — comparer avec un "now" local
+  // désaligne nowIsToday/nowF dès que l'appareil n'est pas réglé sur Pacific/Noumea.
+  var now = new Date(Date.now() + 11 * 3600000);
+  var nowIsToday = (now.getUTCFullYear()===year && now.getUTCMonth()+1===month && now.getUTCDate()===day);
+  var nowF = nowIsToday ? (now.getUTCHours()*60+now.getUTCMinutes())/1440 : -1;
 
   var pad = {l:14, r:14, t:8, b:22};
   var cw = W - pad.l - pad.r;
@@ -11081,7 +11086,7 @@ function drawSunArc(s, year, month, day) {
   // Sous l'arc : heure actuelle
   var nowEl = document.getElementById('sun-now-time');
   if(nowEl && nowIsToday) {
-    var nowH = String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
+    var nowH = String(now.getUTCHours()).padStart(2,'0')+'h'+String(now.getUTCMinutes()).padStart(2,'0');
     var phase = '';
     if(nowF < (astroD||nautD||riseF)) phase='🌑 Nuit';
     else if(nowF < (nautD||civilD||riseF)) phase='🌌 Aube astro.';
@@ -11166,8 +11171,8 @@ function setTideDays(n, btn) {
 
 function tideShift(d){
   tideDayOffset+=d;
-  var now = new Date();
-  var tgt = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) + tideDayOffset*864e5);
+  var now = new Date(Date.now() + 11 * 3600000); // jour NC courant, pas celui de l'appareil
+  var tgt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + tideDayOffset*864e5);
   var dateStr = tgt.getUTCFullYear()+'-'
     +String(tgt.getUTCMonth()+1).padStart(2,'0')+'-'
     +String(tgt.getUTCDate()).padStart(2,'0');
@@ -11214,8 +11219,11 @@ function tideShift(d){
 }
 
 function renderTideCurve(offset) {
-  var now = new Date();
-  var y=now.getFullYear(), mo=now.getMonth()+1, d=now.getDate();
+  // Jour calendaire NC (+11h puis getUTC*), jamais le fuseau système du navigateur —
+  // sinon la marée, le soleil, le crépuscule et la lune peuvent afficher le mauvais
+  // jour calendaire sur un appareil hors UTC+11 (AUDIT-previsions.md §6.2).
+  var now = new Date(Date.now() + 11 * 3600000);
+  var y=now.getUTCFullYear(), mo=now.getUTCMonth()+1, d=now.getUTCDate();
   var tgt = new Date(Date.UTC(y, mo-1, d) + offset*864e5);
   var ty=tgt.getUTCFullYear(), tm=tgt.getUTCMonth()+1, td=tgt.getUTCDate();
 
@@ -11330,7 +11338,7 @@ function renderTideCurve(offset) {
     ? 'Courbe interpolée cosinus sur PM/BM meteo.nc (SHOM officiel) · triangles = extremes réels'
     : 'Source: harmoniques SHOM calibrées (fallback — token NC expiré?)';
 
-  var nowMin = (offset===0)?(now.getHours()*60+now.getMinutes()): -1;
+  var nowMin = (offset===0)?(now.getUTCHours()*60+now.getUTCMinutes()): -1;
   var nowIdx = nowMin>=0 ? Math.round(nowMin/3) : -1;
 
   var evRow=document.getElementById('tide-events-row');
@@ -11759,7 +11767,7 @@ function drawSolunarTimeline(y,m,d,solun){
     g.fillStyle=c; g.font='8px DM Mono,monospace'; g.textAlign='center'; g.fillText(t.type==='pm'?'▲':'▼', X(t.min), H-2);
   });
   // maintenant
-  if(solun.isToday){ var nm=new Date().getHours()*60+new Date().getMinutes();
+  if(solun.isToday){ var _nmNC=new Date(Date.now()+11*3600000); var nm=_nmNC.getUTCHours()*60+_nmNC.getUTCMinutes();
     g.strokeStyle='#fde068'; g.lineWidth=1.5; g.beginPath(); g.moveTo(X(nm),0); g.lineTo(X(nm),H); g.stroke(); }
 }
 
@@ -11844,7 +11852,9 @@ function drawTideMarnage(year,month,day) {
   if(!arcEl || !infoEl) return;
 
   var isToday = _isMareeToday(year,month,day);
-  var refDate = (year&&month&&day) ? new Date(year,month-1,day) : new Date();
+  // Date.UTC + getUTC* (jamais un constructeur/getters locaux) : cf. AUDIT-previsions.md
+  // §6.1 — le fallback (year/month/day absents) doit rester le jour NC, pas celui de l'appareil.
+  var refDate = (year&&month&&day) ? new Date(Date.UTC(year,month-1,day)) : new Date(Date.now()+11*3600000);
   var nowMs = Date.now();
 
   // Calculer marnage depuis les données NC (PM - BM du JOUR AFFICHÉ)
@@ -11878,7 +11888,7 @@ function drawTideMarnage(year,month,day) {
   // Fallback harmoniques si pas de données NC
   var usingFallback = (pmH === null);
   if(usingFallback) {
-    var pts = tidePointsForDate(refDate.getFullYear(), refDate.getMonth()+1, refDate.getDate());
+    var pts = tidePointsForDate(refDate.getUTCFullYear(), refDate.getUTCMonth()+1, refDate.getUTCDate());
     var extr = findTideExtrema(pts);
     extr.forEach(function(e){ if(e.type==='pm') pmH=Math.max(pmH||0,e.h); else bmH=Math.min(bmH!==null?bmH:99,e.h); });
   }
@@ -12056,15 +12066,15 @@ async function loadOpenMeteoMeteo(){
 // ─── PRÉVISION UV 7J ──────────────────────────────────────────────────────
 function _renderUvForecast(uvDays, precipDays) {
   var el = document.getElementById('uv-forecast-strip'); if(!el) return;
-  var now = new Date();
+  var now = new Date(Date.now() + 11 * 3600000); // jour 0 = aujourd'hui en NC, pas celui de l'appareil
   var html = '<div style="display:flex;gap:3px;margin-top:8px;">';
   uvDays.slice(0,7).forEach(function(uv, i) {
     if(uv == null) return;
     var col = uv<3?'#3dba8a':uv<6?'#e8a057':uv<8?'#e05c5c':'#a855f7';
     var barH = Math.round(Math.min(uv/12, 1) * 38);
     var rain = precipDays[i] || 0;
-    var d = new Date(now); d.setDate(d.getDate() + i);
-    var dayLbl = i===0?'Auj':i===1?'Dem':['D','L','M','Me','J','V','S'][d.getDay()];
+    var d = new Date(now.getTime() + i * 864e5);
+    var dayLbl = i===0?'Auj':i===1?'Dem':['D','L','M','Me','J','V','S'][d.getUTCDay()];
     html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;">'
       + '<div style="font-size:11px;color:var(--muted);font-weight:'+(i<2?'600':'400')+';">' + dayLbl + '</div>'
       + '<div style="width:100%;background:rgba(255,255,255,0.05);border-radius:3px;height:40px;display:flex;align-items:flex-end;padding:1px;">'
@@ -12187,9 +12197,9 @@ async function _renderCycloneIndicator(windDays, precipDays) {
 
   var maxWind = windDays && windDays.length ? Math.max.apply(null, windDays.slice(0,7).filter(function(v){return v!=null;}).concat([0])) : 0;
   var peakDay = (windDays||[]).reduce(function(best,v,i){return (v||0)>(windDays[best]||0)?i:best;}, 0);
-  var now = new Date();
-  var peakDate = new Date(now); peakDate.setDate(peakDate.getDate() + peakDay);
-  var peakStr = peakDay===0?'Auj.':peakDay===1?'Dem.':['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][peakDate.getDay()]+' '+peakDate.getDate()+'/'+((peakDate.getMonth()+1));
+  var now = new Date(Date.now() + 11 * 3600000); // NC "now" en UTC — jour 0 de windDays = aujourd'hui en NC
+  var peakDate = new Date(now.getTime() + peakDay * 864e5);
+  var peakStr = peakDay===0?'Auj.':peakDay===1?'Dem.':['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][peakDate.getUTCDay()]+' '+peakDate.getUTCDate()+'/'+((peakDate.getUTCMonth()+1));
 
   // Catégories australiennes avec critères visuels
   var cats = [
@@ -12780,10 +12790,11 @@ async function initMaree() {
   var tideId = spot.tideId || '9881852';
   var days = [];
   for(var di=-2; di<=1; di++) {
-    var dDate = new Date(now.getTime() + di*864e5);
-    // Date LOCALE (pas toISOString = UTC !) : le matin avant 11h NC, la version
-    // UTC décalait toute la fenêtre d'un jour (on demandait J-3→J0 au lieu de J-2→J+1)
-    days.push(dDate.getFullYear() + '-' + String(dDate.getMonth()+1).padStart(2,'0') + '-' + String(dDate.getDate()).padStart(2,'0'));
+    // _nowNCmaree (déjà décalé +11h ci-dessus), lu en getUTC* : jour NC, jamais
+    // celui de l'appareil — le correctif "+11h/getUTC*" juste au-dessus avait
+    // manqué cette boucle (AUDIT-previsions.md §6.1, même classe de bug).
+    var dDate = new Date(_nowNCmaree.getTime() + di*864e5);
+    days.push(dDate.getUTCFullYear() + '-' + String(dDate.getUTCMonth()+1).padStart(2,'0') + '-' + String(dDate.getUTCDate()).padStart(2,'0'));
   }
   // _fetchTideDay() (worker → fallback direct rpcache, valide la couverture de date,
   // normalise le Z abusif en interne) au lieu d'un ncFetch() direct qui exige un
@@ -13179,9 +13190,10 @@ async function _loadGFSHistoricalPanel(el, spot, date, slotsOnly) {
   try {
     var dayStr = (function(s){ var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; })(date);
     // Utiliser l'API archive pour les dates > 10 jours (forecast ne couvre pas assez loin dans le passé)
-    // Date LOCALE (toISOString = date UTC → daysAgo décalé de 1 avant 11h NC)
-    var _tn = new Date();
-    var today = _tn.getFullYear() + '-' + String(_tn.getMonth()+1).padStart(2,'0') + '-' + String(_tn.getDate()).padStart(2,'0');
+    // +11h/getUTC* (jour NC), jamais le fuseau de l'appareil ni toISOString (UTC pur) —
+    // les deux décalent daysAgo d'un jour avant/après 11h NC selon le fuseau (AUDIT §6.1).
+    var _tn = new Date(Date.now() + 11 * 3600000);
+    var today = _tn.getUTCFullYear() + '-' + String(_tn.getUTCMonth()+1).padStart(2,'0') + '-' + String(_tn.getUTCDate()).padStart(2,'0');
     var daysAgo = Math.round((new Date(today) - new Date(date)) / 86400000);
     var windApiBase = daysAgo > 10
       ? 'https://archive-api.open-meteo.com/v1/archive'
