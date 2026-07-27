@@ -4480,6 +4480,11 @@ function _swellToPts(d, comp) {
 //   create policy "Public read model cache" on model_forecast_cache for select using (true);
 //   create policy "Public write model cache" on model_forecast_cache for insert with check (true);
 //   create policy "Public update model cache" on model_forecast_cache for update using (true);
+//   -- Migration T05 (AUDIT-previsions.md §5.1) : clé de run, cf. _forecastRunTag() —
+//   -- sans elle, id = date_lat_lon_modèle_kind écrasait la prévision précédente pour
+//   -- la même date cible à chaque nouveau fetch, détruisant l'échéance archivée.
+//   alter table model_forecast_cache add column if not exists issued_at timestamptz default now();
+//   create index if not exists model_forecast_cache_lookup_idx on model_forecast_cache (date, model, kind, issued_at desc);
 var _modelCacheTableOk = null;
 async function _hasModelCacheTable() {
   if (_modelCacheTableOk !== null) return _modelCacheTableOk;
@@ -4494,7 +4499,16 @@ async function _hasModelCacheTable() {
   return _modelCacheTableOk;
 }
 
-// Groupe des points par date NC-locale et upsert 1 ligne par jour pour ce
+// Run arrondi à l'heure de fetch (ex: "2026072711") — sert de clé de run pour
+// ne plus écraser une prévision archivée à une échéance donnée par la suivante
+// (AUDIT-previsions.md §5.1 : la clé primaire était `date cible` seule, donc
+// chaque passage sur la page upsertait par-dessus la précédente et détruisait
+// l'échéance — seule la toute dernière prévision écrite survivait).
+function _forecastRunTag() {
+  return new Date().toISOString().slice(0, 13).replace(/[-T:]/g, '');
+}
+
+// Groupe des points par date NC-locale et upsert 1 ligne par jour/run pour ce
 // modèle/kind — n'écrase que SES propres lignes (id inclut le modèle), jamais
 // celles d'un autre modèle ni de meteo_cache. valKey/periodKey permettent de
 // réutiliser la même fonction pour la houle ({h,t,dir}) et le vent ({kt,dir}).
@@ -4502,6 +4516,8 @@ async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
   if (!pts || !pts.length || !(await _hasModelCacheTable())) return;
   valKey = valKey || 'h';
   try {
+    var runTag = _forecastRunTag();
+    var issuedAt = new Date().toISOString();
     var byDate = {};
     pts.forEach(function(p) {
       var d = new Date(p.ms + 11 * 3600000);
@@ -4511,9 +4527,9 @@ async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
     });
     var rows = Object.keys(byDate).map(function(ds) {
       return {
-        id: ds + '_' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3) + '_' + modelKey + '_' + kind,
+        id: ds + '_' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3) + '_' + modelKey + '_' + kind + '_' + runTag,
         date: ds, spot_name: spot.name, lat: spot.lat, lon: spot.lon,
-        model: modelKey, kind: kind, hours: byDate[ds], updated_at: new Date().toISOString()
+        model: modelKey, kind: kind, hours: byDate[ds], updated_at: issuedAt, issued_at: issuedAt
       };
     });
     if (rows.length) await _ensureSupabaseClient().from('model_forecast_cache').upsert(rows);
@@ -4523,11 +4539,16 @@ async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
 // Lecture pour le vote (_castModelVote) : complète les modèles qui n'ont pas
 // de point live proche de la session (cf. _renderVoteUI) en interrogeant
 // l'archive — silencieux si la table n'existe pas ou rien d'archivé.
+// Plusieurs runs peuvent désormais exister pour une même date/modèle (cf.
+// _forecastRunTag ci-dessus) : on prend le plus récent (issued_at desc),
+// même comportement qu'avant le correctif (avant, une seule ligne existait
+// forcément — la dernière écrite — donc toujours "la plus récente" aussi).
 async function _lookupModelCache(spot, modelKey, kind, dateStr, targetMs) {
   if (!(await _hasModelCacheTable())) return null;
   try {
-    var id = dateStr + '_' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3) + '_' + modelKey + '_' + kind;
-    var r = await _ensureSupabaseClient().from('model_forecast_cache').select('hours').eq('id', id).maybeSingle();
+    var r = await _ensureSupabaseClient().from('model_forecast_cache').select('hours')
+      .eq('date', dateStr).eq('lat', spot.lat).eq('lon', spot.lon).eq('model', modelKey).eq('kind', kind)
+      .order('issued_at', { ascending: false }).limit(1).maybeSingle();
     if (!r.data || !r.data.hours || !r.data.hours.length) return null;
     var targetH = new Date(targetMs + 11 * 3600000).getUTCHours();
     var best = null, bd = 5;

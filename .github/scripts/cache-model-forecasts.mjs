@@ -324,6 +324,14 @@ async function fetchMeteoNc(spot, token) {
 }
 
 // ── Regroupe des points par date NC-locale (+11h) → lignes model_forecast_cache ──
+// Run arrondi à l'heure d'exécution du script (ex: "2026072707") — même
+// convention que _forecastRunTag() côté previsions.html (AUDIT-previsions.md
+// §5.1) : sans clé de run, ce cron (2x/jour) écrasait la même ligne que le
+// fetch précédent (côté client ou côté cron), détruisant l'échéance archivée.
+function runTag() {
+  return new Date().toISOString().slice(0, 13).replace(/[-T:]/g, '');
+}
+
 function toRows(spot, modelKey, kind, pts) {
   if (!pts.length) return [];
   const byDate = {};
@@ -332,10 +340,11 @@ function toRows(spot, modelKey, kind, pts) {
     const ds = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
     (byDate[ds] ||= []).push({ h: d.getUTCHours(), val: p.val, period: p.period ?? null, dir: p.dir ?? null });
   }
+  const tag = runTag(), issuedAt = new Date().toISOString();
   return Object.entries(byDate).map(([ds, hours]) => ({
-    id: `${ds}_${spot.lat.toFixed(3)}_${spot.lon.toFixed(3)}_${modelKey}_${kind}`,
+    id: `${ds}_${spot.lat.toFixed(3)}_${spot.lon.toFixed(3)}_${modelKey}_${kind}_${tag}`,
     date: ds, spot_name: spot.name, lat: spot.lat, lon: spot.lon,
-    model: modelKey, kind, hours, updated_at: new Date().toISOString(),
+    model: modelKey, kind, hours, updated_at: issuedAt, issued_at: issuedAt,
   }));
 }
 
