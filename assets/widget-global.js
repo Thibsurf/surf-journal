@@ -20,14 +20,100 @@
 // ════════════════════════════════════════════════════════════════════════
 var _gwDayIdx = 0;
 
-// Même logique de sélection que setHsSrc : NC prioritaire, GFS si toggle ou si NC absent
+// ─── Sources supplémentaires pour le widget (BOM/MFWAM) ─────────────────────
+// Le reste de la page (graphe principal, tableau détaillé, ~15 autres endroits)
+// ne bascule qu'entre meteo.nc/GFS via _currentHsSrc, partagé partout. BOM/MFWAM
+// sont ajoutés ICI en variable indépendante (_gwExtraSrc) pour que le widget
+// puisse les afficher SANS toucher aux autres endroits de la page (demande
+// utilisateur 27/07/2026, cf. AUDIT-previsions.md chantier 4/10) — nc/GFS
+// restent synchronisés avec le reste de la page comme avant (_gwExtraSrc=null).
+var _gwExtraSrc = (function(){ try { return localStorage.getItem('gwExtraSrc') || null; } catch(e){ return null; } })();
+
+function _gwSetSrc(src) {
+  if (src === 'bom' || src === 'mf') {
+    _gwExtraSrc = src;
+  } else {
+    _gwExtraSrc = null;
+    if (typeof setHsSrc === 'function') setHsSrc(src); // nc/om restent liés au reste de la page
+  }
+  try { localStorage.setItem('gwExtraSrc', _gwExtraSrc || ''); } catch(e){}
+  renderGlobalWidget();
+}
+
+// Reconstruit un objet au format _fcastData depuis _swellCache[key] ('bom'|'mf'),
+// repeuplé par _renderSwellCompare() (comparatif houle plus bas dans la page,
+// chargé au même moment) — même schéma que _ncFcastData/_omFcastData pour que le
+// reste du widget (grille, graphe, vecteurs satellite) n'ait rien à savoir de la
+// source. Nuages/pluie/T° air/SST empruntés à _omFcastData au créneau le plus
+// proche (±1h30) : ni BOM ni MFWAM ne sont des modèles atmosphériques complets
+// (houle, et vent pour BOM seulement) — même béquille que la houle 2 de meteo.nc
+// (cf. _gwSw2Extra) et que le remplissage nuages du chemin NC dans previsions.html.
+function _gwBuildModelFcast(key) {
+  var entry = (typeof _swellCache !== 'undefined' && _swellCache) ? _swellCache[key] : null;
+  if (!entry || !entry.primary || entry.primary.length < 2) return null;
+  var om = (typeof _omFcastData !== 'undefined') ? _omFcastData : null;
+  function nearestOmIdx(ms) {
+    if (!om || !om.dates) return null;
+    // ms (paramètre) = vrai epoch UTC (BOM/MFWAM, cf. _fetchBomWw3/_fetchMeteoFranceWave) ;
+    // om.dates[k] est décalé +11h (convention du fichier principal, "UTC+11 lu en
+    // getUTC*") — comparer les deux bruts aurait donné un delta erroné de ~11h non
+    // détecté (même bug que le cône MARC, cf. _gwDrawVectors). Décaler ms de +11h
+    // pour se ramener à la même convention que om.dates avant de comparer.
+    var msShifted = ms + 11*3600000;
+    var best = null, bd = 5400000;
+    for (var k = 0; k < om.dates.length; k++) {
+      var df = Math.abs(om.dates[k].getTime() - msShifted);
+      if (df < bd) { bd = df; best = k; }
+    }
+    return best;
+  }
+  var sec = entry.secondary || [];
+  function nearestSec(ms) {
+    var best = null, bd = 5400000;
+    sec.forEach(function(p){ var df = Math.abs(p.ms-ms); if (df < bd) { bd = df; best = p; } });
+    return best;
+  }
+  var out = { dates:[], sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], wndH:[], totH:[],
+    wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
+    sw2Native: sec.length > 0 };
+  entry.primary.forEach(function(p){
+    out.dates.push(new Date(p.ms + 11*3600000)); // même convention que partout : UTC+11 lu en getUTC*
+    out.sw1h.push(p.h!=null?p.h:null); out.sw1t.push(p.t!=null?p.t:null); out.sw1d.push(p.dir!=null?p.dir:null);
+    out.totH.push(p.totH!=null ? p.totH : p.h);
+    out.wndH.push(p.windSeaH!=null ? p.windSeaH : null);
+    out.wSpd.push(p.windKt!=null ? p.windKt : null); // MFWAM: toujours null, pas de vent dans cette API
+    out.wGst.push(null); // ni BOM ni MFWAM ne fournissent de rafale
+    out.wDir.push(p.windDir!=null ? p.windDir : null);
+    var s2 = nearestSec(p.ms);
+    out.sw2h.push(s2 ? s2.h : null); out.sw2t.push(s2 ? s2.t : null); out.sw2d.push(s2 ? s2.dir : null);
+    out.pwr.push((p.h && p.t) ? +(0.5*p.h*p.h*p.t).toFixed(2) : null);
+    var oi = nearestOmIdx(p.ms);
+    out.sst.push(oi!=null && om.sst ? om.sst[oi] : null);
+    out.cld.push(oi!=null && om.cld ? om.cld[oi] : null);
+    out.rain.push(oi!=null && om.rain ? om.rain[oi] : null);
+    out.cldL.push(oi!=null && om.cldL ? om.cldL[oi] : null);
+    out.cldM.push(oi!=null && om.cldM ? om.cldM[oi] : null);
+    out.cldH.push(oi!=null && om.cldH ? om.cldH[oi] : null);
+    out.tAir.push(oi!=null && om.tAir ? om.tAir[oi] : null);
+  });
+  return out;
+}
+
+// Même logique de sélection que setHsSrc : NC prioritaire, GFS si toggle ou si NC
+// absent — sauf si le widget a sa propre source BOM/MFWAM sélectionnée (_gwExtraSrc).
 function _gwActiveData() {
+  if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf') {
+    var built = _gwBuildModelFcast(_gwExtraSrc);
+    if (built) return built;
+    // Pas encore chargé (spot tout juste changé, _swellCache pas encore repeuplé)
+    // -> retomber sur la source principale plutôt qu'un widget vide.
+  }
   return (_currentHsSrc==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
 }
 
 // La donnée affichée est-elle bien meteo.nc ? (badge source du widget)
 function _gwIsNC() {
-  return _currentHsSrc==='nc' && !!_ncFcastData;
+  return !_gwExtraSrc && _currentHsSrc==='nc' && !!_ncFcastData;
 }
 
 // Groupe les points horaires par jour calendaire NC (clé sur les champs getUTC*
@@ -54,9 +140,23 @@ function renderGlobalWidget() {
   wrap.style.display='';
   if (_gwDayIdx >= Math.min(days.length, 5)) _gwDayIdx = 0;
   var badge = document.getElementById('gw-src-badge');
-  if (badge) badge.innerHTML = _gwIsNC()
-    ? '<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 7px;border-radius:8px;">🛰 meteo.nc</span>'
-    : '<span style="background:rgba(79,163,199,.1);color:var(--muted);border:1px solid var(--border);padding:1px 7px;border-radius:8px;">🌐 GFS</span>';
+  if (badge) {
+    // Boutons plutôt qu'un badge passif : meteo.nc/GFS restent liés au reste de la
+    // page (_gwSetSrc les redirige vers setHsSrc), BOM/MFWAM sont propres au widget.
+    var activeSrc = _gwExtraSrc || _currentHsSrc;
+    var GW_SRC_BTNS = [
+      { key:'nc',  lbl:'🛰 meteo.nc' },
+      { key:'om',  lbl:'🌐 GFS' },
+      { key:'bom', lbl:'🇦🇺 BOM' },
+      { key:'mf',  lbl:'🌊 MFWAM' }
+    ];
+    badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget">'
+      + GW_SRC_BTNS.map(function(s){
+          var on = s.key === activeSrc;
+          return '<button class="seg-b'+(on?' is-on':'')+'" aria-pressed="'+on+'" onclick="_gwSetSrc(\''+s.key+'\')">'+s.lbl+'</button>';
+        }).join('')
+      + '</div>';
+  }
   _gwRenderDayNav(days);
   _gwRenderGrid(d, days[_gwDayIdx]);
   _gwDrawOverview();
@@ -394,7 +494,12 @@ function _gwDrawVectors(fi) {
   var marcPt = null, marcHalfDeg = null;
   var marcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
   if (marcPts && marcPts.length) {
-    var atMs = d.dates[fi].getTime(), bd = 4*3600000;
+    // d.dates[fi] est en "UTC+11 lu en getUTC*" (décalé +11h, convention du fichier
+    // principal), alors que marcPts[].ms est un VRAI epoch UTC (_fetchMarcWave, pas
+    // décalé) — comparer les deux bruts aurait donné un delta de ~11h non détecté
+    // (deux gros entiers proches par coïncidence numérique, mauvais point choisi
+    // silencieusement). Décaler atMs de -11h pour revenir en vrai UTC avant de comparer.
+    var atMs = d.dates[fi].getTime() - 11*3600000, bd = 4*3600000;
     marcPts.forEach(function(p){ var df = Math.abs(p.ms-atMs); if (df < bd) { bd = df; marcPt = p; } });
   }
   if (marcPt && marcPt.dir!=null && marcPt.spread!=null) {

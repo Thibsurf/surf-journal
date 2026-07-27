@@ -166,6 +166,9 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .seg-b.is-on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.3);}
 .seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
 .seg-b[disabled]{opacity:.4;cursor:not-allowed;}
+/* Variante compacte : en-tête du widget (4 sources), pas assez de place pour la
+   cible tactile confortable de .seg-b par défaut (36px). */
+.seg-sm .seg-b{padding:3px 8px;min-height:auto;font-size:10px;}
 /* Graphe d'ensemble (courbe vent + barres houle, façon meteo.nc) + panneau satellite */
 .gw-main{display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;}
 .gw-chart-wrap{flex:1;min-width:260px;position:relative;}
@@ -4107,7 +4110,14 @@ async function _fetchBomWw3(spot) {
     var epochM = dasText.match(/seconds since (\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{1,2}):(\d{1,2})/);
     if (!epochM) throw new Error('epoch introuvable');
     var epochMs = Date.UTC(+epochM[1], +epochM[2]-1, +epochM[3], +epochM[4], +epochM[5], +epochM[6]);
-    var vars = ['sig_ht_sw1', 'pk_wav_per', 'mn_dir_sw1'];
+    // sig_ht_sw1/pk_wav_per/mn_dir_sw1 = houle (train 1, déjà utilisé par le
+    // comparatif). Ajoutés (vérifié dispo dans le dataset via .dds, 2026-07-27) :
+    // sig_wav_ht/mn_wav_dir = mer TOTALE, sig_ht_wnd_sea = mer du vent seule,
+    // wnd_spd/wnd_dir = vent au point de grille BOM (0,125°, ~14 km, units
+    // confirmées "m s-1"/"deg_true" via .das) — jusqu'ici jamais récupérés,
+    // permettent d'injecter BOM comme source houle+vent complète dans le widget
+    // (cf. AUDIT-previsions.md chantier 4/10, demande utilisateur 27/07/2026).
+    var vars = ['sig_ht_sw1', 'pk_wav_per', 'mn_dir_sw1', 'sig_wav_ht', 'mn_wav_dir', 'sig_ht_wnd_sea', 'wnd_spd', 'wnd_dir'];
     var url = BOM_WW3_BASE + '.ascii?time[0:1:80],' + vars.map(function(v) {
       return v + '[0:1:80][' + latIdx + ':1:' + latIdx + '][' + lonIdx + ':1:' + lonIdx + ']';
     }).join(',');
@@ -4120,16 +4130,31 @@ async function _fetchBomWw3(spot) {
     function parseGrid(name) {
       var mm = text.match(new RegExp(name + '\\.' + name + '\\[\\d+\\]\\[1\\]\\[1\\]([\\s\\S]*?)(?:\\n\\n|$)'));
       if (!mm) return [];
-      var out = [], lineRe = /\[(\d+)\]\[0\],\s*([\-\d.]+)/g, lm;
+      // _FillValue = 1e36 (cf. .das) : le point peut être trop près de la côte pour
+      // ce champ précis. Regex étendue à la notation scientifique (le flottant
+      // brut du fill value ne matchait pas [\-\d.]+ tel quel) + garde de magnitude
+      // en aval (validNum) plutôt que de laisser passer un "1" tronqué silencieux.
+      var out = [], lineRe = /\[(\d+)\]\[0\],\s*([\-\d.eE+]+)/g, lm;
       while ((lm = lineRe.exec(mm[1]))) out[+lm[1]] = parseFloat(lm[2]);
       return out;
     }
+    function validNum(v) { return v != null && !isNaN(v) && Math.abs(v) < 1e6; }
     var times = parseFlat('time');
     var hs = parseGrid('sig_ht_sw1'), per = parseGrid('pk_wav_per'), dir = parseGrid('mn_dir_sw1');
+    var totHs = parseGrid('sig_wav_ht'), totDir = parseGrid('mn_wav_dir'), windSeaHs = parseGrid('sig_ht_wnd_sea');
+    var windSpd = parseGrid('wnd_spd'), windDir = parseGrid('wnd_dir');
     var pts = [];
     for (var i = 0; i < times.length; i++) {
-      if (hs[i] == null || isNaN(hs[i])) continue;
-      pts.push({ ms: epochMs + times[i] * 1000, h: hs[i], t: per[i], dir: dir[i] });
+      if (!validNum(hs[i])) continue;
+      pts.push({
+        ms: epochMs + times[i] * 1000, h: hs[i],
+        t: validNum(per[i]) ? per[i] : null, dir: validNum(dir[i]) ? dir[i] : null,
+        totH: validNum(totHs[i]) ? totHs[i] : null,
+        totDir: validNum(totDir[i]) ? totDir[i] : null,
+        windSeaH: validNum(windSeaHs[i]) ? windSeaHs[i] : null,
+        windKt: validNum(windSpd[i]) ? windSpd[i] * 1.943844 : null, // m/s -> nds
+        windDir: validNum(windDir[i]) ? windDir[i] : null,
+      });
     }
     return { primary: pts, secondary: [] }; // pas de houle secondaire dans ce flux WW3
   } catch (e) {
@@ -4147,8 +4172,16 @@ async function _fetchMeteoFranceWave(spot) {
   var ctrl = new AbortController();
   var tt = setTimeout(function(){ ctrl.abort(); }, 8000);
   try {
+    // wave_height/direction/period = mer TOTALE, wind_wave_* = mer du vent seule —
+    // ajoutés (vérifié dispo sur ce modèle via l'API, 2026-07-27) en plus de la
+    // houle (train 1+2) déjà récupérée, pour permettre d'injecter MFWAM comme
+    // source complète dans le widget (cf. AUDIT-previsions.md chantier 4/10,
+    // demande utilisateur). Pas de vent atmosphérique dans cette API marine
+    // (modèle houle seul, pas de wind_speed/direction pour meteofrance_wave —
+    // vérifié empiriquement, contrairement à BOM qui expose son propre vent).
     var url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + spot.lat + '&longitude=' + spot.lon
       + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction'
+      + ',wave_height,wave_direction,wave_period,wind_wave_height,wind_wave_direction,wind_wave_period'
       + '&models=meteofrance_wave&forecast_days=10&timezone=GMT';
     var r = await fetch(url, { signal: ctrl.signal });
     var j = await r.json();
@@ -4156,7 +4189,13 @@ async function _fetchMeteoFranceWave(spot) {
     var h = j.hourly, primary = [], secondary = [];
     for (var i = 0; i < h.time.length; i++) {
       var ms = Date.parse(h.time[i] + 'Z');
-      if (h.swell_wave_height[i] != null) primary.push({ ms: ms, h: h.swell_wave_height[i], t: h.swell_wave_period[i], dir: h.swell_wave_direction && h.swell_wave_direction[i] });
+      if (h.swell_wave_height[i] != null) primary.push({
+        ms: ms, h: h.swell_wave_height[i], t: h.swell_wave_period[i], dir: h.swell_wave_direction && h.swell_wave_direction[i],
+        totH: h.wave_height ? h.wave_height[i] : null,
+        totDir: h.wave_direction ? h.wave_direction[i] : null,
+        windSeaH: h.wind_wave_height ? h.wind_wave_height[i] : null,
+        windSeaDir: h.wind_wave_direction ? h.wind_wave_direction[i] : null,
+      });
       if (h.secondary_swell_wave_height && h.secondary_swell_wave_height[i] != null) secondary.push({ ms: ms, h: h.secondary_swell_wave_height[i], t: h.secondary_swell_wave_period && h.secondary_swell_wave_period[i], dir: h.secondary_swell_wave_direction && h.secondary_swell_wave_direction[i] });
     }
     return { primary: primary, secondary: secondary };
@@ -4842,10 +4881,14 @@ async function _renderSwellCompare() {
   _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3] };
   _swellZoom.a = 0; _swellZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
   _drawSwellCompare();
-  // Le cône de spread MARC du widget (_gwDrawVectors, cf. widget-global.js) lit
-  // aussi _swellCache — le rafraîchir ici pour qu'il apparaisse dès que le fetch
-  // MARC résout, sans attendre un survol de la vue satellite.
-  try { if (typeof _gwHoverGi !== 'undefined' && _gwHoverGi >= 0 && typeof _gwDrawVectors === 'function') _gwDrawVectors(_gwHoverGi); } catch(_){}
+  // Le widget principal lit aussi _swellCache : le cône de spread MARC (toujours,
+  // cf. _gwDrawVectors) et, si BOM/MFWAM est sa source active (_gwExtraSrc), la
+  // totalité de son contenu (_gwBuildModelFcast). Rafraîchir ici pour que ça
+  // apparaisse dès que le fetch résout, sans attendre un survol/changement de jour.
+  try {
+    if (typeof _gwExtraSrc !== 'undefined' && _gwExtraSrc && typeof renderGlobalWidget === 'function') renderGlobalWidget();
+    else if (typeof _gwHoverGi !== 'undefined' && _gwHoverGi >= 0 && typeof _gwDrawVectors === 'function') _gwDrawVectors(_gwHoverGi);
+  } catch(_){}
   // Archivage best-effort (table optionnelle, no-op si absente) — ne bloque
   // jamais le rendu, lancé après coup sans attendre.
   try {
