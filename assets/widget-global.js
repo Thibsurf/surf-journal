@@ -73,7 +73,7 @@ function _gwBuildModelFcast(key) {
     sec.forEach(function(p){ var df = Math.abs(p.ms-ms); if (df < bd) { bd = df; best = p; } });
     return best;
   }
-  var out = { dates:[], sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], wndH:[], totH:[],
+  var out = { dates:[], sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], sw2NativeArr:[], wndH:[], totH:[],
     wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
     sw2Native: sec.length > 0 };
   entry.primary.forEach(function(p){
@@ -86,6 +86,7 @@ function _gwBuildModelFcast(key) {
     out.wDir.push(p.windDir!=null ? p.windDir : null);
     var s2 = nearestSec(p.ms);
     out.sw2h.push(s2 ? s2.h : null); out.sw2t.push(s2 ? s2.t : null); out.sw2d.push(s2 ? s2.dir : null);
+    out.sw2NativeArr.push(!!s2); // par créneau : ce point précis a-t-il une vraie houle 2 (pas juste la série en général) ?
     out.pwr.push((p.h && p.t) ? +(0.5*p.h*p.h*p.t).toFixed(2) : null);
     var oi = nearestOmIdx(p.ms);
     out.sst.push(oi!=null && om.sst ? om.sst[oi] : null);
@@ -111,7 +112,10 @@ function _gwBuildModelFcast(key) {
 //   exposer un spectre complet) > meteo.nc (officiel régionalisé NC) > GFS/BOM/
 //   MFWAM en repli si les deux premiers manquent à une heure donnée.
 // - Vent (vitesse/rafale/direction) : meteo.nc > BOM (14km, vent propre au
-//   modèle) > GFS (28km) > MFWAM (vent ARPEGE, résolution non documentée ici).
+//   modèle) > MARC (vent = forçage ECMWF 9km réel du run WW3, confirmé via
+//   l'attribut global forcing_wind="wind_ecmwf_op", regrillé sur la maille MARC
+//   5,5km — pas une vraie donnée à 5,5km, d'où son rang après BOM) > GFS (28km)
+//   > MFWAM (vent ARPEGE, résolution non documentée ici).
 // Base temporelle = meteo.nc si disponible (pas horaire, le plus fin), sinon GFS.
 function _gwBuildBestMix() {
   var base = _ncFcastData || _omFcastData || _fcastData;
@@ -120,7 +124,7 @@ function _gwBuildBestMix() {
   var mf = _gwBuildModelFcast('mf');
   var marc = _gwBuildModelFcast('marc');
   var HOULE_PRIORITY = [marc, _ncFcastData, _omFcastData, bom, mf];
-  var VENT_PRIORITY = [_ncFcastData, bom, _omFcastData, mf, marc];
+  var VENT_PRIORITY = [_ncFcastData, bom, marc, _omFcastData, mf];
 
   // Recherche au plus proche DANS UNE SEULE convention de temps : base.dates et
   // tous les _gwBuildModelFcast(...) sont déjà décalés +11h de façon cohérente
@@ -141,18 +145,47 @@ function _gwBuildBestMix() {
     }
     return null;
   }
+  // sw2h mérite un traitement à part : meteo.nc/GFS/BOM n'ont PAS de vraie houle 2
+  // (résidu calculé ou null, cf. sw2Native), seul MFWAM en a une native — le mix
+  // doit savoir, PAR CRÉNEAU, si la valeur retenue est native ou un résidu, pas
+  // juste hériter du flag global de `base` (qui serait faux dès qu'un créneau
+  // pioche sa houle 2 chez MFWAM). Signalé par l'utilisateur : la grille affichait
+  // une houle 2 meteo.nc sans dire qu'elle vient en fait d'un résidu Open-Meteo.
+  function pickSw2(priorityList, ms) {
+    // Deux passes : d'abord une vraie houle 2 native n'importe où dans la liste,
+    // sinon un résidu en repli. Sans ça, le résidu de meteo.nc (quasi toujours
+    // non-null, même à 0) aurait systématiquement gagné juste parce qu'il est
+    // 2e dans HOULE_PRIORITY, alors que MFWAM (dernier de la liste) a une vraie
+    // donnée native — l'ordre de priorité "houle 1" ne doit pas décider ça pour
+    // la houle 2, où natif > tout le reste quelle que soit la source.
+    function tryFind(requireNative) {
+      for (var i = 0; i < priorityList.length; i++) {
+        var src = priorityList[i];
+        if (!src || !src.dates || !src.sw2h) continue;
+        var best = -1, bd = 5400000;
+        for (var k = 0; k < src.dates.length; k++) {
+          var df = Math.abs(src.dates[k].getTime() - ms);
+          if (df < bd && src.sw2h[k] != null) { bd = df; best = k; }
+        }
+        if (best < 0) continue;
+        var native = src.sw2NativeArr ? !!src.sw2NativeArr[best] : !!src.sw2Native;
+        if (requireNative && !native) continue;
+        return { h: src.sw2h[best], t: src.sw2t ? src.sw2t[best] : null, dir: src.sw2d ? src.sw2d[best] : null, native: native };
+      }
+      return null;
+    }
+    return tryFind(true) || tryFind(false) || { h: null, t: null, dir: null, native: false };
+  }
 
-  var out = { dates: base.dates.slice(), sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[],
-    wndH:[], totH:[], wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
-    sw2Native: !!base.sw2Native };
+  var out = { dates: base.dates.slice(), sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], sw2NativeArr:[],
+    wndH:[], totH:[], wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[] };
   base.dates.forEach(function(dt){
     var ms = dt.getTime();
     out.sw1h.push(pick(HOULE_PRIORITY, 'sw1h', ms));
     out.sw1t.push(pick(HOULE_PRIORITY, 'sw1t', ms));
     out.sw1d.push(pick(HOULE_PRIORITY, 'sw1d', ms));
-    out.sw2h.push(pick(HOULE_PRIORITY, 'sw2h', ms));
-    out.sw2t.push(pick(HOULE_PRIORITY, 'sw2t', ms));
-    out.sw2d.push(pick(HOULE_PRIORITY, 'sw2d', ms));
+    var s2 = pickSw2(HOULE_PRIORITY, ms);
+    out.sw2h.push(s2.h); out.sw2t.push(s2.t); out.sw2d.push(s2.dir); out.sw2NativeArr.push(s2.native);
     out.totH.push(pick(HOULE_PRIORITY, 'totH', ms));
     out.wndH.push(pick(HOULE_PRIORITY, 'wndH', ms));
     out.wSpd.push(pick(VENT_PRIORITY, 'wSpd', ms));
@@ -851,7 +884,7 @@ function _gwRenderGrid(d, day) {
   html += _gwLbl(4,'🌊 Tot.','Houle totale (m)');
   html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
   html += _gwLbl(6,'Dir.');
-  html += _gwLbl(7,'H.2','Houle secondaire — hauteur (résidu si meteo.nc) + période, flèche = direction (Open-Meteo si non fournie)');
+  html += _gwLbl(7,'H.2','Houle secondaire — hauteur + période, flèche = direction (Open-Meteo si non fournie). "≈" = résidu calculé (Hs-H1-mer du vent), pas une vraie houle secondaire modélisée — voir la cellule concernée.');
   html += _gwLbl(8,'☁ 🌧','Nuages par altitude (haut/moyen/bas, opacité = couverture) + pluie en mm/3h — Open-Meteo');
 
   idxs.forEach(function(fi, ci) {
@@ -898,9 +931,18 @@ function _gwRenderGrid(d, day) {
 
     var s2h = d.sw2h && d.sw2h[fi];
     var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
-    html += '<div class="gw-cell"'+gia+' style="grid-row:7;grid-column:'+col+';'+nBg+'">'
+    // sw2Native=false (ex. meteo.nc, cf. previsions.html) -> s2h est un résidu
+    // calculé (Hs-H1-mer du vent), pas une vraie houle secondaire modélisée. La
+    // grille l'affichait sans le distinguer visuellement du cas natif (seul le
+    // title générique du label de ligne le mentionnait) — signalé par
+    // l'utilisateur comme trompeur. Marqueur "≈" + title dynamique par cellule.
+    // Préférer le flag PAR CRÉNEAU (sw2NativeArr, ex. mix : certaines heures natives
+    // via MFWAM, d'autres non) au flag global de la série (sw2Native) quand dispo.
+    var s2Resid = s2h != null && !(d.sw2NativeArr ? d.sw2NativeArr[fi] : d.sw2Native);
+    html += '<div class="gw-cell"'+gia+' style="grid-row:7;grid-column:'+col+';'+nBg+'"'
+      + (s2Resid ? ' title="Résidu calculé (Hs − houle 1 − mer du vent), pas une vraie houle secondaire modélisée par cette source."' : '') + '>'
       + (s2h && s2x.dir!=null ? svgArrow(s2x.dir,'#6ab4d4') : '')
-      + '<span class="v" style="color:'+hsCol(s2h)+';font-size:11px;">'+(s2h?s2h.toFixed(1)+'m':'—')+'</span>'
+      + '<span class="v" style="color:'+hsCol(s2h)+';font-size:11px;">'+(s2h?(s2Resid?'≈':'')+s2h.toFixed(1)+'m':'—')+'</span>'
       + (s2h ? _gwPerPill(s2x.t, true) : '')
       + '</div>';
 
