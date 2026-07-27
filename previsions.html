@@ -4193,6 +4193,38 @@ async function _fetchMarcWave(spot) {
   finally { clearTimeout(tt); }
 }
 
+// hex '#rrggbb' → 'rgba(r,g,b,alpha)', alpha écrit sans zéro initial ('.95' pas '0.95')
+// pour rester compatible avec les `.replace(',.95)', ',.25)')` déjà utilisés en aval
+// pour dériver une bordure plus translucide à partir de la couleur pleine d'un modèle.
+function _rgbaFromHex(hex, alpha) {
+  var h = hex.replace('#', '');
+  var r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + String(alpha).replace(/^0\./, '.') + ')';
+}
+// ─── Identité visuelle des modèles — TABLE UNIQUE (AUDIT-previsions.md §3.1) ──────
+// Avant ce correctif, le comparatif houle (SWELL_MODELS) et la rose vent
+// (WIND_MODELS_ROSE + légende wcmp-leg-*) codaient CHACUN leurs propres couleurs pour
+// les mêmes modèles, et ne s'accordaient pas : #4fa3c7 = GFS en houle mais AROME en
+// vent, #e8a057 = BOM en houle mais meteo.nc en vent, etc. Un même hex portait donc
+// 2-3 identités différentes selon le graphe consulté. Cette table est désormais LA
+// seule source de couleur par modèle, consommée par le comparatif houle, le
+// comparatif vent, leurs roses et la fourchette inter-modèles.
+// Vert/rouge (--ok/--bad) sont réservés au jugement (score, seuils) ailleurs dans la
+// page et volontairement absents d'ici. « obs » (mesure réelle en station) n'est pas
+// un modèle : couleur neutre distincte pour ne pas rivaliser avec les modèles.
+// Résolution, du plus fin au plus large (renseigne le choix des couleurs, pas un ordre
+// d'affichage) : AROME 2,5 km · MARC 5,5 km · ECMWF 9 km · BOM 14 km · GFS 28 km ·
+// MF global (résolution non communiquée par Open-Meteo) · meteo.nc régional (non documentée).
+var MODEL_STYLE = {
+  obs:   { label: 'mesuré',    col: '#e8eef4' },
+  aro:   { label: 'AROME',     col: '#7b6cf6' },
+  marc:  { label: 'MARC WW3',  col: '#7dd3fc' },
+  ecmwf: { label: 'ECMWF',     col: '#a99ff8' },
+  bom:   { label: 'BOM WW3',   col: '#e8a057' },
+  gfs:   { label: 'GFS',       col: '#4fa3c7' },
+  mf:    { label: 'MF global', col: '#7a94aa' },
+  nc:    { label: 'meteo.nc',  col: '#f0c674' }
+};
 // ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global / ECMWF / MARC) ──
 // _ncFcastData et _omFcastData sont TOUJOURS peuplés en parallèle (cf. commentaire
 // « Toujours peupler _omFcastData... même si useNC=true, on veut pouvoir comparer »
@@ -4200,12 +4232,12 @@ async function _fetchMarcWave(spot) {
 // affiché sur l'histogramme Hs. Convention dates : mêmes objets Date « NC en UTC »
 // que partout ailleurs (true UTC = .getTime() - 11h), cf. _renderAromeCompare.
 var SWELL_MODELS = [
-  { key: 'nc',    label: 'meteo.nc',  col: 'rgba(61,186,138,.95)',  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
-  { key: 'gfs',   label: 'GFS',       col: 'rgba(79,163,199,.95)',  desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
-  { key: 'bom',   label: 'BOM WW3',   col: 'rgba(232,160,87,.95)',  desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
-  { key: 'mf',    label: 'MF global', col: 'rgba(167,159,248,.95)', desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' },
-  { key: 'ecmwf', label: 'ECMWF',     col: 'rgba(224,92,92,.95)',   desc: 'ECMWF IFS-WAM (via Windguru, id_model 118) — grille 0,09° (~9 km), le plus fin des modèles globaux ici' },
-  { key: 'marc',  label: 'MARC WW3',  col: 'rgba(125,211,252,.95)', desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici' }
+  { key: 'nc',    label: 'meteo.nc',  col: _rgbaFromHex(MODEL_STYLE.nc.col, .95),  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
+  { key: 'gfs',   label: 'GFS',       col: _rgbaFromHex(MODEL_STYLE.gfs.col, .95), desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
+  { key: 'bom',   label: 'BOM WW3',   col: _rgbaFromHex(MODEL_STYLE.bom.col, .95),   desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
+  { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' },
+  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-WAM (via Windguru, id_model 118) — grille 0,09° (~9 km), le plus fin des modèles globaux ici' },
+  { key: 'marc',  label: 'MARC WW3',  col: _rgbaFromHex(MODEL_STYLE.marc.col, .95),  desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici' }
 ];
 var _swellMode = 'primary'; // 'primary' | 'secondary'
 var _swellCache = null;     // { nc:{primary,secondary}, gfs:{...}, bom:{...}, mf:{...} } — repeuplé par fetch, redessiné sans réseau au toggle
@@ -8585,7 +8617,11 @@ async function _fetchAromeArchive(spot) {
 // flux Windguru : inutile de re-snapshotter une donnée déjà archivée par ailleurs).
 function _renderAromeCardData(j, wgId, body) {
   var CPTS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
-  function windCol(kt){ return kt<7?'rgba(61,186,138,.22)':kt<12?'rgba(232,196,74,.20)':kt<17?'rgba(232,168,87,.25)':kt<23?'rgba(232,135,74,.30)':'rgba(224,92,92,.35)'; }
+  // Fond de cellule (alpha faible) — seuils communs avec windCol() (WIND_COL_THRESHOLDS,
+  // cf. plus bas dans le fichier) pour qu'un même vent ne soit plus jamais orange ici et
+  // rouge ailleurs (AUDIT-previsions.md §3.1 : 21 nds était orange dans ce tableau,
+  // rouge dans le graphe qui utilisait l'autre windCol()).
+  function windBgCol(kt){ var t=WIND_COL_THRESHOLDS; return kt<t[0]?'rgba(61,186,138,.22)':kt<t[1]?'rgba(232,196,74,.20)':kt<t[2]?'rgba(232,168,87,.25)':kt<t[3]?'rgba(232,135,74,.30)':'rgba(224,92,92,.35)'; }
   // Créneaux 2h à partir de maintenant-1h
   var nowMs = Date.now(), cols = [];
   for (var i = 0; i < j.hours.length; i += 2) {
@@ -8624,11 +8660,11 @@ function _renderAromeCardData(j, wgId, body) {
   _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--faint);font-size:11px;">heure</td>' + dayLbls.map(function(l){ return td('<b>' + l + '</b>', 'color:var(--muted);'); }).join('') + '</tr>';
   _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">💨 nds</td>' + cols.map(function(c) {
     var v = j.WINDSPD[c.i];
-    return td(v != null ? '<b>' + Math.round(v) + '</b>' : '—', v != null ? 'background:' + windCol(v) + ';' : '');
+    return td(v != null ? '<b>' + Math.round(v) + '</b>' : '—', v != null ? 'background:' + windBgCol(v) + ';' : '');
   }).join('') + '</tr>';
   _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">raf.</td>' + cols.map(function(c) {
     var v = j.GUST[c.i];
-    return td(v != null ? Math.round(v) : '—', v != null ? 'color:#e8874a;background:' + windCol(v) + ';' : '');
+    return td(v != null ? Math.round(v) : '—', v != null ? 'color:#e8874a;background:' + windBgCol(v) + ';' : '');
   }).join('') + '</tr>';
   _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">dir</td>' + cols.map(function(c) {
     var d = j.WINDDIR[c.i];
@@ -8666,13 +8702,13 @@ function _renderAromeCardData(j, wgId, body) {
     // sans refetch). État (opacité/barré/clic) posé par _updateWindCmpControls().
     // Rangée séparée plus bas : marqueurs de points archivés (cercle creux).
     + '<div style="display:flex;gap:10px;row-gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-bottom:5px;">'
-    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#3dba8a;font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
-    + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#4fa3c7;font-weight:700;">━</span> AROME 2.5</span>'
-    + '<span id="wcmp-leg-nc" onclick="_toggleWindCmpModel(\'nc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#e8a057;font-weight:700;">╌</span> meteo.nc</span>'
-    + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#a99ff8;font-weight:700;">╌</span> GFS</span>'
-    + '<span id="wcmp-leg-bom" onclick="_toggleWindCmpModel(\'bom\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Bureau of Meteorology (Australie) — vent WaveWatch III régional, grille 0,125° (~14 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#e05c5c;font-weight:700;">╌</span> BOM</span>'
-    + '<span id="wcmp-leg-ecmwf" onclick="_toggleWindCmpModel(\'ecmwf\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#7dd3fc;font-weight:700;">╌</span> ECMWF</span>'
-    + '<span id="wcmp-leg-marc" onclick="_toggleWindCmpModel(\'marc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="MARC-WW3 Nouvelle-Calédonie (Ifremer) — vent ECMWF au point de grille, résolution 0,05° (~5,5 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:#f0c674;font-weight:700;">╌</span> MARC</span>'
+    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.obs.col+';font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
+    + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.aro.col+';font-weight:700;">━</span> AROME 2.5</span>'
+    + '<span id="wcmp-leg-nc" onclick="_toggleWindCmpModel(\'nc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.nc.col+';font-weight:700;">╌</span> meteo.nc</span>'
+    + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.gfs.col+';font-weight:700;">╌</span> GFS</span>'
+    + '<span id="wcmp-leg-bom" onclick="_toggleWindCmpModel(\'bom\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Bureau of Meteorology (Australie) — vent WaveWatch III régional, grille 0,125° (~14 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.bom.col+';font-weight:700;">╌</span> BOM</span>'
+    + '<span id="wcmp-leg-ecmwf" onclick="_toggleWindCmpModel(\'ecmwf\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.ecmwf.col+';font-weight:700;">╌</span> ECMWF</span>'
+    + '<span id="wcmp-leg-marc" onclick="_toggleWindCmpModel(\'marc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="MARC-WW3 Nouvelle-Calédonie (Ifremer) — vent ECMWF au point de grille, résolution 0,05° (~5,5 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.marc.col+';font-weight:700;">╌</span> MARC</span>'
     + '</div>'
     // Historique archivé (jusqu'à 8j) masqué par défaut — l'afficher d'entrée
     // écrasait les courbes récentes de points morts (retour utilisateur). Le
@@ -9407,15 +9443,15 @@ function _drawAromeCompareFromCache() {
     var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pNc = nearest(pageNc, ms, 105 * 60000), pGfs = nearest(pageGfs, ms, 105 * 60000), pCache = nearest(cachePts, ms), pAroCache = nearest(aromeCachePts, ms);
     var pBom = nearest(bomWind, ms, 105 * 60000), pEcmwf = nearest(ecmwfWind, ms, 105 * 60000), pMarc = nearest(marcWind, ms, 105 * 60000);
     ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
-      + (pObs ? ' · <span style="color:#3dba8a;">mesuré <b>' + Math.round(pObs.kt) + '</b> nds</span>' : '')
-      + (pAro ? ' · <span style="color:#4fa3c7;">AROME <b>' + Math.round(pAro.kt) + '</b> nds</span>' : '')
-      + (!pAro && pAroCache ? ' · <span style="color:#4fa3c7;">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> nds</span>' : '')
-      + (pNc ? ' · <span style="color:#e8a057;">meteo.nc <b>' + Math.round(pNc.kt) + '</b> nds</span>' : '')
-      + (!pNc && pCache ? ' · <span style="color:#e8a057;">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> nds</span>' : '')
-      + (pGfs ? ' · <span style="color:#a99ff8;">GFS <b>' + Math.round(pGfs.kt) + '</b> nds</span>' : '')
-      + (pBom ? ' · <span style="color:#e05c5c;">BOM <b>' + Math.round(pBom.kt) + '</b> nds</span>' : '')
-      + (pEcmwf ? ' · <span style="color:#7dd3fc;">ECMWF <b>' + Math.round(pEcmwf.kt) + '</b> nds</span>' : '')
-      + (pMarc ? ' · <span style="color:#f0c674;">MARC <b>' + Math.round(pMarc.kt) + '</b> nds</span>' : '');
+      + (pObs ? ' · <span style="color:' + MODEL_STYLE.obs.col + ';">mesuré <b>' + Math.round(pObs.kt) + '</b> nds</span>' : '')
+      + (pAro ? ' · <span style="color:' + MODEL_STYLE.aro.col + ';">AROME <b>' + Math.round(pAro.kt) + '</b> nds</span>' : '')
+      + (!pAro && pAroCache ? ' · <span style="color:' + MODEL_STYLE.aro.col + ';">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> nds</span>' : '')
+      + (pNc ? ' · <span style="color:' + MODEL_STYLE.nc.col + ';">meteo.nc <b>' + Math.round(pNc.kt) + '</b> nds</span>' : '')
+      + (!pNc && pCache ? ' · <span style="color:' + MODEL_STYLE.nc.col + ';">meteo.nc (cache) <b>' + Math.round(pCache.kt) + '</b> nds</span>' : '')
+      + (pGfs ? ' · <span style="color:' + MODEL_STYLE.gfs.col + ';">GFS <b>' + Math.round(pGfs.kt) + '</b> nds</span>' : '')
+      + (pBom ? ' · <span style="color:' + MODEL_STYLE.bom.col + ';">BOM <b>' + Math.round(pBom.kt) + '</b> nds</span>' : '')
+      + (pEcmwf ? ' · <span style="color:' + MODEL_STYLE.ecmwf.col + ';">ECMWF <b>' + Math.round(pEcmwf.kt) + '</b> nds</span>' : '')
+      + (pMarc ? ' · <span style="color:' + MODEL_STYLE.marc.col + ';">MARC <b>' + Math.round(pMarc.kt) + '</b> nds</span>' : '');
   }
   function findNearestColIdx(ms) {
     if (!window._aromeColInfo) return null;
@@ -9426,13 +9462,13 @@ function _drawAromeCompareFromCache() {
   // Rose vent : les modèles ne s'accordent pas toujours sur la direction (signalé
   // par l'utilisateur) — un vecteur par modèle, même convention que la rose houle.
   var WIND_MODELS_ROSE = [
-    { key: 'obs', label: 'mesuré', col: '#3dba8a' },
-    { key: 'aro', label: 'AROME', col: '#4fa3c7' },
-    { key: 'nc', label: 'meteo.nc', col: '#e8a057' },
-    { key: 'gfs', label: 'GFS', col: '#a99ff8' },
-    { key: 'bom', label: 'BOM', col: '#e05c5c' },
-    { key: 'ecmwf', label: 'ECMWF', col: '#7dd3fc' },
-    { key: 'marc', label: 'MARC', col: '#f0c674' }
+    { key: 'obs', label: MODEL_STYLE.obs.label, col: MODEL_STYLE.obs.col },
+    { key: 'aro', label: MODEL_STYLE.aro.label, col: MODEL_STYLE.aro.col },
+    { key: 'nc', label: MODEL_STYLE.nc.label, col: MODEL_STYLE.nc.col },
+    { key: 'gfs', label: MODEL_STYLE.gfs.label, col: MODEL_STYLE.gfs.col },
+    { key: 'bom', label: MODEL_STYLE.bom.label, col: MODEL_STYLE.bom.col },
+    { key: 'ecmwf', label: MODEL_STYLE.ecmwf.label, col: MODEL_STYLE.ecmwf.col },
+    { key: 'marc', label: MODEL_STYLE.marc.label, col: MODEL_STYLE.marc.col }
   ];
   function _drawWindRose(atMs) {
     var el = document.getElementById('arome-cmp-rose');
@@ -13863,7 +13899,13 @@ function svgArrow(deg,col){
     +'</svg>';
 }
 function hsCol(v){return !v?'#3d5468':v<0.5?'#5a7080':v<1?'#7a94aa':v<1.5?'#4fa3c7':v<2?'#3dba8a':v<2.5?'#e8a057':'#e05c5c';}
-function windCol(v){return !v?'#3d5468':v<5?'#3dba8a':v<12?'#4fa3c7':v<20?'#e8a057':'#e05c5c';}
+// Seuils vent (nds) partagés par windCol() (texte) et windBgCol() (fond de cellule,
+// cf. _renderAromeCardData) — un seul jeu de seuils pour que la couleur d'un même vent
+// ne dépende plus de l'endroit où il est affiché. Avant ce correctif, deux fonctions
+// windCol() distinctes avaient des seuils différents (7/12/17/23 vs 5/12/20) : un vent
+// de 21 nds était orange dans un tableau, rouge dans l'autre (AUDIT-previsions.md §3.1).
+var WIND_COL_THRESHOLDS = [7, 12, 17, 23]; // calme·léger·modéré·frais·fort, ~seuils Beaufort 3/4/5/6
+function windCol(v){var t=WIND_COL_THRESHOLDS;return !v?'#3d5468':v<t[0]?'#3dba8a':v<t[1]?'#4fa3c7':v<t[2]?'#e8a057':v<t[3]?'#e8874a':'#e05c5c';}
 function pwrCol(v){return !v?'#3d5468':v<1?'#7a94aa':v<5?'#4fa3c7':v<15?'#3dba8a':v<30?'#e8a057':'#7b6cf6';}
 
 // Token listener (géré par le polling + postMessage en haut du fichier)
