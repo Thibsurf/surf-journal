@@ -4089,44 +4089,120 @@ function renderStats(sessions, el) {
         +'</div>';
     })()}
     ${(function(){
-      // Fiabilité HOULE par modèle — distinct de la jauge 1-5 ci-dessus : ici on
-      // demande lequel des 5 modèles comparés (meteo.nc/GFS/BOM/MF/ECMWF) était
-      // le plus proche du réel, session par session (voté sur previsions.html,
-      // cf. _renderModelReliabilitySection). On distingue explicitement les
-      // sessions "non éligibles" (trop anciennes ou sans houle notée) plutôt que
-      // de les ignorer silencieusement, sinon le % par modèle serait trompeur.
-      var counts = { nc:0, gfs:0, bom:0, mf:0, ecmwf:0, marc:0 };
-      var noneCount = 0, votedTotal = 0, eligibleUnvoted = 0, notEligible = 0;
+      // Remplace la barre "modèle le plus voté" par 3 blocs dégradés selon les données
+      // disponibles (AUDIT-previsions.md §11.11-§11.13) : une part de vote à un tour
+      // mesure une PRÉFÉRENCE (un modèle 2e à chaque fois obtient 0%, le résultat dépend
+      // du nombre de concurrents), pas une exactitude. La calibration relative (①) est
+      // exploitable dès le 1er vote — chaque vote embarque le vecteur complet des
+      // prédictions (previsions.html:_castModelVote), donc rétroactive sur les votes
+      // déjà collectés — c'est ce qui débloque les figures vides.
+      var votes = [];
       sessions.forEach(function(s) {
-        var vote = getModelReliability(s);
-        if (vote && vote.votedModel) { counts[vote.votedModel] = (counts[vote.votedModel] || 0) + 1; votedTotal++; return; }
-        if (vote && Object.prototype.hasOwnProperty.call(vote, 'votedModel') && vote.votedModel === null) { noneCount++; votedTotal++; return; }
-        if (s.hs && _isRecentForModelVote(s.date)) { eligibleUnvoted++; } else { notEligible++; }
+        var v = getModelReliability(s);
+        if (v && v.votedModel && v.predictions) votes.push(v);
       });
-      if (votedTotal < 1) return ''; // rien à montrer tant qu'aucun vote n'existe
-      var barsHoule = Object.keys(MODEL_RELIABILITY_LABELS).map(function(k) {
-        var n = counts[k] || 0, pct = votedTotal ? (n / votedTotal * 100) : 0;
-        var info = MODEL_RELIABILITY_LABELS[k];
-        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">'
-          + '<span style="min-width:78px;color:var(--text-muted);">' + info.label + '</span>'
-          + '<div style="flex:1;height:14px;background:var(--glass);border-radius:3px;overflow:hidden;">'
-          + '<div style="height:100%;width:' + pct + '%;background:' + info.col + ';"></div>'
-          + '</div>'
-          + '<span style="min-width:40px;text-align:right;font-size:10px;color:var(--text-muted);">' + n + ' (' + Math.round(pct) + '%)</span>'
-          + '</div>';
-      }).join('')
-      + (noneCount ? '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">'
-          + '<span style="min-width:78px;color:var(--text-muted);">Aucun</span>'
-          + '<div style="flex:1;height:14px;background:var(--glass);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + (noneCount/votedTotal*100) + '%;background:var(--text-faint);"></div></div>'
-          + '<span style="min-width:40px;text-align:right;font-size:10px;color:var(--text-muted);">' + noneCount + ' (' + Math.round(noneCount/votedTotal*100) + '%)</span>'
-          + '</div>' : '');
-      return '<div class="card" style="margin-top:14px;">'
-        + '<div class="section-title" style="margin-bottom:4px;">🌊 Modèle de houle le plus fiable</div>'
-        + '<div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">Sur ' + votedTotal + ' session(s) évaluée(s)'
-        + (eligibleUnvoted ? ' · <span style="color:var(--accent);">' + eligibleUnvoted + ' à évaluer</span> (récentes, pas encore votées)' : '')
-        + (notEligible ? ' · ' + notEligible + ' non applicable(s) (hors fenêtre ' + MODEL_RELIABILITY_WINDOW_DAYS + 'j ou sans houle notée)' : '')
+      var eligibleUnvoted = 0, notEligible = 0;
+      sessions.forEach(function(s) {
+        if (getModelReliability(s)) return;
+        if (s.hs && _isRecentForModelVote(s.date)) eligibleUnvoted++; else notEligible++;
+      });
+      var obsDeltaSessions = sessions.filter(function(s){ return s.obs_delta != null && s.fcst_model; });
+      if (!votes.length && !obsDeltaSessions.length) return '';
+
+      // ① Calibration relative : écart signé (en m) de chaque modèle à celui élu comme
+      // le plus proche du réel, moyenné sur tous les votes — biais en mètres, actionnable,
+      // obtenu sans aucune observation nouvelle (mais ancré sur le modèle le plus souvent
+      // élu, donc une calibration inter-modèles, pas une vérification absolue).
+      function relativeBias(vts) {
+        var acc = {};
+        vts.forEach(function(v) {
+          var ref = v.predictions[v.votedModel];
+          if (!ref || ref.h == null) return;
+          Object.keys(v.predictions).forEach(function(k) {
+            var p = v.predictions[k];
+            if (k === v.votedModel || !p || p.h == null) return;
+            acc[k] = acc[k] || { sum: 0, n: 0 };
+            acc[k].sum += (p.h - ref.h);
+            acc[k].n++;
+          });
+        });
+        return Object.keys(acc).map(function(k) {
+          return { model: k, bias: acc[k].sum / acc[k].n, n: acc[k].n };
+        }).sort(function(a, b) { return Math.abs(a.bias) - Math.abs(b.bias); });
+      }
+      var relBias = relativeBias(votes);
+      var maxAbsBias = Math.max.apply(null, relBias.map(function(r){ return Math.abs(r.bias); }).concat([0.1]));
+      var block1 = !relBias.length ? '' : (
+        '<div style="margin-bottom:12px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
+        + '<span style="font-size:11px;font-weight:600;color:var(--text);">① Calibration relative</span>'
+        + '<span style="font-size:10px;color:var(--text-muted);">' + votes.length + ' vote(s) · ✅ dispo</span>'
         + '</div>'
-        + barsHoule
+        + relBias.map(function(r) {
+            var info = MODEL_RELIABILITY_LABELS[r.model] || { label: r.model, col: '#7a94aa' };
+            var w = Math.max(4, Math.abs(r.bias) / maxAbsBias * 50);
+            return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px;">'
+              + '<span style="min-width:66px;color:var(--text-muted);">' + info.label + '</span>'
+              + '<div style="flex:1;height:12px;background:var(--glass);border-radius:3px;overflow:hidden;position:relative;">'
+              + '<div style="position:absolute;top:0;bottom:0;left:50%;width:1px;background:rgba(255,255,255,.25);"></div>'
+              + '<div style="position:absolute;top:0;bottom:0;' + (r.bias >= 0 ? 'left:50%' : 'right:50%') + ';width:' + w + '%;background:' + info.col + ';"></div>'
+              + '</div>'
+              + '<span style="min-width:50px;text-align:right;font-size:10px;color:var(--text-muted);">' + (r.bias >= 0 ? '+' : '') + r.bias.toFixed(2) + 'm</span>'
+              + '</div>';
+          }).join('')
+        + '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">écart au modèle élu comme le plus juste, par vote</div>'
+        + '</div>'
+      );
+
+      // ② Erreur mesurée : biais ordinal moyen(obs_delta) par modèle (fcst_model) — la
+      // vraie mesure d'erreur, mais nécessite le volume minimal pour séparer un modèle
+      // biaisé d'un modèle calibré (§11.6).
+      var OBS_DELTA_MIN = 15;
+      var block2 = '<div style="margin-bottom:12px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
+        + '<span style="font-size:11px;font-weight:600;color:var(--text);">② Erreur mesurée</span>'
+        + '<span style="font-size:10px;color:var(--text-muted);">' + obsDeltaSessions.length + ' session(s) · ' + (obsDeltaSessions.length >= OBS_DELTA_MIN ? '✅ dispo' : '⏳ à partir de ' + OBS_DELTA_MIN) + '</span>'
+        + '</div>';
+      if (obsDeltaSessions.length >= OBS_DELTA_MIN) {
+        var accD = {};
+        obsDeltaSessions.forEach(function(s) { accD[s.fcst_model] = accD[s.fcst_model] || { sum: 0, n: 0 }; accD[s.fcst_model].sum += s.obs_delta; accD[s.fcst_model].n++; });
+        block2 += Object.keys(accD).map(function(k) {
+          var info = MODEL_RELIABILITY_LABELS[k] || { label: k, col: '#7a94aa' };
+          var avg = accD[k].sum / accD[k].n;
+          return '<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;"><span style="color:' + info.col + ';font-weight:600;">' + info.label + '</span> — biais ordinal ' + (avg >= 0 ? '+' : '') + avg.toFixed(2) + ' (n=' + accD[k].n + ')</div>';
+        }).join('');
+      } else {
+        block2 += '<div style="font-size:10px;color:var(--text-muted);">nécessite la question d\'écart à la prévision (n/' + OBS_DELTA_MIN + ')</div>';
+      }
+      block2 += '</div>';
+
+      // ③ Préférence déclarée — conservée mais déclassée et étiquetée pour ce qu'elle
+      // mesure réellement. Garde une valeur de contrôle : si les surfeurs plébiscitent
+      // un modèle que ① désigne comme le plus biaisé, le vote mesure la présentation,
+      // pas la justesse.
+      var counts = {};
+      votes.forEach(function(v) { counts[v.votedModel] = (counts[v.votedModel] || 0) + 1; });
+      var block3 = !votes.length ? '' : (
+        '<div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
+        + '<span style="font-size:11px;font-weight:600;color:var(--text);">③ Préférence déclarée</span>'
+        + '<span style="font-size:10px;color:var(--text-muted);">' + votes.length + ' vote(s)'
+        + (eligibleUnvoted ? ' · <span style="color:var(--accent);">' + eligibleUnvoted + ' à évaluer</span>' : '') + '</span>'
+        + '</div>'
+        + '<div style="font-size:11px;color:var(--text-muted);">'
+        + Object.keys(counts).map(function(k) {
+            var info = MODEL_RELIABILITY_LABELS[k] || { label: k, col: '#7a94aa' };
+            return '<span style="color:' + info.col + ';font-weight:600;">' + info.label + '</span> ' + Math.round(counts[k] / votes.length * 100) + '%';
+          }).join(' · ')
+        + '</div>'
+        + '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">mesure une préférence, pas une exactitude</div>'
+        + '</div>'
+      );
+
+      return '<div class="card" style="margin-top:14px;">'
+        + '<div class="section-title" style="margin-bottom:8px;">🌊 Comparaison des modèles de houle</div>'
+        + block1 + block2 + block3
+        + '<div style="font-size:10px;color:var(--text-muted);margin-top:8px;padding-top:6px;border-top:1px solid var(--border);">⚠ échantillon limité au régime surfable — les houles ratées par un modèle ne génèrent aucune session, donc aucune donnée</div>'
         + '</div>';
     })()}
   `;
