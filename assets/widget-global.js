@@ -30,7 +30,7 @@ var _gwDayIdx = 0;
 var _gwExtraSrc = (function(){ try { return localStorage.getItem('gwExtraSrc') || null; } catch(e){ return null; } })();
 
 function _gwSetSrc(src) {
-  if (src === 'bom' || src === 'mf') {
+  if (src === 'bom' || src === 'mf' || src === 'marc' || src === 'mix') {
     _gwExtraSrc = src;
   } else {
     _gwExtraSrc = null;
@@ -82,7 +82,7 @@ function _gwBuildModelFcast(key) {
     out.totH.push(p.totH!=null ? p.totH : p.h);
     out.wndH.push(p.windSeaH!=null ? p.windSeaH : null);
     out.wSpd.push(p.windKt!=null ? p.windKt : null); // MFWAM: toujours null, pas de vent dans cette API
-    out.wGst.push(null); // ni BOM ni MFWAM ne fournissent de rafale
+    out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale dispo ; MFWAM: rafale ARPEGE
     out.wDir.push(p.windDir!=null ? p.windDir : null);
     var s2 = nearestSec(p.ms);
     out.sw2h.push(s2 ? s2.h : null); out.sw2t.push(s2 ? s2.t : null); out.sw2d.push(s2 ? s2.dir : null);
@@ -99,14 +99,91 @@ function _gwBuildModelFcast(key) {
   return out;
 }
 
+// "Meilleur mix" (demandé par l'utilisateur) : pas un modèle de plus, un jeu de
+// données synthétique qui prend pour chaque variable le modèle jugé le plus
+// fiable. Règle = résolution documentée (MODEL_STYLE.res, chantier 3.1/9.4),
+// faute de couverture suffisante en skill-score réel par spot pour l'instant
+// (T14/T25 : le compteur de sessions exploitables démarre tout juste, la
+// plupart des spots n'ont pas encore les ~15 sessions nécessaires pour un vrai
+// classement mesuré — cf. AUDIT-previsions.md §11/D). Dès qu'assez de sessions
+// existeront pour un spot, ce serait la bascule naturelle à faire ici.
+// - Houle (hauteur/période/direction/mer totale/houle 2) : MARC (5,5km, seul à
+//   exposer un spectre complet) > meteo.nc (officiel régionalisé NC) > GFS/BOM/
+//   MFWAM en repli si les deux premiers manquent à une heure donnée.
+// - Vent (vitesse/rafale/direction) : meteo.nc > BOM (14km, vent propre au
+//   modèle) > GFS (28km) > MFWAM (vent ARPEGE, résolution non documentée ici).
+// Base temporelle = meteo.nc si disponible (pas horaire, le plus fin), sinon GFS.
+function _gwBuildBestMix() {
+  var base = _ncFcastData || _omFcastData || _fcastData;
+  if (!base || !base.dates || !base.dates.length) return null;
+  var bom = _gwBuildModelFcast('bom');
+  var mf = _gwBuildModelFcast('mf');
+  var marc = _gwBuildModelFcast('marc');
+  var HOULE_PRIORITY = [marc, _ncFcastData, _omFcastData, bom, mf];
+  var VENT_PRIORITY = [_ncFcastData, bom, _omFcastData, mf, marc];
+
+  // Recherche au plus proche DANS UNE SEULE convention de temps : base.dates et
+  // tous les _gwBuildModelFcast(...) sont déjà décalés +11h de façon cohérente
+  // (cf. [[timestamps-utc11-vs-brut]]) — aucune conversion supplémentaire ici.
+  function nearestVal(src, field, ms) {
+    if (!src || !src.dates || !src[field]) return null;
+    var best = null, bd = 5400000;
+    for (var k = 0; k < src.dates.length; k++) {
+      var df = Math.abs(src.dates[k].getTime() - ms);
+      if (df < bd && src[field][k] != null) { bd = df; best = src[field][k]; }
+    }
+    return best;
+  }
+  function pick(priorityList, field, ms) {
+    for (var i = 0; i < priorityList.length; i++) {
+      var v = nearestVal(priorityList[i], field, ms);
+      if (v != null) return v;
+    }
+    return null;
+  }
+
+  var out = { dates: base.dates.slice(), sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[],
+    wndH:[], totH:[], wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
+    sw2Native: !!base.sw2Native };
+  base.dates.forEach(function(dt){
+    var ms = dt.getTime();
+    out.sw1h.push(pick(HOULE_PRIORITY, 'sw1h', ms));
+    out.sw1t.push(pick(HOULE_PRIORITY, 'sw1t', ms));
+    out.sw1d.push(pick(HOULE_PRIORITY, 'sw1d', ms));
+    out.sw2h.push(pick(HOULE_PRIORITY, 'sw2h', ms));
+    out.sw2t.push(pick(HOULE_PRIORITY, 'sw2t', ms));
+    out.sw2d.push(pick(HOULE_PRIORITY, 'sw2d', ms));
+    out.totH.push(pick(HOULE_PRIORITY, 'totH', ms));
+    out.wndH.push(pick(HOULE_PRIORITY, 'wndH', ms));
+    out.wSpd.push(pick(VENT_PRIORITY, 'wSpd', ms));
+    out.wGst.push(pick(VENT_PRIORITY, 'wGst', ms));
+    out.wDir.push(pick(VENT_PRIORITY, 'wDir', ms));
+    out.sst.push(nearestVal(base, 'sst', ms));
+    out.cld.push(nearestVal(base, 'cld', ms));
+    out.rain.push(nearestVal(base, 'rain', ms));
+    out.cldL.push(nearestVal(base, 'cldL', ms));
+    out.cldM.push(nearestVal(base, 'cldM', ms));
+    out.cldH.push(nearestVal(base, 'cldH', ms));
+    out.tAir.push(nearestVal(base, 'tAir', ms));
+    var h1 = out.sw1h[out.sw1h.length-1], t1 = out.sw1t[out.sw1t.length-1];
+    out.pwr.push((h1 && t1) ? +(0.5*h1*h1*t1).toFixed(2) : null);
+  });
+  return out;
+}
+
 // Même logique de sélection que setHsSrc : NC prioritaire, GFS si toggle ou si NC
-// absent — sauf si le widget a sa propre source BOM/MFWAM sélectionnée (_gwExtraSrc).
+// absent — sauf si le widget a sa propre source BOM/MFWAM/MARC/mix sélectionnée
+// (_gwExtraSrc).
 function _gwActiveData() {
-  if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf') {
+  if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf' || _gwExtraSrc === 'marc') {
     var built = _gwBuildModelFcast(_gwExtraSrc);
     if (built) return built;
     // Pas encore chargé (spot tout juste changé, _swellCache pas encore repeuplé)
     // -> retomber sur la source principale plutôt qu'un widget vide.
+  }
+  if (_gwExtraSrc === 'mix') {
+    var mix = _gwBuildBestMix();
+    if (mix) return mix;
   }
   return (_currentHsSrc==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
 }
@@ -142,18 +219,22 @@ function renderGlobalWidget() {
   var badge = document.getElementById('gw-src-badge');
   if (badge) {
     // Boutons plutôt qu'un badge passif : meteo.nc/GFS restent liés au reste de la
-    // page (_gwSetSrc les redirige vers setHsSrc), BOM/MFWAM sont propres au widget.
+    // page (_gwSetSrc les redirige vers setHsSrc), BOM/MFWAM/MARC sont propres au
+    // widget. MARC : houle seule (pas de vent dans son propre flux), mais expose
+    // un spectre par train de houle affiché sur la vue satellite (cf. _gwDrawVectors).
     var activeSrc = _gwExtraSrc || _currentHsSrc;
     var GW_SRC_BTNS = [
-      { key:'nc',  lbl:'🛰 meteo.nc' },
-      { key:'om',  lbl:'🌐 GFS' },
-      { key:'bom', lbl:'🇦🇺 BOM' },
-      { key:'mf',  lbl:'🌊 MFWAM' }
+      { key:'nc',   lbl:'🛰 meteo.nc' },
+      { key:'om',   lbl:'🌐 GFS' },
+      { key:'bom',  lbl:'🇦🇺 BOM' },
+      { key:'mf',   lbl:'🌊 MFWAM' },
+      { key:'marc', lbl:'🎯 MARC' },
+      { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC > meteo.nc > GFS/BOM/MFWAM en repli. Vent : meteo.nc > BOM > GFS > MFWAM. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot).' }
     ];
     badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget">'
       + GW_SRC_BTNS.map(function(s){
           var on = s.key === activeSrc;
-          return '<button class="seg-b'+(on?' is-on':'')+'" aria-pressed="'+on+'" onclick="_gwSetSrc(\''+s.key+'\')">'+s.lbl+'</button>';
+          return '<button class="seg-b'+(on?' is-on':'')+'" aria-pressed="'+on+'"'+(s.title?' title="'+s.title+'"':'')+' onclick="_gwSetSrc(\''+s.key+'\')">'+s.lbl+'</button>';
         }).join('')
       + '</div>';
   }
@@ -484,33 +565,9 @@ function _gwDrawVectors(fi) {
   if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.35), col:'#e8a057',
     info:'💨 '+Math.round(ws)+'nds '+compass(wd2)+' '+Math.round(wd2)+'°', lw:2.6 });
 
-  // Cône d'incertitude directionnelle MARC : seul modèle du comparatif houle à
-  // exposer un spread directionnel (spr) — vérifié empiriquement (BOM/GFS/MF/ECMWF
-  // n'en fournissent pas, cf. _fetchMarcWave). Superposé à la flèche houle existante
-  // (pas une flèche de plus). _swellCache est repeuplé par _renderSwellCompare()
-  // (comparatif plus bas dans la page), donc disponible ici dès qu'il a chargé même
-  // si ce widget affiche meteo.nc/GFS comme source principale — _gwDrawVectors est
-  // rappelé au chargement (cf. fin de _renderSwellCompare) et à chaque survol.
-  var marcPt = null, marcHalfDeg = null;
-  var marcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
-  if (marcPts && marcPts.length) {
-    // d.dates[fi] est en "UTC+11 lu en getUTC*" (décalé +11h, convention du fichier
-    // principal), alors que marcPts[].ms est un VRAI epoch UTC (_fetchMarcWave, pas
-    // décalé) — comparer les deux bruts aurait donné un delta de ~11h non détecté
-    // (deux gros entiers proches par coïncidence numérique, mauvais point choisi
-    // silencieusement). Décaler atMs de -11h pour revenir en vrai UTC avant de comparer.
-    var atMs = d.dates[fi].getTime() - 11*3600000, bd = 4*3600000;
-    marcPts.forEach(function(p){ var df = Math.abs(p.ms-atMs); if (df < bd) { bd = df; marcPt = p; } });
-  }
-  if (marcPt && marcPt.dir!=null && marcPt.spread!=null) {
-    // Spread WW3 = écart-type angulaire, pas un demi-angle de cône littéral — même
-    // approximation visuelle et même clamp que la rose spectrale MARC (chantier 4).
-    marcHalfDeg = Math.max(4, Math.min(85, marcPt.spread));
-  }
-
   var infoHtml = arrows.map(function(ar){
     return '<span style="color:'+ar.col+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+ar.info+'</span>';
-  }).join('') + (marcHalfDeg!=null ? '<span style="color:#4fd3e8;text-shadow:0 1px 2px rgba(0,0,0,.9);"> · 🎯 MARC ±'+Math.round(marcHalfDeg)+'°</span>' : '');
+  }).join('');
   // Anti-collision légère : écart < 22° → ±10° (deg0 = direction vraie pour le label)
   arrows.forEach(function(ar){ ar.deg0 = ar.deg; });
   for (var a=0; a<arrows.length; a++) for (var b2=a+1; b2<arrows.length; b2++) {
@@ -518,19 +575,48 @@ function _gwDrawVectors(fi) {
     if (da < 22) { arrows[a].deg -= 10; arrows[b2].deg += 10; }
   }
 
-  // Cône MARC dessiné AVANT les flèches pour rester dessous (annotation, pas
-  // l'information principale). Même convention de provenance que les flèches
-  // ci-dessous (aucune inversion +180 : ce widget dessine depuis l'extérieur vers
-  // le centre, ce qui donne déjà visuellement "la houle arrive de cette direction").
-  if (marcHalfDeg!=null) {
-    var wRad = (marcPt.dir-90)*Math.PI/180, wHalfRad = marcHalfDeg*Math.PI/180;
-    var wLen = Math.max(R*0.30, Math.max(marcPt.h/hMax,.4)*R*0.82);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, wLen, wRad-wHalfRad, wRad+wHalfRad);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(79,211,232,.16)';
-    ctx.fill();
+  // Spectre MARC complet (jusqu'à 6 partitions : mer du vent + trains de houle
+  // séparés) sur la vue satellite QUAND MARC est la source active du widget
+  // (_gwExtraSrc==='marc') — même détail que la rose spectrale du comparatif houle
+  // plus bas (_drawMarcSpectrumRose dans previsions.html), réadapté ici en canvas
+  // au lieu de SVG. Remplace un premier jet (annotation texte + cône générique
+  // superposé à une AUTRE source) qui débordait de la vue et n'était pas voulu —
+  // le cône ne s'affiche que quand MARC est réellement la source choisie.
+  var GW_MARC_PART_COLORS = ['#e8a057', '#4fa3c7', '#a99ff8', '#e05c5c', '#3dba8a', '#f0c674'];
+  if (typeof _gwExtraSrc !== 'undefined' && _gwExtraSrc === 'marc') {
+    var marcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
+    if (marcPts && marcPts.length) {
+      // d.dates[fi] est décalé +11h (convention du fichier principal), marcPts[].ms
+      // est un vrai epoch UTC (_fetchMarcWave) — décaler avant de comparer, cf.
+      // [[timestamps-utc11-vs-brut]].
+      var atMs = d.dates[fi].getTime() - 11*3600000, bd = 4*3600000, marcPt = null;
+      marcPts.forEach(function(p){ var df = Math.abs(p.ms-atMs); if (df < bd) { bd = df; marcPt = p; } });
+      var parts = marcPt && marcPt.partitions ? marcPt.partitions
+        .map(function(pt, idx){ return pt ? { idx:idx, h:pt.h, dir:pt.dir, spread:pt.spread } : null; })
+        .filter(function(x){ return x && x.dir!=null; }) : [];
+      if (parts.length) {
+        var maxPartH = Math.max.apply(null, parts.map(function(x){ return x.h; }));
+        // Les plus grands trains dessinés en premier (dessous) : les petits, souvent
+        // plus étroits (spread faible = houle propre), restent visibles par-dessus —
+        // même ordre que la rose spectrale du comparatif.
+        parts.slice().sort(function(x,y){ return y.h-x.h; }).forEach(function(pt){
+          var halfDeg = pt.spread!=null ? Math.max(4, Math.min(85, pt.spread)) : 10;
+          var halfRad = halfDeg*Math.PI/180;
+          var rad = (pt.dir-90)*Math.PI/180; // même convention "provenance" que les flèches ci-dessous
+          var len = Math.max(R*0.22, (pt.h/maxPartH)*R*0.8);
+          var col = GW_MARC_PART_COLORS[pt.idx] || '#7dd3fc';
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, len, rad-halfRad, rad+halfRad);
+          ctx.closePath();
+          ctx.fillStyle = col + '2a'; // ~16% alpha (notation hex #RRGGBBAA)
+          ctx.fill();
+          ctx.strokeStyle = col + '80';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+      }
+    }
   }
 
   // Même géométrie que drawArrow() de la rose Houles & Vent : la flèche part de

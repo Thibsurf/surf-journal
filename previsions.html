@@ -4105,11 +4105,28 @@ async function _fetchBomWw3(spot) {
   try {
     var latIdx = Math.max(0, Math.min(720, Math.round((45 - spot.lat) / 0.125)));
     var lonIdx = Math.max(0, Math.min(1600, Math.round((spot.lon - 100) / 0.125)));
+    var ddsR = await fetch(BOM_WW3_BASE + '.dds', { signal: ctrl.signal });
+    var ddsText = await ddsR.text();
+    var lenM = ddsText.match(/time\s*=\s*(\d+)/);
+    var N = lenM ? parseInt(lenM[1], 10) : 81;
     var dasR = await fetch(BOM_WW3_BASE + '.das', { signal: ctrl.signal });
     var dasText = await dasR.text();
     var epochM = dasText.match(/seconds since (\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{1,2}):(\d{1,2})/);
     if (!epochM) throw new Error('epoch introuvable');
     var epochMs = Date.UTC(+epochM[1], +epochM[2]-1, +epochM[3], +epochM[4], +epochM[5], +epochM[6]);
+    // BUG corrigé (signalé utilisateur, "BOM pas sur le bon fuseau ?") : le fetch
+    // prenait TOUJOURS time[0:1:80], soit le tout DÉBUT du run — epochMs est
+    // l'heure d'INITIALISATION du run (souvent 12-24h dans le passé), donc la
+    // fenêtre affichait hier comme "aujourd'hui". Pas un vrai bug de fuseau, mais
+    // le même symptôme visuel. Toutes les autres sources (NC/GFS/MARC) visent déjà
+    // l'index le plus proche de maintenant ; BOM ne le faisait pas — corrigé en
+    // ciblant l'index le plus proche de (maintenant - 6h), même marge que le
+    // chemin NC. Cadence 3h confirmée empiriquement (écart entre deux pas de temps
+    // consécutifs de ce produit, cf. .das) — nécessaire ici car on doit choisir la
+    // fenêtre AVANT de fetcher, contrairement au filtrage a posteriori de NC/GFS.
+    var BOM_STEP_MS = 3 * 3600000;
+    var t0 = Math.max(0, Math.min(N - 1, Math.round((Date.now() - 6*3600000 - epochMs) / BOM_STEP_MS)));
+    var t1 = Math.min(N - 1, t0 + 80);
     // sig_ht_sw1/pk_wav_per/mn_dir_sw1 = houle (train 1, déjà utilisé par le
     // comparatif). Ajoutés (vérifié dispo dans le dataset via .dds, 2026-07-27) :
     // sig_wav_ht/mn_wav_dir = mer TOTALE, sig_ht_wnd_sea = mer du vent seule,
@@ -4118,8 +4135,12 @@ async function _fetchBomWw3(spot) {
     // permettent d'injecter BOM comme source houle+vent complète dans le widget
     // (cf. AUDIT-previsions.md chantier 4/10, demande utilisateur 27/07/2026).
     var vars = ['sig_ht_sw1', 'pk_wav_per', 'mn_dir_sw1', 'sig_wav_ht', 'mn_wav_dir', 'sig_ht_wnd_sea', 'wnd_spd', 'wnd_dir'];
-    var url = BOM_WW3_BASE + '.ascii?time[0:1:80],' + vars.map(function(v) {
-      return v + '[0:1:80][' + latIdx + ':1:' + latIdx + '][' + lonIdx + ':1:' + lonIdx + ']';
+    // Les labels d'index renvoyés par OPeNDAP en .ascii sont RELATIFS à la
+    // tranche demandée (ex. time[20:1:22] renvoie des labels [0]/[1]/[2], pas
+    // [20]/[21]/[22] — vérifié empiriquement) : parseGrid() reste donc correcte
+    // sans changement, elle indexe déjà à partir de 0 quelle que soit la tranche.
+    var url = BOM_WW3_BASE + '.ascii?time[' + t0 + ':1:' + t1 + '],' + vars.map(function(v) {
+      return v + '[' + t0 + ':1:' + t1 + '][' + latIdx + ':1:' + latIdx + '][' + lonIdx + ':1:' + lonIdx + ']';
     }).join(',');
     var r = await fetch(url, { signal: ctrl.signal });
     var text = await r.text();
@@ -4176,25 +4197,50 @@ async function _fetchMeteoFranceWave(spot) {
     // ajoutés (vérifié dispo sur ce modèle via l'API, 2026-07-27) en plus de la
     // houle (train 1+2) déjà récupérée, pour permettre d'injecter MFWAM comme
     // source complète dans le widget (cf. AUDIT-previsions.md chantier 4/10,
-    // demande utilisateur). Pas de vent atmosphérique dans cette API marine
-    // (modèle houle seul, pas de wind_speed/direction pour meteofrance_wave —
-    // vérifié empiriquement, contrairement à BOM qui expose son propre vent).
-    var url = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + spot.lat + '&longitude=' + spot.lon
+    // demande utilisateur). L'API MARINE d'Open-Meteo n'a pas de vent pour
+    // meteofrance_wave (vérifié empiriquement — wind_speed_10m/wind_direction_10m
+    // renvoient "undefined"/null quel que soit le modèle marine, ce paramètre
+    // n'existe que sur l'API météo classique). Le vent DWI/WIND que la doc
+    // Météo-France documente pour MFWAM est le forçage ARPEGE (même maison) —
+    // récupéré séparément ci-dessous via l'API forecast classique
+    // (models=meteofrance_arpege_world, vérifié avec de vraies données sur les
+    // coordonnées NC : vent + rafales non nuls).
+    var waveUrl = 'https://marine-api.open-meteo.com/v1/marine?latitude=' + spot.lat + '&longitude=' + spot.lon
       + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction'
       + ',wave_height,wave_direction,wave_period,wind_wave_height,wind_wave_direction,wind_wave_period'
       + '&models=meteofrance_wave&forecast_days=10&timezone=GMT';
-    var r = await fetch(url, { signal: ctrl.signal });
-    var j = await r.json();
+    var windUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + spot.lat + '&longitude=' + spot.lon
+      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn'
+      + '&models=meteofrance_arpege_world&forecast_days=10&timezone=GMT';
+    var results = await Promise.all([
+      fetch(waveUrl, { signal: ctrl.signal }).then(function(rr){ return rr.ok ? rr.json() : null; }).catch(function(){ return null; }),
+      fetch(windUrl, { signal: ctrl.signal }).then(function(rr){ return rr.ok ? rr.json() : null; }).catch(function(){ return null; }),
+    ]);
+    var j = results[0], jw = results[1];
     if (!j || !j.hourly || !j.hourly.time) return { primary: [], secondary: [] };
+    // Les deux API renvoient des heures ISO identiques quand interrogées avec la
+    // même &timezone=GMT (vérifié) : table de correspondance directe par chaîne
+    // d'heure, plus robuste qu'un rapprochement par epoch ms (cf. [[timestamps-utc11-vs-brut]]
+    // — éviter un nouveau piège de conversion en repassant par une recherche au plus proche).
+    var windByTime = {};
+    if (jw && jw.hourly && jw.hourly.time) {
+      jw.hourly.time.forEach(function(t, k){
+        windByTime[t] = { kt: jw.hourly.wind_speed_10m[k], dir: jw.hourly.wind_direction_10m[k], gustKt: jw.hourly.wind_gusts_10m[k] };
+      });
+    }
     var h = j.hourly, primary = [], secondary = [];
     for (var i = 0; i < h.time.length; i++) {
       var ms = Date.parse(h.time[i] + 'Z');
+      var w = windByTime[h.time[i]];
       if (h.swell_wave_height[i] != null) primary.push({
         ms: ms, h: h.swell_wave_height[i], t: h.swell_wave_period[i], dir: h.swell_wave_direction && h.swell_wave_direction[i],
         totH: h.wave_height ? h.wave_height[i] : null,
         totDir: h.wave_direction ? h.wave_direction[i] : null,
         windSeaH: h.wind_wave_height ? h.wind_wave_height[i] : null,
         windSeaDir: h.wind_wave_direction ? h.wind_wave_direction[i] : null,
+        windKt: w && w.kt!=null ? w.kt : null,
+        windDir: w && w.dir!=null ? w.dir : null,
+        windGustKt: w && w.gustKt!=null ? w.gustKt : null,
       });
       if (h.secondary_swell_wave_height && h.secondary_swell_wave_height[i] != null) secondary.push({ ms: ms, h: h.secondary_swell_wave_height[i], t: h.secondary_swell_wave_period && h.secondary_swell_wave_period[i], dir: h.secondary_swell_wave_direction && h.secondary_swell_wave_direction[i] });
     }
