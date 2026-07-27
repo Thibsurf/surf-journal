@@ -554,6 +554,10 @@ html.widget-mode #gw-widget { margin-bottom:0; }
       </div>
     </div>
     <div id="swell-cmp-vote" style="display:none;margin-top:10px;padding:10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;"></div>
+    <!-- Fiabilité au spot (AUDIT-previsions.md §11.9) : biais ordinal par modèle depuis
+         les réponses "écart à la prévision" (obs_delta, Journal) — masqué sous 15
+         sessions pour ce spot, jamais affiché comme une exactitude absolue. -->
+    <div id="spot-reliability-card" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);"></div>
   </div>
 
   <!-- Petit encart « fourchette inter-modèles » : min/max Hs/période/direction houle
@@ -3060,6 +3064,7 @@ function _buildSecondaryCharts(d) {
     _addChartHover(cvPow,'c-power',d.lbl.length);
     // Charger les stats sessions pour le spot actif (async, redessine quand prêt)
     _loadSpotTriggerRef(SPOTS[currentSpot]?SPOTS[currentSpot].name:'');
+    _loadSpotReliabilityCard(SPOTS[currentSpot]?SPOTS[currentSpot].name:'');
   }
 }
 
@@ -3112,6 +3117,64 @@ async function _loadSpotTriggerRef(spotName) {
   } catch(e){}
 }
 function _redrawPower(){ if(charts['c-power']) charts['c-power'].update('none'); }
+
+// Fiabilité au spot (AUDIT-previsions.md §11.9) : biais ordinal moyen(obs_delta) par
+// modèle, depuis les réponses "écart à la prévision" du Journal (index.html), filtrées
+// sur ce spot. Masqué sous 15 sessions PAR MODÈLE (pas 15 sessions au total) — le
+// seuil sert à séparer un modèle systématiquement biaisé d'un modèle calibré (§11.6),
+// donc il s'applique par modèle, sinon 15 votes concentrés sur un seul modèle
+// afficheraient à tort une "fiabilité" pour tous les autres avec 1-2 points chacun.
+var _spotReliabilityCache = {};
+async function _loadSpotReliabilityCard(spotName) {
+  var el = document.getElementById('spot-reliability-card');
+  if (!el) return;
+  if (!spotName) { el.style.display = 'none'; return; }
+  if (_spotReliabilityCache[spotName]) { _renderSpotReliabilityCard(el, spotName, _spotReliabilityCache[spotName]); return; }
+  _ensureSupabaseClient();
+  if (!_tokenSbClient) { el.style.display = 'none'; return; }
+  var spot = SPOTS[currentSpot];
+  var keywords = (spot && spot.surfSpots && spot.surfSpots.length) ? spot.surfSpots
+    : [(spot && spot.sessionSpot) ? spot.sessionSpot : _spotKeyword(spotName)];
+  try {
+    var orFilter = keywords.map(function(k){ return 'spot.ilike.%'+k+'%'; }).join(',');
+    var { data, error } = await _tokenSbClient.from('sessions').select('obs_delta,fcst_model')
+      .or(orFilter).not('obs_delta', 'is', null).not('fcst_model', 'is', null).limit(1000);
+    if (error || !data) { el.style.display = 'none'; return; }
+    var byModel = {};
+    data.forEach(function(s) {
+      byModel[s.fcst_model] = byModel[s.fcst_model] || { n: 0, sum: 0, conforme: 0 };
+      byModel[s.fcst_model].n++;
+      byModel[s.fcst_model].sum += s.obs_delta;
+      if (s.obs_delta === 0) byModel[s.fcst_model].conforme++;
+    });
+    _spotReliabilityCache[spotName] = byModel;
+    _renderSpotReliabilityCard(el, spotName, byModel);
+  } catch (e) { el.style.display = 'none'; }
+}
+function _renderSpotReliabilityCard(el, spotName, byModel) {
+  var OBS_DELTA_MIN = 15; // par modèle, cf. commentaire de _loadSpotReliabilityCard
+  var rows = Object.keys(byModel).map(function(k) {
+    var m = byModel[k];
+    return { key: k, n: m.n, bias: m.sum / m.n, conformePct: Math.round(m.conforme / m.n * 100) };
+  }).filter(function(r) { return r.n >= OBS_DELTA_MIN; })
+    .sort(function(a, b) { return Math.abs(a.bias) - Math.abs(b.bias); });
+  if (!rows.length) { el.style.display = 'none'; return; }
+  var maxN = Math.max.apply(null, rows.map(function(r){ return r.n; }));
+  el.innerHTML = '<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px;">📊 Fiabilité au spot — ' + escapeHtml(spotName) + '</div>'
+    + rows.map(function(r) {
+        var info = MODEL_STYLE[r.key] || { label: r.key, col: '#7a94aa' };
+        var barPct = Math.max(6, r.n / maxN * 100);
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">'
+          + '<span style="min-width:64px;color:' + info.col + ';font-weight:600;">' + info.label + '</span>'
+          + '<span style="min-width:82px;color:var(--muted);">conforme ' + r.conformePct + '%</span>'
+          + '<span style="min-width:78px;color:var(--muted);">biais ' + (r.bias >= 0 ? '+' : '') + r.bias.toFixed(2) + '</span>'
+          + '<div style="flex:1;height:8px;background:var(--glass);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + barPct + '%;background:' + info.col + ';opacity:.7;"></div></div>'
+          + '<span style="min-width:26px;text-align:right;color:var(--faint);">n=' + r.n + '</span>'
+          + '</div>';
+      }).join('')
+    + '<div style="font-size:11px;color:var(--faint);margin-top:4px;">⚠ échantillon limité au régime surfable — les houles ratées par un modèle ne génèrent aucune session, donc aucune donnée. Biais en unité ordinale (obs_delta), pas converti en mètres.</div>';
+  el.style.display = 'block';
+}
 
 
 function updateHsToggleUI() {
