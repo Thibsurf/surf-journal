@@ -75,19 +75,36 @@ function _gwBuildModelFcast(key) {
   }
   var out = { dates:[], sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], sw2NativeArr:[], wndH:[], totH:[],
     wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
-    sw2Native: sec.length > 0 };
+    sw2Native: key === 'marc' ? true : sec.length > 0 };
   entry.primary.forEach(function(p){
     out.dates.push(new Date(p.ms + 11*3600000)); // même convention que partout : UTC+11 lu en getUTC*
-    out.sw1h.push(p.h!=null?p.h:null); out.sw1t.push(p.t!=null?p.t:null); out.sw1d.push(p.dir!=null?p.dir:null);
-    out.totH.push(p.totH!=null ? p.totH : p.h);
-    out.wndH.push(p.windSeaH!=null ? p.windSeaH : null);
+    if (key === 'marc' && p.partitions) {
+      // MARC : hs/dir au sommet = houle TOTALE (toutes partitions confondues),
+      // pas la houle primaire — la vraie décomposition est dans p.partitions[]
+      // (convention WW3 : 0 = mer du vent, 1 = houle primaire, 2 = houle
+      // secondaire, cf. _fetchMarcWave). Reconstituer ici pour rester cohérent
+      // avec le sens de sw1h/sw2h/wndH partout ailleurs dans le widget — la
+      // houle 2 de MARC était accessible (déjà utilisée pour le spectre) mais
+      // pas branchée sur sw2h (signalé par l'utilisateur).
+      var part0 = p.partitions[0], part1 = p.partitions[1], part2 = p.partitions[2];
+      out.sw1h.push(part1 ? part1.h : null); out.sw1t.push(part1 ? part1.t : null); out.sw1d.push(part1 ? part1.dir : null);
+      out.sw2h.push(part2 ? part2.h : null); out.sw2t.push(part2 ? part2.t : null); out.sw2d.push(part2 ? part2.dir : null);
+      out.sw2NativeArr.push(!!part2);
+      out.wndH.push(part0 ? part0.h : null);
+      out.totH.push(p.h);
+    } else {
+      out.sw1h.push(p.h!=null?p.h:null); out.sw1t.push(p.t!=null?p.t:null); out.sw1d.push(p.dir!=null?p.dir:null);
+      out.totH.push(p.totH!=null ? p.totH : p.h);
+      out.wndH.push(p.windSeaH!=null ? p.windSeaH : null);
+      var s2 = nearestSec(p.ms);
+      out.sw2h.push(s2 ? s2.h : null); out.sw2t.push(s2 ? s2.t : null); out.sw2d.push(s2 ? s2.dir : null);
+      out.sw2NativeArr.push(!!s2); // par créneau : ce point précis a-t-il une vraie houle 2 (pas juste la série en général) ?
+    }
     out.wSpd.push(p.windKt!=null ? p.windKt : null); // MFWAM: toujours null, pas de vent dans cette API
     out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale dispo ; MFWAM: rafale ARPEGE
     out.wDir.push(p.windDir!=null ? p.windDir : null);
-    var s2 = nearestSec(p.ms);
-    out.sw2h.push(s2 ? s2.h : null); out.sw2t.push(s2 ? s2.t : null); out.sw2d.push(s2 ? s2.dir : null);
-    out.sw2NativeArr.push(!!s2); // par créneau : ce point précis a-t-il une vraie houle 2 (pas juste la série en général) ?
-    out.pwr.push((p.h && p.t) ? +(0.5*p.h*p.h*p.t).toFixed(2) : null);
+    var _sw1h = out.sw1h[out.sw1h.length-1], _sw1t = out.sw1t[out.sw1t.length-1];
+    out.pwr.push((_sw1h && _sw1t) ? +(0.5*_sw1h*_sw1h*_sw1t).toFixed(2) : null);
     var oi = nearestOmIdx(p.ms);
     out.sst.push(oi!=null && om.sst ? om.sst[oi] : null);
     out.cld.push(oi!=null && om.cld ? om.cld[oi] : null);
@@ -253,16 +270,21 @@ function renderGlobalWidget() {
   if (badge) {
     // Boutons plutôt qu'un badge passif : meteo.nc/GFS restent liés au reste de la
     // page (_gwSetSrc les redirige vers setHsSrc), BOM/MFWAM/MARC sont propres au
-    // widget. MARC : houle seule (pas de vent dans son propre flux), mais expose
-    // un spectre par train de houle affiché sur la vue satellite (cf. _gwDrawVectors).
+    // widget. Résolution affichée à côté du nom (MODEL_STYLE.res, même source que
+    // les légendes du comparatif, chantier 9.4) — demandé par l'utilisateur, pour
+    // ne pas la laisser cachée dans un title comme c'était le cas avant ce chantier.
     var activeSrc = _gwExtraSrc || _currentHsSrc;
+    function _gwResSuffix(key) {
+      var res = (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE[key]) ? MODEL_STYLE[key].res : null;
+      return res ? ' <span style="opacity:.65;font-size:9px;">'+res+'</span>' : '';
+    }
     var GW_SRC_BTNS = [
       { key:'nc',   lbl:'🛰 meteo.nc' },
-      { key:'om',   lbl:'🌐 GFS' },
-      { key:'bom',  lbl:'🇦🇺 BOM' },
+      { key:'om',   lbl:'🌐 GFS'+_gwResSuffix('gfs') },
+      { key:'bom',  lbl:'🇦🇺 BOM'+_gwResSuffix('bom') },
       { key:'mf',   lbl:'🌊 MFWAM' },
-      { key:'marc', lbl:'🎯 MARC' },
-      { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC > meteo.nc > GFS/BOM/MFWAM en repli. Vent : meteo.nc > BOM > GFS > MFWAM. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot).' }
+      { key:'marc', lbl:'🎯 MARC'+_gwResSuffix('marc'), title:'Houle (spectre complet par train) + vent (forçage ECMWF réel du run, ~9km regrillé sur la maille 5,5km).' },
+      { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC > meteo.nc > GFS/BOM/MFWAM en repli. Vent : meteo.nc > BOM > MARC > GFS > MFWAM. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot).' }
     ];
     badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget">'
       + GW_SRC_BTNS.map(function(s){
@@ -560,7 +582,13 @@ function _gwDrawVectors(fi) {
   cv.width = W*dpr; cv.height = H*dpr;
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
-  var cx = W/2, cy = H/2, R = Math.min(W, H)/2 - 18;
+  // Le cercle centré sur H/2 mordait sur la bande d'info du bas (jusqu'à 2 lignes
+  // houle+vent, ~58px, position:absolute + bottom:0) — le repère "S" et parfois
+  // la flèche elle-même se retrouvaient masqués derrière (signalé par l'utilisateur :
+  // "c'était proprement en dessous avant"). Réserver cette zone en calculant le
+  // cercle sur la hauteur RESTANTE au-dessus, pas sur H entier.
+  var INFO_ZONE_H = 58;
+  var cx = W/2, cy = (H-INFO_ZONE_H)/2 + 4, R = Math.min(W, H-INFO_ZONE_H)/2 - 14;
 
   // Repère : cercle + graduations 8 directions + lettres cardinales + point spot
   ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1;
@@ -609,14 +637,15 @@ function _gwDrawVectors(fi) {
   }
 
   // Spectre MARC complet (jusqu'à 6 partitions : mer du vent + trains de houle
-  // séparés) sur la vue satellite QUAND MARC est la source active du widget
-  // (_gwExtraSrc==='marc') — même détail que la rose spectrale du comparatif houle
-  // plus bas (_drawMarcSpectrumRose dans previsions.html), réadapté ici en canvas
-  // au lieu de SVG. Remplace un premier jet (annotation texte + cône générique
-  // superposé à une AUTRE source) qui débordait de la vue et n'était pas voulu —
-  // le cône ne s'affiche que quand MARC est réellement la source choisie.
+  // séparés) sur la vue satellite QUAND MARC est la source active du widget, ET
+  // sur le mix (qui pioche sa houle chez MARC en premier, cf. HOULE_PRIORITY) —
+  // même détail que la rose spectrale du comparatif houle plus bas
+  // (_drawMarcSpectrumRose dans previsions.html), réadapté ici en canvas au lieu
+  // de SVG. Remplace un premier jet (annotation texte + cône générique superposé
+  // à une AUTRE source) qui débordait de la vue et n'était pas voulu — le cône ne
+  // s'affiche que quand la houle affichée vient réellement de MARC.
   var GW_MARC_PART_COLORS = ['#e8a057', '#4fa3c7', '#a99ff8', '#e05c5c', '#3dba8a', '#f0c674'];
-  if (typeof _gwExtraSrc !== 'undefined' && _gwExtraSrc === 'marc') {
+  if (_gwExtraSrc === 'marc' || _gwExtraSrc === 'mix') {
     var marcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
     if (marcPts && marcPts.length) {
       // d.dates[fi] est décalé +11h (convention du fichier principal), marcPts[].ms
