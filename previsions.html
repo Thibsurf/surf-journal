@@ -8432,7 +8432,10 @@ function _toggleAromeCmpHistory() {
 // _windStationCache : séries station déjà fetchées, par station → pas de refetch au
 // va-et-vient du toggle (« garder ça en cache » demandé).
 var _windCmpHidden = (function(){ try { return JSON.parse(localStorage.getItem('windCmpHidden')||'{}') || {}; } catch(e){ return {}; } })();
-var _windCmpAtStation = false;
+// Persisté (AUDIT-previsions.md §9.3) : ce choix concerne "ce que je vais surfer" (au
+// spot) vs "ce que je peux vérifier" (à la station) — pas un réglage d'affichage à
+// redécouvrir à chaque session, même pattern que _windCmpHidden ci-dessus.
+var _windCmpAtStation = (function(){ try { return localStorage.getItem('windCmpAtStation') === '1'; } catch(e){ return false; } })();
 var _windStationCache = {};
 // AROME (aro) est ré-échantillonnable depuis 2026-07-24 : décodage direct des
 // GRIB2 Météo-France (ingestion/fetch_arome.py, cf. model_forecast_cache) à
@@ -8445,12 +8448,17 @@ function _toggleWindCmpModel(key) {
   try { localStorage.setItem('windCmpHidden', JSON.stringify(_windCmpHidden)); } catch(e){}
   _drawAromeCompareFromCache();
 }
-async function _toggleWindCmpStation() {
-  _windCmpAtStation = !_windCmpAtStation;
-  var btn = document.getElementById('wcmp-loc-btn');
-  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+// Sélecteur segmenté explicite (§9.2/9.3) plutôt qu'un bouton bascule : les deux
+// options restent visibles en permanence, comme deux questions différentes
+// ("ce que je vais surfer" vs "ce que je peux vérifier"), pas un simple réglage.
+async function _setWindCmpStation(atStation) {
+  if (_windCmpAtStation === atStation) return;
+  _windCmpAtStation = atStation;
+  try { localStorage.setItem('windCmpAtStation', atStation ? '1' : '0'); } catch(e){}
+  var spotBtn = document.getElementById('wcmp-loc-spot'), stBtn = document.getElementById('wcmp-loc-station');
+  if (spotBtn) spotBtn.disabled = true; if (stBtn) stBtn.disabled = true;
   try { if (_aromeData) await _renderAromeCompare(_aromeData); }
-  finally { if (btn) { btn.disabled = false; btn.style.opacity = '1'; } }
+  finally { if (spotBtn) spotBtn.disabled = false; if (stBtn) stBtn.disabled = false; }
 }
 // Ré-échantillonne les modèles « grille » (meteo.nc / GFS / BOM) aux coordonnées de la
 // station de mesure — les seuls dont l'API accepte une lat/lon libre. Mis en cache par
@@ -8520,22 +8528,36 @@ async function _fetchWindAtStation(stLat, stLon) {
 // Met à jour le bouton spot↔station, sa note et l'état des cases à cocher de la légende.
 // Appelé à chaque redraw : libellés/états dépendent du mode courant et de la station.
 function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
-  var btn = document.getElementById('wcmp-loc-btn');
+  var spotBtn = document.getElementById('wcmp-loc-spot');
+  var stBtn = document.getElementById('wcmp-loc-station');
   var note = document.getElementById('wcmp-loc-note');
-  if (btn) {
-    btn.textContent = atStation ? '📍 Au point de mesure' : '🎯 Modèles au spot';
-    btn.disabled = !hasStation && !atStation;
-    btn.style.cursor = btn.disabled ? 'not-allowed' : 'pointer';
-    if (!btn.style.opacity || btn.style.opacity === '1' || btn.style.opacity === '0.5') btn.style.opacity = btn.disabled ? '.5' : '1';
-    btn.style.background = atStation ? 'rgba(61,186,138,.15)' : 'rgba(79,163,199,.12)';
-    btn.style.borderColor = atStation ? 'rgba(61,186,138,.4)' : 'rgba(79,163,199,.35)';
-    btn.style.color = atStation ? 'var(--ok)' : 'var(--accent)';
+  if (spotBtn) {
+    spotBtn.setAttribute('aria-pressed', String(!atStation));
+    spotBtn.style.background = !atStation ? 'var(--surface)' : 'none';
+    spotBtn.style.color = !atStation ? 'var(--text)' : 'var(--muted)';
+    spotBtn.style.boxShadow = !atStation ? '0 1px 2px rgba(0,0,0,.3)' : 'none';
+  }
+  if (stBtn) {
+    stBtn.disabled = !hasStation;
+    stBtn.title = hasStation ? '' : 'Station de mesure inconnue pour ce spot';
+    stBtn.setAttribute('aria-pressed', String(atStation));
+    stBtn.style.background = atStation ? 'var(--surface)' : 'none';
+    stBtn.style.color = atStation ? 'var(--ok)' : (hasStation ? 'var(--muted)' : 'var(--faint)');
+    stBtn.style.boxShadow = atStation ? '0 1px 2px rgba(0,0,0,.3)' : 'none';
+    stBtn.style.cursor = hasStation ? 'pointer' : 'not-allowed';
+    stBtn.style.opacity = hasStation ? '1' : '.5';
   }
   if (note) {
+    // Deux QUESTIONS différentes, pas un simple réglage d'affichage (§9.3) : le
+    // classement de fiabilité (badge de corrélation ci-dessous) n'a de validité
+    // qu'en mode "à la station" — cette asymétrie doit être visible avant les chiffres.
     var dkm = stDistKm != null ? ' (~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km)' : '';
+    var stLine = stName ? '<b>' + stName + '</b>' + dkm : 'station inconnue';
     note.innerHTML = atStation
-      ? 'Modèles ré-échantillonnés à la station' + (stName ? ' <b>' + stName + '</b>' : '') + ' · ECMWF indispo ici'
-      : (hasStation ? 'Modèles au spot · clic pour comparer <b>à la station' + dkm + '</b> (corrélation sans biais de distance)' : 'Station de mesure inconnue — comparaison au spot uniquement');
+      ? 'Modèles ré-échantillonnés au point de mesure ' + stLine + ' — le classement de fiabilité ci-dessous est valide ici, et seulement ici. ECMWF indisponible dans ce mode (lié à un spot Windguru fixe).'
+      : (hasStation
+          ? 'Ce que tu vas surfer. Modèles échantillonnés au spot — mesures les plus proches : ' + stLine + '. Un écart inclut cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle.'
+          : 'Station de mesure inconnue — comparaison au spot uniquement, aucune vérification possible ici.');
   }
   ['obs', 'aro', 'nc', 'gfs', 'bom', 'ecmwf', 'marc'].forEach(function(k) {
     var sp = document.getElementById('wcmp-leg-' + k);
@@ -8726,13 +8748,17 @@ function _renderAromeCardData(j, wgId, body) {
   // Comparatif vent : mesures station (passé) vs AROME/meteo.nc/GFS/BOM/ECMWF
   var cmpHtml = '<div style="border-top:1px solid rgba(255,255,255,.06);padding-top:8px;margin-bottom:8px;">'
     + '<b style="color:var(--text);font-size:11.5px;display:block;margin-bottom:6px;">🆚 Vent : mesuré vs modèles</b>'
-    // Bascule spot ↔ station : « au spot » = modèles échantillonnés au spot (défaut) ;
-    // « au point de mesure » = ré-échantillonnés aux coordonnées de la station → la
-    // corrélation ne mélange plus l'erreur du modèle avec l'écart de distance spot↔station.
-    // Libellé + note remplis par _updateWindCmpControls() (dépend de la station connue).
-    + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">'
-    + '<button id="wcmp-loc-btn" onclick="_toggleWindCmpStation()" style="background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.35);color:var(--accent);font-size:11px;padding:3px 10px;border-radius:12px;cursor:pointer;font-weight:600;white-space:nowrap;">🎯 Modèles au spot</button>'
-    + '<span id="wcmp-loc-note" style="font-size:11px;color:var(--faint);line-height:1.35;"></span>'
+    // Sélecteur segmenté (§9.2/9.3) : deux QUESTIONS différentes toujours visibles,
+    // pas un bouton bascule qui cache l'état inverse — « au spot » = ce que tu vas
+    // surfer (modèles échantillonnés au spot) ; « à la station » = ce que tu peux
+    // vérifier (ré-échantillonnés à la station → classement de fiabilité valide).
+    // Style + note remplis par _updateWindCmpControls() (dépend de la station connue).
+    + '<div style="margin-bottom:6px;">'
+    + '<div class="seg" role="group" aria-label="Point d\'échantillonnage des modèles" style="display:inline-flex;background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:2px;gap:2px;">'
+    + '<button id="wcmp-loc-spot" onclick="_setWindCmpStation(false)" aria-pressed="true" style="font:600 11px/1 var(--font-b);color:var(--text);background:var(--surface);border:0;padding:7px 12px;border-radius:8px;cursor:pointer;min-height:36px;white-space:nowrap;">🎯 Au spot</button>'
+    + '<button id="wcmp-loc-station" onclick="_setWindCmpStation(true)" aria-pressed="false" style="font:600 11px/1 var(--font-b);color:var(--muted);background:none;border:0;padding:7px 12px;border-radius:8px;cursor:pointer;min-height:36px;white-space:nowrap;">📍 À la station</button>'
+    + '</div>'
+    + '<div id="wcmp-loc-note" style="font-size:11px;color:var(--faint);line-height:1.4;margin-top:5px;"></div>'
     + '</div>'
     // Légende = cases à cocher : clic sur un modèle = l\'afficher/masquer (redessine
     // sans refetch). État (opacité/barré/clic) posé par _updateWindCmpControls().
