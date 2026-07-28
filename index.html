@@ -3526,13 +3526,24 @@ async function _attachPendingModelVote(sessionId, spot, date) {
 // Écrit le vote dans sessions.model_reliability si la colonne existe, sinon
 // repli localStorage 'model-reliability' (clé = id) — même mécanisme que
 // saveModelReliability() côté previsions.html, dupliqué ici car page distincte.
+// Ne mémoriser QUE le résultat positif — la colonne, une fois là, ne
+// redisparaît pas, donc autant éviter de la re-tester à chaque appel. Un
+// résultat négatif, en revanche, N'EST PAS mémorisé : sur ce projet la
+// colonne existe déjà en production (migration faite), donc un échec ici
+// reflète presque toujours un aléa réseau (connexion flaky à la plage) plutôt
+// qu'une absence réelle — le mémoriser figerait l'outil de fiabilité houle en
+// panne pour le reste de la session, sans jamais réessayer (cf. AUDIT.md
+// 28/07/2026, "je ne vois toujours pas de figure" : un des candidats trouvés
+// à cette persistance du problème sur plusieurs tentatives).
 var _modelRelColOkJournal = null;
 async function _hasModelReliabilityColumnJournal() {
-  if (_modelRelColOkJournal !== null) return _modelRelColOkJournal;
-  if (!sb) { _modelRelColOkJournal = false; return false; }
-  try { var r = await sb.from('sessions').select('model_reliability').limit(1); _modelRelColOkJournal = !r.error; }
-  catch (e) { _modelRelColOkJournal = false; }
-  return _modelRelColOkJournal;
+  if (_modelRelColOkJournal === true) return true;
+  if (!sb) return false;
+  try {
+    var r = await sb.from('sessions').select('model_reliability').limit(1);
+    if (!r.error) { _modelRelColOkJournal = true; return true; }
+  } catch (e) {}
+  return false;
 }
 async function saveModelReliabilityFromJournal(sessionId, vote) {
   if (sb && await _hasModelReliabilityColumnJournal()) {
@@ -3606,13 +3617,19 @@ function _modelVoteUrl(opts) {
 // avec case à cocher, sans quitter le formulaire. Lit model_forecast_cache
 // (archivé par previsions.html à chaque visite) plutôt que de dupliquer ici
 // tout le fetch BOM/Windguru/Open-Meteo.
+// Même raison de ne mémoriser QUE le positif que _hasModelReliabilityColumnJournal
+// juste au-dessus : c'est CETTE fonction précisément qui gate tout l'outil de
+// fiabilité houle (_fetchModelTableRows retourne null direct si false) — un
+// aléa réseau mémorisé ici l'aurait éteint pour le reste de la session entière.
 var _modelCacheTableOkJournal = null;
 async function _hasModelCacheTableJournal() {
-  if (_modelCacheTableOkJournal !== null) return _modelCacheTableOkJournal;
-  if (!sb) { _modelCacheTableOkJournal = false; return false; }
-  try { var r = await sb.from('model_forecast_cache').select('id').limit(1); _modelCacheTableOkJournal = !r.error; }
-  catch (e) { _modelCacheTableOkJournal = false; }
-  return _modelCacheTableOkJournal;
+  if (_modelCacheTableOkJournal === true) return true;
+  if (!sb) return false;
+  try {
+    var r = await sb.from('model_forecast_cache').select('id').limit(1);
+    if (!r.error) { _modelCacheTableOkJournal = true; return true; }
+  } catch (e) {}
+  return false;
 }
 
 // { modelKey: {val, period, dir} } — échantillon = heure de Hs max de la
