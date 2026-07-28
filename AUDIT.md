@@ -1003,3 +1003,55 @@ après coup. `CACHE_NAME` → `surf-nc-v27`.
 cross/onshore, nuit, marée favorable, dégradé de confiance) sont toutes
 posées. Prochaine étape recommandée par `REPRISE.md` : T18 (extraction des 10
 modules JS restants), qui débloque T19 et T30.
+
+## Préchauffage du cache AROME + repli archive parallélisé — FAIT (2026-07-28)
+
+Demande utilisateur : optimiser le rafraîchissement des modèles, en particulier
+"le tableau arome met du temps à charger" (signalé, pas mesuré au départ).
+
+**Root cause trouvée en lisant le code, pas en devinant** : le cache edge du
+Worker sur `/arome` (`Cache-Control: max-age=7200`) n'était rempli que par le
+PREMIER visiteur après expiration — un cache froid déclenche 2 aller-retours
+séquentiels vers l'API interne Windguru (`forecast_spot` puis `forecast`,
+le second dépend des params du premier, pas parallélisable). Le client
+(`_loadAromeWidget`) attendait en plus jusqu'à 12s ce fetch live AVANT même de
+tenter le repli archive Supabase (`_fetchAromeArchive`, lui-même rapide) —
+double pénalité séquentielle dans le pire cas.
+
+**Fix Worker** (`worker_cloudflare/worker.js`) : logique de fetch extraite en
+`fetchAromeFromWindguru()`, réutilisée par une nouvelle `prewarmArome()` qui
+rafraîchit le cache de tous les spots connus — 7 par défaut (même table
+`KNOWN_WG_SPOTS` que `_wgIdForSpot()`/`wgIdForSpot()` ailleurs dans le repo,
+dupliquée volontairement, pas de bundler) + les spots utilisateur avec un
+`wgId` réglé dans ⚙ (lus dans `shared_spots`, même requête que
+`cache-model-forecasts.mjs`). Chaque spot est indépendant → `Promise.allSettled`
+en parallèle plutôt qu'une boucle séquentielle.
+
+Pas de nouveau Cron Trigger : piggyback sur le cron existant (`*/5 * * * *`,
+qui ne servait qu'au token meteo.nc), throttlé à ~100 min via une clé KV
+(`arome-last-warm`) — sous les 7200s du cache pour qu'il ne redevienne jamais
+froid, sans spammer Windguru toutes les 5 min pour rien.
+
+**Fix client** : `_fetchAromeArchive(spot)` est maintenant lancé EN PARALLÈLE
+du fetch live (avant : uniquement en repli séquentiel). Timeout du fetch live
+réduit 12s → 8s (le cache étant quasi toujours chaud désormais, un dépassement
+signale un vrai problème, pas la peine d'attendre aussi longtemps).
+
+**Vérifié en local** (`wrangler dev --config wrangler.toml`, depuis
+`worker_cloudflare/`) : `/arome?spot=6476` → 1900ms à froid. Trigger manuel du
+cron (`curl .../cdn-cgi/handler/scheduled`) → logs confirment les 7 spots
+préchauffés en parallèle (`[Cron] AROME prewarm OK — spot ...` ×7). Rechargé
+`/arome?spot=6476` → 70ms (cache chaud). Second trigger cron immédiat → pas de
+nouveau prewarm dans les logs (throttle actif). `wrangler deploy --dry-run`
+propre avant déploiement réel. Capture d'écran de la carte AROME après le
+changement client : comparatif + tableau toujours corrects, 0 erreur JS.
+
+Déployé en production le 28/07 (`meteo-proxy-worker`, version `630ffacc`).
+Smoke-test post-déploiement : `/arome` et `/debug` → 200. `CACHE_NAME` →
+`surf-nc-v28`.
+
+**Vérification en attente (pas mesurable immédiatement)** : confirmer sur
+quelques jours, via les logs Cloudflare (`wrangler tail` ou dashboard), que le
+throttle KV tient bien la cadence ~100 min sans dérive, et que le temps de
+chargement perçu de la carte AROME s'améliore en usage réel (pas seulement en
+local). Rien d'autre à faire dans l'immédiat.

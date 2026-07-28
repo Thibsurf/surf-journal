@@ -67,6 +67,16 @@ Tables : `sessions`, `meteo_cache`, `model_forecast_cache`, `shared_tokens`, `sp
 
 Ingestion : `ingestion/fetch_arome.py` (GRIB2 Météo-France) et `ingestion/fetch_marc.py`
 (MARC-WW3 Ifremer via OPeNDAP), planifiées par `.github/workflows/cache-*.yml`, 3×/jour.
+Idem GFS/BOM/MF/ECMWF via `.github/scripts/cache-model-forecasts.mjs`, même planning.
+
+Le Worker (`worker_cloudflare/worker.js`) a son propre cron (`*/5 * * * *`, token
+meteo.nc) qui piggyback aussi, depuis le 28/07/2026, le **préchauffage du cache edge
+`/arome`** (throttlé à ~100 min via une clé KV `arome-last-warm`, sous les 7200s du
+`Cache-Control`) — objectif : qu'un visiteur ne tombe (quasi) jamais sur un cache
+froid (2 aller-retours Windguru séquentiels, source du "tableau arome lent" signalé
+ce jour-là). IDs windguru des spots par défaut dupliqués une 3e fois dans
+`worker.js` (`KNOWN_WG_SPOTS`) — mêmes valeurs que `_wgIdForSpot()` (previsions.html)
+et `wgIdForSpot()` (cache-model-forecasts.mjs), à garder synchronisées à la main.
 
 Sources de prévision : meteo.nc, Open-Meteo (GFS, MFWAM), BOM WW3, ECMWF via Windguru,
 MARC (Ifremer), AROME 2,5 km.

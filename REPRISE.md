@@ -124,6 +124,14 @@ en fin de session. Reste la prochaine étape recommandée, juste plus lente que
 prévu. Repartir de la liste `_renderSharkRisk` → `openNavBMSDetail` déjà repérée
 ci-dessus pour `alerts.js`.
 
+**Fait à la place, le 28/07 soir (hors audit, demandé directement)** :
+préchauffage cron du cache Worker `/arome` + repli archive parallélisé côté
+client — root cause du "tableau arome lent" trouvée et corrigée, déployé en
+prod (`meteo-proxy-worker` v `630ffacc`). Détail complet dans `AUDIT.md`
+("Préchauffage du cache AROME…") et rappel architectural dans `CLAUDE.md`
+(section Backend). Vérification de dérive à faire sur quelques jours
+(`wrangler tail` ou dashboard Cloudflare) — rien d'urgent.
+
 ### 2. T30 — CSP en `<meta>` (après T18)
 
 Bloqué aujourd'hui par ~1 255 `style="` inline dans le HTML et ~797 chaînes de
