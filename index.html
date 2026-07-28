@@ -1690,6 +1690,9 @@ async function loadMySessions() {
     console.error("❌ Exception loadMySessions:", e);
     allSessions = [];
   }
+  // Rejoue les votes de fiabilité restés en localStorage vers Supabase (multi-
+  // appareils) — best-effort, ne bloque pas le rendu (pas de await).
+  _migrateLocalVotesToSupabase().catch(function(e){ console.warn('[migrate votes]', e); });
   renderDashStats(allSessions);
   renderSessionsList(filterList(allSessions, currentFilter));
 }
@@ -3510,6 +3513,40 @@ async function saveModelReliabilityFromJournal(sessionId, vote) {
     localStorage.setItem('model-reliability', JSON.stringify(store));
     return true;
   } catch (e) { return false; }
+}
+// Migration multi-appareils (demandé par l'utilisateur : les votes doivent être
+// partagés entre appareils). Un vote qui n'a pas pu s'écrire dans Supabase au
+// moment du clic (pas encore connecté, RLS momentanément bloquée, ou vote
+// antérieur à la colonne model_reliability) retombait dans localStorage — donc
+// visible SEULEMENT sur l'appareil du vote. Ici, une fois les sessions de
+// l'utilisateur connu chargées, on rejoue ces votes locaux vers Supabase pour
+// les sessions qu'il possède : ils deviennent alors visibles partout. On ne
+// vide localStorage QUE si l'écriture Supabase a bien affecté une ligne (sinon
+// on garde le repli local, pour ne jamais perdre un vote).
+async function _migrateLocalVotesToSupabase() {
+  if (!sb || !currentUser || !allSessions || !allSessions.length) return;
+  if (!(await _hasModelReliabilityColumnJournal())) return; // colonne absente → rien à migrer
+  var store;
+  try { store = JSON.parse(localStorage.getItem('model-reliability') || '{}'); } catch (e) { return; }
+  var ids = Object.keys(store);
+  if (!ids.length) return;
+  var ownedIds = {};
+  allSessions.forEach(function(s) { if (s && s.id) ownedIds[s.id] = s; });
+  var migrated = 0, remaining = {};
+  for (var i = 0; i < ids.length; i++) {
+    var sid = ids[i], vote = store[sid], sess = ownedIds[sid];
+    // Session inconnue ici (appartient à un autre utilisateur, ou pas encore
+    // chargée) : on garde le vote local, il sera retenté à la prochaine ouverture.
+    if (!sess) { remaining[sid] = vote; continue; }
+    // Déjà en base (voté depuis un autre appareil entre-temps) : on ne réécrase pas.
+    if (sess.model_reliability) { continue; }
+    var ok = false;
+    try { var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sid).select('id'); ok = !r.error && r.data && r.data.length; } catch (e) {}
+    if (ok) { sess.model_reliability = vote; migrated++; }
+    else { remaining[sid] = vote; } // échec (RLS/réseau) → garder le repli local
+  }
+  try { localStorage.setItem('model-reliability', JSON.stringify(remaining)); } catch (e) {}
+  if (migrated) console.log('🔄 Votes fiabilité migrés vers Supabase (multi-appareils):', migrated);
 }
 
 // Construit l'URL du lien profond vers previsions.html, pré-rempli pour
