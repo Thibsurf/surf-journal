@@ -5484,7 +5484,13 @@ function _drawSwellCompare() {
     _attachCmpZoom(pcv, _swellZoom, _drawSwellCompare, true); // zoomer un panneau zoome les deux
   } else if (pcv) {
     pcv.style.display = 'none';
+    panelOverlayHide(pcv);
   }
+  // Calques de curseur (§10.12) : le fond et les courbes vivent sur `ctx`/`perCtx`
+  // et ne sont redessinés qu'au changement de données/fenêtre/modèles ; le scrub
+  // ne touche plus que ces deux overlays.
+  var ovCtx = panelOverlay(cv, W, H);
+  var perOvCtx = showPer ? panelOverlay(pcv, W, perH) : null;
   // Domaine Y : par défaut identique à avant (base 0, max sur TOUTE la série). En
   // zoom, on rescale sur les seuls points VISIBLES dans [t0,t1] — c'est ce qui
   // sépare vraiment les courbes proches (demande utilisateur), pas juste le zoom
@@ -5550,7 +5556,10 @@ function _drawSwellCompare() {
     pts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.h), 1.6, 0, Math.PI * 2); ctx.fill(); });
   }
 
-  function draw(hoverMs) {
+  // Couche STATIQUE des deux panneaux (fond, grille, courbes) — redessinée
+  // seulement au changement de données, de fenêtre de zoom ou de modèles
+  // visibles. Le curseur, lui, vit sur les overlays (§10.12).
+  function draw() {
     ctx.clearRect(0, 0, W, H);
     var mid0 = panelDayBands(ctx, X, t0, t1, W, H, padT, padB);
     panelAxisLabel(ctx, 'Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), H, axFont);
@@ -5568,14 +5577,13 @@ function _drawSwellCompare() {
     if (!showPer) panelDayLabels(ctx, X, mid0, t1, W, H, axFont);
     panelNowLine(ctx, X, t0, t1, H, padT, padB);
     activeModels.forEach(function(m) { drawSmooth(series[m.key], m.col); });
-    panelCursor(ctx, X, hoverMs, H, padT, padB);
-    drawPer(hoverMs);
+    drawPer();
   }
 
   // Panneau période — mêmes X/zoom/curseur que la hauteur au-dessus, traits
   // simples (pas de remplissage) : c'est une variable de lecture, pas la
   // variable primaire, et 5 aplats superposés sur 62 px feraient un pâté.
-  function drawPer(hoverMs) {
+  function drawPer() {
     if (!showPer) return;
     perCtx.clearRect(0, 0, W, perH);
     var midP = panelDayBands(perCtx, X, t0, t1, W, perH, perPadT, perPadB);
@@ -5606,48 +5614,65 @@ function _drawSwellCompare() {
       perCtx.stroke();
     });
     perCtx.restore();
-    panelCursor(perCtx, X, hoverMs, perH, perPadT, perPadB);
     panelDayLabels(perCtx, X, midP, t1, W, perH, axFont);
   }
-  draw(null);
+
+  // Curseur seul, sur les overlays : une verticale traversant les deux panneaux
+  // au lieu de ~2 500 segments redessinés (§10.12).
+  function _paintCursor(ms) {
+    ovCtx.clearRect(0, 0, W, H);
+    panelCursor(ovCtx, X, ms, H, padT, padB);
+    if (perOvCtx) {
+      perOvCtx.clearRect(0, 0, W, perH);
+      panelCursor(perOvCtx, X, ms, perH, perPadT, perPadB);
+    }
+  }
+
+  // Le TRAIT du curseur est tracé en synchrone : c'est une ligne sur un calque
+  // vide, ça doit suivre la souris sans latence, et le différer d'une frame
+  // exposerait au cas où requestAnimationFrame est étranglé (onglet en
+  // arrière-plan). Ce qui est groupé par frame ci-dessous, c'est le travail
+  // COÛTEUX qui suit le curseur : reconstruction de la rose SVG, de l'encart
+  // fourchette et du relevé texte. ms == null ⇒ retour à « maintenant ».
+  var _applySwellExtras = rafThrottle(function (ms) {
+    var at = ms == null ? Date.now() : ms;
+    renderNowRow(at);
+    _drawSwellRose(at);
+    _renderCmpExtremes(at);
+    var ro = document.getElementById('swell-cmp-readout');
+    if (!ro) return;
+    if (ms == null) {
+      ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)';
+      return;
+    }
+    var dNC = new Date(ms + 11 * 36e5);
+    var lbl = String(dNC.getUTCDate()).padStart(2, '0') + '/' + (dNC.getUTCMonth() + 1) + ' ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h';
+    var parts = ['<b style="color:var(--text);">' + lbl + '</b>'];
+    var byKey = {};
+    activeModels.forEach(function(m) {
+      var p = nearest(series[m.key], ms);
+      byKey[m.key] = p;
+      if (p) parts.push('<span style="color:' + m.col + ';">' + m.label + ' <b>' + p.h.toFixed(1) + 'm</b>' + (p.t ? ' ' + Math.round(p.t) + 's' : '') + '</span>');
+    });
+    if (byKey.nc && byKey.gfs) {
+      var diff = byKey.nc.h - byKey.gfs.h;
+      parts.push('<span style="color:var(--faint);">écart meteo.nc/GFS ' + (diff >= 0 ? '+' : '') + diff.toFixed(1) + 'm</span>');
+    }
+    ro.innerHTML = parts.join(' · ');
+  });
+
+  // Premier rendu : couche statique + état « maintenant », en synchrone (pas de
+  // frame d'attente au chargement, et les tests headless lisent juste après).
+  draw();
+  _paintCursor(null);
   renderNowRow(Date.now());
   _drawSwellRose(Date.now());
   _renderCmpExtremes(Date.now());
 
-  // Dessin + relevé à un instant donné, factorisé pour être appelé aussi bien
-  // par le survol natif que par window._swellCmpCursorTo (lien avec le
-  // comparatif vent) sans dupliquer la logique.
-  function renderSwellAt(ms) {
-    draw(ms);
-    renderNowRow(ms);
-    _drawSwellRose(ms);
-    _renderCmpExtremes(ms);
-    var ro = document.getElementById('swell-cmp-readout');
-    if (ro) {
-      var dNC = new Date(ms + 11 * 36e5);
-      var lbl = String(dNC.getUTCDate()).padStart(2, '0') + '/' + (dNC.getUTCMonth() + 1) + ' ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h';
-      var parts = ['<b style="color:var(--text);">' + lbl + '</b>'];
-      var byKey = {};
-      activeModels.forEach(function(m) {
-        var p = nearest(series[m.key], ms);
-        byKey[m.key] = p;
-        if (p) parts.push('<span style="color:' + m.col + ';">' + m.label + ' <b>' + p.h.toFixed(1) + 'm</b>' + (p.t ? ' ' + Math.round(p.t) + 's' : '') + '</span>');
-      });
-      if (byKey.nc && byKey.gfs) {
-        var diff = byKey.nc.h - byKey.gfs.h;
-        parts.push('<span style="color:var(--faint);">écart meteo.nc/GFS ' + (diff >= 0 ? '+' : '') + diff.toFixed(1) + 'm</span>');
-      }
-      ro.innerHTML = parts.join(' · ');
-    }
-  }
-  function resetSwellView() {
-    draw(null);
-    renderNowRow(Date.now());
-    _drawSwellRose(Date.now());
-    _renderCmpExtremes(Date.now());
-    var ro = document.getElementById('swell-cmp-readout');
-    if (ro) ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)';
-  }
+  // Appelé aussi bien par le survol natif que par window._swellCmpCursorTo
+  // (lien avec le comparatif vent).
+  function renderSwellAt(ms) { _paintCursor(ms); _applySwellExtras(ms); }
+  function resetSwellView() { _paintCursor(null); _applySwellExtras(null); }
   // Survol : les deux panneaux (hauteur ET période) pilotent le MÊME curseur,
   // puisqu'ils partagent l'axe X — survoler la période déplace donc aussi la
   // verticale du panneau hauteur, et inversement (§10.10).
@@ -8778,6 +8803,7 @@ function _drawAromeCompareFromCache() {
   var axFont = (narrow ? '11px' : '9px') + ' DM Sans,sans-serif';
   cv.style.cursor = 'crosshair';
   var ctx = panelSetup(cv, W, H);
+  var ovCtx = panelOverlay(cv, W, H); // calque du curseur (§10.12)
   _attachCmpZoom(cv, _aromeZoom, _drawAromeCompareFromCache);
   // Domaine Y : identique à avant par défaut (base 0, max sur toute la fenêtre
   // affichée). En zoom, rescale sur les seuls points VISIBLES dans [t0,t1] — c'est
@@ -8916,7 +8942,9 @@ function _drawAromeCompareFromCache() {
     el.innerHTML = spdLine + dirLine + caveat;
   })();
 
-  function draw(hoverMs) {
+  // Couche STATIQUE (fond, grille, séries) — redessinée seulement au changement
+  // de données, de fenêtre de zoom ou de modèles visibles.
+  function draw() {
     ctx.clearRect(0, 0, W, H);
     // Fond passé (mesures) légèrement teinté
     ctx.fillStyle = 'rgba(61,186,138,.05)';
@@ -9008,13 +9036,15 @@ function _drawAromeCompareFromCache() {
     // Points sur les mesures (réelles)
     ctx.fillStyle = MODEL_STYLE.obs.col;
     obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.7, 0, Math.PI * 2); ctx.fill(); });
-    // Curseur de survol
-    if (hoverMs != null) {
-      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(X(hoverMs), padT); ctx.lineTo(X(hoverMs), H - padB); ctx.stroke();
-    }
   }
-  draw(null);
+  // Curseur sur un calque séparé (§10.12) : ce graphe porte jusqu'à 9 séries,
+  // un scrub redessinait plusieurs milliers de segments par mouvement de souris.
+  function _paintWindCursor(ms) {
+    ovCtx.clearRect(0, 0, W, H);
+    panelCursor(ovCtx, X, ms, H, padT, padB);
+  }
+  draw();
+  _paintWindCursor(null);
   _renderCmpExtremes(Date.now());
 
   // Valeurs au survol : curseur + lecture des séries au plus proche (±90 min)
@@ -9088,36 +9118,40 @@ function _drawAromeCompareFromCache() {
     svg += '</svg>';
     el.innerHTML = any ? svg : '<div style="font-size:11px;color:var(--faint);text-align:center;padding-top:32px;">Direction indisponible</div>';
   }
+  // Comme côté houle : le trait est synchrone (une ligne sur un calque vide),
+  // seul le travail coûteux qui le suit (relevé, rose SVG, encart fourchette,
+  // colonne de table surlignée) est groupé par frame d'affichage.
+  // ms == null ⇒ retour à « maintenant ».
+  var _applyWindExtras = rafThrottle(function(ms, syncTable) {
+    updateReadout(ms);
+    _drawWindRose(ms == null ? now : ms);
+    _renderCmpExtremes(ms == null ? Date.now() : ms);
+    if (syncTable && window._aromeSetTableCol) {
+      window._aromeSetTableCol(ms == null ? null : findNearestColIdx(ms));
+    }
+  });
   cv.onmousemove = function(e) {
     var rect = cv.getBoundingClientRect();
-    var ms = t0 + (e.clientX - rect.left - padL) / (W - padL - padR) * (t1 - t0);
+    var ms = panelMs(t0, t1, W, e.clientX - rect.left);
     if (ms < t0 || ms > t1) return;
-    draw(ms);
-    updateReadout(ms);
-    _drawWindRose(ms);
-    _renderCmpExtremes(ms);
-    if (window._aromeSetTableCol) window._aromeSetTableCol(findNearestColIdx(ms));
+    _paintWindCursor(ms); _applyWindExtras(ms, true);
     // Lien avec le comparatif houle (demande utilisateur) : survoler l'un
     // déplace le curseur de l'autre, pour lire vent et houle au même instant
     // sans se perdre entre deux graphes séparés.
     if (window._swellCmpCursorTo) window._swellCmpCursorTo(ms);
   };
   cv.onmouseleave = function() {
-    draw(null);
-    updateReadout(null);
-    _drawWindRose(now);
-    _renderCmpExtremes(Date.now());
-    if (window._aromeSetTableCol) window._aromeSetTableCol(null);
+    _paintWindCursor(null); _applyWindExtras(null, true);
     if (window._swellCmpCursorTo) window._swellCmpCursorTo(null);
   };
   // Lien table AROME → graphe : appelé par colSel() dans _loadAromeWidget().
   // ms hors [t0,t1] de CE graphe (ex: survol du comparatif houle sur un jour
   // que le vent ne couvre pas) → curseur simplement caché plutôt qu'affiché
-  // hors cadre avec un relevé vide.
+  // hors cadre avec un relevé vide. Ne resynchronise PAS la table : l'appel
+  // vient d'elle (ou du graphe houle), la boucler serait au mieux inutile.
   window._aromeCmpCursorTo = function(ms) {
     if (ms != null && (ms < t0 || ms > t1)) ms = null;
-    draw(ms); updateReadout(ms); _drawWindRose(ms == null ? now : ms);
-    _renderCmpExtremes(ms == null ? Date.now() : ms);
+    _paintWindCursor(ms); _applyWindExtras(ms, false);
   };
   _drawWindRose(now);
   // 1 seul doigt = survol (inchangé) ; 2 doigts = pincement de zoom (cf.

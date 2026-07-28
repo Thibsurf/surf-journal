@@ -144,6 +144,49 @@ function panelDayLabels(ctx, X, mid0, t1, W, H, font) {
   }
 }
 
+// ── Double canvas statique / overlay (§10.12) ───────────────────────────────
+// Un scrub de curseur redessinait tout : 2 panneaux × 5 modèles × ~240 points,
+// soit quelques milliers de segments à chaque `mousemove`, d'où le jank au
+// survol. On superpose un 2e canvas transparent qui ne porte QUE le curseur :
+// le fond et les courbes ne sont redessinés qu'au changement de données, de
+// fenêtre ou de modèles visibles, et le scrub ne coûte plus qu'une ligne.
+// `pointer-events:none` pour que la souris continue d'atteindre le canvas du
+// dessous (survol, molette) et le bouton de zoom.
+// Le parent doit être en position:relative — c'est déjà le cas des wrappers de
+// ces canvas dans previsions.html.
+function panelOverlay(cv, W, H) {
+  var ov = cv._panelOverlay;
+  if (!ov) {
+    ov = document.createElement('canvas');
+    ov.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;';
+    (cv.parentElement || document.body).appendChild(ov);
+    cv._panelOverlay = ov;
+  }
+  ov.style.display = '';
+  return panelSetup(ov, W, H);
+}
+
+// Masque l'overlay d'un canvas (panneau devenu invisible) sans le détruire :
+// le recréer à chaque bascule coûterait plus cher que de le garder.
+function panelOverlayHide(cv) {
+  if (cv && cv._panelOverlay) cv._panelOverlay.style.display = 'none';
+}
+
+// Regroupe les appels d'un même frame d'affichage. Sur un `mousemove` qui part
+// à 120 Hz, sans ça on redessine plus souvent que l'écran ne rafraîchit.
+function rafThrottle(fn) {
+  var pending = false, lastArgs = null;
+  return function () {
+    lastArgs = arguments;
+    if (pending) return;
+    pending = true;
+    (window.requestAnimationFrame || function (f) { setTimeout(f, 16); })(function () {
+      pending = false;
+      fn.apply(null, lastArgs);
+    });
+  };
+}
+
 // Étiquette de grandeur, écrite verticalement dans la marge gauche.
 function panelAxisLabel(ctx, text, H, font) {
   ctx.save(); ctx.translate(11, H / 2); ctx.rotate(-Math.PI / 2);

@@ -648,3 +648,33 @@ points tiennent, l'alignement vertical entre les deux CARTES reste impossible �
 c'est ce que résoudrait la fusion complète en un météogramme unique (§10.2,
 T21 complet). Restent aussi le double canvas statique/overlay (§10.12, T22) et
 les fonds contextuels nuit/offshore (§10.5).
+
+## Chantier 10 — double canvas statique/overlay (T22, §10.12) — FAIT (2026-07-28)
+
+Un scrub de curseur redessinait TOUT : sur le comparatif houle, deux panneaux
+× 5 modèles × ~240 points ; sur le comparatif vent, jusqu'à 9 séries. Plusieurs
+milliers de segments par `mousemove`, d'où le jank au survol.
+
+`panelOverlay()` (charts-core.js) superpose un canvas transparent
+(`pointer-events:none`, parent déjà en `position:relative`) qui ne porte que la
+verticale du curseur. Le fond et les courbes ne sont redessinés qu'au changement
+de données, de fenêtre de zoom ou de modèles visibles — `draw()` ne prend plus
+de paramètre `hoverMs` ni côté houle ni côté vent.
+
+**Répartition synchrone / différée, corrigée après mesure.** Premier jet :
+tout le suivi de curseur passait par `rafThrottle`. Vérification headless →
+`requestAnimationFrame` **cesse de se déclencher** une fois la page quiescente
+en Chrome headless (342 frames au chargement, puis 0), donc le curseur ne se
+dessinait jamais. C'est un artefact de headless, mais il pointe un vrai risque
+(onglet en arrière-plan, rAF étranglé). Découpage final :
+
+- **synchrone** : le trait du curseur (`_paintCursor` / `_paintWindCursor`) —
+  une ligne sur un calque vide, ça doit suivre la souris sans latence ;
+- **groupé par frame** : le travail coûteux qui le suit — rose SVG reconstruite,
+  encart fourchette inter-modèles, relevé texte, colonne de table surlignée.
+
+Vérifié en headless sur données réelles : curseur présent sur les 3 overlays
+(houle 380 px opaques, période 112 px, vent 364 px), **couche statique
+inchangée pendant le scrub** (comparaison pixel par pixel avant/après), overlays
+vidés au retour à « maintenant », curseur masqué hors fenêtre temporelle,
+0 erreur JS.
