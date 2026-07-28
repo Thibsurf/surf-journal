@@ -229,20 +229,26 @@ function _gwBuildBestMix() {
 // "MARC"/"BOM"/etc. actif pendant qu'on affiche silencieusement autre chose (bug
 // signalé : le spectre MARC/le "≈" incohérent venaient d'un fetch MARC qui expirait
 // (12s, trop court pour cette requête ~10-20s) sans que rien ne le signale).
+// Pas de repli silencieux (demandé explicitement par l'utilisateur : "si pas
+// dispo dans le widget, pas de backup, juste un message" — après avoir été
+// trompé par un repli meteo.nc affiché sous l'étiquette "MARC"). Quand la
+// source demandée (bom/mf/marc/mix) ne peut pas être construite, _gwActiveData()
+// renvoie null et _gwFellBack=true ; renderGlobalWidget() affiche alors un
+// message au lieu de retomber sur une autre source.
 var _gwFellBack = false;
 function _gwActiveData() {
   _gwFellBack = false;
   if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf' || _gwExtraSrc === 'marc') {
     var built = _gwBuildModelFcast(_gwExtraSrc);
     if (built) return built;
-    // Pas encore chargé (spot tout juste changé) ou fetch en échec/expiré ->
-    // retomber sur la source principale plutôt qu'un widget vide, mais le signaler.
     _gwFellBack = true;
+    return null;
   }
   if (_gwExtraSrc === 'mix') {
     var mix = _gwBuildBestMix();
     if (mix) return mix;
     _gwFellBack = true;
+    return null;
   }
   return (_currentHsSrc==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
 }
@@ -266,48 +272,71 @@ function _gwGroupDays(d) {
   return days;
 }
 
+// Boutons de source + résolution (MODEL_STYLE.res, même source que les légendes
+// du comparatif, chantier 9.4) — extrait pour être appelé aussi bien au rendu
+// normal qu'à l'état "indisponible" ci-dessous.
+var GW_SRC_BTNS_DEF = [
+  { key:'nc',   lbl:'🛰 meteo.nc' },
+  { key:'om',   lbl:'🌐 GFS' },
+  { key:'bom',  lbl:'🇦🇺 BOM' },
+  { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France globale (résolution non communiquée par Open-Meteo) + vent ARPEGE (résolution non documentée ici).' },
+  { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Requête lourde côté serveur (10-20s) : peut échouer si Ifremer est chargé.' },
+  { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km/BOM 14km/MFWAM en repli. Vent : meteo.nc > BOM 14km > MARC (ECMWF ~9km) > GFS 28km > MFWAM (ARPEGE). Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
+];
+function _gwResSuffix(key) {
+  var res = (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE[key]) ? MODEL_STYLE[key].res : null;
+  return res ? ' <span style="opacity:.65;font-size:9px;">'+res+'</span>' : '';
+}
+function _gwRenderBadge() {
+  var badge = document.getElementById('gw-src-badge');
+  if (!badge) return;
+  // Boutons plutôt qu'un badge passif : meteo.nc/GFS restent liés au reste de la
+  // page (_gwSetSrc les redirige vers setHsSrc), BOM/MFWAM/MARC sont propres au widget.
+  var activeSrc = _gwExtraSrc || _currentHsSrc;
+  badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget">'
+    + GW_SRC_BTNS_DEF.map(function(s){
+        var on = s.key === activeSrc;
+        var lbl = s.key==='om' ? s.lbl+_gwResSuffix('gfs') : s.key==='bom' ? s.lbl+_gwResSuffix('bom') : s.key==='marc' ? s.lbl+_gwResSuffix('marc') : s.lbl;
+        return '<button class="seg-b'+(on?' is-on':'')+'" aria-pressed="'+on+'"'+(s.title?' title="'+s.title+'"':'')+' onclick="_gwSetSrc(\''+s.key+'\')">'+lbl+'</button>';
+      }).join('')
+    + '</div>';
+}
+// Pas de repli silencieux (demandé explicitement par l'utilisateur) : quand la
+// source choisie (bom/mf/marc/mix) échoue, le widget reste affiché (badge actif
+// compris) mais grille/graphe/vue satellite sont remplacés par ce message — pas
+// de données d'une AUTRE source affichées sous une étiquette qui ne correspond
+// plus à ce qu'on regarde vraiment.
+function _gwRenderUnavailable() {
+  var lbl = (GW_SRC_BTNS_DEF.find(function(s){return s.key===_gwExtraSrc;}) || {lbl:_gwExtraSrc}).lbl.replace(/<[^>]+>/g,'');
+  var msg = '<div style="grid-column:1/-1;padding:24px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;">'
+    + '⚠ <b style="color:#e8a057;">'+lbl+'</b> indisponible pour ce spot en ce moment.<br>'
+    + '<span style="font-size:11px;color:var(--faint);">Requête serveur trop lente ou en échec — réessaie dans un instant, ou choisis une autre source ci-dessus.</span>'
+    + '</div>';
+  var grid = document.getElementById('gw-grid'); if (grid) grid.innerHTML = msg;
+  var ov = document.getElementById('gw-overview'); if (ov) { var c = ov.getContext && ov.getContext('2d'); if (c) c.clearRect(0,0,ov.width,ov.height); }
+  var satVec = document.getElementById('gw-sat-vec'); if (satVec) { var c2 = satVec.getContext && satVec.getContext('2d'); if (c2) c2.clearRect(0,0,satVec.width,satVec.height); }
+  var satInfo = document.getElementById('gw-sat-info'); if (satInfo) satInfo.innerHTML = '';
+  var dayNav = document.getElementById('gw-day-nav'); if (dayNav) dayNav.innerHTML = '';
+  var readout = document.getElementById('gw-ov-readout'); if (readout) readout.textContent = '';
+}
+
 function renderGlobalWidget() {
   var wrap = document.getElementById('gw-widget');
   if (!wrap) return;
   var d = _gwActiveData();
-  if (!d || !d.dates || !d.dates.length) { wrap.style.display='none'; return; }
+
+  if (!d || !d.dates || !d.dates.length) {
+    if (_gwFellBack) { wrap.style.display=''; _gwRenderBadge(); _gwRenderUnavailable(); return; }
+    wrap.style.display='none'; return;
+  }
   var days = _gwGroupDays(d);
-  if (!days.length) { wrap.style.display='none'; return; }
+  if (!days.length) {
+    if (_gwFellBack) { wrap.style.display=''; _gwRenderBadge(); _gwRenderUnavailable(); return; }
+    wrap.style.display='none'; return;
+  }
   wrap.style.display='';
   if (_gwDayIdx >= Math.min(days.length, 5)) _gwDayIdx = 0;
-  var badge = document.getElementById('gw-src-badge');
-  if (badge) {
-    // Boutons plutôt qu'un badge passif : meteo.nc/GFS restent liés au reste de la
-    // page (_gwSetSrc les redirige vers setHsSrc), BOM/MFWAM/MARC sont propres au
-    // widget. Résolution affichée à côté du nom (MODEL_STYLE.res, même source que
-    // les légendes du comparatif, chantier 9.4) — demandé par l'utilisateur, pour
-    // ne pas la laisser cachée dans un title comme c'était le cas avant ce chantier.
-    var activeSrc = _gwExtraSrc || _currentHsSrc;
-    function _gwResSuffix(key) {
-      var res = (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE[key]) ? MODEL_STYLE[key].res : null;
-      return res ? ' <span style="opacity:.65;font-size:9px;">'+res+'</span>' : '';
-    }
-    var GW_SRC_BTNS = [
-      { key:'nc',   lbl:'🛰 meteo.nc' },
-      { key:'om',   lbl:'🌐 GFS'+_gwResSuffix('gfs') },
-      { key:'bom',  lbl:'🇦🇺 BOM'+_gwResSuffix('bom') },
-      { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France globale (résolution non communiquée par Open-Meteo) + vent ARPEGE (résolution non documentée ici).' },
-      { key:'marc', lbl:'🎯 MARC'+_gwResSuffix('marc'), title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre complet par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km).' },
-      { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km/BOM 14km/MFWAM en repli. Vent : meteo.nc > BOM 14km > MARC (ECMWF ~9km) > GFS 28km > MFWAM (ARPEGE). Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
-    ];
-    badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget">'
-      + GW_SRC_BTNS.map(function(s){
-          var on = s.key === activeSrc;
-          return '<button class="seg-b'+(on?' is-on':'')+'" aria-pressed="'+on+'"'+(s.title?' title="'+s.title+'"':'')+' onclick="_gwSetSrc(\''+s.key+'\')">'+s.lbl+'</button>';
-        }).join('')
-      + '</div>'
-      // Signale un repli silencieux (fetch en échec/expiré) plutôt que de laisser
-      // le bouton actif pendant qu'on affiche en réalité meteo.nc/GFS — bug
-      // signalé par l'utilisateur (spectre/houle 2 incohérents sous "MARC").
-      // _gwIsNC() renvoie toujours faux ici (_gwExtraSrc encore posé le temps du
-      // repli) : tester _currentHsSrc directement, pas via _gwIsNC().
-      + (_gwFellBack ? '<span style="display:block;font-size:9.5px;color:#e8a057;margin-top:3px;" title="La source demandée n\'a pas pu être chargée (réseau lent/serveur indisponible) — affichage temporaire de la source principale.">⚠ '+GW_SRC_BTNS.find(function(s){return s.key===_gwExtraSrc;}).lbl.replace(/<[^>]+>/g,'')+' indisponible, repli sur '+(_currentHsSrc==='nc'?'meteo.nc':'GFS')+'</span>' : '');
-  }
+  _gwRenderBadge();
   _gwRenderDayNav(days);
   _gwRenderGrid(d, days[_gwDayIdx]);
   _gwDrawOverview();

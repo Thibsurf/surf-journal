@@ -4309,7 +4309,14 @@ var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1, spr: 0.
 // décomposition est cohérente. Spread absent chez tous les autres modèles
 // intégrés ici (BOM/GFS via Open-Meteo/MF via Open-Meteo/ECMWF via Windguru) —
 // vérifié empiriquement, pas de comparatif multi-modèle possible, cf. spectre.
-var MARC_PARTITIONS = [0, 1, 2, 3, 4, 5];
+// Réduit de [0..5] à [0..2] (mer du vent + houle 1 + houle 2 — tout ce que le
+// widget affiche réellement) : la requête OPeNDAP à 30 variables mettait 10-20s+
+// à répondre (root cause du fetch MARC en échec fréquent, signalé par
+// l'utilisateur). Passer de 30 à 18 variables demandées réduit le volume d'environ
+// 40% — le spectre satellite/comparatif montre au plus 3 trains au lieu de 6
+// (partitions 3-5 rarement peuplées de toute façon, triées par énergie
+// décroissante), au bénéfice d'un fetch nettement plus fiable.
+var MARC_PARTITIONS = [0, 1, 2];
 var MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", cf. .das
 // Fenêtre de fetch ancrée sur "maintenant", pas sur la fin du jeu de données — BUG
 // corrigé (signalé par l'utilisateur : "sur le site MARC Ifremer y'a les prévisions
@@ -4322,7 +4329,10 @@ var MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", c
 // plus proche de (maintenant - 6h) et avancer, jamais reculer depuis la fin du
 // tableau. Partagée par _fetchMarcWave et _fetchMarcWind (même dataset, même cadence).
 function _marcWindow(N) {
-  var NSTEPS = 64; // ~8j à 3h : recul archivé + prévision dispo
+  // 48 (6j) au lieu de 64 (8j) : le widget plafonne l'affichage à 5j, la marge de
+  // 8j était inutile et alourdissait encore la requête (cf. MARC_PARTITIONS
+  // ci-dessus, même objectif de fiabilité du fetch).
+  var NSTEPS = 48; // ~6j à 3h : recul archivé + prévision dispo
   var STEP_MS = 0.125 * 86400000; // 3h, cadence du produit (jours -> ms)
   var t0 = Math.max(0, Math.min(N - 1, Math.round((Date.now() - 6*3600000 - MARC_EPOCH_MS) / STEP_MS)));
   var t1 = Math.min(N - 1, t0 + NSTEPS - 1);
@@ -7570,7 +7580,13 @@ async function _setWindCmpStation(atStation) {
   try { localStorage.setItem('windCmpAtStation', atStation ? '1' : '0'); } catch(e){}
   var spotBtn = document.getElementById('wcmp-loc-spot'), stBtn = document.getElementById('wcmp-loc-station');
   if (spotBtn) spotBtn.disabled = true; if (stBtn) stBtn.disabled = true;
-  try { if (_aromeData) await _renderAromeCompare(_aromeData); }
+  try {
+    if (_aromeData) await _renderAromeCompare(_aromeData);
+    // Le tableau AROME statique (au-dessus du comparatif) a sa propre clé de
+    // chargement dépendante du mode (cf. updateAromeCard) — sans cet appel, il
+    // restait affiché "au spot" même après avoir basculé sur "à la station".
+    updateAromeCard();
+  }
   finally { if (spotBtn) spotBtn.disabled = false; if (stBtn) stBtn.disabled = false; }
 }
 // Ré-échantillonne les modèles « grille » (meteo.nc / GFS / BOM) aux coordonnées de la
@@ -7699,19 +7715,39 @@ function updateAromeCard() {
   var wgId = _wgIdForSpot(s);
   card.style.display = 'block';
   card._wgId = wgId;
-  var lbl = document.getElementById('wg-arome-spot'); if (lbl) lbl.textContent = s ? s.name : '';
-  // Clé de chargement : id Windguru si connu, sinon clé « archive » à la lat/lon du
-  // spot (repli GRIB2, cf. _fetchAromeArchive) — Windguru ne couvre pas tous les
-  // spots (demande utilisateur), donc l'absence de wgId n'empêche plus d'afficher AROME.
-  var loadKey = wgId ? String(wgId) : ('arch:' + s.lat.toFixed(3) + '_' + s.lon.toFixed(3));
-  if (_wgLoadedFor !== loadKey) _loadAromeWidget(wgId, s);
+  // Station connue pour ce spot (même résolution que _loadObsWind/_renderAromeCompare
+  // plus bas) — BUG corrigé (signalé utilisateur : "pour Ouano, à la station ou au
+  // spot, ça change pas le tableau") : ce tableau statique (au-dessus du comparatif)
+  // ignorait complètement _windCmpAtStation, contrairement au graphe comparatif juste
+  // en dessous qui, lui, en tenait déjà compte.
+  var st = s ? OBS_STATIONS.find(function(x){ return x.spotId === s.obsId || x.id === s.obsId; }) : null;
+  var atStation = _windCmpAtStation && st;
+  var lbl = document.getElementById('wg-arome-spot');
+  if (lbl) lbl.textContent = s ? (atStation ? s.name + ' → à la station ' + st.name : s.name) : '';
+  // Clé de chargement : dépend maintenant du MODE (spot/station), pas seulement du
+  // spot/wgId — sans ça, changer uniquement le toggle spot↔station ne déclenchait
+  // jamais de rechargement (loadKey identique des deux côtés).
+  var loadKey = atStation ? ('st:' + st.lat.toFixed(3) + '_' + st.lon.toFixed(3))
+    : (wgId ? String(wgId) : ('arch:' + s.lat.toFixed(3) + '_' + s.lon.toFixed(3)));
+  if (_wgLoadedFor !== loadKey) _loadAromeWidget(wgId, s, atStation ? st : null);
 }
-async function _loadAromeWidget(wgId, spot) {
-  var loadKey = wgId ? String(wgId) : ('arch:' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3));
+async function _loadAromeWidget(wgId, spot, station) {
+  var loadKey = station ? ('st:' + station.lat.toFixed(3) + '_' + station.lon.toFixed(3))
+    : (wgId ? String(wgId) : ('arch:' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3)));
   if (_wgLoadedFor === loadKey) return;
   var body = document.getElementById('wg-arome-body'); if (!body) return;
   _wgLoadedFor = loadKey;
-  body.innerHTML = '<div class="loading" style="padding:14px;"><div class="spin"></div> AROME 2.5 km…</div>';
+  body.innerHTML = '<div class="loading" style="padding:14px;"><div class="spin"></div> AROME 2.5 km' + (station ? ' — ' + station.name : '') + '…</div>';
+  // Mode « à la station » : Windguru est lié à un spot fixe (pas de notion de
+  // « point libre »), donc uniquement l'archive GRIB2 aux coordonnées de la
+  // station — même logique que _fetchWindAtStation pour le comparatif ci-dessous.
+  if (station) {
+    var jSt = await _fetchAromeArchive(station);
+    if (jSt) { _renderAromeCardData(jSt, wgId, body); return; }
+    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;line-height:1.5;">Pas encore d\'archive GRIB2 pour '
+      + station.name + ' (le job GitHub Actions passe 2×/jour).</div>';
+    return;
+  }
   var j = null, errCode = null;
   if (wgId) {
     try {
@@ -8601,32 +8637,44 @@ function _drawAromeCompareFromCache() {
       ctx.lineTo(X(pts[pts.length - 1].ms), Y(pts[pts.length - 1].kt));
       ctx.stroke(); ctx.setLineDash([]);
     }
+    // BUG corrigé (signalé par l'utilisateur : "problème de couleurs de légende
+    // dans les graphes comparatifs, notamment AROME") : ce canvas dessinait chaque
+    // série avec une couleur codée en dur, jamais mise à jour lors de l'unification
+    // de la palette (MODEL_STYLE, T03/AUDIT-previsions.md §3.1) — la légende
+    // au-dessus (qui LIT MODEL_STYLE) et les courbes réellement tracées ici
+    // affichaient donc deux couleurs différentes pour le même modèle. Le cas le
+    // plus visible : AROME en bleu ici (rgba(79,163,199,.95), = la couleur de GFS
+    // dans MODEL_STYLE) contre violet dans la légende (MODEL_STYLE.aro.col).
+    var colNc = _rgbaFromHex(MODEL_STYLE.nc.col, .9), colGfs = _rgbaFromHex(MODEL_STYLE.gfs.col, .9),
+        colBom = _rgbaFromHex(MODEL_STYLE.bom.col, .9), colEcmwf = _rgbaFromHex(MODEL_STYLE.ecmwf.col, .9),
+        colMarc = _rgbaFromHex(MODEL_STYLE.marc.col, .9), colAro = _rgbaFromHex(MODEL_STYLE.aro.col, .95),
+        colObs = _rgbaFromHex(MODEL_STYLE.obs.col, .95);
     var lwMod = narrow ? 2.2 : 1.8;
-    drawSmooth(pageNc, 'rgba(232,160,87,.9)', lwMod, [6, 4]);
-    drawSmooth(pageGfs, 'rgba(169,159,248,.9)', lwMod, [6, 4]);
-    drawSmooth(bomWind, 'rgba(224,92,92,.9)', lwMod, [2, 3]);
-    drawSmooth(ecmwfWind, 'rgba(125,211,252,.9)', lwMod, [2, 3]);
-    drawSmooth(marcWind, 'rgba(240,198,116,.9)', lwMod, [2, 3]);
+    drawSmooth(pageNc, colNc, lwMod, [6, 4]);
+    drawSmooth(pageGfs, colGfs, lwMod, [6, 4]);
+    drawSmooth(bomWind, colBom, lwMod, [2, 3]);
+    drawSmooth(ecmwfWind, colEcmwf, lwMod, [2, 3]);
+    drawSmooth(marcWind, colMarc, lwMod, [2, 3]);
     // marqueurs sur les créneaux réels (3h) — les courbes sont interpolées
-    ctx.fillStyle = 'rgba(232,160,87,.9)';
+    ctx.fillStyle = colNc;
     pageNc.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
-    ctx.fillStyle = 'rgba(169,159,248,.9)';
+    ctx.fillStyle = colGfs;
     pageGfs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
-    drawSmooth(aro, 'rgba(79,163,199,.95)', narrow ? 2.6 : 2.2);
+    drawSmooth(aro, colAro, narrow ? 2.6 : 2.2);
     // Marqueurs AROME : drawSmooth() ne trace rien si <2 points (créneau frais
     // ou fenêtre qui clippe presque tout) — sans ce fallback la série disparaît
     // du graphe sans aucune trace alors que la légende la liste toujours.
-    ctx.fillStyle = 'rgba(79,163,199,.95)';
+    ctx.fillStyle = colAro;
     aro.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2, 0, Math.PI * 2); ctx.fill(); });
-    drawSmooth(obs, 'rgba(61,186,138,.95)', narrow ? 2.8 : 2.4);
-    // Passé meteo.nc (cache) : POINTS CREUX orange, volontairement sans courbe
-    ctx.strokeStyle = 'rgba(232,160,87,.9)'; ctx.lineWidth = 1.4;
+    drawSmooth(obs, colObs, narrow ? 2.8 : 2.4);
+    // Passé meteo.nc (cache) : POINTS CREUX, volontairement sans courbe
+    ctx.strokeStyle = colNc; ctx.lineWidth = 1.4;
     cachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.6, 0, Math.PI * 2); ctx.stroke(); });
-    // Passé AROME (cache) : POINTS CREUX bleu AROME, mêmes principes
-    ctx.strokeStyle = 'rgba(79,163,199,.9)'; ctx.lineWidth = 1.4;
+    // Passé AROME (cache) : POINTS CREUX, mêmes principes
+    ctx.strokeStyle = colAro; ctx.lineWidth = 1.4;
     aromeCachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.6, 0, Math.PI * 2); ctx.stroke(); });
     // Points sur les mesures (réelles)
-    ctx.fillStyle = '#3dba8a';
+    ctx.fillStyle = MODEL_STYLE.obs.col;
     obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.7, 0, Math.PI * 2); ctx.fill(); });
     // Curseur de survol
     if (hoverMs != null) {
