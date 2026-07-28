@@ -1201,3 +1201,75 @@ faute de signal d'un vrai problème : (a) le mini-graphe reste sommaire
 à `previsions.html`/`cache-model-forecasts.mjs` (aucun bundler dans ce projet,
 cohérent avec le reste du repo, mais à garder synchronisé à la main si une
 couleur de modèle change un jour).
+
+## Revue complète de previsions.html (logique, UX, données, spots/satellite/carte) — 2026-07-29
+
+Demande utilisateur : revérifier toute la page prévisions — logique, UX,
+données présentées, position des spots / vue satellite / carte des spots — et
+faire des passes jusqu'à épuisement du budget. Passe systématique, chaque point
+vérifié en Edge headless sur données réelles (jamais de mock).
+
+**Position des spots (carte Leaflet)** : les 7 marqueurs correspondent EXACTEMENT
+aux coordonnées de `SPOTS` (comparaison `marker.getLatLng()` vs `SPOTS[i]`, écart
+< 1e-4 sur les 7). `dragend` met bien à jour lat/lon + port/obs/marine les plus
+proches + `_posUserDefined`. RAS.
+
+**Vue satellite (mosaïque Esri 3×3 par spot)** : cyclée sur les 7 spots, chacun
+recharge son `_satPt` (point exact du spot dans l'image 768×768) et applique
+`object-position`. Conteneur carré 240×240 → `objectPosition` reste "50% 50%"
+(cover ne recadre rien sur un carré = le point EST au centre, correct). Le fix du
+28/07 (calcul sur dimensions nulles) tient. RAS.
+
+**Erreurs JS** : 0 au chargement de la page principale (collecteur
+`window.onerror` + `unhandledrejection` sur 20 s, tous fetchs réseau résolus).
+
+**Fuseau horaire** (source de bugs récurrente, invisible par défaut car le
+sandbox est en UTC+11) : revue statique — les 4 seuls usages de méthodes de date
+LOCALES restantes sont tous sûrs (1 commentaire ; `fmtDay`/`_mareeDayShort` =
+construction + lecture dans le MÊME repère local, invariant au fuseau ;
+nb-jours-du-mois ; seed d'étoiles décoratives). Aucun `toLocale*` fonctionnel
+sans `timeZone`. La convention `+11h`/`getUTC*` est respectée partout. (Le forçage
+`TZ=America/Los_Angeles` ne prend pas sur Edge/Windows — les deux runs restent
+UTC+11 — d'où la revue statique en complément.)
+
+**Unités** : conversions vent cohérentes sur tous les chemins (Open-Meteo `kn`
+natif, meteo.nc observation / BOM WW3 / MARC en m/s → ×1.944 une seule fois par
+chemin). Puissance = ½·Hs²·T (kW/m) cohérente entre widget, comparatif, journal,
+historique.
+
+**Score** (`calcSurfScore`) : relu — base puissance 0-4, malus période courte /
+bonus longue, direction houle vs idéale (±45/±120°), direction vent
+(provenance +180 → destination vs `windDirIdeal`), malus vent plat (moutons
+`windCalmKt` puis fort `windMalusKt`), onshore/offshore relatif houle/vent,
+rafales, marée (`_tideAdj`). Borné 0-5. Logique et seuils sains.
+
+**Alignement des 3 canvas du comparatif** (cœur du chantier 10) : `swell-cmp`,
+`swell-cmp-per`, `arome-cmp` ont TOUS `left=42.6 px, width=766 px` (mesuré) et
+partagent la même `cmpWindow()` (t0→t1 = 7 j pile, −24h→J+6). Une verticale à
+midi tombe donc au même X sur les trois. Intact.
+
+**Mobile** (largeur ~518 px, min headless) : `document.scrollWidth` (503) <
+`innerWidth` (518) → PAS de scroll horizontal parasite du body. Les éléments
+larges (strip `#gw-overview`, tables AROME) sont dans des conteneurs
+`overflow-x:auto` (défilement interne intentionnel, swipe). Les troncatures
+visibles sur les captures 430 px sont l'artefact headless connu (rendu 518 rogné
+à 430), pas un vrai débordement.
+
+**Les 6 onglets** (Prévisions, Comparer, Carte spots, Isofronts, Marée & Pêche,
+ENSO) se rendent tous correctement, données réelles chargées.
+
+**BUG trouvé et corrigé** — pied de page ENSO figé en dur « Données jusqu'à mars
+2026 » alors que le flux NOAA live va jusqu'à juin 2026 (badge + statut, eux,
+dynamiques et corrects → incohérence visible). Rendu dynamique (id
+`enso-data-through`, rempli dans `ensoRender` AVANT le garde Plotly car le texte
+ne dépend que des données). Vérifié : pied « juin 2026 » = badge « 2026/06 ».
+Commit `aa1011af`, `CACHE_NAME` → v33.
+
+**Non retenu comme bug** : label lunaire « Pleine lune 30 juil · J+0 » avec
+illumination 100 % un 29/07 — astronomiquement cohérent (pleine lune ≈ âge 14-15 j,
+100 %), le J+0/J+1 est dans l'arrondi de l'instant exact de pleine lune, pas une
+erreur de calcul.
+
+**Bilan** : la page est saine. 1 seul vrai bug sur toute la revue (ENSO date),
+corrigé. Tout le reste (spots, satellite, carte, score, unités, fuseau,
+alignements, mobile) vérifié conforme.
