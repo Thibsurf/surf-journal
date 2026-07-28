@@ -4095,7 +4095,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   // Le comparatif vent AROME a pu se dessiner AVANT que _ncFcastData/_omFcastData
   // n'arrivent (updateAromeCard part dès le début de loadForecast) → le
   // redessiner maintenant que les séries du tableau sont disponibles.
-  try { if (_aromeData) _renderAromeCompare(_aromeData); } catch(e) { console.warn('[AromeCompare re-render]', e); }
+  try { if (_aromeCmpShellPresent()) _renderAromeCompare(_aromeData); } catch(e) { console.warn('[AromeCompare re-render]', e); }
 
   // Cache BSF (mise à jour quand les marées multi-jours arrivent aussi)
   var _bsfFc = _buildFcObject(spot, _fcastData, _ncTideCache);
@@ -4783,6 +4783,15 @@ function _renderCmpTable() {
     return '<th style="padding:3px 6px;font-size:10px;font-weight:500;color:var(--faint);border-left:' + (chg ? '1px solid var(--border)' : 'none') + ';white-space:nowrap;">' + lbl + '</th>';
   }).join('');
 
+  // Petite flèche tournée en CSS (pas de svgArrow() ici — ses 24×24 SVG sont
+  // bien trop grandes pour une cellule de tableau à 10px) : convention de
+  // propagation identique (deg = provenance météo → +180° = où ça va),
+  // partagée avec svgArrow()/_gwDrawVectors.
+  function arrowSpan(deg) {
+    if (deg == null) return '';
+    var propDeg = (deg + 180) % 360;
+    return '<span style="display:inline-block;transform:rotate(' + Math.round(propDeg) + 'deg);font-size:9px;opacity:.85;">↑</span>';
+  }
   function rowsFor(defs, kind) {
     return defs.map(function(d) {
       var cells = slots.map(function(s) {
@@ -4790,16 +4799,24 @@ function _renderCmpTable() {
         var v = p ? (kind === 'wind' ? p.kt : p.h) : null;
         if (v == null) return '<td style="padding:3px 6px;text-align:center;font-size:10px;color:var(--faint);">–</td>';
         var bg = (kind === 'wind' ? windCol(v) : hsCol(v)) + '30'; // ~19% alpha
-        var txt = kind === 'wind' ? Math.round(v) : v.toFixed(1);
-        return '<td style="padding:3px 6px;text-align:center;font-size:10px;border-radius:3px;background:' + bg + ';color:var(--text);font-weight:600;">' + txt + '</td>';
+        var arrow = arrowSpan(p.dir);
+        var txt;
+        if (kind === 'wind') {
+          var gustTxt = p.gust != null ? '<span style="opacity:.6;font-size:8px;"> (' + Math.round(p.gust) + ')</span>' : '';
+          txt = Math.round(v) + arrow + gustTxt;
+        } else {
+          var perTxt = p.t != null ? '<span style="opacity:.7;font-size:8.5px;"> ' + Math.round(p.t) + 's</span>' : '';
+          txt = v.toFixed(1) + arrow + perTxt;
+        }
+        return '<td style="padding:3px 4px;text-align:center;font-size:10px;border-radius:3px;background:' + bg + ';color:var(--text);font-weight:600;white-space:nowrap;">' + txt + '</td>';
       }).join('');
       return '<tr><td style="padding:3px 8px 3px 0;font-size:10.5px;color:var(--muted);white-space:nowrap;position:sticky;left:0;background:var(--deep);">' + d.label + '</td>' + cells + '</tr>';
     }).join('');
   }
 
   var html = '<table style="border-collapse:collapse;width:100%;"><thead><tr><th style="position:sticky;left:0;background:var(--deep);"></th>' + headCells + '</tr></thead><tbody>';
-  if (windDefs.length) html += '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:6px 0 2px;font-size:10.5px;color:var(--faint);font-weight:600;">💨 Vent (nds)</td></tr>' + rowsFor(windDefs, 'wind');
-  if (swellDefs.length) html += '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:8px 0 2px;font-size:10.5px;color:var(--faint);font-weight:600;">🌊 Houle (m)</td></tr>' + rowsFor(swellDefs, 'swell');
+  if (windDefs.length) html += '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:6px 0 2px;font-size:10.5px;color:var(--faint);font-weight:600;">💨 Vent (nds, ↑ direction, (rafales) si dispo)</td></tr>' + rowsFor(windDefs, 'wind');
+  if (swellDefs.length) html += '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:8px 0 2px;font-size:10.5px;color:var(--faint);font-weight:600;">🌊 Houle (m, ↑ direction, période)</td></tr>' + rowsFor(swellDefs, 'swell');
   html += '</tbody></table>';
   wrap.innerHTML = html;
 }
@@ -5616,7 +5633,7 @@ async function _renderWeeklyStats() {
       + '<div class="sc"><div class="sc-label">Jours archivés</div><div class="sc-val">' + days.length + '<span style="font-size:.6em;">/7</span></div></div>'
       + '</div>'
       + '<div style="display:flex;align-items:flex-end;gap:4px;height:80px;">' + barsHtml + '</div>'
-      + '<div style="font-size:11px;color:var(--faint);margin-top:8px;">Basé sur les prévisions meteo.nc/GFS archivées à chaque consultation — pas un historique de mesures officielles indépendant. Le comparatif multi-modèles (BOM/MF/ECMWF en plus), lui, est aussi collecté automatiquement 2×/jour : ouvre une date ci-dessous pour le voir.</div>';
+      + '<div style="font-size:11px;color:var(--faint);margin-top:8px;">Basé sur les prévisions meteo.nc/GFS archivées à chaque consultation — pas un historique de mesures officielles indépendant. Le comparatif multi-modèles (BOM/MF/ECMWF en plus), lui, est aussi collecté automatiquement 3×/jour : ouvre une date ci-dessous pour le voir.</div>';
   } catch (e) {
     console.warn('[weekly stats]', e && e.message);
     card.style.display = 'none';
@@ -7656,6 +7673,17 @@ function _wgIdForSpot(s) {
 }
 var _wgLoadedFor = null;
 var _aromeData = null; // dernier jeu AROME chargé (purgé quand le spot n'a pas de correspondance)
+// BUG corrigé (signalé par l'utilisateur : "le tableau arome n'est pas chargé
+// car pas encore de GRIB mais du coup la figure de comparatif des vents n'est
+// pas affichée") : le comparatif vent (nc/gfs/bom/ecmwf/marc + mesures) était
+// entièrement imbriqué dans le rendu du TABLEAU AROME (_renderAromeCardData),
+// lui-même conditionné à la réussite du fetch AROME — si AROME échoue (ni
+// Windguru ni archive GRIB2 encore passée), le comparatif des AUTRES modèles,
+// qui n'ont aucune dépendance réelle à AROME, disparaissait aussi. `_aromeData`
+// reste `null` dans ce cas précis (légitime : pas de série AROME), donc tester
+// sa présence pour savoir si le SHELL du comparatif existe est faux — on teste
+// désormais l'existence du DOM du comparatif lui-même.
+function _aromeCmpShellPresent() { return !!document.getElementById('arome-cmp-wrap'); }
 // Cache des séries déjà FETCHÉES pour le comparatif vent (obs/AROME/meteo.nc/GFS/BOM/
 // ECMWF) — permet de redessiner (zoom, encart extrêmes) sans re-fetch réseau. Repeuplé
 // uniquement par _renderAromeCompare(). _aromeZoom : fenêtre temporelle affichée, en
@@ -7669,7 +7697,7 @@ var _swellZoom = { a: 0, b: 1 };
 var _aromeCmpShowHistory = false;
 function _toggleAromeCmpHistory() {
   _aromeCmpShowHistory = !_aromeCmpShowHistory;
-  if (_aromeData) _renderAromeCompare(_aromeData);
+  if (_aromeCmpShellPresent()) _renderAromeCompare(_aromeData);
 }
 // ── Comparatif vent : cases à cocher + mode d'échantillonnage (spot vs station) ──
 // _windCmpHidden : séries décochées dans la légende (persisté — « je ne veux voir que
@@ -7715,7 +7743,7 @@ async function _setWindCmpStation(atStation) {
   var spotBtn = document.getElementById('wcmp-loc-spot'), stBtn = document.getElementById('wcmp-loc-station');
   if (spotBtn) spotBtn.disabled = true; if (stBtn) stBtn.disabled = true;
   try {
-    if (_aromeData) await _renderAromeCompare(_aromeData);
+    if (_aromeCmpShellPresent()) await _renderAromeCompare(_aromeData);
     // Le tableau AROME statique (au-dessus du comparatif) a sa propre clé de
     // chargement dépendante du mode (cf. updateAromeCard) — sans cet appel, il
     // restait affiché "au spot" même après avoir basculé sur "à la station".
@@ -7736,11 +7764,11 @@ async function _fetchWindAtStation(stLat, stLon) {
     (async function(){
       try {
         var u = 'https://api.open-meteo.com/v1/forecast?latitude=' + stLat + '&longitude=' + stLon
-          + '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&models=gfs_seamless&forecast_days=10&timezone=GMT';
+          + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&models=gfs_seamless&forecast_days=10&timezone=GMT';
         var j = await (await fetch(u)).json();
         var h = j && j.hourly;
         if (h && h.time) for (var i = 0; i < h.time.length; i++) {
-          if (h.wind_speed_10m[i] != null) out.gfs.push({ ms: new Date(h.time[i] + 'Z').getTime(), kt: h.wind_speed_10m[i], dir: h.wind_direction_10m && h.wind_direction_10m[i] });
+          if (h.wind_speed_10m[i] != null) out.gfs.push({ ms: new Date(h.time[i] + 'Z').getTime(), kt: h.wind_speed_10m[i], dir: h.wind_direction_10m && h.wind_direction_10m[i], gust: h.wind_gusts_10m && h.wind_gusts_10m[i] });
         }
       } catch(e) {}
     })(),
@@ -7779,7 +7807,7 @@ async function _fetchWindAtStation(stLat, stLon) {
           (row.hours || []).forEach(function(hh) {
             if (!hh || hh.h == null || hh.val == null) return;
             var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.h), Math.round((hh.h % 1) * 60)) - 11 * 3600000;
-            out.aro.push({ ms: ms, kt: hh.val, dir: hh.dir });
+            out.aro.push({ ms: ms, kt: hh.val, dir: hh.dir, gust: hh.gust });
           });
         });
       } catch(e) {}
@@ -7878,8 +7906,14 @@ async function _loadAromeWidget(wgId, spot, station) {
   if (station) {
     var jSt = await _fetchAromeArchive(station);
     if (jSt) { _renderAromeCardData(jSt, wgId, body); return; }
-    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;line-height:1.5;">Pas encore d\'archive GRIB2 pour '
-      + station.name + ' (le job GitHub Actions passe 2×/jour).</div>';
+    // AROME indisponible pour cette station, mais le comparatif vent
+    // (nc/gfs/bom/ecmwf/marc) n'a aucune dépendance à AROME — l'afficher quand
+    // même (cf. _aromeCmpShellPresent) plutôt que de faire disparaître toute la
+    // figure (bug signalé par l'utilisateur).
+    _aromeData = null; window._aromeColInfo = null;
+    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px 10px 4px;line-height:1.5;">Pas encore d\'archive GRIB2 pour '
+      + station.name + ' (le job GitHub Actions passe 3×/jour).</div>' + _aromeCmpShellHtml();
+    await _renderAromeCompare(null);
     return;
   }
   var j = null, errCode = null;
@@ -7903,14 +7937,20 @@ async function _loadAromeWidget(wgId, spot, station) {
     // Message honnête : distinguer « ce spot n'a pas AROME chez Windguru » (limite
     // fournisseur, pas un bug) d'une vraie panne réseau/run en cours/archive pas encore passée.
     var msg = !wgId
-      ? 'Pas de correspondance AROME/windguru pour ce spot, et pas encore d\'archive GRIB2 pour ce point (le job GitHub Actions passe 2×/jour).'
+      ? 'Pas de correspondance AROME/windguru pour ce spot, et pas encore d\'archive GRIB2 pour ce point (le job GitHub Actions passe 3×/jour).'
       : (errCode === 'AROME_NOT_AVAILABLE'
         ? 'AROME non configuré pour ce spot chez Windguru (limite du fournisseur, pas un bug de l\'app), et pas encore d\'archive GRIB2 pour ce point.'
         : '⚠ AROME indisponible pour l\'instant (erreur réseau ou run en cours) — réessaie plus tard.');
-    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;line-height:1.5;">' + msg
+    // AROME indisponible pour ce spot, mais le comparatif vent (nc/gfs/bom/ecmwf/
+    // marc) n'a aucune dépendance à AROME — l'afficher quand même (cf.
+    // _aromeCmpShellPresent) plutôt que de faire disparaître toute la figure
+    // (bug signalé par l'utilisateur : "le tableau arome n'est pas chargé... du
+    // coup la figure de comparatif des vents n'est pas affichée").
+    body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px 10px 4px;line-height:1.5;">' + msg
       + (wgId ? ' <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);">voir sur windguru ↗</a>' : '')
       + (!wgId ? '<br><span style="color:var(--faint);">Windguru peut aussi être activé : ⚙ Réglages du spot → « Id spot Windguru » '
-        + '(le numéro dans l\'URL windguru.cz du spot le plus proche, ex : 6476 = Ilot Ténia).</span>' : '') + '</div>';
+        + '(le numéro dans l\'URL windguru.cz du spot le plus proche, ex : 6476 = Ilot Ténia).</span>' : '') + '</div>' + _aromeCmpShellHtml();
+    await _renderAromeCompare(null);
     return;
   }
   _renderAromeCardData(j, wgId, body);
@@ -7956,6 +7996,62 @@ async function _fetchAromeArchive(spot) {
       TMP: pts.map(function(p) { return p.temp; }),
     };
   } catch(e) { return null; }
+}
+// Coquille HTML du comparatif vent (canvas/rose/légende/contrôles) — fonction à
+// part (pas nichée dans _renderAromeCardData) pour pouvoir être affichée MÊME
+// quand AROME lui-même n'a pas de données (cf. _aromeCmpShellPresent plus haut) :
+// les autres modèles (nc/gfs/bom/ecmwf/marc) n'ont aucune dépendance à AROME.
+function _aromeCmpShellHtml() {
+  return '<div style="border-top:1px solid rgba(255,255,255,.06);padding-top:8px;margin-bottom:8px;">'
+    + '<b style="color:var(--text);font-size:11.5px;display:block;margin-bottom:6px;">🆚 Vent : mesuré vs modèles</b>'
+    // Sélecteur segmenté (§9.2/9.3) : deux QUESTIONS différentes toujours visibles,
+    // pas un bouton bascule qui cache l'état inverse — « au spot » = ce que tu vas
+    // surfer (modèles échantillonnés au spot) ; « à la station » = ce que tu peux
+    // vérifier (ré-échantillonnés à la station → classement de fiabilité valide).
+    // Style + note remplis par _updateWindCmpControls() (dépend de la station connue).
+    + '<div style="margin-bottom:6px;">'
+    + '<div class="seg" role="group" aria-label="Point d\'échantillonnage des modèles" style="display:inline-flex;background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:2px;gap:2px;">'
+    + '<button id="wcmp-loc-spot" onclick="_setWindCmpStation(false)" aria-pressed="true" style="font:600 11px/1 var(--font-b);color:var(--text);background:var(--surface);border:0;padding:7px 12px;border-radius:8px;cursor:pointer;min-height:36px;white-space:nowrap;">🎯 Au spot</button>'
+    + '<button id="wcmp-loc-station" onclick="_setWindCmpStation(true)" aria-pressed="false" style="font:600 11px/1 var(--font-b);color:var(--muted);background:none;border:0;padding:7px 12px;border-radius:8px;cursor:pointer;min-height:36px;white-space:nowrap;">📍 À la station</button>'
+    + '</div>'
+    + '<div id="wcmp-loc-note" style="font-size:11px;color:var(--faint);line-height:1.4;margin-top:5px;"></div>'
+    + '</div>'
+    // Légende = cases à cocher : clic sur un modèle = l\'afficher/masquer (redessine
+    // sans refetch). État (opacité/barré/clic) posé par _updateWindCmpControls().
+    // Rangée séparée plus bas : marqueurs de points archivés (cercle creux).
+    + '<div style="display:flex;gap:10px;row-gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-bottom:5px;">'
+    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.obs.col+';font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
+    + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.aro.col+';font-weight:700;">━</span> AROME<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.aro.res+'</span></span>'
+    + '<span id="wcmp-leg-nc" onclick="_toggleWindCmpModel(\'nc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.nc.col+';font-weight:700;">╌</span> meteo.nc</span>'
+    + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.gfs.col+';font-weight:700;">╌</span> GFS<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.gfs.res+'</span></span>'
+    + '<span id="wcmp-leg-bom" onclick="_toggleWindCmpModel(\'bom\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Bureau of Meteorology (Australie) — vent WaveWatch III régional, grille 0,125° (~14 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.bom.col+';font-weight:700;">╌</span> BOM<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.bom.res+'</span></span>'
+    + '<span id="wcmp-leg-ecmwf" onclick="_toggleWindCmpModel(\'ecmwf\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.ecmwf.col+';font-weight:700;">╌</span> ECMWF<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.ecmwf.res+'</span></span>'
+    + '<span id="wcmp-leg-marc" onclick="_toggleWindCmpModel(\'marc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="MARC-WW3 Nouvelle-Calédonie (Ifremer) — vent ECMWF au point de grille, résolution 0,05° (~5,5 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.marc.col+';font-weight:700;">╌</span> MARC<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.marc.res+'</span></span>'
+    + '<button id="wcmp-leg-reset" onclick="_resetWindCmpHidden()" style="display:none;background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>'
+    + '</div>'
+    // Historique archivé (jusqu'à 8j) masqué par défaut — l'afficher d'entrée
+    // écrasait les courbes récentes de points morts (retour utilisateur). Le
+    // badge de corrélation plus bas, lui, utilise toujours l'archive complète
+    // que ce bouton soit activé ou non.
+    + (_aromeCmpShowHistory
+        ? '<div style="display:flex;gap:10px;row-gap:4px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--faint);margin-bottom:6px;">'
+          + '<span>Archivé :</span>'
+          + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé</span>'
+          + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé</span>'
+          + '<button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:auto;">▲ Masquer l\'historique</button>'
+          + '</div>'
+        : '<div style="margin-bottom:6px;"><button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:3px 9px;border-radius:10px;cursor:pointer;">▼ Afficher l\'historique archivé (jusqu\'à 8j)</button></div>')
+    + '<div class="cmp-chart-row">'
+    + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;position:relative;"><canvas id="arome-cmp"></canvas></div>'
+    + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
+    + '</div>'
+    + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:11px;color:var(--muted);">← Survolez pour lire les valeurs au même instant (molette/pincement = zoomer)</div>'
+    // Sous les courbes de vent (et non au-dessus, où c'était facile à manquer) :
+    // seul le vent a une vraie mesure au sol pour comparer les modèles — la
+    // houle n'a pas d'instrument équivalent, d'où le vote subjectif après-coup
+    // (Journal → "Modèle de houle le plus fiable") au lieu d'une corrélation ici.
+    + '<div id="arome-cmp-corr" style="font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);"></div>'
+    + '</div>';
 }
 // Rendu du tableau AROME + déclenchement du comparatif — commun aux deux sources
 // (Windguru en direct ou archive GRIB2 ci-dessus). `wgId` détermine juste le lien
@@ -8034,56 +8130,7 @@ function _renderAromeCardData(j, wgId, body) {
   tableHtml += '<div style="font-size:11px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '')
     + (wgId ? ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a>' : '') + '</div>';
   // Comparatif vent : mesures station (passé) vs AROME/meteo.nc/GFS/BOM/ECMWF
-  var cmpHtml = '<div style="border-top:1px solid rgba(255,255,255,.06);padding-top:8px;margin-bottom:8px;">'
-    + '<b style="color:var(--text);font-size:11.5px;display:block;margin-bottom:6px;">🆚 Vent : mesuré vs modèles</b>'
-    // Sélecteur segmenté (§9.2/9.3) : deux QUESTIONS différentes toujours visibles,
-    // pas un bouton bascule qui cache l'état inverse — « au spot » = ce que tu vas
-    // surfer (modèles échantillonnés au spot) ; « à la station » = ce que tu peux
-    // vérifier (ré-échantillonnés à la station → classement de fiabilité valide).
-    // Style + note remplis par _updateWindCmpControls() (dépend de la station connue).
-    + '<div style="margin-bottom:6px;">'
-    + '<div class="seg" role="group" aria-label="Point d\'échantillonnage des modèles" style="display:inline-flex;background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:2px;gap:2px;">'
-    + '<button id="wcmp-loc-spot" onclick="_setWindCmpStation(false)" aria-pressed="true" style="font:600 11px/1 var(--font-b);color:var(--text);background:var(--surface);border:0;padding:7px 12px;border-radius:8px;cursor:pointer;min-height:36px;white-space:nowrap;">🎯 Au spot</button>'
-    + '<button id="wcmp-loc-station" onclick="_setWindCmpStation(true)" aria-pressed="false" style="font:600 11px/1 var(--font-b);color:var(--muted);background:none;border:0;padding:7px 12px;border-radius:8px;cursor:pointer;min-height:36px;white-space:nowrap;">📍 À la station</button>'
-    + '</div>'
-    + '<div id="wcmp-loc-note" style="font-size:11px;color:var(--faint);line-height:1.4;margin-top:5px;"></div>'
-    + '</div>'
-    // Légende = cases à cocher : clic sur un modèle = l\'afficher/masquer (redessine
-    // sans refetch). État (opacité/barré/clic) posé par _updateWindCmpControls().
-    // Rangée séparée plus bas : marqueurs de points archivés (cercle creux).
-    + '<div style="display:flex;gap:10px;row-gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-bottom:5px;">'
-    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.obs.col+';font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
-    + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.aro.col+';font-weight:700;">━</span> AROME<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.aro.res+'</span></span>'
-    + '<span id="wcmp-leg-nc" onclick="_toggleWindCmpModel(\'nc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.nc.col+';font-weight:700;">╌</span> meteo.nc</span>'
-    + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.gfs.col+';font-weight:700;">╌</span> GFS<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.gfs.res+'</span></span>'
-    + '<span id="wcmp-leg-bom" onclick="_toggleWindCmpModel(\'bom\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Bureau of Meteorology (Australie) — vent WaveWatch III régional, grille 0,125° (~14 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.bom.col+';font-weight:700;">╌</span> BOM<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.bom.res+'</span></span>'
-    + '<span id="wcmp-leg-ecmwf" onclick="_toggleWindCmpModel(\'ecmwf\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="ECMWF IFS-HRES (via Windguru) — grille 0,09° (~9 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.ecmwf.col+';font-weight:700;">╌</span> ECMWF<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.ecmwf.res+'</span></span>'
-    + '<span id="wcmp-leg-marc" onclick="_toggleWindCmpModel(\'marc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="MARC-WW3 Nouvelle-Calédonie (Ifremer) — vent ECMWF au point de grille, résolution 0,05° (~5,5 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.marc.col+';font-weight:700;">╌</span> MARC<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.marc.res+'</span></span>'
-    + '<button id="wcmp-leg-reset" onclick="_resetWindCmpHidden()" style="display:none;background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>'
-    + '</div>'
-    // Historique archivé (jusqu'à 8j) masqué par défaut — l'afficher d'entrée
-    // écrasait les courbes récentes de points morts (retour utilisateur). Le
-    // badge de corrélation plus bas, lui, utilise toujours l'archive complète
-    // que ce bouton soit activé ou non.
-    + (_aromeCmpShowHistory
-        ? '<div style="display:flex;gap:10px;row-gap:4px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--faint);margin-bottom:6px;">'
-          + '<span>Archivé :</span>'
-          + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé</span>'
-          + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé</span>'
-          + '<button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:auto;">▲ Masquer l\'historique</button>'
-          + '</div>'
-        : '<div style="margin-bottom:6px;"><button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:3px 9px;border-radius:10px;cursor:pointer;">▼ Afficher l\'historique archivé (jusqu\'à 8j)</button></div>')
-    + '<div class="cmp-chart-row">'
-    + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;position:relative;"><canvas id="arome-cmp"></canvas></div>'
-    + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
-    + '</div>'
-    + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:11px;color:var(--muted);">← Survolez pour lire les valeurs au même instant (molette/pincement = zoomer)</div>'
-    // Sous les courbes de vent (et non au-dessus, où c'était facile à manquer) :
-    // seul le vent a une vraie mesure au sol pour comparer les modèles — la
-    // houle n'a pas d'instrument équivalent, d'où le vote subjectif après-coup
-    // (Journal → "Modèle de houle le plus fiable") au lieu d'une corrélation ici.
-    + '<div id="arome-cmp-corr" style="font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);"></div>'
-    + '</div>';
+  var cmpHtml = _aromeCmpShellHtml();
   body.innerHTML = cmpHtml + tableHtml;
   _aromeData = j;
   // Détail par colonne pour le bandeau de survol (mêmes calculs que les cellules)
@@ -8278,7 +8325,7 @@ async function _fetchEcmwfWind(spot) {
     if (!f || !f.hours || !f.WINDSPD || !f.initstamp) return [];
     var pts = [];
     for (var i = 0; i < f.hours.length; i++) {
-      if (f.WINDSPD[i] != null) pts.push({ ms: f.initstamp * 1000 + f.hours[i] * 3600000, kt: f.WINDSPD[i], dir: f.WINDDIR && f.WINDDIR[i] });
+      if (f.WINDSPD[i] != null) pts.push({ ms: f.initstamp * 1000 + f.hours[i] * 3600000, kt: f.WINDSPD[i], dir: f.WINDDIR && f.WINDDIR[i], gust: f.GUST && f.GUST[i] });
     }
     return pts;
   } catch (e) { console.warn('[ECMWF wind]', e && e.message); return []; }
@@ -8382,19 +8429,22 @@ async function _renderAromeCompare(j) {
   try {
     if (_ncFcastData && _ncFcastData.dates) _ncFcastData.dates.forEach(function(d, i) {
       var ms = (d instanceof Date ? d.getTime() : d) - 11 * 3600000;
-      if (_ncFcastData.wSpd && _ncFcastData.wSpd[i] != null) pageNc.push({ ms: ms, kt: _ncFcastData.wSpd[i], dir: _ncFcastData.wDir && _ncFcastData.wDir[i] });
+      if (_ncFcastData.wSpd && _ncFcastData.wSpd[i] != null) pageNc.push({ ms: ms, kt: _ncFcastData.wSpd[i], dir: _ncFcastData.wDir && _ncFcastData.wDir[i], gust: _ncFcastData.wGst && _ncFcastData.wGst[i] });
     });
   } catch(e) {}
   try {
     if (_omFcastData && _omFcastData.dates) _omFcastData.dates.forEach(function(d, i) {
       var ms = (d instanceof Date ? d.getTime() : d) - 11 * 3600000;
-      if (_omFcastData.wSpd && _omFcastData.wSpd[i] != null) pageGfs.push({ ms: ms, kt: _omFcastData.wSpd[i], dir: _omFcastData.wDir && _omFcastData.wDir[i] });
+      if (_omFcastData.wSpd && _omFcastData.wSpd[i] != null) pageGfs.push({ ms: ms, kt: _omFcastData.wSpd[i], dir: _omFcastData.wDir && _omFcastData.wDir[i], gust: _omFcastData.wGst && _omFcastData.wGst[i] });
     });
   } catch(e) {}
-  // 3. AROME
+  // 3. AROME — j peut être null (AROME indisponible pour ce spot/instant : ni
+  // Windguru ni archive GRIB2 encore passée) : le reste du comparatif (obs/nc/
+  // gfs/bom/ecmwf/marc, tous fetchés indépendamment ci-dessus) doit s'afficher
+  // quand même, avec juste une série AROME vide plutôt qu'un throw.
   var aro = [];
-  (j.hours || []).forEach(function(hh, i) {
-    if (j.WINDSPD[i] != null) aro.push({ ms: j.init * 1000 + hh * 3600000, kt: j.WINDSPD[i], dir: j.WINDDIR && j.WINDDIR[i] });
+  if (j) (j.hours || []).forEach(function(hh, i) {
+    if (j.WINDSPD[i] != null) aro.push({ ms: j.init * 1000 + hh * 3600000, kt: j.WINDSPD[i], dir: j.WINDDIR && j.WINDDIR[i], gust: j.GUST && j.GUST[i] });
   });
   var now = Date.now(), t0 = now - 24 * 36e5;
   // AROME (2,5 km) a un horizon court (~48h) par nature du modèle, mais
@@ -8445,7 +8495,7 @@ async function _renderAromeCompare(j) {
         });
       });
       // GFS/BOM/ECMWF sont déjà archivés dans model_forecast_cache à chaque
-      // chargement de ce comparatif (cf. _cacheModelPoints plus bas) ET 2x/jour
+      // chargement de ce comparatif (cf. _cacheModelPoints plus bas) ET 3x/jour
       // par le job GitHub Actions (cache-model-forecasts.yml) — jusqu'ici cette
       // profondeur n'était jamais relue, seuls meteo.nc/AROME avaient du recul.
       // Sans ça, le badge de corrélation n'avait quasi aucune chance d'avoir
@@ -8690,7 +8740,7 @@ function _drawAromeCompareFromCache() {
     if (spd.length < 2) {
       el.innerHTML = atStation
         ? '🎯 Mode « au point de mesure » : pas encore assez de mesures récentes qui recoupent les modèles ré-échantillonnés à la station — sans archive à la station, seul le recul « live » compte, reviens après quelques heures de mesures.'
-        : '🎯 Pas encore assez de mesures et de prévisions archivées qui se recoupent pour comparer les modèles ici — revient au fil des jours (archivage 2×/jour).';
+        : '🎯 Pas encore assez de mesures et de prévisions archivées qui se recoupent pour comparer les modèles ici — revient au fil des jours (archivage 3×/jour).';
       return;
     }
     spd.sort(function(a, b) { return a.r.avg - b.r.avg; });
@@ -12410,7 +12460,7 @@ function togglePastConditions() {
 }
 
 // Bloc comparatif multi-modèles archivés (model_forecast_cache) pour une date —
-// alimenté automatiquement 2×/jour par le job CI + à chaque consultation.
+// alimenté automatiquement 3×/jour par le job CI + à chaque consultation.
 // C'est ce qui « valorise » le cache : au lieu d'une seule source, on montre
 // ce que CHAQUE modèle avait prévu ce jour-là, côte à côte, même sans avoir
 // ouvert la page à ce moment. Renvoie '' si rien d'archivé (silencieux).
@@ -12463,7 +12513,7 @@ async function _renderCachedModelsBlock(spot, date) {
     return '<div style="background:rgba(79,163,199,.05);border:1px solid rgba(79,163,199,.18);border-radius:10px;padding:11px 13px;margin-bottom:10px;">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:8px;">'
       + '<div style="font-size:11px;font-weight:700;color:var(--accent);">🆚 Modèles archivés — vers ' + targetH + 'h</div>'
-      + '<span style="font-size:11px;color:var(--faint);" title="Collecté automatiquement 2×/jour + à chaque consultation">' + present.length + ' modèle(s) · auto</span>'
+      + '<span style="font-size:11px;color:var(--faint);" title="Collecté automatiquement 3×/jour + à chaque consultation">' + present.length + ' modèle(s) · auto</span>'
       + '</div>'
       + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">'
       + '<thead><tr style="color:var(--muted);font-size:11px;">'
@@ -13553,14 +13603,14 @@ function openNavBMSDetail() {
     clearTimeout(_resizeRedrawT);
     _resizeRedrawT = setTimeout(function() {
       try { if (typeof _swellCache !== 'undefined' && _swellCache && typeof _drawSwellCompare === 'function') _drawSwellCompare(); } catch(e) {}
-      try { if (typeof _aromeData !== 'undefined' && _aromeData && typeof _renderAromeCompare === 'function') _renderAromeCompare(_aromeData); } catch(e) {}
+      try { if (typeof _aromeCmpShellPresent === 'function' && _aromeCmpShellPresent() && typeof _renderAromeCompare === 'function') _renderAromeCompare(_aromeData); } catch(e) {}
     }, 400);
   });
   window.addEventListener('orientationchange', function() {
     clearTimeout(_resizeRedrawT);
     _resizeRedrawT = setTimeout(function() {
       try { if (typeof _swellCache !== 'undefined' && _swellCache && typeof _drawSwellCompare === 'function') _drawSwellCompare(); } catch(e) {}
-      try { if (typeof _aromeData !== 'undefined' && _aromeData && typeof _renderAromeCompare === 'function') _renderAromeCompare(_aromeData); } catch(e) {}
+      try { if (typeof _aromeCmpShellPresent === 'function' && _aromeCmpShellPresent() && typeof _renderAromeCompare === 'function') _renderAromeCompare(_aromeData); } catch(e) {}
     }, 600);
   });
   // Filet de sécurité PWA : même sans resize/rotation, un premier redessin
