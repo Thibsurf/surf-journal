@@ -1,0 +1,27 @@
+name: Cache MARC-WW3 forecasts
+
+# MARC-WW3 Nouvelle-Calédonie (Ifremer/CNRS-IRD-UBO) : même raison d'être que le
+# job "arome" de cache-model-forecasts.yml — interroger le THREDDS/OPeNDAP
+# d'Ifremer EN DIRECT depuis le navigateur à chaque ouverture de page rendait le
+# widget MARC peu fiable pour l'utilisateur ("MARC ne charge pas"). Workflow
+# séparé (pas un job de plus dans cache-model-forecasts.yml) car planning propre :
+# 3x/jour demandé explicitement par l'utilisateur (le dataset agrégé
+# FULL_TIME_SERIE grandit en continu, un passage de plus dans la journée resserre
+# l'ancrage "maintenant" de la fenêtre affichée), contre 2x/jour pour AROME/GFS/BOM.
+on:
+  schedule:
+    - cron: '0 1,9,17 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  marc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r ingestion/requirements.txt
+      - name: Fetch + archive MARC-WW3 NC
+        run: python ingestion/fetch_marc.py

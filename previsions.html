@@ -4309,44 +4309,50 @@ var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1, spr: 0.
 // décomposition est cohérente. Spread absent chez tous les autres modèles
 // intégrés ici (BOM/GFS via Open-Meteo/MF via Open-Meteo/ECMWF via Windguru) —
 // vérifié empiriquement, pas de comparatif multi-modèle possible, cf. spectre.
-// Réduit de [0..5] à [0..2] (mer du vent + houle 1 + houle 2 — tout ce que le
-// widget affiche réellement) : la requête OPeNDAP à 30 variables mettait 10-20s+
-// à répondre (root cause du fetch MARC en échec fréquent, signalé par
-// l'utilisateur). Passer de 30 à 18 variables demandées réduit le volume d'environ
-// 40% — le spectre satellite/comparatif montre au plus 3 trains au lieu de 6
-// (partitions 3-5 rarement peuplées de toute façon, triées par énergie
-// décroissante), au bénéfice d'un fetch nettement plus fiable.
-var MARC_PARTITIONS = [0, 1, 2];
+// Restauré à [0..5] (les 6 trains) : la lenteur venait de la fenêtre mal calculée
+// (cf. _marcWindow ci-dessous), pas du nombre de variables — vérifié après
+// correctif de la fenêtre : requête à 30 variables en ~3s (contre 10-20s+ avant),
+// donc pas besoin de sacrifier houle 3/4/5 du spectre pour fiabiliser le fetch.
+var MARC_PARTITIONS = [0, 1, 2, 3, 4, 5];
 var MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", cf. .das
-// Fenêtre de fetch ancrée sur "maintenant", pas sur la fin du jeu de données — BUG
-// corrigé (signalé par l'utilisateur : "sur le site MARC Ifremer y'a les prévisions
-// du futur, ici ça s'arrête à aujourd'hui"). FULL_TIME_SERIE grandit à chaque run
-// (recul archivé + prévision) : prendre systématiquement les N-NSTEPS DERNIERS points
-// pouvait inclure plusieurs jours de PASSÉ avant même d'atteindre "aujourd'hui",
-// laissant à peine 1-2 jours de futur dans une fenêtre affichée plafonnée à 5 jours
-// (vérifié : le 28/07/2026, la fenêtre couvrait le 24/07 12h → 01/08 09h UTC, donc
-// ~3-4 jours déjà écoulés sur les 8 demandés). Comme NC/GFS/BOM : viser l'index le
-// plus proche de (maintenant - 6h) et avancer, jamais reculer depuis la fin du
-// tableau. Partagée par _fetchMarcWave et _fetchMarcWind (même dataset, même cadence).
-function _marcWindow(N) {
-  // 48 (6j) au lieu de 64 (8j) : le widget plafonne l'affichage à 5j, la marge de
-  // 8j était inutile et alourdissait encore la requête (cf. MARC_PARTITIONS
-  // ci-dessus, même objectif de fiabilité du fetch).
-  var NSTEPS = 48; // ~6j à 3h : recul archivé + prévision dispo
+// Fenêtre de fetch ancrée sur "maintenant", pas sur la fin du jeu de données.
+// BUG TROUVÉ EN VÉRIFIANT APRÈS COUP (pas supposé) dans le premier correctif de ce
+// commentaire : calculer un index directement depuis MARC_EPOCH_MS (1990-01-01)
+// suppose que l'index 0 du tableau correspond à cette date — FAUX, ce dataset
+// agrégé démarre vers 2011 (times[0] ≈ 7995 jours après l'epoch, pas 0). Le calcul
+// donnait donc un index ~2.5x trop grand, aussitôt re-clampé par sécurité à
+// l'index N-1 (le tout dernier point) → une fenêtre d'UN SEUL point à chaque fois.
+// Passé inaperçu le temps d'un tour de retour utilisateur car le widget retombait
+// alors silencieusement sur meteo.nc (avant le correctif "pas de repli"), ce qui
+// ressemblait à un problème de lenteur réseau plutôt qu'à un calcul faux.
+// Corrigé en lisant le VRAI dernier point (une requête légère, une seule valeur)
+// au lieu de supposer où le tableau commence. Partagée par _fetchMarcWave et
+// _fetchMarcWind (même dataset, même cadence).
+async function _marcLastTimeDays(N, signal) {
+  var r = await fetch(MARC_BASE + '.ascii?time%5B' + (N-1) + ':1:' + (N-1) + '%5D', { signal: signal });
+  var text = await r.text();
+  var mm = text.match(/time\[\d+\]\s*\n([^\n]+)/);
+  if (!mm) throw new Error('dernier point de temps introuvable');
+  return parseFloat(mm[1].split(',')[0].trim());
+}
+function _marcWindow(N, lastTimeDays) {
+  var NSTEPS = 64; // ~8j à 3h : recul archivé + prévision dispo
   var STEP_MS = 0.125 * 86400000; // 3h, cadence du produit (jours -> ms)
-  var t0 = Math.max(0, Math.min(N - 1, Math.round((Date.now() - 6*3600000 - MARC_EPOCH_MS) / STEP_MS)));
+  var nowDays = (Date.now() - MARC_EPOCH_MS) / 86400000;
+  var nowIdx = (N - 1) + Math.round((nowDays - lastTimeDays) / (STEP_MS / 86400000));
+  var t0 = Math.max(0, Math.min(N - 1, nowIdx - 8)); // ~1j (8 pas) de recul pour le contexte
   var t1 = Math.min(N - 1, t0 + NSTEPS - 1);
   return { t0: t0, t1: t1 };
 }
 async function _fetchMarcWave(spot) {
   var ctrl = new AbortController();
-  // BUG corrigé (signalé utilisateur : spectre MARC absent la plupart des jours,
-  // "≈" affiché à tort) — cette requête OPeNDAP (30 variables × 64 pas de temps)
-  // met couramment 10-20s à répondre (mesuré : 10s à 20s+ selon charge du serveur
-  // Ifremer, parfois plus), largement au-dessus de l'ancien délai de 12s. Le fetch
-  // avortait avant la fin, _gwBuildModelFcast('marc') retombait silencieusement sur
-  // meteo.nc tout en gardant le bouton "MARC" affiché comme actif — d'où le spectre
-  // absent la plupart du temps et un "≈" (résidu meteo.nc) affiché sous l'étiquette MARC.
+  // BUG corrigé (signalé utilisateur : spectre MARC absent la plupart des jours) :
+  // longtemps attribué à la lenteur de la requête OPeNDAP (30 variables × 64 pas,
+  // mesurée à 10-20s+), mais la cause dominante était en fait _marcWindow qui
+  // calculait une fenêtre dégénérée d'UN SEUL point (cf. commentaire plus haut) —
+  // corrigé, la requête complète (mêmes 30 variables) prend maintenant ~3s en
+  // pratique. Le timeout généreux ci-dessous reste une marge de sécurité, pas le
+  // correctif principal.
   var tt = setTimeout(function(){ ctrl.abort(); }, 25000);
   try {
     var ddsR = await fetch(MARC_BASE + '.dds', { signal: ctrl.signal });
@@ -4354,7 +4360,8 @@ async function _fetchMarcWave(spot) {
     var lenM = ddsText.match(/time\s*=\s*(\d+)/);
     if (!lenM) throw new Error('longueur time introuvable');
     var N = parseInt(lenM[1], 10);
-    var _mw = _marcWindow(N), t0 = _mw.t0, t1 = _mw.t1;
+    var lastTimeDays = await _marcLastTimeDays(N, ctrl.signal);
+    var _mw = _marcWindow(N, lastTimeDays), t0 = _mw.t0, t1 = _mw.t1;
     var latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
     var lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
     // uwnd/vwnd = forçage vent RÉEL de ce run WW3 (pas une approximation) — confirmé
@@ -4429,6 +4436,51 @@ async function _fetchMarcWave(spot) {
     return { primary: primary, secondary: [] };
   } catch (e) { console.warn('[MARC wave]', e && e.message); return { primary: [], secondary: [] }; }
   finally { clearTimeout(tt); }
+}
+// Lecture du cache Supabase alimenté par ingestion/fetch_marc.py (GitHub Action) —
+// même principe que _fetchAromeArchive : au lieu d'interroger Ifremer EN DIRECT à
+// chaque ouverture de page (10-20s avant correctif fenêtre, ~3s après, mais un
+// fetch bloquant tout de même), une lecture Supabase quasi instantanée. Format des
+// lignes identique à celui produit par _fetchMarcWave (mêmes clés `primary[].{h,t,
+// dir,spread,windKt,windDir,partitions}`) pour rester interchangeable pour
+// _gwBuildModelFcast/_drawSwellCompare/_drawMarcSpectrumRose.
+async function _fetchMarcArchive(spot) {
+  try {
+    if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
+    var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
+    var ids = [], nowA = new Date();
+    // -1..+5j : couvre la fenêtre écrite par fetch_marc.py (~5,4j de recul+prévision
+    // autour de "maintenant") avec une marge d'un jour de chaque côté.
+    for (var dd = -1; dd <= 5; dd++) {
+      var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000); // jour NC-local
+      ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_marc_wave');
+    }
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+    if (!r || !r.data || !r.data.length) return null;
+    var primary = [];
+    r.data.forEach(function(row) {
+      var p = row.date.split('-');
+      (row.hours || []).forEach(function(hh) {
+        if (!hh || hh.hs == null) return;
+        var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
+        primary.push({
+          ms: ms, h: hh.hs, t: hh.t02, dir: hh.dir, spread: hh.spread,
+          windKt: hh.windKt, windDir: hh.windDir, partitions: hh.partitions || [],
+        });
+      });
+    });
+    if (!primary.length) return null;
+    primary.sort(function(a, b) { return a.ms - b.ms; });
+    return { primary: primary, secondary: [] };
+  } catch (e) { console.warn('[MARC archive]', e && e.message); return null; }
+}
+// Cache-first, repli sur le fetch OPeNDAP direct (25s de timeout, cf. _fetchMarcWave)
+// seulement si le cache est vide (spot jamais ingéré, run GitHub Action pas encore
+// passé, etc.) — le job tourne 3x/jour, donc ce repli reste rare en usage normal.
+async function _fetchMarcCombined(spot) {
+  var cached = await _fetchMarcArchive(spot);
+  if (cached && cached.primary && cached.primary.length >= 2) return cached;
+  return _fetchMarcWave(spot);
 }
 
 // hex '#rrggbb' → 'rgba(r,g,b,alpha)', alpha écrit sans zéro initial ('.95' pas '0.95')
@@ -4982,7 +5034,7 @@ async function _renderSwellCompare() {
   // _windCmpAtStation (les deux comparatifs sont indépendants par construction —
   // le vent peut re-échantillonner, la houle ne le fait jamais).
   var _spotForFetch = SPOTS[currentSpot];
-  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch), _fetchEcmwfWave(_spotForFetch), _fetchMarcWave(_spotForFetch)]);
+  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch), _fetchEcmwfWave(_spotForFetch), _fetchMarcCombined(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
   _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3] };
   _swellZoom.a = 0; _swellZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
@@ -8163,7 +8215,8 @@ async function _fetchMarcWind(spot) {
     var lenM = ddsText.match(/time\s*=\s*(\d+)/);
     if (!lenM) throw new Error('longueur time introuvable');
     var N = parseInt(lenM[1], 10);
-    var _mw = _marcWindow(N), t0 = _mw.t0, t1 = _mw.t1;
+    var lastTimeDays = await _marcLastTimeDays(N, ctrl.signal);
+    var _mw = _marcWindow(N, lastTimeDays), t0 = _mw.t0, t1 = _mw.t1;
     var latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
     var lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
     var url = MARC_BASE + '.ascii?time%5B' + t0 + ':1:' + t1 + '%5D,uwnd%5B' + t0 + ':1:' + t1 + '%5D%5B' + latIdx + ':1:' + latIdx + '%5D%5B' + lonIdx + ':1:' + lonIdx

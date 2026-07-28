@@ -280,7 +280,7 @@ var GW_SRC_BTNS_DEF = [
   { key:'om',   lbl:'🌐 GFS' },
   { key:'bom',  lbl:'🇦🇺 BOM' },
   { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France globale (résolution non communiquée par Open-Meteo) + vent ARPEGE (résolution non documentée ici).' },
-  { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Requête lourde côté serveur (10-20s) : peut échouer si Ifremer est chargé.' },
+  { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Lu depuis un cache rafraîchi 3x/jour (ingestion/fetch_marc.py) ; repli sur une requête directe Ifremer (~3s) si le cache est vide pour ce spot.' },
   { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km/BOM 14km/MFWAM en repli. Vent : meteo.nc > BOM 14km > MARC (ECMWF ~9km) > GFS 28km > MFWAM (ARPEGE). Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
 ];
 function _gwResSuffix(key) {
