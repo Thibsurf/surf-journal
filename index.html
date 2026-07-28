@@ -3451,16 +3451,24 @@ function escapeHtml(v) {
 // Le résultat du vote est stocké dans sessions.model_reliability si la
 // colonne existe, sinon repli localStorage (même origine, migré vers
 // Supabase dès que possible, cf. _migrateLocalVotesToSupabase).
+// Couleurs alignées sur previsions.html/MODEL_STYLE (29/07/2026) : elles
+// DIVERGEAIENT pour 3 modèles (nc vert vs or, mf violet vs gris, ecmwf rouge
+// vs violet) — or l'outil de fiabilité houle sert précisément à comparer avec
+// ce qu'on a vu sur Prévisions, donc un même modèle DOIT avoir la même couleur
+// sur les deux pages, sinon la carte mentale couleur→modèle se casse. Pire cas
+// avant correction : le VIOLET désignait ECMWF sur Prévisions mais MF ici.
+// previsions.html est la page de référence (on y passe le plus de temps à
+// lire les courbes) → c'est le Journal qui s'aligne dessus, pas l'inverse.
 var MODEL_RELIABILITY_LABELS = {
-  nc:    { label: 'meteo.nc',  col: '#3dba8a' },
+  nc:    { label: 'meteo.nc',  col: '#f0c674' },
   gfs:   { label: 'GFS',       col: '#4fa3c7' },
   bom:   { label: 'BOM WW3',   col: '#e8a057' },
-  mf:    { label: 'MF global', col: '#a99ff8' },
-  ecmwf: { label: 'ECMWF',     col: '#e05c5c' },
+  mf:    { label: 'MF global', col: '#7a94aa' },
+  ecmwf: { label: 'ECMWF',     col: '#a99ff8' },
   // MARC (Ifremer/CNRS-IRD-UBO, WaveWatch III RÉGIONAL Nouvelle-Calédonie, ~5,5 km) —
   // absent jusqu'ici alors que c'est le seul modèle qui résout la bathymétrie du lagon,
   // donc précisément celui dont la valeur ajoutée mérite le plus d'être mesurée
-  // (AUDIT-previsions.md §11.10). Couleur alignée sur SWELL_MODELS (previsions.html).
+  // (AUDIT-previsions.md §11.10).
   marc:  { label: 'MARC WW3', col: '#7dd3fc' }
 };
 // Fenêtre passée corrigée le 28/07/2026 : 2 jours cachait TOTALEMENT l'outil
