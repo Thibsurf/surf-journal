@@ -224,16 +224,25 @@ function _gwBuildBestMix() {
 // Même logique de sélection que setHsSrc : NC prioritaire, GFS si toggle ou si NC
 // absent — sauf si le widget a sa propre source BOM/MFWAM/MARC/mix sélectionnée
 // (_gwExtraSrc).
+// true tant que la dernière tentative de source (_gwExtraSrc) a dû retomber sur
+// meteo.nc/GFS — sert à afficher un avertissement plutôt que de laisser le bouton
+// "MARC"/"BOM"/etc. actif pendant qu'on affiche silencieusement autre chose (bug
+// signalé : le spectre MARC/le "≈" incohérent venaient d'un fetch MARC qui expirait
+// (12s, trop court pour cette requête ~10-20s) sans que rien ne le signale).
+var _gwFellBack = false;
 function _gwActiveData() {
+  _gwFellBack = false;
   if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf' || _gwExtraSrc === 'marc') {
     var built = _gwBuildModelFcast(_gwExtraSrc);
     if (built) return built;
-    // Pas encore chargé (spot tout juste changé, _swellCache pas encore repeuplé)
-    // -> retomber sur la source principale plutôt qu'un widget vide.
+    // Pas encore chargé (spot tout juste changé) ou fetch en échec/expiré ->
+    // retomber sur la source principale plutôt qu'un widget vide, mais le signaler.
+    _gwFellBack = true;
   }
   if (_gwExtraSrc === 'mix') {
     var mix = _gwBuildBestMix();
     if (mix) return mix;
+    _gwFellBack = true;
   }
   return (_currentHsSrc==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
 }
@@ -282,16 +291,22 @@ function renderGlobalWidget() {
       { key:'nc',   lbl:'🛰 meteo.nc' },
       { key:'om',   lbl:'🌐 GFS'+_gwResSuffix('gfs') },
       { key:'bom',  lbl:'🇦🇺 BOM'+_gwResSuffix('bom') },
-      { key:'mf',   lbl:'🌊 MFWAM' },
-      { key:'marc', lbl:'🎯 MARC'+_gwResSuffix('marc'), title:'Houle (spectre complet par train) + vent (forçage ECMWF réel du run, ~9km regrillé sur la maille 5,5km).' },
-      { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC > meteo.nc > GFS/BOM/MFWAM en repli. Vent : meteo.nc > BOM > MARC > GFS > MFWAM. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot).' }
+      { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France globale (résolution non communiquée par Open-Meteo) + vent ARPEGE (résolution non documentée ici).' },
+      { key:'marc', lbl:'🎯 MARC'+_gwResSuffix('marc'), title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre complet par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km).' },
+      { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km/BOM 14km/MFWAM en repli. Vent : meteo.nc > BOM 14km > MARC (ECMWF ~9km) > GFS 28km > MFWAM (ARPEGE). Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
     ];
     badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget">'
       + GW_SRC_BTNS.map(function(s){
           var on = s.key === activeSrc;
           return '<button class="seg-b'+(on?' is-on':'')+'" aria-pressed="'+on+'"'+(s.title?' title="'+s.title+'"':'')+' onclick="_gwSetSrc(\''+s.key+'\')">'+s.lbl+'</button>';
         }).join('')
-      + '</div>';
+      + '</div>'
+      // Signale un repli silencieux (fetch en échec/expiré) plutôt que de laisser
+      // le bouton actif pendant qu'on affiche en réalité meteo.nc/GFS — bug
+      // signalé par l'utilisateur (spectre/houle 2 incohérents sous "MARC").
+      // _gwIsNC() renvoie toujours faux ici (_gwExtraSrc encore posé le temps du
+      // repli) : tester _currentHsSrc directement, pas via _gwIsNC().
+      + (_gwFellBack ? '<span style="display:block;font-size:9.5px;color:#e8a057;margin-top:3px;" title="La source demandée n\'a pas pu être chargée (réseau lent/serveur indisponible) — affichage temporaire de la source principale.">⚠ '+GW_SRC_BTNS.find(function(s){return s.key===_gwExtraSrc;}).lbl.replace(/<[^>]+>/g,'')+' indisponible, repli sur '+(_currentHsSrc==='nc'?'meteo.nc':'GFS')+'</span>' : '');
   }
   _gwRenderDayNav(days);
   _gwRenderGrid(d, days[_gwDayIdx]);

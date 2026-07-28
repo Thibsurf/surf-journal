@@ -4330,7 +4330,14 @@ function _marcWindow(N) {
 }
 async function _fetchMarcWave(spot) {
   var ctrl = new AbortController();
-  var tt = setTimeout(function(){ ctrl.abort(); }, 12000);
+  // BUG corrigé (signalé utilisateur : spectre MARC absent la plupart des jours,
+  // "≈" affiché à tort) — cette requête OPeNDAP (30 variables × 64 pas de temps)
+  // met couramment 10-20s à répondre (mesuré : 10s à 20s+ selon charge du serveur
+  // Ifremer, parfois plus), largement au-dessus de l'ancien délai de 12s. Le fetch
+  // avortait avant la fin, _gwBuildModelFcast('marc') retombait silencieusement sur
+  // meteo.nc tout en gardant le bouton "MARC" affiché comme actif — d'où le spectre
+  // absent la plupart du temps et un "≈" (résidu meteo.nc) affiché sous l'étiquette MARC.
+  var tt = setTimeout(function(){ ctrl.abort(); }, 25000);
   try {
     var ddsR = await fetch(MARC_BASE + '.dds', { signal: ctrl.signal });
     var ddsText = await ddsR.text();
@@ -5095,10 +5102,16 @@ function _drawSwellCompare() {
     // plus étroits (spread faible = houle propre = grande période), restent
     // visibles par-dessus plutôt que noyés — pas besoin de case à cocher pour
     // décongestionner (un seul modèle ici, contrairement à la rose du dessus).
+    // Convention corrigée (signalé par l'utilisateur : "fait comme pour le widget,
+    // le vecteur doit pointer vers le centre") — cette rose utilisait +180°
+    // ("propagation") alors que la vue satellite du widget (_gwDrawVectors,
+    // widget-global.js) dessine directement en provenance (déjà "la houle arrive de
+    // cette direction" par construction géométrique, sans inversion). Les deux
+    // affichaient donc le même train de houle de part et d'autre du cercle. Alignée
+    // ici sur la même convention que le widget : provenance brute, pas de +180.
     var sorted = parts.slice().sort(function(a, b) { return b.h - a.h; });
     sorted.forEach(function(pt) {
-      var propDeg = (pt.dir + 180) % 360; // même convention que la rose houle ci-dessus ("où ça va")
-      var centerRad = (propDeg - 90) * Math.PI / 180;
+      var centerRad = (pt.dir - 90) * Math.PI / 180;
       // Spread WW3 = mesure statistique de dispersion (écart-type angulaire), pas
       // littéralement un demi-angle de cône — utilisé ici comme approximation
       // visuelle raisonnable (houle "propre" = secteur étroit, "confuse" = large).
@@ -5113,17 +5126,16 @@ function _drawSwellCompare() {
       svg += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + len + ',' + len + ' 0 ' + largeArc + ' 1 ' + x2 + ',' + y2 + ' Z" fill="' + col + '" fill-opacity="0.4" stroke="' + col + '" stroke-width="1" stroke-opacity="0.85"/>';
     });
     // Mer totale (hs/dir global) en flèche blanche par-dessus, repère "vue d'ensemble"
-    // — même dessin que les flèches des roses multi-modèles, juste en blanc pour ne
-    // pas se confondre avec les couleurs de partition.
+    // — même géométrie que le widget : part de l'extérieur (provenance), pointe vers
+    // le centre (arrivée au spot), pas l'inverse.
     if (p.dir != null) {
-      var propDegT = (p.dir + 180) % 360;
-      var radT = (propDegT - 90) * Math.PI / 180;
-      var lenT = R - 4;
-      var x2t = cx + lenT * Math.cos(radT), y2t = cy + lenT * Math.sin(radT);
-      var x1t = cx - lenT * 0.3 * Math.cos(radT), y1t = cy - lenT * 0.3 * Math.sin(radT);
-      svg += '<line x1="' + x1t + '" y1="' + y1t + '" x2="' + x2t + '" y2="' + y2t + '" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>';
-      var ah = 4.5;
-      svg += '<polygon points="' + x2t + ',' + y2t + ' ' + (x2t - ah * Math.cos(radT - 0.4)) + ',' + (y2t - ah * Math.sin(radT - 0.4)) + ' ' + (x2t - ah * Math.cos(radT + 0.4)) + ',' + (y2t - ah * Math.sin(radT + 0.4)) + '" fill="#fff" fill-opacity="0.9"/>';
+      var radT = (p.dir - 90) * Math.PI / 180;
+      var lenT = R - 4, stopRT = 6;
+      var sxt = cx + lenT * Math.cos(radT), syt = cy + lenT * Math.sin(radT); // départ provenance
+      var ext = cx + stopRT * Math.cos(radT), eyt = cy + stopRT * Math.sin(radT); // arrivée au centre
+      svg += '<line x1="' + sxt + '" y1="' + syt + '" x2="' + ext + '" y2="' + eyt + '" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>';
+      var ah = 4.5, arrAngT = Math.atan2(eyt - syt, ext - sxt);
+      svg += '<polygon points="' + ext + ',' + eyt + ' ' + (ext - ah * Math.cos(arrAngT - 0.4)) + ',' + (eyt - ah * Math.sin(arrAngT - 0.4)) + ' ' + (ext - ah * Math.cos(arrAngT + 0.4)) + ',' + (eyt - ah * Math.sin(arrAngT + 0.4)) + '" fill="#fff" fill-opacity="0.9"/>';
     }
     svg += '</svg>';
     el.innerHTML = svg;
@@ -8108,7 +8120,7 @@ async function _fetchEcmwfWind(spot) {
 // WIND_UNRESAMPLABLE, disponible aussi en mode station.
 async function _fetchMarcWind(spot) {
   var ctrl = new AbortController();
-  var tt = setTimeout(function(){ ctrl.abort(); }, 12000);
+  var tt = setTimeout(function(){ ctrl.abort(); }, 25000); // cf. _fetchMarcWave, même serveur/latence
   try {
     var ddsR = await fetch(MARC_BASE + '.dds', { signal: ctrl.signal });
     var ddsText = await ddsR.text();
