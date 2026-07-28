@@ -81,10 +81,22 @@ MARC (Ifremer), AROME 2,5 km.
 
 ---
 
-## Vérification — il n'y a PAS de Node sur le poste
+## Vérification — l'outillage varie selon le poste
 
-`google-chrome` est installé et **le réseau fonctionne** (les pages chargent les vraies
-données meteo.nc/Supabase en headless).
+Deux postes différents ont servi à ce projet, avec des outils différents. Vérifier ce
+qui est installé (`which google-chrome`, `which node`) plutôt que de supposer.
+
+- **Poste sans Node** : `google-chrome` installé, pas de Node.
+- **Poste Windows (Git Bash)** : pas de `google-chrome`, mais **Microsoft Edge**
+  (`/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe`) — Chromium, mêmes
+  flags CLI. **Node est disponible**, utile pour `node --check` (syntaxe) et des tests
+  de logique isolés (copier une fonction pure dans un script Node avec des données
+  synthétiques, cf. `_favorableTideIntervals` dans `AUDIT.md` 28/07). Piège Git Bash :
+  `file://$PWD/…` produit une URL sans lettre de lecteur → `ERR_FILE_NOT_FOUND`.
+  Utiliser `file:///$(pwd -W)/…` à la place.
+
+Dans les deux cas, **le réseau fonctionne** (les pages chargent les vraies données
+meteo.nc/Supabase en headless).
 
 **Capture d'écran :**
 ```bash
@@ -92,6 +104,8 @@ google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=20
   --window-size=900,4000 --screenshot=out.png "file://$PWD/previsions.html"
 convert out.png -crop 900x600+0+1200 +repage slice.png   # découper pour lire
 ```
+Sous Windows, `convert` est l'utilitaire système (`sfc`), pas ImageMagick — utiliser
+Python/Pillow à la place : `Image.open('out.png').crop((0,1200,900,1800)).save(...)`.
 
 **Diagnostic runtime :** copier la page en `__test.html` **au même emplacement** (pour
 préserver les chemins relatifs), y injecter un `<script>` qui écrit son résultat dans un

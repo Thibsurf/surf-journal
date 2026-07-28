@@ -56,18 +56,25 @@ renvoie maintenant aussi `level01`/`rising` bruts. Appelée dans les trois `draw
 dans `_drawSwellCompare()`, masquée par défaut. `CACHE_NAME` → `surf-nc-v27`.
 Détail complet dans `AUDIT.md` (entrée du 28/07 « Bande de marée favorable… »).
 
-⚠️ **Vérification faite en aveugle.** Ce poste n'a ni Chrome ni le protocole
-headless de `CLAUDE.md` (Node est dispo ici, contrairement à l'autre poste) :
-la logique d'intervalles a été validée par un test isolé avec un modèle de
-marée synthétique (14 bandes/7j pour un cycle 12,42h avec préférence
-« mi-marée + montante », chacune 1-1,5h, correctement centrée) et
-`node --check` sur les 5 blocs `<script>` inline — **mais jamais vu à l'écran**.
-**Première chose à faire en reprenant** : régler ⚙ Score sur « mi-marée +
-montante » sur un spot, capture d'écran (ou le protocole headless habituel), et
-contrôler que la bande verte tombe bien sur les mi-marées montantes de la
-courbe de marée de la page (protocole détaillé encore valable, il n'a pas
-changé). Vérifier aussi que la légende `#cmp-tide-band-leg` apparaît/disparaît
-correctement en basculant la préférence entre « indifférent » et un réglage.
+**Vérifié visuellement depuis.** Ce poste n'a pas `google-chrome` mais a
+**Microsoft Edge** (`/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe`),
+Chromium et pareil en CLI (`--headless=new`, mêmes flags) — et **Node**, absent
+de l'autre poste. Adapté le protocole de `CLAUDE.md` : `file:///$(pwd -W)/...`
+(pas `file://$PWD`, qui produit une URL sans lettre de lecteur sous Git Bash →
+`ERR_FILE_NOT_FOUND`). `__test.html` avec un `<script defer>` injecté en fin de
+body (`setTimeout(…, 11000)` pour laisser les fetches réels résoudre) qui règle
+`tidePref` sur mi-marée+montante, force `_drawSwellCompare()`/
+`_drawAromeCompareFromCache()`, et écrit le résultat dans `#__diag`.
+
+Résultat sur données réelles : **14 bandes** sur la fenêtre 7 j affichée (identique
+à la prédiction du test synthétique), légende `#cmp-tide-band-leg` = "▬ fenêtre de
+marée favorable au spot — mi-marée montante (réglable par spot dans ⚙ Score)."
+avec `display:block`. Capture d'écran du panneau houle : fines bandes vertes
+visibles entre les bandes de nuit. Aucune erreur dans `#__diag` (le `try/catch`
+englobant `_favorableTideIntervals`/`_drawSwellCompare`/`_drawAromeCompareFromCache`
+n'a rien levé). Sans préférence réglée (défaut), la capture initiale ne montre
+aucune ligne de légende ni bande — le on/off fonctionne dans les deux sens.
+`__test.html` supprimé après coup, rien commité.
 
 ---
 

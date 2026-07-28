@@ -979,14 +979,25 @@ masquée tant qu'aucune préférence n'est réglée — même logique que la lé
 du ruban de vent (`#arome-cmp-ribbon-leg`), pour la même raison : un bandeau
 coloré sans légende serait une devinette.
 
-**Vérifié hors-ligne** (pas de Chrome/Node sur le poste habituel, ce
-correctif a été fait sur l'autre PC — Node y est disponible) : extraction de
-la logique dans un test isolé avec un modèle de marée synthétique (sinusoïde
-12,42 h) — sur une fenêtre de 7 j avec préférence « mi-marée + montante », 14
-bandes obtenues pour ~13,5 cycles attendus, chacune 1-1,5 h, centrée sur un
-point qui vérifie bien `level01 ∈ (0.35, 0.65)` et `rising`. Préférence `null`
-→ tableau vide. `node --check` sur les 5 blocs `<script>` inline extraits de
-`previsions.html` : aucune erreur de syntaxe. `CACHE_NAME` → `surf-nc-v27`.
+**Vérifié en deux temps.** D'abord hors-ligne : la logique extraite dans un test
+isolé avec un modèle de marée synthétique (sinusoïde 12,42 h) — sur une fenêtre
+de 7 j avec préférence « mi-marée + montante », 14 bandes obtenues pour ~13,5
+cycles attendus, chacune 1-1,5 h, centrée sur un point qui vérifie bien
+`level01 ∈ (0.35, 0.65)` et `rising`. Préférence `null` → tableau vide.
+`node --check` sur les 5 blocs `<script>` inline extraits de `previsions.html` :
+aucune erreur de syntaxe.
+
+Puis en conditions réelles (ce poste n'a pas `google-chrome` mais **Microsoft
+Edge**, Chromium, headless identique en CLI, et Node — cf. `CLAUDE.md`,
+section vérification mise à jour) : `__test.html` avec un `<script defer>`
+injecté qui règle `tidePref` sur mi-marée+montante après ~11 s (fetchs réels
+résolus), force `_drawSwellCompare()`/`_drawAromeCompareFromCache()`, écrit le
+résultat dans `#__diag`. Sur données réelles : **14 bandes** sur la fenêtre 7 j
+(exactement la prédiction du test synthétique), légende `#cmp-tide-band-leg`
+correcte et visible, capture d'écran du panneau houle montrant les bandes
+vertes, aucune erreur dans le `try/catch`. Sans préférence réglée (défaut),
+la capture initiale ne montre ni légende ni bande. `__test.html` supprimé
+après coup. `CACHE_NAME` → `surf-nc-v27`.
 
 **Restant du §10.5 après cette brique : rien.** Les 4 priorités (offshore/
 cross/onshore, nuit, marée favorable, dégradé de confiance) sont toutes
