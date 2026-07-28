@@ -1273,3 +1273,28 @@ erreur de calcul.
 **Bilan** : la page est saine. 1 seul vrai bug sur toute la revue (ENSO date),
 corrigé. Tout le reste (spots, satellite, carte, score, unités, fuseau,
 alignements, mobile) vérifié conforme.
+
+### Passes complémentaires (29/07, suite)
+
+**Accessibilité clavier** : les cartes « Meilleurs créneaux — tous spots » (haut
+de page) et les cartes du comparateur multi-spots étaient des `<div onclick>`
+sans support clavier. Corrigé (role/tabindex/aria-label/keydown + focus visible,
+même motif que §9.2/T26). Vérifié : les 3 cartes du haut exposent
+role=button/tabindex=0 et aria-label « Voir <spot> » corrects. Bug d'aria-label
+attrapé à la vérif (référençait `s.spotName` inexistant → « Voir » vide ;
+corrigé en `s.spot`). Commit `63e4d638`, `CACHE_NAME` → v34.
+
+**Robustesse — spot sans couverture** : ajout d'un spot synthétique en plein
+océan (−25/160, aucun wgId, hors de toute grille modèle) puis `loadForecast` :
+0 erreur JS, carte AROME toujours présente (message « pas de données » gracieux),
+widget toujours en place. La page ne casse pas sur un spot sans données.
+
+**Cohérence interne des données** (contrôle croisé depuis la capture) : bloc
+« Maintenant » = HS totale 2,2 m, houle 1 (meteo.nc) 1,2 m, vent 17 nds,
+puissance 8,64 kW/m. Vérifié : 0,5 × 1,2² × 12 = 8,64 → la puissance utilise
+bien Hs primaire (1,2 m) et T=12 s, cohérent avec la formule affichée partout.
+
+**Total de la revue previsions.html (29/07)** : 2 correctifs (ENSO date figée,
+a11y cartes) + revue conforme sur tout le reste (spots, satellite, carte, score,
+unités, fuseau, alignements comparatif, mobile, robustesse, 6 onglets).
+`CACHE_NAME` : v32 → v34.
