@@ -550,7 +550,13 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <div id="swell-cmp-periods" style="display:flex;flex-direction:column;gap:3px;" title="Période de chaque modèle au créneau lu"></div>
       </div>
     </div>
+    <!-- Deux panneaux empilés partageant le MÊME axe X (chantier 10, §10.2/§10.3) :
+         hauteur au-dessus, période en dessous. La période est la variable la plus
+         décisive pour une passe de récif et elle n'existait jusqu'ici qu'au survol —
+         elle a maintenant son panneau. L'axe des dates n'est porté que par le
+         panneau du bas, donc une seule lecture temporelle pour les deux. -->
     <div style="position:relative;width:100%;"><canvas id="swell-cmp" style="width:100%;display:block;cursor:crosshair;"></canvas></div>
+    <div style="position:relative;width:100%;"><canvas id="swell-cmp-per" style="width:100%;display:none;cursor:crosshair;"></canvas></div>
     <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:11px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)</div>
     <!-- Spectre MARC (mer du vent + houles séparées) : seul modèle ici à distinguer les
          trains de houle individuellement (hauteur/période/direction/dispersion angulaire)
@@ -1832,6 +1838,10 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 <script src="assets/nc-token.js"></script>
 <script src="assets/app-cache.js"></script>
 <script src="assets/share-card.js"></script>
+<!-- Géométrie/échelles communes aux panneaux temporels (chantier 10, T20). Chargé
+     AVANT le bloc inline (pas en defer) : PANEL_GEOM doit exister quel que soit le
+     moment où un graphe est dessiné, y compris un tout premier rendu synchrone. -->
+<script src="assets/charts-core.js"></script>
 <script>
 
 // SPOTS
@@ -4586,16 +4596,22 @@ function _resetSwellHidden() {
 // zoomState {a,b} : fraction [0,1] de la plage temporelle complète actuellement
 // affichée — partagé avec la fonction de dessin hôte, qui doit relire zoomState et
 // redessiner SANS refetch réseau (cf. _drawSwellCompare / _drawAromeCompareFromCache).
-function _attachCmpZoom(cv, zoomState, redraw) {
+// noBtn : panneau SECONDAIRE d'une pile qui partage le même zoomState (ex. le
+// panneau période sous la houle) — il doit réagir à la molette/au pincement,
+// mais un 2e bouton "🔍 zoom" pour la même fenêtre serait un doublon trompeur.
+function _attachCmpZoom(cv, zoomState, redraw, noBtn) {
   if (cv._zoomAttached) { _updateZoomBtn(cv, zoomState); return; }
   cv._zoomAttached = true;
-  var btn = document.createElement('button');
-  btn.type = 'button';
-  btn.style.cssText = 'position:absolute;top:2px;right:2px;z-index:2;background:rgba(6,16,30,.75);'
-    + 'border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:2px 8px;'
-    + 'font-size:11px;font-family:var(--font-b);cursor:pointer;line-height:1.5;';
-  (cv.parentElement || cv).appendChild(btn);
-  cv._zoomBtn = btn;
+  var btn = null;
+  if (!noBtn) {
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = 'position:absolute;top:2px;right:2px;z-index:2;background:rgba(6,16,30,.75);'
+      + 'border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:2px 8px;'
+      + 'font-size:11px;font-family:var(--font-b);cursor:pointer;line-height:1.5;';
+    (cv.parentElement || cv).appendChild(btn);
+    cv._zoomBtn = btn;
+  }
   function zoomAt(fx, factor) {
     var a = zoomState.a, b = zoomState.b, w = b - a;
     var fixed = a + fx * w;
@@ -4607,7 +4623,7 @@ function _attachCmpZoom(cv, zoomState, redraw) {
     redraw(); _updateZoomBtn(cv, zoomState);
   }
   function reset() { zoomState.a = 0; zoomState.b = 1; redraw(); _updateZoomBtn(cv, zoomState); }
-  btn.onclick = function() {
+  if (btn) btn.onclick = function() {
     var zoomed = zoomState.a > 0.001 || zoomState.b < 0.999;
     if (zoomed) reset(); else zoomAt(0.5, 2.2);
   };
@@ -5416,6 +5432,8 @@ function _drawSwellCompare() {
 
   if (!activeModels.length) {
     var W0 = (cv.parentElement && cv.parentElement.clientWidth) || 600;
+    var pcv0 = document.getElementById('swell-cmp-per');
+    if (pcv0) pcv0.style.display = 'none'; // panneau période : rien à empiler
     cv.width = W0; cv.height = 210; cv.style.width = W0 + 'px'; cv.style.height = '210px';
     var ctx0 = cv.getContext('2d'); ctx0.clearRect(0, 0, W0, 210);
     renderNowRow(Date.now());
@@ -5441,12 +5459,32 @@ function _drawSwellCompare() {
   // allonge le graphe pour donner de l'air vertical aux séries, et on grossit les
   // polices d'axe (9px devenait dur à lire sur mobile).
   var narrow = W < 500;
-  var H = narrow ? 270 : 210;
+  var H = panelHeight('swell', narrow);
   var axFont = (narrow ? '11px' : '9px') + ' DM Sans,sans-serif';
-  var dpr = window.devicePixelRatio || 1;
-  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
-  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  var ctx = panelSetup(cv, W, H);
   _attachCmpZoom(cv, _swellZoom, _drawSwellCompare);
+
+  // ── Panneau période (chantier 10, §10.2) ────────────────────────────────
+  // Empilé sous la hauteur, MÊME axe X, même zoom, même curseur. Affiché
+  // seulement si au moins un modèle actif expose une période exploitable
+  // (plusieurs modèles n'en donnent pas sur la houle 2) — sinon le panneau
+  // disparaît et l'axe des dates revient sur le panneau du haut.
+  var perSeries = {}, perModels = [];
+  activeModels.forEach(function (m) {
+    var pp = series[m.key].filter(function (p) { return p.t != null && isFinite(p.t) && p.t > 0; });
+    if (pp.length >= 2) { perSeries[m.key] = pp; perModels.push(m); }
+  });
+  var pcv = document.getElementById('swell-cmp-per');
+  var showPer = !!(pcv && perModels.length);
+  var perH = panelHeight('period', narrow), perPadT = 8, perPadB = narrow ? 22 : 20;
+  var perCtx = null, perDom = null;
+  if (showPer) {
+    pcv.style.display = 'block';
+    perCtx = panelSetup(pcv, W, perH);
+    _attachCmpZoom(pcv, _swellZoom, _drawSwellCompare, true); // zoomer un panneau zoome les deux
+  } else if (pcv) {
+    pcv.style.display = 'none';
+  }
   // Domaine Y : par défaut identique à avant (base 0, max sur TOUTE la série). En
   // zoom, on rescale sur les seuls points VISIBLES dans [t0,t1] — c'est ce qui
   // sépare vraiment les courbes proches (demande utilisateur), pas juste le zoom
@@ -5462,9 +5500,27 @@ function _drawSwellCompare() {
   } else {
     maxH = Math.max(1, Math.max.apply(null, allPts.map(function(p){ return p.h; })) * 1.2);
   }
-  var padL = narrow ? 34 : 32, padR = 8, padT = 12, padB = narrow ? 22 : 20;
-  function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
+  // Marges horizontales imposées par PANEL_GEOM (charts-core.js) : c'est ce qui
+  // garantit qu'une verticale à 12 h tombe exactement au même X sur le panneau
+  // hauteur et sur le panneau période (§10.7). padB du haut se réduit quand le
+  // panneau du bas porte l'axe des dates pour les deux.
+  var padL = PANEL_GEOM.l, padR = PANEL_GEOM.r, padT = 12;
+  var padB = showPer ? 8 : (narrow ? 22 : 20);
+  var X = panelX(t0, t1, W);
   function Y(h) { return padT + (1 - (h - minH) / (maxH - minH)) * (H - padT - padB); }
+  // Échelle de période : JAMAIS ancrée à 0 (§10.9). La plage utile est 8-18 s ;
+  // ancrer à zéro gaspillerait la moitié du panneau et aplatirait précisément
+  // les écarts qui décident d'une passe de récif. minSpan 4 s évite qu'une
+  // journée homogène soit affichée comme une montagne russe.
+  var perY = null;
+  if (showPer) {
+    var perVals = [];
+    perModels.forEach(function (m) {
+      perSeries[m.key].forEach(function (p) { if (p.ms >= t0 && p.ms <= t1) perVals.push(p.t); });
+    });
+    perDom = panelYDomain(perVals, { anchor0: false, floor: 0, minSpan: 4, padFrac: 0.10 });
+    perY = function (t) { return perPadT + (1 - (t - perDom.min) / (perDom.max - perDom.min)) * (perH - perPadT - perPadB); };
+  }
 
   function drawSmooth(pts, col) {
     if (pts.length < 2) return;
@@ -5496,17 +5552,8 @@ function _drawSwellCompare() {
 
   function draw(hoverMs) {
     ctx.clearRect(0, 0, W, H);
-    var mid0 = Math.ceil((t0 + 11 * 36e5) / 864e5) * 864e5 - 11 * 36e5;
-    var bandI = 0;
-    for (var bms = mid0 - 864e5; bms < t1; bms += 864e5, bandI++) {
-      if (bandI % 2 !== 0) {
-        ctx.fillStyle = 'rgba(255,255,255,.018)';
-        ctx.fillRect(Math.max(padL, X(bms)), padT, Math.min(X(bms + 864e5), W - padR) - Math.max(padL, X(bms)), H - padT - padB);
-      }
-    }
-    ctx.save(); ctx.translate(11, H / 2); ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center'; ctx.font = axFont; ctx.fillStyle = 'rgba(122,148,170,.7)';
-    ctx.fillText('Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), 0, 0); ctx.restore();
+    var mid0 = panelDayBands(ctx, X, t0, t1, W, H, padT, padB);
+    panelAxisLabel(ctx, 'Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), H, axFont);
     ctx.textAlign = 'right'; ctx.font = axFont;
     var hStep = (maxH - minH) > 4 ? 1 : 0.5;
     for (var g = Math.ceil(minH / hStep) * hStep; g <= maxH; g += hStep) {
@@ -5515,36 +5562,52 @@ function _drawSwellCompare() {
       ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
       ctx.fillStyle = 'rgba(122,148,170,.85)'; ctx.fillText((hStep < 1 ? g.toFixed(1) : g) + '', padL - 5, gy + 3);
     }
-    ctx.textAlign = 'center';
-    // Densité adaptative : sur 10 jours (fenêtre swell), un libellé par jour se
-    // chevauche dès que le canvas est étroit (mobile) — signalé par l'utilisateur
-    // ("dates illisibles"). On saute des jours plutôt que d'entasser du texte.
-    var pxPerDay = X(mid0 + 864e5) - X(mid0);
-    var MIN_LABEL_PX = 40;
-    var dayStep = Math.max(1, Math.ceil(MIN_LABEL_PX / Math.max(1, pxPerDay)));
-    var dayIdx = 0;
-    for (var ms = mid0; ms < t1; ms += 864e5, dayIdx++) {
-      ctx.strokeStyle = 'rgba(255,255,255,.09)';
-      ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
-      if (dayIdx % dayStep !== 0) continue;
-      var dd = new Date(ms + 11 * 36e5 + 36e5);
-      ctx.fillStyle = 'rgba(122,148,170,.9)';
-      // Centré sur la bande du jour (comme le comparatif vent) plutôt que
-      // décalé à +30px d'un bord fixe, qui poussait le texte à chevaucher le
-      // jour suivant sur les canvases étroits.
-      ctx.fillText(dd.getUTCDate() + '/' + (dd.getUTCMonth() + 1), Math.min(X(ms + 432e5), W - 20), H - 6);
-    }
-    var nowMs = Date.now();
-    if (nowMs >= t0 && nowMs <= t1) {
-      ctx.strokeStyle = 'rgba(253,224,104,.75)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.4;
-      ctx.beginPath(); ctx.moveTo(X(nowMs), padT); ctx.lineTo(X(nowMs), H - padB); ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    // Libellés de date : portés par le panneau du BAS quand la période est
+    // empilée dessous (un seul axe temporel pour les deux, §10.2), sinon par
+    // ce panneau comme avant.
+    if (!showPer) panelDayLabels(ctx, X, mid0, t1, W, H, axFont);
+    panelNowLine(ctx, X, t0, t1, H, padT, padB);
     activeModels.forEach(function(m) { drawSmooth(series[m.key], m.col); });
-    if (hoverMs != null) {
-      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(X(hoverMs), padT); ctx.lineTo(X(hoverMs), H - padB); ctx.stroke();
+    panelCursor(ctx, X, hoverMs, H, padT, padB);
+    drawPer(hoverMs);
+  }
+
+  // Panneau période — mêmes X/zoom/curseur que la hauteur au-dessus, traits
+  // simples (pas de remplissage) : c'est une variable de lecture, pas la
+  // variable primaire, et 5 aplats superposés sur 62 px feraient un pâté.
+  function drawPer(hoverMs) {
+    if (!showPer) return;
+    perCtx.clearRect(0, 0, W, perH);
+    var midP = panelDayBands(perCtx, X, t0, t1, W, perH, perPadT, perPadB);
+    panelAxisLabel(perCtx, 'Période (s)', perH, axFont);
+    var span = perDom.max - perDom.min;
+    var pStep = span > 12 ? 5 : (span > 6 ? 2 : 1);
+    perCtx.textAlign = 'right'; perCtx.font = axFont;
+    for (var g = Math.ceil(perDom.min / pStep) * pStep; g <= perDom.max; g += pStep) {
+      var gy = perY(g);
+      perCtx.strokeStyle = 'rgba(255,255,255,.055)'; perCtx.lineWidth = 1;
+      perCtx.beginPath(); perCtx.moveTo(padL, gy); perCtx.lineTo(W - padR, gy); perCtx.stroke();
+      perCtx.fillStyle = 'rgba(122,148,170,.85)'; perCtx.fillText(g + '', padL - 5, gy + 3);
     }
+    panelNowLine(perCtx, X, t0, t1, perH, perPadT, perPadB);
+    // Clip sur la zone de tracé : en zoom, les points hors fenêtre déborderaient
+    // sur les étiquettes d'axe (panneau bas et court, ça se voit tout de suite).
+    perCtx.save();
+    perCtx.beginPath(); perCtx.rect(padL, perPadT, W - padL - padR, perH - perPadT - perPadB); perCtx.clip();
+    perModels.forEach(function (m) {
+      var pts = perSeries[m.key];
+      perCtx.strokeStyle = m.col; perCtx.lineWidth = narrow ? 2.2 : 1.8;
+      perCtx.lineJoin = 'round'; perCtx.lineCap = 'round';
+      perCtx.beginPath();
+      for (var i = 0; i < pts.length; i++) {
+        var x = X(pts[i].ms), y = perY(pts[i].t);
+        if (i === 0) perCtx.moveTo(x, y); else perCtx.lineTo(x, y);
+      }
+      perCtx.stroke();
+    });
+    perCtx.restore();
+    panelCursor(perCtx, X, hoverMs, perH, perPadT, perPadB);
+    panelDayLabels(perCtx, X, midP, t1, W, perH, axFont);
   }
   draw(null);
   renderNowRow(Date.now());
@@ -5585,28 +5648,39 @@ function _drawSwellCompare() {
     var ro = document.getElementById('swell-cmp-readout');
     if (ro) ro.innerHTML = '← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)';
   }
-  cv.onmousemove = function(e) {
-    var rect = cv.getBoundingClientRect();
-    var ms = t0 + (e.clientX - rect.left - padL) / (W - padL - padR) * (t1 - t0);
-    if (ms < t0 || ms > t1) return;
-    renderSwellAt(ms);
-    // Lien avec le comparatif vent (demande utilisateur) : survoler l'un
-    // déplace le curseur de l'autre, pour lire houle et vent au même instant.
-    // Cross-appel UNIQUEMENT depuis un vrai événement souris ici — jamais
-    // depuis window._swellCmpCursorTo lui-même, sinon un survol du vent hors
-    // fenêtre houle ferait rebondir un reset vers le vent en boucle.
-    if (window._aromeCmpCursorTo) window._aromeCmpCursorTo(ms);
-  };
-  cv.onmouseleave = function() {
+  // Survol : les deux panneaux (hauteur ET période) pilotent le MÊME curseur,
+  // puisqu'ils partagent l'axe X — survoler la période déplace donc aussi la
+  // verticale du panneau hauteur, et inversement (§10.10).
+  function _swellHover(target) {
+    return function (e) {
+      var rect = target.getBoundingClientRect();
+      var ms = panelMs(t0, t1, W, e.clientX - rect.left);
+      if (ms < t0 || ms > t1) return;
+      renderSwellAt(ms);
+      // Lien avec le comparatif vent (demande utilisateur) : survoler l'un
+      // déplace le curseur de l'autre, pour lire houle et vent au même instant.
+      // Cross-appel UNIQUEMENT depuis un vrai événement souris ici — jamais
+      // depuis window._swellCmpCursorTo lui-même, sinon un survol du vent hors
+      // fenêtre houle ferait rebondir un reset vers le vent en boucle.
+      if (window._aromeCmpCursorTo) window._aromeCmpCursorTo(ms);
+    };
+  }
+  function _swellLeave() {
     resetSwellView();
     if (window._aromeCmpCursorTo) window._aromeCmpCursorTo(null);
-  };
-  // 1 seul doigt = survol (inchangé) ; 2 doigts = pincement de zoom (cf.
-  // _attachCmpZoom, addEventListener séparé) — sans ce garde, un pincement
-  // aurait AUSSI fait sauter le curseur de survol sur le 1er doigt.
-  cv.ontouchstart = cv.ontouchmove = function(ev) {
-    if (ev.touches && ev.touches.length === 1) cv.onmousemove({ clientX: ev.touches[0].clientX });
-  };
+  }
+  [cv, showPer ? pcv : null].forEach(function (el) {
+    if (!el) return;
+    var mv = _swellHover(el);
+    el.onmousemove = mv;
+    el.onmouseleave = _swellLeave;
+    // 1 seul doigt = survol (inchangé) ; 2 doigts = pincement de zoom (cf.
+    // _attachCmpZoom, addEventListener séparé) — sans ce garde, un pincement
+    // aurait AUSSI fait sauter le curseur de survol sur le 1er doigt.
+    el.ontouchstart = el.ontouchmove = function (ev) {
+      if (ev.touches && ev.touches.length === 1) mv({ clientX: ev.touches[0].clientX });
+    };
+  });
   // Positionnement programmatique du curseur (lien profond depuis le Journal,
   // cf. _initSwellVoteFromUrl, et désormais le comparatif vent). ms hors
   // [t0,t1] de CE graphe (ex: le vent couvre jusqu'à 6j, la houle peut avoir
@@ -8700,11 +8774,10 @@ function _drawAromeCompareFromCache() {
   // gagne en lisibilité verticale en allongeant le graphe (place pour que les
   // séries se séparent) plutôt qu'en gardant la hauteur desktop.
   var narrow = W < 500;
-  var H = narrow ? 270 : 210;
+  var H = panelHeight('wind', narrow);
   var axFont = (narrow ? '11px' : '9px') + ' DM Sans,sans-serif';
-  var dpr = window.devicePixelRatio || 1;
-  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.cursor = 'crosshair';
-  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  cv.style.cursor = 'crosshair';
+  var ctx = panelSetup(cv, W, H);
   _attachCmpZoom(cv, _aromeZoom, _drawAromeCompareFromCache);
   // Domaine Y : identique à avant par défaut (base 0, max sur toute la fenêtre
   // affichée). En zoom, rescale sur les seuls points VISIBLES dans [t0,t1] — c'est
@@ -8725,7 +8798,10 @@ function _drawAromeCompareFromCache() {
     var allKt = [12].concat(obs.map(function(p){return p.kt;}), pageNc.map(function(p){return p.kt;}), pageGfs.map(function(p){return p.kt;}), aro.map(function(p){return p.kt;}), cachePts.map(function(p){return p.kt;}), aromeCachePts.map(function(p){return p.kt;}), bomWind.map(function(p){return p.kt;}), ecmwfWind.map(function(p){return p.kt;}), marcWind.map(function(p){return p.kt;}));
     maxKt = Math.max.apply(null, allKt) * 1.15;
   }
-  var padL = narrow ? 30 : 26, padR = 6, padT = 10, padB = narrow ? 22 : 18;
+  // Même marge gauche/droite que le comparatif houle (PANEL_GEOM, charts-core.js) :
+  // les deux graphes divergeaient de 6 à 8 px, ce qui suffisait à décaler la
+  // verticale de midi de l'un à l'autre et à empêcher toute lecture croisée (§10.7).
+  var padL = PANEL_GEOM.l, padR = PANEL_GEOM.r, padT = 10, padB = narrow ? 22 : 18;
   function X(ms) { return padL + (ms - t0) / (t1 - t0) * (W - padL - padR); }
   function Y(kt) { return padT + (1 - (kt - minKt) / (maxKt - minKt)) * (H - padT - padB); }
   obs.sort(function(a,b){return a.ms-b.ms;}); pageNc.sort(function(a,b){return a.ms-b.ms;}); pageGfs.sort(function(a,b){return a.ms-b.ms;}); aro.sort(function(a,b){return a.ms-b.ms;});

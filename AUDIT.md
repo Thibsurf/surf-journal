@@ -582,3 +582,69 @@ qu'à l'instant survolé, pas à l'historique) :
   screenshot montre un grand secteur net + un petit secteur distinct + la flèche blanche, tous
   lisibles séparément. Vérifié aussi que le spectre reste affiché après bascule Houle 1 ↔ Houle 2
   (indépendance confirmée). 0 erreur JS sur tous les spots testés.
+
+---
+
+## Chantier 10 — socle de panneaux partagés + panneau Période — FAIT (2026-07-28)
+
+Démarrage du chantier 10 de `AUDIT-previsions.md` (T20/T21), le plus gros
+morceau restant après les vagues 1 et 2.
+
+**Constat mesuré avant de coder** (§10.7 disait « jusqu'à 24 px d'écart de marge
+gauche » — vérifié dans le code actuel, pas repris de confiance) :
+
+| Graphe | marge gauche | marge droite | hauteur |
+|---|---|---|---|
+| Comparatif houle | 32 / 34 px (mobile) | 8 | 210 / 270 |
+| Comparatif vent | 26 / 30 px (mobile) | 6 | 210 / 270 |
+| Historique obs. | 36 puis 38 px | 10 / 12 | 140-160 |
+| Courbe solunaire | 14 px | 14 | 90 |
+
+Une verticale à midi ne tombait donc pas au même X d'un graphe à l'autre.
+
+**`assets/charts-core.js` (nouveau, T20)** — `PANEL_GEOM = {l:40, r:10}` plus les
+primitives partagées : `panelSetup` (canvas HiDPI), `panelX`/`panelMs`
+(projection temps ↔ pixels), `panelYDomain` (politique d'échelle Y **par
+grandeur**, §10.9), `panelDayBands`, `panelNowLine`, `panelCursor`,
+`panelDayLabels`, `panelAxisLabel`. Chargé en `<script>` classique AVANT le bloc
+inline (pas en `defer`) : `PANEL_GEOM` doit exister quel que soit l'instant du
+premier dessin. Ajouté aux `ASSETS` de `sw.js`, `CACHE_NAME` → `surf-nc-v23`.
+
+**Panneau Période empilé sous le comparatif houle (T21, §10.2/§10.3)** — la
+période n'existait qu'au survol alors que c'est la variable la plus décisive
+pour une passe de récif. Nouveau canvas `#swell-cmp-per` sous `#swell-cmp` :
+même axe X, même zoom (`_swellZoom` partagé), même curseur — survoler l'un
+déplace la verticale de l'autre. L'axe des dates n'est plus porté que par le
+panneau du bas (un seul repère temporel pour les deux) ; si aucun modèle actif
+n'expose de période exploitable, le panneau disparaît et l'axe revient sur le
+panneau du haut (cas testé en forçant `p.t = null`).
+
+`_attachCmpZoom` gagne un 4ᵉ paramètre `noBtn` : le panneau secondaire réagit à
+la molette/au pincement mais n'affiche pas un 2ᵉ bouton « 🔍 zoom » pour la même
+fenêtre.
+
+**Échelle de la période, calibrée sur les données réelles** (Passe de Dumbéa,
+mesuré et non supposé) : meteo.nc 10,0-14,0 s · GFS 8,8-17,3 s · BOM 11,6-18,2 s
+· MF global 6,3-14,8 s · MARC 7,3-14,8 s. Donc **jamais ancrée à 0** (§10.9) —
+ancrer à zéro écrasait toute l'information dans le tiers haut du panneau. La
+hauteur proposée par l'audit (60 px) s'est révélée trop faible dans ce contexte :
+ici le panneau porte lui-même l'axe des dates (~20 px), il ne restait que 34 px
+de tracé pour une amplitude de 12 s. Porté à 84 px (96 en mobile) → ~56 px de
+tracé.
+
+**Comparatif vent** basculé sur `PANEL_GEOM` également : les deux comparatifs
+partagent désormais exactement la même géométrie horizontale.
+
+**Vérifié en headless** (Chrome, données réseau réelles, 900 px et 500 px) :
+0 erreur JS ; alignement exact des grilles de jour et du trait « maintenant »
+entre les deux panneaux ; curseur programmatique (`_swellCmpCursorTo`), bascule
+Houle 1 ↔ Houle 2, zoom partagé et cas « aucune période » testés un par un.
+
+**Reste du chantier 10** : les deux comparatifs gardent des domaines temporels
+DIFFÉRENTS (le vent affiche 24 h de passé et s'arrête à J+6, la houle part de
+maintenant et va à J+10) et des largeurs de canvas différentes (la rose du vent
+est posée À CÔTÉ du graphe, celle de la houle au-dessus). Tant que ces deux
+points tiennent, l'alignement vertical entre les deux CARTES reste impossible —
+c'est ce que résoudrait la fusion complète en un météogramme unique (§10.2,
+T21 complet). Restent aussi le double canvas statique/overlay (§10.12, T22) et
+les fonds contextuels nuit/offshore (§10.5).
