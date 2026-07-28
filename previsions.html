@@ -210,13 +210,14 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   .gw-lbl{font-size:11px;}
   #gw-widget .gw-head{flex-direction:column;align-items:stretch;}
 }
-/* Comparatifs modèles (houle/vent) : sur téléphone, la rose de direction passe
-   SOUS le graphe pour lui rendre toute la largeur (avant : rose à droite = ~80px
-   volés au canvas, courbes tassées). */
-.cmp-chart-row{display:flex;gap:10px;align-items:flex-start;}
+/* Comparatifs modèles (houle/vent) : la rose de direction est AU-DESSUS du
+   graphe, jamais à côté. Elle volait ~80px au canvas du vent, qui se retrouvait
+   plus étroit que celui de la houle — et deux canvas de largeurs différentes ne
+   peuvent PAS s'aligner verticalement, quelle que soit la géométrie de marges
+   (PANEL_GEOM, chantier 10 §10.7). Même disposition que la carte houle. */
+.cmp-rose-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
 @media(max-width:520px){
-  .cmp-chart-row{flex-direction:column;align-items:stretch;}
-  .cmp-chart-row #arome-cmp-rose{align-self:center;margin-top:4px;}
+  .cmp-rose-row{flex-direction:column;align-items:center;text-align:center;}
 }
 
 /* QUICK LINKS */
@@ -581,11 +582,15 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 
   <!-- 2ᵉ FIGURE PRINCIPALE (après le widget houle/marée) : AROME puis Puissance -->
   <div id="wg-arome-card" class="card" style="margin-bottom:12px;padding:0;overflow:hidden;display:none;">
-    <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 6px;flex-wrap:wrap;">
+    <!-- Marge horizontale calée sur celle de .card (1.1rem) et non plus 10/16px :
+         le canvas du comparatif vent doit avoir EXACTEMENT la même largeur et le
+         même bord gauche que celui du comparatif houle, sinon les deux cartes ne
+         peuvent pas se lire verticalement (chantier 10, §10.7). -->
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 1.1rem 6px;flex-wrap:wrap;">
       <span style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;">🌀 AROME 2.5 km — <span id="wg-arome-spot"></span></span>
       <span style="font-size:11px;color:var(--faint);">Météo-France haute résolution · J+2 · survol/tap = détail + écart meteo.nc</span>
     </div>
-    <div id="wg-arome-body" style="padding:2px 10px 8px;min-height:60px;"></div>
+    <div id="wg-arome-body" style="padding:2px 1.1rem 8px;min-height:60px;"></div>
   </div>
 
   <!-- Encart « fourchette inter-modèles » : min/max Hs/période/direction houle et
@@ -4600,6 +4605,13 @@ function _resetSwellHidden() {
 // panneau période sous la houle) — il doit réagir à la molette/au pincement,
 // mais un 2e bouton "🔍 zoom" pour la même fenêtre serait un doublon trompeur.
 function _attachCmpZoom(cv, zoomState, redraw, noBtn) {
+  // L'état de zoom et la fonction de redessin sont relus sur le canvas à chaque
+  // événement, JAMAIS capturés dans la closure : le comparatif vent change
+  // d'objet de zoom quand on bascule le mode « historique archivé » (fenêtre
+  // commune ↔ fenêtre étendue), et une closure figée au premier attachement
+  // aurait continué à piloter l'ancien état sans que rien ne le signale.
+  cv._zoomState = zoomState;
+  cv._zoomRedraw = redraw;
   if (cv._zoomAttached) { _updateZoomBtn(cv, zoomState); return; }
   cv._zoomAttached = true;
   var btn = null;
@@ -4613,18 +4625,23 @@ function _attachCmpZoom(cv, zoomState, redraw, noBtn) {
     cv._zoomBtn = btn;
   }
   function zoomAt(fx, factor) {
-    var a = zoomState.a, b = zoomState.b, w = b - a;
+    var zst = cv._zoomState;
+    var a = zst.a, b = zst.b, w = b - a;
     var fixed = a + fx * w;
     var nw = Math.min(1, Math.max(0.03, w / factor));
     var na = fixed - fx * nw, nb = fixed + (1 - fx) * nw;
     if (na < 0) { nb -= na; na = 0; }
     if (nb > 1) { na -= (nb - 1); nb = 1; }
-    zoomState.a = Math.max(0, na); zoomState.b = Math.min(1, nb);
-    redraw(); _updateZoomBtn(cv, zoomState);
+    zst.a = Math.max(0, na); zst.b = Math.min(1, nb);
+    cv._zoomRedraw(); _updateZoomBtn(cv, zst);
   }
-  function reset() { zoomState.a = 0; zoomState.b = 1; redraw(); _updateZoomBtn(cv, zoomState); }
+  function reset() {
+    var zst = cv._zoomState;
+    zst.a = 0; zst.b = 1; cv._zoomRedraw(); _updateZoomBtn(cv, zst);
+  }
   if (btn) btn.onclick = function() {
-    var zoomed = zoomState.a > 0.001 || zoomState.b < 0.999;
+    var zst = cv._zoomState;
+    var zoomed = zst.a > 0.001 || zst.b < 0.999;
     if (zoomed) reset(); else zoomAt(0.5, 2.2);
   };
   cv.addEventListener('wheel', function(e) {
@@ -5208,7 +5225,7 @@ async function _renderSwellCompare() {
   var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch), _fetchEcmwfWave(_spotForFetch), _fetchMarcCombined(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
   _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3] };
-  _swellZoom.a = 0; _swellZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
+  _cmpZoom.a = 0; _cmpZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
   _drawSwellCompare();
   _renderCmpTable();
   // Le widget principal lit aussi _swellCache : le cône de spread MARC (toujours,
@@ -5446,13 +5463,18 @@ function _drawSwellCompare() {
   }
 
   var allPts = [].concat.apply([], activeModels.map(function(m){ return series[m.key]; }));
-  var t0Full = Math.min.apply(null, allPts.map(function(p){ return p.ms; }));
-  var t1Full = Math.max.apply(null, allPts.map(function(p){ return p.ms; }));
+  // Fenêtre COMMUNE avec le comparatif vent (cmpWindow(), charts-core.js) et non
+  // plus l'étendue propre des données de houle : c'est la condition pour que les
+  // deux graphes se lisent verticalement. Coût assumé, tranché avec
+  // l'utilisateur : la houle est tronquée à J+6 alors que les modèles vont
+  // jusqu'à J+10. La bande de prévision 10 jours couvre toujours ces échéances.
+  var _cw = cmpWindow();
+  var t0Full = _cw.t0, t1Full = _cw.t1;
   // Zoom (bouton/molette/pincement, cf. _attachCmpZoom) : fenêtre affichée = fraction
-  // [a,b] de la plage complète, persistée dans _swellZoom entre les redraws.
-  var t0 = t0Full + _swellZoom.a * (t1Full - t0Full);
-  var t1 = t0Full + _swellZoom.b * (t1Full - t0Full);
-  var zoomed = _swellZoom.a > 0.001 || _swellZoom.b < 0.999;
+  // [a,b] de la fenêtre commune, PARTAGÉE avec le vent via _cmpZoom.
+  var t0 = t0Full + _cmpZoom.a * (t1Full - t0Full);
+  var t1 = t0Full + _cmpZoom.b * (t1Full - t0Full);
+  var zoomed = _cmpZoom.a > 0.001 || _cmpZoom.b < 0.999;
 
   var W = (cv.parentElement && cv.parentElement.clientWidth) || 600;
   // Téléphone (fenêtre étroite, jusqu'à 5 courbes superposées sur 10 jours) : on
@@ -5462,7 +5484,7 @@ function _drawSwellCompare() {
   var H = panelHeight('swell', narrow);
   var axFont = (narrow ? '11px' : '9px') + ' DM Sans,sans-serif';
   var ctx = panelSetup(cv, W, H);
-  _attachCmpZoom(cv, _swellZoom, _drawSwellCompare);
+  _attachCmpZoom(cv, _cmpZoom, _redrawBothCmp);
 
   // ── Panneau période (chantier 10, §10.2) ────────────────────────────────
   // Empilé sous la hauteur, MÊME axe X, même zoom, même curseur. Affiché
@@ -5481,7 +5503,7 @@ function _drawSwellCompare() {
   if (showPer) {
     pcv.style.display = 'block';
     perCtx = panelSetup(pcv, W, perH);
-    _attachCmpZoom(pcv, _swellZoom, _drawSwellCompare, true); // zoomer un panneau zoome les deux
+    _attachCmpZoom(pcv, _cmpZoom, _redrawBothCmp, true); // zoomer un panneau zoome les deux
   } else if (pcv) {
     pcv.style.display = 'none';
     panelOverlayHide(pcv);
@@ -5495,14 +5517,21 @@ function _drawSwellCompare() {
   // zoom, on rescale sur les seuls points VISIBLES dans [t0,t1] — c'est ce qui
   // sépare vraiment les courbes proches (demande utilisateur), pas juste le zoom
   // temporel seul.
+  // Toujours calculé sur les points VISIBLES dans [t0,t1] — y compris hors zoom,
+  // depuis que la fenêtre est tronquée à J+6 : les modèles fournissent jusqu'à
+  // J+10, et une grosse houle à J+8 (hors cadre) écraserait sinon toute
+  // l'échelle du graphe pour une valeur qu'on ne voit même pas.
+  var visPts = allPts.filter(function(p){ return p.ms >= t0 && p.ms <= t1; });
   var maxH, minH = 0;
-  if (zoomed) {
-    var visH = allPts.filter(function(p){ return p.ms >= t0 && p.ms <= t1; }).map(function(p){ return p.h; });
-    if (visH.length) {
+  if (visPts.length) {
+    var visH = visPts.map(function(p){ return p.h; });
+    if (zoomed) {
       var hiH = Math.max.apply(null, visH), loH = Math.min.apply(null, visH);
       var padH = Math.max(0.15, (hiH - loH) * 0.15);
       maxH = hiH + padH; minH = Math.max(0, loH - padH);
-    } else { maxH = Math.max(1, Math.max.apply(null, allPts.map(function(p){ return p.h; })) * 1.2); }
+    } else {
+      maxH = Math.max(1, Math.max.apply(null, visH) * 1.2);
+    }
   } else {
     maxH = Math.max(1, Math.max.apply(null, allPts.map(function(p){ return p.h; })) * 1.2);
   }
@@ -5576,7 +5605,12 @@ function _drawSwellCompare() {
     // ce panneau comme avant.
     if (!showPer) panelDayLabels(ctx, X, mid0, t1, W, H, axFont);
     panelNowLine(ctx, X, t0, t1, H, padT, padB);
+    // Clip : les séries vont jusqu'à J+10 alors que la fenêtre commune s'arrête
+    // à J+6 — sans ça les courbes déborderaient sur les étiquettes d'axe.
+    ctx.save();
+    ctx.beginPath(); ctx.rect(padL, padT, W - padL - padR, H - padT - padB); ctx.clip();
     activeModels.forEach(function(m) { drawSmooth(series[m.key], m.col); });
+    ctx.restore();
     drawPer();
   }
 
@@ -7847,11 +7881,31 @@ var _aromeData = null; // dernier jeu AROME chargé (purgé quand le spot n'a pa
 function _aromeCmpShellPresent() { return !!document.getElementById('arome-cmp-wrap'); }
 // Cache des séries déjà FETCHÉES pour le comparatif vent (obs/AROME/meteo.nc/GFS/BOM/
 // ECMWF) — permet de redessiner (zoom, encart extrêmes) sans re-fetch réseau. Repeuplé
-// uniquement par _renderAromeCompare(). _aromeZoom : fenêtre temporelle affichée, en
+// uniquement par _renderAromeCompare(). Le zoom (fenêtre temporelle affichée) est en
 // fraction [0,1] de la plage complète — {a:0,b:1} = pas de zoom.
 var _aromeCmpCache = null;
-var _aromeZoom = { a: 0, b: 1 };
-var _swellZoom = { a: 0, b: 1 };
+// Zoom UNIQUE des deux comparatifs (§10.2) : depuis qu'ils partagent la même
+// fenêtre temporelle (cmpWindow(), charts-core.js), zoomer l'un doit zoomer
+// l'autre — sinon la lecture verticale se casse dès le premier coup de molette.
+// Fraction [a,b] de la fenêtre commune ; {a:0,b:1} = pas de zoom.
+var _cmpZoom = { a: 0, b: 1 };
+// Exception : le mode « historique archivé » du vent (bouton, jusqu'à 8 j en
+// arrière) sort volontairement de la fenêtre commune — c'est une vue de
+// diagnostic modèle vs mesures, pas une lecture de créneau. Il a donc son propre
+// zoom, sinon une même fraction [a,b] désignerait deux plages absolues
+// différentes dans les deux graphes.
+var _aromeHistZoom = { a: 0, b: 1 };
+// Zoom effectivement appliqué au comparatif vent selon le mode courant.
+function _windZoomState() { return _aromeCmpShowHistory ? _aromeHistZoom : _cmpZoom; }
+// Un coup de molette sur l'un des comparatifs doit redessiner l'AUTRE aussi,
+// sans quoi la fenêtre commune ne tient plus qu'à moitié. On redessine les deux
+// sans condition : en mode historique le vent a son propre zoom, donc le
+// comparatif houle est simplement redessiné à l'identique — inoffensif, et ça
+// évite un cas particulier de plus à maintenir.
+function _redrawBothCmp() {
+  if (typeof _drawSwellCompare === 'function') _drawSwellCompare();
+  if (typeof _drawAromeCompareFromCache === 'function') _drawAromeCompareFromCache();
+}
 // Le graphe comparatif vent n'étend sa fenêtre à l'historique archivé (jusqu'à
 // 8j) que si l'utilisateur le demande (bouton) — par défaut ça écrasait les
 // courbes récentes de points morts dès l'ouverture (retour utilisateur).
@@ -8194,18 +8248,35 @@ function _aromeCmpShellHtml() {
     // écrasait les courbes récentes de points morts (retour utilisateur). Le
     // badge de corrélation plus bas, lui, utilise toujours l'archive complète
     // que ce bouton soit activé ou non.
-    + (_aromeCmpShowHistory
-        ? '<div style="display:flex;gap:10px;row-gap:4px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--faint);margin-bottom:6px;">'
-          + '<span>Archivé :</span>'
-          + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé</span>'
-          + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé</span>'
-          + '<button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:auto;">▲ Masquer l\'historique</button>'
-          + '</div>'
-        : '<div style="margin-bottom:6px;"><button onclick="_toggleAromeCmpHistory()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:3px 9px;border-radius:10px;cursor:pointer;">▼ Afficher l\'historique archivé (jusqu\'à 8j)</button></div>')
-    + '<div class="cmp-chart-row">'
-    + '<div id="arome-cmp-wrap" style="width:100%;flex:1;min-width:0;position:relative;"><canvas id="arome-cmp"></canvas></div>'
-    + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
+    // Rangée rendue INCONDITIONNELLEMENT, libellé et légende posés au redessin
+    // par _drawAromeCompareFromCache : ce gabarit n'est construit qu'une fois
+    // par chargement de la carte, alors que _toggleAromeCmpHistory() se contente
+    // de redessiner. En version conditionnelle, le bouton restait donc bloqué
+    // sur « ▼ Afficher l'historique » même une fois l'historique affiché.
+    + '<div style="display:flex;gap:10px;row-gap:4px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--faint);margin-bottom:6px;">'
+    + '<span id="arome-hist-leg" style="display:none;gap:10px;flex-wrap:wrap;">'
+    + '<span>Archivé :</span>'
+    + '<span><span style="color:#e8a057;font-weight:700;">○</span> meteo.nc passé</span>'
+    + '<span><span style="color:#4fa3c7;font-weight:700;">○</span> AROME passé</span>'
+    + '</span>'
+    + '<button id="arome-hist-btn" onclick="_toggleAromeCmpHistory()" aria-pressed="false" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:3px 9px;border-radius:10px;cursor:pointer;">▼ Afficher l\'historique archivé (jusqu\'à 8j)</button>'
     + '</div>'
+    // Rose AU-DESSUS du graphe (et non à côté) : à côté, elle amputait le canvas
+    // de ~80px, le rendant plus étroit que celui du comparatif houle — deux
+    // largeurs différentes = pas d'alignement vertical possible entre les deux
+    // cartes (chantier 10, §10.7). La légende passe aussi en texte visible au
+    // lieu du seul title, invisible au doigt sur mobile.
+    + '<div class="cmp-rose-row">'
+    + '<div id="arome-cmp-rose" style="width:80px;height:80px;flex-shrink:0;" title="Direction du vent (d\'où il vient) par modèle au créneau lu — les modèles ne s\'accordent pas toujours sur la direction"></div>'
+    + '<div style="font-size:11px;color:var(--faint);line-height:1.45;">Direction du vent au créneau lu (d\'où il vient) — les modèles ne s\'accordent pas toujours entre eux.</div>'
+    + '</div>'
+    // Note d'axe : rempli/vidé par _drawAromeCompareFromCache à CHAQUE redessin,
+    // et non écrit dans ce gabarit — le shell n'est construit qu'une fois par
+    // chargement de la carte, alors que la fenêtre affichée change à la volée
+    // (bouton historique). Un avertissement figé dans le gabarit ne serait
+    // jamais apparu.
+    + '<div id="arome-cmp-axis-note" style="font-size:11px;color:var(--faint);line-height:1.45;margin-bottom:6px;"></div>'
+    + '<div id="arome-cmp-wrap" style="width:100%;position:relative;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:11px;color:var(--muted);">← Survolez pour lire les valeurs au même instant (molette/pincement = zoomer)</div>'
     // Sous les courbes de vent (et non au-dessus, où c'était facile à manquer) :
     // seul le vent a une vraie mesure au sol pour comparer les modèles — la
@@ -8737,7 +8808,10 @@ async function _renderAromeCompare(j) {
     station: stationSeries, stHasCoords: stLat != null,
     stName: stName, stDistKm: stDistKm, t0: t0, t1: t1, now: now
   };
-  _aromeZoom.a = 0; _aromeZoom.b = 1; // nouvelles données → on repart de la vue complète
+  // Nouvelles données → on repart de la vue complète. Le zoom courant est partagé
+  // avec le comparatif houle (ou propre au mode historique) : on réinitialise
+  // celui qui est effectivement en vigueur.
+  var _wz = _windZoomState(); _wz.a = 0; _wz.b = 1;
   _drawAromeCompareFromCache();
   _renderCmpTable();
 }
@@ -8787,10 +8861,41 @@ function _drawAromeCompareFromCache() {
   if (_windCmpHidden.bom) { bomWind = []; bomCachePts = []; }
   if (_windCmpHidden.ecmwf) { ecmwfWind = []; ecmwfCachePts = []; }
   if (_windCmpHidden.marc) { marcWind = []; marcCachePts = []; }
-  // Zoom (bouton/molette/pincement) : fenêtre affichée = fraction [a,b] de la plage
-  // complète du dernier fetch (c.t0/c.t1), persistée dans _aromeZoom entre redraws.
-  var t0Full = c.t0, t1Full = c.t1;
-  var zs = _aromeZoom;
+  // Fenêtre de référence : la fenêtre COMMUNE avec le comparatif houle
+  // (cmpWindow(), charts-core.js) — c'est ce qui rend la lecture verticale
+  // possible entre les deux graphes. Seul le mode « historique archivé » garde
+  // la plage étendue du fetch (c.t0/c.t1, jusqu'à 8 j en arrière) : c'est une
+  // vue de diagnostic modèle vs mesures, hors de l'axe partagé, et l'encart
+  // sous le graphe le dit explicitement.
+  var t0Full, t1Full;
+  if (_aromeCmpShowHistory) {
+    t0Full = c.t0; t1Full = c.t1;
+  } else {
+    var _cwW = cmpWindow();
+    t0Full = _cwW.t0; t1Full = _cwW.t1;
+  }
+  // Zoom (bouton/molette/pincement) : fraction [a,b] de cette plage, partagée
+  // avec le comparatif houle hors mode historique (cf. _windZoomState).
+  var zs = _windZoomState();
+  // Dit explicitement quand l'axe cesse d'être aligné sur le comparatif houle —
+  // sans ça, on croit lire vent et houle au même instant sur la même verticale
+  // alors que les deux axes ne coïncident plus.
+  var axisNote = document.getElementById('arome-cmp-axis-note');
+  if (axisNote) {
+    axisNote.innerHTML = _aromeCmpShowHistory
+      ? '⚠ Fenêtre étendue au passé : cet axe de temps n\'est plus aligné sur le comparatif houle. Masque l\'historique pour retrouver la lecture verticale entre les deux graphes.'
+      : '';
+    axisNote.style.display = _aromeCmpShowHistory ? 'block' : 'none';
+  }
+  // Bouton + légende « archivé » : même raison, l'état vit ici et pas dans le gabarit.
+  var histBtn = document.getElementById('arome-hist-btn');
+  if (histBtn) {
+    histBtn.textContent = _aromeCmpShowHistory ? '▲ Masquer l\'historique' : '▼ Afficher l\'historique archivé (jusqu\'à 8j)';
+    histBtn.setAttribute('aria-pressed', _aromeCmpShowHistory ? 'true' : 'false');
+    histBtn.style.marginLeft = _aromeCmpShowHistory ? 'auto' : '';
+  }
+  var histLeg = document.getElementById('arome-hist-leg');
+  if (histLeg) histLeg.style.display = _aromeCmpShowHistory ? 'inline-flex' : 'none';
   var t0 = t0Full + zs.a * (t1Full - t0Full);
   var t1 = t0Full + zs.b * (t1Full - t0Full);
   var zoomed = zs.a > 0.001 || zs.b < 0.999;
@@ -8804,7 +8909,7 @@ function _drawAromeCompareFromCache() {
   cv.style.cursor = 'crosshair';
   var ctx = panelSetup(cv, W, H);
   var ovCtx = panelOverlay(cv, W, H); // calque du curseur (§10.12)
-  _attachCmpZoom(cv, _aromeZoom, _drawAromeCompareFromCache);
+  _attachCmpZoom(cv, zs, _redrawBothCmp);
   // Domaine Y : identique à avant par défaut (base 0, max sur toute la fenêtre
   // affichée). En zoom, rescale sur les seuls points VISIBLES dans [t0,t1] — c'est
   // ce qui sépare vraiment les courbes proches (demande utilisateur).

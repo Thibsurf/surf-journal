@@ -678,3 +678,53 @@ Vérifié en headless sur données réelles : curseur présent sur les 3 overlay
 inchangée pendant le scrub** (comparaison pixel par pixel avant/après), overlays
 vidés au retour à « maintenant », curseur masqué hors fenêtre temporelle,
 0 erreur JS.
+
+## Chantier 10 — fenêtre et zoom communs aux deux comparatifs — FAIT (2026-07-28)
+
+Le blocage identifié en fin de session précédente est levé. **Arbitrage tranché
+par l'utilisateur : sacrifier les jours 7 à 10 de houle**, garder les 24 h de
+passé du vent (elles portent les mesures de la station, donc la seule
+vérification possible d'un modèle). Fenêtre commune = **−24 h → J+6**.
+
+Trois choses empêchaient l'alignement, toutes traitées :
+
+1. **Domaines temporels différents.** `cmpWindow()` (charts-core.js) donne une
+   fenêtre FIXE, pas déduite des données — c'est ce qui garantit que les deux
+   graphes tombent d'accord même dessinés à des instants différents avec des
+   caches remplis à des moments différents. La houle est clippée à J+6 (les
+   modèles vont à J+10, la bande de prévision 10 jours couvre toujours ces
+   échéances). Effet de bord traité : l'échelle Y de la houle se calcule
+   désormais sur les points VISIBLES même hors zoom, sinon une grosse houle à
+   J+8 hors cadre écrasait tout le graphe pour une valeur invisible.
+
+2. **Deux états de zoom.** `_swellZoom` et `_aromeZoom` fusionnés en `_cmpZoom` :
+   zoomer un graphe zoome l'autre (`_redrawBothCmp`). Le mode « historique
+   archivé » du vent garde son propre `_aromeHistZoom` — c'est une vue de
+   diagnostic hors fenêtre commune, et un encart le dit maintenant explicitement.
+   `_attachCmpZoom` relit l'état sur le canvas (`cv._zoomState`) au lieu de le
+   capturer en closure : sans ça, la bascule d'historique aurait continué à
+   piloter l'ancien objet de zoom sans que rien ne le signale.
+
+3. **Largeurs de canvas différentes** (800 px vs 815 px, et 7,6 px de décalage
+   à gauche). La rose du vent était posée À CÔTÉ du graphe et lui volait ~80 px ;
+   remontée AU-DESSUS comme sur la carte houle, avec sa légende en texte visible
+   plutôt qu'en `title` (invisible au doigt). La marge de `#wg-arome-body` est
+   passée de 10 px à 1.1rem pour coller à `.card`.
+
+Mesuré après coup : les trois canvas (houle, période, vent) sont à `x=42.6`,
+`w=800.0` — **identiques au pixel**, et une même date tombe au même X sur les
+trois.
+
+**Bug préexistant trouvé en vérifiant** (même cause racine que l'encart d'axe) :
+`_aromeCmpShellHtml()` n'est construit qu'une fois par chargement de carte,
+alors que `_toggleAromeCmpHistory()` se contente de redessiner — le bouton
+restait donc bloqué sur « ▼ Afficher l'historique archivé » même une fois
+l'historique affiché. La rangée est maintenant rendue inconditionnellement
+(`#arome-hist-btn`, `#arome-hist-leg`) et son état posé au redessin, comme
+l'encart d'axe. Leçon transposable : dans cette page, **tout état qui change
+sans rechargement de la carte doit vivre dans un élément permanent mis à jour
+au redessin, jamais dans un gabarit conditionnel**.
+
+Vérifié en headless (900 px et 500 px, données réseau réelles) : 0 erreur JS,
+alignement au pixel, zoom partagé, isolation du zoom en mode historique
+(`_cmpZoom` intact), bascules aller-retour de l'historique, curseurs croisés.

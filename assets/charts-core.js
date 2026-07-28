@@ -45,6 +45,29 @@ function panelSetup(cv, W, H) {
   return ctx;
 }
 
+// ── Fenêtre temporelle COMMUNE aux comparatifs houle et vent (§10.2) ────────
+// Les deux graphes avaient chacun la sienne : le vent partait de −24 h et
+// s'arrêtait à J+6, la houle partait de maintenant et allait jusqu'à J+10. Deux
+// domaines différents = deux projections X différentes = aucune lecture
+// verticale possible entre les deux, même avec la même géométrie de marges.
+//
+// Arbitrage tranché avec l'utilisateur (28/07/2026) : on garde les 24 h de passé
+// du vent (elles portent les MESURES de la station, donc la seule vérification
+// possible d'un modèle) et on sacrifie les jours 7 à 10 de houle. Ces jours-là
+// restent accessibles autrement — la bande de prévision 10 jours les couvre, et
+// à cette échéance l'écart entre modèles est de toute façon plus large que le
+// signal.
+//
+// Fenêtre FIXE (pas déduite des données) : c'est ce qui garantit que les deux
+// graphes tombent d'accord même quand ils sont dessinés à des instants
+// différents, avec des caches remplis à des moments différents.
+var CMP_PAST_MS = 24 * 36e5;        // 24 h de passé (mesures station)
+var CMP_FUTURE_MS = 6 * 864e5;      // J+6
+function cmpWindow() {
+  var now = Date.now();
+  return { t0: now - CMP_PAST_MS, t1: now + CMP_FUTURE_MS };
+}
+
 // Projection temps → X, identique pour tous les panneaux qui partagent [t0,t1].
 function panelX(t0, t1, W) {
   var span = (t1 - t0) || 1;
