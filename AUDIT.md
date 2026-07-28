@@ -771,3 +771,38 @@ derrière un ruban faussement lisse. Le modèle retenu est nommé dans la légen
 
 Vérifié en headless : 0 erreur JS, bascule de la série de référence au zoom et
 retour, curseurs croisés intacts.
+
+## Chantier 10 — barre de lecture du curseur (§10.10) — FAIT (2026-07-28)
+
+« Une barre de lecture, pas une infobulle » : sur téléphone, une bulle flottante
+qui suit le doigt masque justement les données qu'on essaie de lire. Une ligne
+FIXE, répétée dans les deux cartes (comparatif houle et carte AROME) pour rester
+sous les yeux quel que soit le graphe survolé, pilotée par les curseurs des deux
+et remise à « maintenant » au relâchement — avec la mention explicite
+« — maintenant », sans quoi on ne peut pas savoir si la barre montre encore le
+dernier créneau survolé.
+
+Rendu réel mesuré :
+`Jeu 30/07 · 08h · houle 1.2 m · 12 s · SSE · vent 9 nds E offshore · marée haute 1.24 m ↓`
+
+Décisions :
+- **Une valeur par grandeur, pas six.** La barre répond à « ce créneau-là, il
+  donne quoi ? ». Le détail par modèle reste juste en dessous (pastilles, relevé,
+  encart fourchette). Valeur affichée = **médiane des modèles affichés** (mêmes
+  exclusions que le graphe) : plus robuste qu'une moyenne quand un modèle
+  décroche, et honnête puisque le désaccord reste lisible en dessous.
+- **Direction en moyenne circulaire** (`_cmpMeanDir`) : une moyenne arithmétique
+  de 350° et 10° donnerait 180°, soit l'exact opposé de la direction réelle.
+- **Une seule référence de direction du vent** dans toute la carte : la barre
+  cite `_windRibbonRef`, la même série que le ruban §10.5. Deux références
+  différentes pour la même grandeur dans la même carte se contrediraient.
+- **Marée depuis le modèle harmonique local** (`tideH`) et non les PM/BM
+  fetchées : disponible sur toute la fenêtre, sans réseau. Le niveau relatif est
+  calculé sur le marnage des ±12 h autour du créneau — « mi-marée » doit vouloir
+  dire mi-marée DE CE CYCLE, pas d'un mois moyen. Contrôlé contre la carte marée
+  de la page : marnage 0,37→1,42 m sur 24 h vs 0,32→1,44 m affiché par le SHOM.
+
+**Note de méthode headless** (déjà rencontrée pour le curseur) : `--dump-dom`
+seul ne peut PAS vérifier ce qui passe par `rafThrottle` — rAF ne se déclenche
+plus une fois la page quiescente. Il faut soit une capture d'écran (qui force des
+frames), soit appeler la fonction directement. Les deux ont été faites ici.

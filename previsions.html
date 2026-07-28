@@ -219,6 +219,18 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 @media(max-width:520px){
   .cmp-rose-row{flex-direction:column;align-items:center;text-align:center;}
 }
+/* Barre de lecture du curseur (chantier 10, §10.10). Une barre FIXE sous la
+   légende plutôt qu'une infobulle flottante : sur téléphone, une bulle qui suit
+   le doigt masque justement les données qu'on essaie de lire. Elle synthétise en
+   une ligne ce qui décide d'un créneau — houle, période, direction, vent et son
+   orientation au spot, marée — et revient à « maintenant » quand on relâche. */
+.cmp-readbar{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;
+  font-size:11px;color:var(--muted);line-height:1.5;
+  background:rgba(255,255,255,.025);border:1px solid var(--border);
+  border-radius:8px;padding:5px 10px;margin-bottom:8px;min-height:24px;}
+.cmp-readbar .rb-when{color:var(--text);font-weight:700;}
+.cmp-readbar .rb-v{color:var(--text);font-weight:700;}
+.cmp-readbar .rb-live{color:var(--faint);}
 
 /* QUICK LINKS */
 .links{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem;}
@@ -544,6 +556,10 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <button id="swell-mode-2" class="seg-b" onclick="_setSwellMode('secondary')" title="Houle secondaire : 2ᵉ train de houle, souvent partiellement voire pas disponible selon les modèles" aria-pressed="false">Houle 2</button>
       </div>
     </div>
+    <!-- Barre de lecture (§10.10) : synthèse du créneau lu, pilotée par le curseur
+         des DEUX comparatifs (houle et vent) — la même barre est répétée dans la
+         carte AROME pour rester sous les yeux quel que soit le graphe survolé. -->
+    <div id="cmp-readbar-swell" class="cmp-readbar"></div>
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
       <div id="swell-cmp-now" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:180px;"></div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
@@ -5673,6 +5689,7 @@ function _drawSwellCompare() {
   // fourchette et du relevé texte. ms == null ⇒ retour à « maintenant ».
   var _applySwellExtras = rafThrottle(function (ms) {
     var at = ms == null ? Date.now() : ms;
+    _renderCmpReadBar(at, ms == null);
     renderNowRow(at);
     _drawSwellRose(at);
     _renderCmpExtremes(at);
@@ -5702,6 +5719,7 @@ function _drawSwellCompare() {
   // frame d'attente au chargement, et les tests headless lisent juste après).
   draw();
   _paintCursor(null);
+  _renderCmpReadBar(Date.now(), true);
   renderNowRow(Date.now());
   _drawSwellRose(Date.now());
   _renderCmpExtremes(Date.now());
@@ -8279,6 +8297,7 @@ function _aromeCmpShellHtml() {
     // (bouton historique). Un avertissement figé dans le gabarit ne serait
     // jamais apparu.
     + '<div id="arome-cmp-axis-note" style="font-size:11px;color:var(--faint);line-height:1.45;margin-bottom:6px;"></div>'
+    + '<div id="cmp-readbar-wind" class="cmp-readbar"></div>'
     + '<div id="arome-cmp-wrap" style="width:100%;position:relative;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:11px;color:var(--muted);">← Survolez pour lire les valeurs au même instant (molette/pincement = zoomer)</div>'
     // Légende du ruban de qualité du vent — remplie au redessin (elle nomme le
@@ -9104,6 +9123,10 @@ function _drawAromeCompareFromCache() {
   // une bascule de direction entre deux pas de temps est une vraie incertitude,
   // la lisser lui donnerait une précision qu'elle n'a pas.
   var _windRef = _windRefSeries();
+  // Publiée pour la barre de lecture (§10.10) : elle doit citer la MÊME
+  // référence de direction que le ruban, deux références différentes dans la
+  // même carte se contrediraient.
+  _windRibbonRef = _windRef;
   var _windQualSegs = [];
   if (_windRef) {
     for (var _i = 0; _i < _windRef.pts.length - 1; _i++) {
@@ -9241,6 +9264,7 @@ function _drawAromeCompareFromCache() {
   }
   draw();
   _paintWindCursor(null);
+  _renderCmpReadBar(Date.now(), true);
   _renderCmpExtremes(Date.now());
 
   // Valeurs au survol : curseur + lecture des séries au plus proche (±90 min)
@@ -9319,6 +9343,7 @@ function _drawAromeCompareFromCache() {
   // colonne de table surlignée) est groupé par frame d'affichage.
   // ms == null ⇒ retour à « maintenant ».
   var _applyWindExtras = rafThrottle(function(ms, syncTable) {
+    _renderCmpReadBar(ms == null ? Date.now() : ms, ms == null);
     updateReadout(ms);
     _drawWindRose(ms == null ? now : ms);
     _renderCmpExtremes(ms == null ? Date.now() : ms);
@@ -10990,6 +11015,134 @@ function calcSunTimes(year, month, day) {
     decl:decl,noon:fmt(noon),noonH:noon,ha0:ha0,
     dayLenMin: isNaN(ha0) ? null : Math.round(2*ha0*60)
   };
+}
+
+// ─── Barre de lecture du curseur (chantier 10, §10.10) ──────────────────────
+// « Une barre de lecture, pas une infobulle » : sur téléphone, une bulle qui
+// suit le doigt masque justement les données qu'on essaie de lire. Une ligne
+// FIXE, sous la légende, mise à jour au scrub des DEUX comparatifs et remise à
+// « maintenant » au relâchement.
+//
+// Elle répond à une question et une seule : « ce créneau-là, il donne quoi ? ».
+// Donc une valeur par grandeur, pas six — le détail par modèle reste juste en
+// dessous (pastilles renderNowRow, relevé, encart fourchette). La valeur
+// affichée est la MÉDIANE des modèles affichés : plus robuste qu'une moyenne
+// quand un modèle décroche, et honnête puisque le désaccord reste lisible en
+// dessous.
+//
+// Série de vent de référence : la MÊME que celle du ruban d'orientation
+// (_windRibbonRef, posée au dessin du comparatif vent) — deux références
+// différentes pour la direction du vent dans la même carte se contrediraient.
+var _windRibbonRef = null;
+function _cmpMedian(vals) {
+  var a = vals.filter(function(v){ return v != null && isFinite(v); }).sort(function(x, y){ return x - y; });
+  if (!a.length) return null;
+  var m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+// Moyenne circulaire : une moyenne arithmétique de 350° et 10° donnerait 180°,
+// soit l'exact opposé de la direction réelle.
+function _cmpMeanDir(degs) {
+  var a = degs.filter(function(v){ return v != null && isFinite(v); });
+  if (!a.length) return null;
+  var sx = 0, sy = 0;
+  a.forEach(function(d){ var r = d * Math.PI / 180; sx += Math.cos(r); sy += Math.sin(r); });
+  if (!sx && !sy) return null;
+  return (Math.atan2(sy, sx) * 180 / Math.PI + 360) % 360;
+}
+function _cmpNearest(pts, ms, tol) {
+  if (!pts || !pts.length) return null;
+  var best = null, bd = tol || 3 * 36e5;
+  for (var i = 0; i < pts.length; i++) {
+    var df = Math.abs(pts[i].ms - ms);
+    if (df < bd) { bd = df; best = pts[i]; }
+  }
+  return best;
+}
+// État de marée à un instant, depuis le modèle harmonique local (tideH) — pas
+// de réseau, et disponible sur toute la fenêtre y compris au-delà des PM/BM
+// fetchées. Niveau relatif calculé sur le marnage des ±12 h autour du créneau :
+// « mi-marée » doit vouloir dire mi-marée DE CE CYCLE, pas d'un mois moyen.
+function _cmpTideAt(ms) {
+  if (typeof tideH !== 'function' || typeof TIDE_EPOCH === 'undefined') return null;
+  function hAt(t) { return tideH((t - TIDE_EPOCH.getTime()) / 36e5); }
+  var h = hAt(ms), lo = h, hi = h;
+  for (var d = -12 * 36e5; d <= 12 * 36e5; d += 36e5 / 2) {
+    var v = hAt(ms + d);
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  var lvl = (hi - lo) > 0.05 ? (h - lo) / (hi - lo) : 0.5;
+  var rising = hAt(ms + 18e5) >= h;
+  return {
+    h: h,
+    label: lvl < 0.28 ? 'marée basse' : (lvl > 0.72 ? 'marée haute' : 'mi-marée'),
+    arrow: rising ? '↑' : '↓'
+  };
+}
+function _renderCmpReadBar(atMs, isLive) {
+  var els = [document.getElementById('cmp-readbar-swell'), document.getElementById('cmp-readbar-wind')];
+  if (!els[0] && !els[1]) return;
+  var parts = [];
+  var dNC = new Date(atMs + 11 * 36e5);
+  var DAYS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+  parts.push('<span class="rb-when">' + DAYS[dNC.getUTCDay()] + ' '
+    + String(dNC.getUTCDate()).padStart(2, '0') + '/' + String(dNC.getUTCMonth() + 1).padStart(2, '0')
+    + ' · ' + String(dNC.getUTCHours()).padStart(2, '0') + 'h</span>');
+
+  // Houle : médiane des modèles AFFICHÉS (mêmes exclusions que le graphe).
+  if (_swellCache) {
+    var comp = _swellMode === 'secondary' ? 'secondary' : 'primary';
+    var hs = [], ts = [], ds = [];
+    SWELL_MODELS.forEach(function(m) {
+      if (_swellHidden[m.key]) return;
+      var p = _cmpNearest((_swellCache[m.key] && _swellCache[m.key][comp]) || [], atMs, 3 * 36e5);
+      if (!p) return;
+      if (p.h != null) hs.push(p.h);
+      if (p.t != null) ts.push(p.t);
+      if (p.dir != null) ds.push(p.dir);
+    });
+    var mh = _cmpMedian(hs), mt = _cmpMedian(ts), md = _cmpMeanDir(ds);
+    if (mh != null) {
+      parts.push('<span>houle <span class="rb-v">' + mh.toFixed(1) + ' m</span>'
+        + (mt != null ? ' · <span class="rb-v">' + Math.round(mt) + ' s</span>' : '')
+        + (md != null ? ' · ' + _compassLbl(md) : '') + '</span>');
+    }
+  }
+
+  // Vent : médiane des modèles pour la force, direction de la série de
+  // référence du ruban, et l'orientation au spot avec les seuils du score.
+  if (_aromeCmpCache) {
+    var c = _aromeCmpCache;
+    var kts = [];
+    [c.pageNc, c.pageGfs, c.aro, c.bomWind, c.ecmwfWind, c.marcWind].forEach(function(arr) {
+      var p = _cmpNearest(arr || [], atMs, 2 * 36e5);
+      if (p && p.kt != null) kts.push(p.kt);
+    });
+    var mk = _cmpMedian(kts);
+    var refP = _windRibbonRef ? _cmpNearest(_windRibbonRef.pts, atMs, 2 * 36e5) : null;
+    if (mk != null) {
+      var wTxt = 'vent <span class="rb-v">' + Math.round(mk) + ' nds</span>';
+      if (refP && refP.dir != null) {
+        var ideal = SCORE_PARAMS.windDirIdeal == null ? 270 : SCORE_PARAMS.windDirIdeal;
+        var diff = Math.abs((((refP.dir + 180) % 360 - ideal + 180 + 360) % 360) - 180);
+        var q = diff <= 60 ? { t: 'offshore', c: '#3dba8a' } : (diff > 120 ? { t: 'onshore', c: '#e05c5c' } : { t: 'travers', c: '#e8c44a' });
+        wTxt += ' ' + _compassLbl(refP.dir) + ' <span style="color:' + q.c + ';font-weight:700;">' + q.t + '</span>';
+      }
+      parts.push('<span>' + wTxt + '</span>');
+    }
+  }
+
+  var tide = _cmpTideAt(atMs);
+  if (tide) {
+    parts.push('<span>' + tide.label + ' <span class="rb-v">' + tide.h.toFixed(2) + ' m</span> ' + tide.arrow + '</span>');
+  }
+  // Dit explicitement qu'on est revenu au présent — sans ça, impossible de
+  // savoir si la barre montre encore le dernier créneau survolé.
+  if (isLive) parts.push('<span class="rb-live">— maintenant</span>');
+
+  var html = parts.join('');
+  els.forEach(function(el) { if (el) el.innerHTML = html; });
 }
 
 // ─── Intervalles de NUIT pour les fonds de panneaux (chantier 10, §10.5) ────
