@@ -919,3 +919,37 @@ version plate assemblée avec des « · ».
 Image produite vérifiée : 1680×1312 (panneaux 800 px × 2), en-tête + 3 panneaux
 alignés sur un axe unique + légende + pied de page, 0 erreur JS.
 `CACHE_NAME` → `surf-nc-v25`.
+
+## Réglage de marée par spot + fix centrage satellite — FAIT (2026-07-28)
+
+**Marée dans le score (⚙).** La préférence de marée du spot était lue par
+`_tideAdj()` depuis `spot.tidePref`, que rien n'écrivait : la marée ne pesait
+donc RIEN dans le score de session malgré le code. Elle vit maintenant dans
+`scoreParams.tidePref` (persistance par spot déjà en place) et se règle dans le
+dialogue ⚙ Score, section « 🌙 Marée » : niveau préféré (indifférent / basse /
+mi-marée / haute) et sens (indifférent / montante / descendante).
+`_spotTidePref()` lit scoreParams d'abord, avec repli sur l'ancien
+`spot.tidePref`. Défaut « indifférent » partout ⇒ comportement inchangé tant que
+l'utilisateur n'a rien réglé (aucune régression de score).
+
+Vérifié sur données réelles : sans préférence `_tideAdj` = 0 ; avec
+« mi-marée + montante » un créneau conforme donne +0,8 et un créneau à marée
+haute descendante −0,5. `_tideMatches()` est extraite pour que la future bande
+§10.5 et le score partagent la MÊME définition de « fenêtre favorable ».
+
+**Bug : décalage entre le spot créé sur la carte et le centre de la vue
+satellite.** Cause trouvée : `updateRoseSatBg` calcule `object-position` à partir
+de `clientWidth/clientHeight`, qui valent **0 tant que l'élément n'a pas de
+layout** — exactement le cas quand on crée un spot depuis la carte, la vue
+satellite étant alors dans un onglet masqué. Le code retombait sur le repli
+`S`, `excess ≈ 0`, donc `50% 50%` : aucun centrage, d'où le décalage (jusqu'à
+±128 px de mosaïque). Ce n'était pas la formule qui était fausse (corrigée
+précédemment pour les conteneurs rectangulaires), c'est qu'elle tournait sur des
+dimensions nulles.
+
+Fix : la cible est mémorisée sur l'élément (`img._satPt`) et
+`_applySatObjectPosition()` est rejouée par un `ResizeObserver` dès que
+l'élément obtient — ou change — sa taille. Sans layout, on ne pose plus rien
+plutôt que de poser une valeur fausse. Vérifié : conteneur 0×0 → rien posé ;
+conteneur rectangulaire → position calculée ; thumb réel du widget → `_satPt` et
+observer en place, 0 erreur JS.

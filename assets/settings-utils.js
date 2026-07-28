@@ -15,6 +15,7 @@
 function showScoreSettings() {
   var ex=document.getElementById('score-settings-dialog'); if(ex){ex.remove();return;}
   var p=SCORE_PARAMS;
+  var tidePref=p.tidePref||{state:'any',phase:'any'};
   var div=document.createElement('div');
   div.id='score-settings-dialog';
   div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;'
@@ -97,6 +98,30 @@ function showScoreSettings() {
     +'</div>'
     +compassWidget('wind','Vent - direction vers laquelle il souffle', p.windDirIdeal||270, '#e8a057')
     +'<div style="font-size:11px;color:var(--faint);margin-bottom:14px;">Le score monte si le vent est dans cette direction ±60° (offshore idéal = vent dos à la mer)</div>'
+
+    // ── SECTION MARÉE ──
+    // Ce réglage n'existait nulle part : `_tideAdj()` lisait une préférence que
+    // rien n'écrivait, donc la marée ne pesait RIEN dans le score malgré le code
+    // qui laissait croire le contraire. Le poser ici débloque à la fois le score
+    // et la bande « fenêtre favorable » des panneaux (chantier 10, §10.5).
+    +'<div style="font-size:11px;font-weight:700;color:#3dba8a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">🌙 Marée</div>'
+    +'<div style="display:flex;gap:10px;margin-bottom:6px;flex-wrap:wrap;">'
+    +'<label style="flex:1;min-width:130px;font-size:11px;color:var(--muted);">Niveau préféré'
+    +'<select id="sc-tideState" style="width:100%;margin-top:3px;background:var(--deep);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px;font-size:11px;">'
+    + ['any:Indifférent','low:Marée basse','mid:Mi-marée','high:Marée haute'].map(function(o){
+        var v=o.split(':')[0];
+        return '<option value="'+v+'"'+(tidePref.state===v?' selected':'')+'>'+o.split(':')[1]+'</option>';
+      }).join('')
+    +'</select></label>'
+    +'<label style="flex:1;min-width:130px;font-size:11px;color:var(--muted);">Sens préféré'
+    +'<select id="sc-tidePhase" style="width:100%;margin-top:3px;background:var(--deep);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px;font-size:11px;">'
+    + ['any:Indifférent','rising:Montante','falling:Descendante'].map(function(o){
+        var v=o.split(':')[0];
+        return '<option value="'+v+'"'+(tidePref.phase===v?' selected':'')+'>'+o.split(':')[1]+'</option>';
+      }).join('')
+    +'</select></label>'
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--faint);margin-bottom:14px;">Sur « Indifférent » partout, la marée ne compte pas dans le score et aucune bande n\'est tracée sur les graphes. Sinon, la fenêtre favorable est surlignée sur les panneaux du comparatif.</div>'
 
     // Légende
     +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:14px;font-size:11px;color:var(--muted);line-height:1.8;">'
@@ -190,6 +215,10 @@ function showScoreSettings() {
     SCORE_PARAMS.gustMalusKt=+document.getElementById('sc-gustMalusKt').value;
     SCORE_PARAMS.swellDirIdeal=+document.getElementById('hid-swell').value;
     SCORE_PARAMS.windDirIdeal=+document.getElementById('hid-wind').value;
+    SCORE_PARAMS.tidePref={
+      state:document.getElementById('sc-tideState').value,
+      phase:document.getElementById('sc-tidePhase').value
+    };
     // Un champ modifié à la main sort de _auto.fields → la calibration journal
     // ne l'écrasera plus (même protection que le dialogue ⚙ Réglages spot).
     if(SCORE_PARAMS._auto&&SCORE_PARAMS._auto.fields){

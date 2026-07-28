@@ -5918,9 +5918,31 @@ function _tideStateAt(t, tideSeries, tMin, tMax) {
   };
 }
 
+// Préférence de marée effective d'un spot. Lue d'abord dans scoreParams (où le
+// dialogue ⚙ l'écrit désormais), avec repli sur l'ancien emplacement
+// `spot.tidePref` au cas où un spot stocké l'aurait.
+function _spotTidePref(spot) {
+  var tp = (spot && spot.scoreParams && spot.scoreParams.tidePref) || (spot && spot.tidePref) || null;
+  if (!tp) return null;
+  if ((tp.state === 'any' || !tp.state) && (tp.phase === 'any' || !tp.phase)) return null;
+  return tp;
+}
+// Un créneau est-il dans la fenêtre de marée voulue ? Sert au score ET à la
+// bande de fond des panneaux (§10.5) — une seule définition, sinon le graphe
+// finirait par surligner autre chose que ce que le score récompense.
+function _tideMatches(pref, level01, phase) {
+  if (!pref) return false;
+  var okState = true;
+  if (pref.state === 'mid')       okState = level01 > 0.35 && level01 < 0.65;
+  else if (pref.state === 'low')  okState = level01 < 0.4;
+  else if (pref.state === 'high') okState = level01 > 0.6;
+  var okPhase = (!pref.phase || pref.phase === 'any') ? true : (phase === pref.phase);
+  return okState && okPhase;
+}
 function _tideAdj(spot, tide) {
-  if (!tide || !spot.tidePref) return 0;
-  var p = spot.tidePref, adj = 0;
+  var p = _spotTidePref(spot);
+  if (!tide || !p) return 0;
+  var adj = 0;
   if (p.state === 'mid')       adj += (tide.level01 > 0.35 && tide.level01 < 0.65) ? 0.5 : -0.3;
   else if (p.state === 'low')  adj += (tide.level01 < 0.4) ? 0.5 : -0.3;
   else if (p.state === 'high') adj += (tide.level01 > 0.6) ? 0.5 : -0.3;
@@ -6827,7 +6849,13 @@ var _DEFAULT_SCORE = {
   // moutons dans le lagon, clapot sur le plan d'eau), quelle que soit la
   // direction. windCalmKt = seuil d'apparition des moutons (~12-14kt).
   windCalmKt: 13,
-  windMalusKt: 22, gustMalusKt: 30  // NC : alizé 18-20kt normal → seuils relevés
+  windMalusKt: 22, gustMalusKt: 30,  // NC : alizé 18-20kt normal → seuils relevés
+  // Préférence de marée du spot (chantier 10, §10.5 priorité 3). Elle vivait
+  // dans `spot.tidePref`, que RIEN n'écrivait : `_tideAdj()` renvoyait donc
+  // toujours 0 et la marée ne pesait rien dans le score, alors que le code
+  // laissait croire le contraire. Déplacée dans scoreParams pour profiter du
+  // dialogue ⚙ et de sa persistance par spot. 'any' = pas de préférence.
+  tidePref: { state: 'any', phase: 'any' }
 };
 var SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE);
 
@@ -7382,6 +7410,25 @@ function renderMeteoStrip(ncForecast) {
 // Dessine des flèches pour houle1, houle2 et vent au créneau i
 // ─── Mosaïque satellite 3×3 centrée sur le spot (Esri, zoom 15) ─────────
 var _satAborts = {};
+// Applique object-position pour que le point du spot (mémorisé dans _satPt par
+// updateRoseSatBg) tombe au CENTRE du conteneur, quel que soit son ratio.
+// Séparé du chargement des tuiles parce qu'il doit pouvoir être rejoué : la
+// taille rendue du conteneur n'est pas connue tant que l'élément est masqué.
+function _applySatObjectPosition(img) {
+  var pt = img && img._satPt; if (!pt) return;
+  var cw = img.clientWidth || img.offsetWidth;
+  var ch = img.clientHeight || img.offsetHeight;
+  if (!cw || !ch) return; // pas encore de layout : on retentera au resize
+  var S = pt.S;
+  var scale = Math.max(cw / S, ch / S);
+  function centerPct(p, contSize) {
+    var excess = contSize - S * scale;
+    if (Math.abs(excess) < 0.5) return 50; // pas de recadrage sur cet axe
+    return Math.max(0, Math.min(100, ((contSize / 2 - p * scale) / excess) * 100));
+  }
+  img.style.objectPosition = centerPct(pt.x, cw).toFixed(1) + '% ' + centerPct(pt.y, ch).toFixed(1) + '%';
+}
+
 function updateRoseSatBg(lat, lon, targetId) {
   targetId = targetId || 'rose-sat-bg';
   var img = document.getElementById(targetId);
@@ -7429,19 +7476,21 @@ function updateRoseSatBg(lat, lon, targetId) {
     // point choisi et le centre affiché. Formule générale : l'image est mise à
     // l'échelle par scale=max(cw/S,ch/S), et object-position% résout la
     // position pour que le point mis à l'échelle tombe au centre du conteneur.
-    var cw = img.clientWidth || img.offsetWidth || S;
-    var ch = img.clientHeight || img.offsetHeight || S;
-    var scale = Math.max(cw / S, ch / S);
-    var scaledW = S * scale, scaledH = S * scale;
-    function centerPct(pt, contSize, scaledSize) {
-      var excess = contSize - scaledSize;
-      if (Math.abs(excess) < 0.5) return 50; // pas de recadrage sur cet axe → object-position sans effet
-      var pct = ((contSize / 2 - pt * scale) / excess) * 100;
-      return Math.max(0, Math.min(100, pct));
+    // Le calcul dépend de la taille RENDUE du conteneur. Or elle vaut 0 tant que
+    // l'élément n'a pas de layout — typiquement quand la vue satellite est dans
+    // un onglet masqué, ce qui est exactement le cas au moment où l'on crée un
+    // spot depuis la carte : les tuiles arrivent (souvent depuis le cache, donc
+    // vite), on calcule sur cw=ch=0, on retombe sur le repli S, excess≈0 et donc
+    // 50%/50% — c'est-à-dire AUCUN centrage, d'où le décalage entre le point
+    // choisi et le centre affiché.
+    // On mémorise donc la cible sur l'élément et on recalcule dès qu'il obtient
+    // (ou change) sa taille.
+    img._satPt = { x: ptX, y: ptY, S: S };
+    _applySatObjectPosition(img);
+    if (!img._satRO && typeof ResizeObserver !== 'undefined') {
+      img._satRO = new ResizeObserver(function() { _applySatObjectPosition(img); });
+      img._satRO.observe(img);
     }
-    var pctX = centerPct(ptX, cw, scaledW);
-    var pctY = centerPct(ptY, ch, scaledH);
-    img.style.objectPosition = pctX.toFixed(1) + '% ' + pctY.toFixed(1) + '%';
     img.src = cv2.toDataURL('image/jpeg', 0.9);
   }
 
