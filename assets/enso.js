@@ -1024,6 +1024,20 @@ function ensoLoadData() {
 var _ensoPlotlyRetries = 0;
 function ensoRender() {
   if (!_ensoData || !_ensoData.length) return;
+
+  // Pied de page « Données jusqu'à … » — était figé en dur à « mars 2026 » dans
+  // previsions.html, donc faux dès que le flux NOAA live avançait (juin 2026 au
+  // 29/07). Rempli dynamiquement depuis le dernier point réellement chargé,
+  // comme le badge et la ligne de statut le font déjà. Fait AVANT le garde
+  // Plotly ci-dessous : ce texte ne dépend que des données, pas de la lib
+  // graphique — s'il était après, un Plotly lent/injoignable le laissait vide.
+  var _last = _ensoData[_ensoData.length - 1];
+  var through = document.getElementById('enso-data-through');
+  if (through && _last) {
+    var MOIS_FR = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    through.textContent = 'Données jusqu\'à ' + (MOIS_FR[_last.month] || ('mois ' + _last.month)) + ' ' + _last.year;
+  }
+
   if (!window.Plotly) {
     if (_ensoPlotlyRetries++ < 60) { setTimeout(ensoRender, 500); } // max 30s (Plotly 3,6 Mo chargé à la demande sur mobile lent)
     return;
