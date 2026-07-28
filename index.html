@@ -3775,7 +3775,21 @@ function _drawModelReliabilityChart(canvas, rows, sessionHour) {
 async function _castInlineModelVote(modelKey) {
   if (!_modelTableCtx) return;
   var ctx = _modelTableCtx;
-  var vote = { votedModel: modelKey, votedAt: new Date().toISOString(), spot: ctx.spot, date: ctx.date, predictions: ctx.rows || {} };
+  // BUG corrigé (28/07/2026) : ctx.rows (sortie de _fetchModelTableRows) utilise
+  // val/period — mais la stats "① Calibration relative" (cf. plus bas,
+  // relativeBias) lit predictions[k].h/.t, la convention de previsions.html
+  // (_castModelVote). Les votes castés depuis le Journal ne contribuaient donc
+  // JAMAIS à cette stats (p.h toujours undefined → filtré silencieusement).
+  // On transforme ici, au moment du vote, plutôt que de changer les noms dans
+  // tout le tableau/graphe (où val/period restent plus clairs). On laisse
+  // aussi tomber `hours` (la série complète du jour, utile seulement au
+  // graphe) : inutile de la persister dans sessions.model_reliability.
+  var predictions = {};
+  Object.keys(ctx.rows || {}).forEach(function(k) {
+    var r = ctx.rows[k];
+    predictions[k] = { h: r.val, t: r.period, dir: r.dir };
+  });
+  var vote = { votedModel: modelKey, votedAt: new Date().toISOString(), spot: ctx.spot, date: ctx.date, predictions: predictions };
   if (ctx.sessionId) {
     await saveModelReliabilityFromJournal(ctx.sessionId, vote);
     // Patch la copie en mémoire : sinon getModelReliability() la trouverait
@@ -4302,16 +4316,25 @@ function renderStats(sessions, el) {
       // le plus proche du réel, moyenné sur tous les votes — biais en mètres, actionnable,
       // obtenu sans aucune observation nouvelle (mais ancré sur le modèle le plus souvent
       // élu, donc une calibration inter-modèles, pas une vérification absolue).
+      // _predH : lit la hauteur d'une prédiction archivée dans un vote, quel
+      // que soit le champ utilisé pour la stocker — `h` (previsions.html,
+      // _castModelVote) ou `val` (Journal, _castInlineModelVote AVANT le
+      // correctif du 28/07/2026 : les votes castés depuis le Journal avant
+      // cette date ont ce nom-là, et n'ont pas été migrés rétroactivement —
+      // sans ce repli ils resteraient exclus de ① pour toujours).
+      function _predH(p) { return p ? (p.h != null ? p.h : p.val) : null; }
       function relativeBias(vts) {
         var acc = {};
         vts.forEach(function(v) {
           var ref = v.predictions[v.votedModel];
-          if (!ref || ref.h == null) return;
+          var refH = _predH(ref);
+          if (refH == null) return;
           Object.keys(v.predictions).forEach(function(k) {
             var p = v.predictions[k];
-            if (k === v.votedModel || !p || p.h == null) return;
+            var pH = _predH(p);
+            if (k === v.votedModel || pH == null) return;
             acc[k] = acc[k] || { sum: 0, n: 0 };
-            acc[k].sum += (p.h - ref.h);
+            acc[k].sum += (pH - refH);
             acc[k].n++;
           });
         });
