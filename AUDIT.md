@@ -1132,3 +1132,72 @@ d'une session déjà enregistrée (pas seulement à la création) ; l'agrégatio
 migration des votes existants avec la nouvelle métrique "best" (les votes déjà
 enregistrés gardent leur `predictions` historique, non recalculé
 rétroactivement — à confirmer que rien n'en dépend de façon incohérente).
+
+### Repasses de la nuit (28→29/07) — 4 correctifs supplémentaires trouvés
+
+Demandé par l'utilisateur avant de dormir : continuer à repasser (visuel/UX/
+mécanique) sur cet outil jusqu'à épuisement du budget, sans s'arrêter pour
+demander. Quatre commits distincts, chacun vérifié en Edge headless avant
+d'être poussé :
+
+**1. Vote-depuis-le-détail vérifié** (`_mountModelTableDetail`,
+`_renderModelReliabilitySection`) : session synthétique injectée, vote casté
+par clic simulé, résumé "✓ modèle" affiché après coup, "Changer →" restaure
+bien le formulaire de vote. RAS, juste vérifié — le code existant fonctionnait
+déjà correctement une fois les bugs de coordonnées/fenêtre corrigés.
+
+**2. BUG trouvé — les votes du Journal ne contribuaient JAMAIS aux stats
+globales.** La stats "① Calibration relative" (biais inter-modèles, en bas du
+Journal) lit `predictions[k].h` (convention `previsions.html`,
+`_castModelVote`), mais `_castInlineModelVote` stockait `predictions[k].val` —
+`p.h` toujours `undefined` → chaque vote casté depuis le Journal était
+silencieusement exclu du calcul, depuis que ce mécanisme de vote inline
+existe. Fix à deux niveaux : `_castInlineModelVote` transforme désormais vers
+`{h, t, dir}` au moment du vote (et ne persiste plus le tableau `hours`
+complet, inutile hors du graphe) ; `relativeBias()` lit via un helper
+`_predH(p)` tolérant aux DEUX formes, pour comptabiliser rétroactivement les
+votes déjà castés avant ce correctif. Testé unitairement (Node, 3 votes
+synthétiques mélangeant les deux formes) : les 3 contribuent correctement.
+
+**3. BUG trouvé — changer l'heure de session après affichage du tableau ne le
+rafraîchissait pas.** Le repère du graphe et les valeurs "au plus proche du
+créneau" restaient figés sur l'ancienne heure, contredisant la légende
+affichée. `_bindSessionHourManualFlag` (déjà appelée à chaque ouverture de
+modale) étendue pour aussi rappeler `_updateModelReliabilityFormSection()`.
+Vérifié : un vrai événement `change` sur le select fait passer la légende de
+"7h" à "19h". Au passage, accessibilité clavier ajoutée sur les lignes du
+tableau de vote (`role="button"`/`tabindex="0"`/`aria-label`/Entrée-Espace,
+même motif que `previsions.html` §9.2) + retour visuel survol/focus en CSS —
+elles n'étaient cliquables qu'à la souris.
+
+**4. BUG trouvé (probablement le plus significatif pour le "TOUJOURS" du
+signalement initial) — un aléa réseau ponctuel désactivait l'outil pour le
+reste de la session, sans jamais réessayer.** `_hasModelCacheTableJournal()`
+(gate TOUTE l'affichage du tableau/graphe) et `_hasModelReliabilityColumnJournal()`
+(gate l'écriture du vote) mémorisaient leur résultat — y compris un résultat
+NÉGATIF causé par un simple hoquet réseau (connexion flaky à la plage, cas
+d'usage typique de cette appli). Une fois `false` en cache, plus aucune
+nouvelle tentative, quel que soit le spot/date essayé ensuite pour le reste de
+la session — candidat sérieux pour expliquer la persistance du problème sur
+plusieurs essais. La colonne/table existe déjà en prod (migration faite) :
+un échec ici reflète presque toujours un aléa transitoire, pas une vraie
+absence. Les deux fonctions ne mémorisent maintenant QUE le résultat positif ;
+un résultat négatif n'est plus caché et sera retenté au prochain appel.
+
+**Bilan complet de la nuit sur cet outil : 5 commits, 7 bugs réels trouvés et
+corrigés** (résolution de coordonnées, fenêtre d'éligibilité, métrique "pic"
+au lieu de "créneau réel", figure manquante, agrégation cassée, absence de
+rafraîchissement sur l'heure, cache négatif permanent) **+ 2 améliorations
+(accessibilité clavier, lien "Comparatif complet")**. Tout vérifié en Edge
+headless avec données Supabase réelles à chaque étape, jamais de mock.
+`CACHE_NAME` : `surf-nc-v29` → `v32` au fil des commits.
+
+**Vraiment restant, si une session future veut aller plus loin** : rien
+d'identifié comme cassé. Pistes d'amélioration non bloquantes, pas creusées
+faute de signal d'un vrai problème : (a) le mini-graphe reste sommaire
+(pas de survol/tooltip, contrairement au comparatif complet de
+`previsions.html` — le lien "Comparatif complet →" comble ce manque) ;
+(b) `MODEL_RELIABILITY_ORDER`/couleurs sont dupliqués une 3ᵉ fois par rapport
+à `previsions.html`/`cache-model-forecasts.mjs` (aucun bundler dans ce projet,
+cohérent avec le reste du repo, mais à garder synchronisé à la main si une
+couleur de modèle change un jour).

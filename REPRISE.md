@@ -78,21 +78,35 @@ aucune ligne de légende ni bande — le on/off fonctionne dans les deux sens.
 
 ---
 
-## Hors `AUDIT-previsions.md` — Journal (index.html), nuit du 28 au 29/07
+## Hors `AUDIT-previsions.md` — Journal (index.html), nuit du 28 au 29/07 — TERMINÉ
 
 Demande directe de l'utilisateur (pas dans l'audit) : l'outil "quel modèle de
 houle a été le plus fiable" à la création d'une session ne montrait qu'une
-seule évaluation, jamais de figure. Root cause + fix + figure ajoutée, détail
-complet dans `AUDIT.md` ("Outil d'évaluation des modèles de houle…") : mauvaise
-résolution des coordonnées du spot (table statique au lieu du spot réel
-synchronisé depuis previsions.html), fenêtre d'éligibilité 2j → 30j, métrique
-"pic du jour" → "valeur à l'heure de session", mini-graphe canvas ajouté.
+seule évaluation, jamais de figure — puis "continue à repasser dessus
+(visuel/UX/mécanique) jusqu'à épuisement des tokens" avant de dormir.
 
-L'utilisateur a demandé de continuer à repasser dessus (visuel/UX/mécanique)
-"jusqu'à épuisement des tokens" avant de dormir — repasses suivantes listées
-dans `AUDIT.md` en fin d'entrée. Si la session s'arrête au milieu, chercher
-dans `AUDIT.md` la dernière sous-section de cette entrée pour savoir où ça
-s'est arrêté exactement.
+**5 commits, 7 bugs réels trouvés et corrigés, tous vérifiés en Edge headless
+avec données Supabase réelles** (détail complet dans `AUDIT.md`, section
+"Outil d'évaluation des modèles de houle" + son sous-titre "Repasses de la
+nuit") :
+1. Résolution de coordonnées du spot (table statique au lieu du spot réel
+   synchronisé depuis previsions.html — ex. "Gros Nem").
+2. Fenêtre d'éligibilité 2j → 30j (masquait tout l'outil sans message).
+3. Métrique "pic du jour" → "valeur à l'heure de session" (trompeuse).
+4. Figure manquante → mini-graphe canvas ajouté (échelle Y non ancrée à 0).
+5. Agrégation cassée : les votes du Journal ne contribuaient jamais aux stats
+   globales (mauvais nom de champ, `val` vs `h`).
+6. Pas de rafraîchissement quand l'heure de session change après coup +
+   accessibilité clavier ajoutée sur les lignes de vote.
+7. **Cache négatif permanent sur un aléa réseau** — probablement le
+   contributeur le plus direct au "TOUJOURS" du signalement initial : un
+   hoquet réseau au premier essai éteignait l'outil pour le reste de la
+   session, sans jamais réessayer.
+
+Rien d'autre identifié comme cassé à ce stade. Pistes non bloquantes notées en
+fin d'entrée `AUDIT.md` si une session future veut aller plus loin (tooltip
+sur le mini-graphe, dédupliquer `MODEL_RELIABILITY_ORDER` vs les tables
+équivalentes ailleurs). `CACHE_NAME` : `v29` → `v32`.
 
 ---
 
