@@ -806,3 +806,38 @@ Décisions :
 seul ne peut PAS vérifier ce qui passe par `rafThrottle` — rAF ne se déclenche
 plus une fois la page quiescente. Il faut soit une capture d'écran (qui force des
 frames), soit appeler la fonction directement. Les deux ont été faites ici.
+
+## Chantier 10 — couple navigateur / détail (§10.11) — FAIT (2026-07-28)
+
+La bande d'ensemble multi-jours du widget et les comparatifs houle/vent étaient
+deux objets indépendants. L'audit les voulait en couple **navigateur / détail** :
+on repère l'événement de houle dans la bande, on l'examine dans les comparatifs.
+La synchronisation n'existait qu'à moitié (`_gwDayIdx` ↔ `tideDayOffset`), et
+rien ne reliait la bande aux graphes détaillés.
+
+**Bande → détail.** `_gwSetDay(i)` appelle maintenant `_cmpFrameDay(dateObj)` :
+les deux comparatifs se cadrent sur le jour choisi (± 1 h de marge). Conversion
+à surveiller — les dates du widget sont décalées de +11 h (convention de la
+page), donc minuit NC en millisecondes réelles vaut `Date.UTC(y,m,d) − 11 h`.
+Un jour hors de la fenêtre commune (au-delà de J+6 depuis qu'elle est tronquée)
+est refusé proprement plutôt que de cadrer sur une tranche vide — vérifié :
+J+9 renvoie `false` et ne touche pas au zoom.
+
+**Détail → bande.** Quand les comparatifs sont zoomés, la bande assombrit tout
+ce qu'ils ne montrent PAS et souligne la portion claire d'un liseré d'accent :
+traitement de minimap, la zone claire répond à « où je suis » sans avoir à
+comparer mentalement deux échelles de temps. Rien n'est dessiné hors zoom — un
+voile qui couvre tout ne dit rien.
+
+Le liseré est placé **sous l'en-tête des jours et non en bas du canvas** : le bas
+porte déjà les micro-heures 06h/12h/18h, un trait plus un libellé s'y seraient
+télescopés (constaté à la capture, le libellé « détail ↓ » du premier jet
+disparaissait derrière les heures — supprimé, le liseré suffit).
+
+`_redrawBothCmp()` redessine aussi la bande : la portion surlignée doit suivre
+tout changement de zoom, d'où qu'il vienne.
+
+Vérifié en headless : cadrage correct des jours 0 à 3 (jour N → minuit−1h à
+minuit+25h), refus au-delà de la fenêtre, zoom manuel puis retour vue complète,
+curseurs croisés et barre de lecture intacts, 0 erreur JS.
+`CACHE_NAME` → `surf-nc-v24` (widget-global.js modifié).

@@ -7926,6 +7926,48 @@ function _windZoomState() { return _aromeCmpShowHistory ? _aromeHistZoom : _cmpZ
 function _redrawBothCmp() {
   if (typeof _drawSwellCompare === 'function') _drawSwellCompare();
   if (typeof _drawAromeCompareFromCache === 'function') _drawAromeCompareFromCache();
+  // La bande d'ensemble surligne la portion détaillée par les comparatifs
+  // (§10.11) : elle doit donc se rafraîchir quand cette portion change.
+  if (typeof _gwDrawOverview === 'function') { try { _gwDrawOverview(); } catch (e) {} }
+}
+
+// ── Couple navigateur / détail (§10.11) ─────────────────────────────────────
+// La bande d'ensemble multi-jours du widget est la VUE D'ENSEMBLE (on y repère
+// l'événement de houle), les comparatifs sont le DÉTAIL. La synchronisation
+// n'existait qu'à moitié : le widget pilotait l'onglet Marée, mais rien ne
+// reliait la bande aux graphes détaillés, et rien n'indiquait dans la bande
+// quelle portion les graphes étaient en train de montrer.
+
+// Fenêtre réellement affichée par les comparatifs = fenêtre commune × zoom.
+// Lue par la bande d'ensemble pour surligner la portion détaillée.
+function _cmpVisibleWindow() {
+  var cw = cmpWindow(), span = cw.t1 - cw.t0;
+  return {
+    t0: cw.t0 + _cmpZoom.a * span,
+    t1: cw.t0 + _cmpZoom.b * span,
+    zoomed: _cmpZoom.a > 0.001 || _cmpZoom.b < 0.999
+  };
+}
+
+// Cadre les deux comparatifs sur un jour calendaire NC. `dateObj` est une date
+// du widget, donc décalée de +11 h (convention de la page) : ses getUTC* donnent
+// le jour NC, et minuit NC en millisecondes RÉELS vaut Date.UTC(...) − 11 h.
+// Une heure de marge de chaque côté pour ne pas coller les bords du jour au
+// bord du cadre.
+function _cmpFrameDay(dateObj) {
+  if (!dateObj || typeof _cmpZoom === 'undefined') return false;
+  var dayStart = Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate()) - 11 * 36e5;
+  var cw = cmpWindow(), span = cw.t1 - cw.t0;
+  var a = (dayStart - 36e5 - cw.t0) / span;
+  var b = (dayStart + 864e5 + 36e5 - cw.t0) / span;
+  a = Math.max(0, Math.min(1, a));
+  b = Math.max(0, Math.min(1, b));
+  // Jour hors de la fenêtre commune (au-delà de J+6 depuis que la houle y est
+  // tronquée) : on ne cadre rien plutôt que d'afficher une tranche vide.
+  if (b - a < 0.02) return false;
+  _cmpZoom.a = a; _cmpZoom.b = b;
+  _redrawBothCmp();
+  return true;
 }
 // Le graphe comparatif vent n'étend sa fenêtre à l'historique archivé (jusqu'à
 // 8j) que si l'utilisateur le demande (bouton) — par défaut ça écrasait les

@@ -418,6 +418,16 @@ function _gwSetDay(i) {
     tideDayOffset = i;
     if (typeof mareeInited !== 'undefined' && mareeInited) { try { renderTideCurve(tideDayOffset); } catch(_){} }
   }
+  // §10.11 : cette bande est le NAVIGATEUR, les comparatifs houle/vent sont le
+  // DÉTAIL. Choisir un jour ici les cadre sur ce jour — la relation était
+  // jusqu'ici seulement implicite (on changeait de jour et les graphes
+  // détaillés continuaient d'afficher toute la semaine).
+  if (typeof _cmpFrameDay === 'function') {
+    try {
+      var _d = _gwActiveData(), _days = _d ? _gwGroupDays(_d) : null;
+      if (_days && _days[i]) _cmpFrameDay(_days[i].dateObj);
+    } catch(_){}
+  }
 }
 
 // ─── Graphe d'ensemble multi-jours (façon meteo.nc : courbe vent + barres houle) ──
@@ -494,6 +504,39 @@ function _gwDrawOverview() {
     var bs = bounds[_gwDayIdx];
     ctx.fillStyle = 'rgba(232,196,74,.09)';
     ctx.fillRect(padL+bs.k0*span, headH, (bs.k1-bs.k0)*span, H-headH);
+  }
+
+  // §10.11 — moitié « détail → vue d'ensemble » : quand les comparatifs sont
+  // zoomés sur une portion, on assombrit ici tout ce qu'ils ne montrent PAS.
+  // Traitement de minimap : la zone claire répond à « où je suis » sans qu'on
+  // ait à comparer mentalement deux échelles de temps.
+  // Rien dessiné hors zoom : le voile couvrirait tout et ne dirait rien.
+  if (typeof _cmpVisibleWindow === 'function') {
+    try {
+      var vis = _cmpVisibleWindow();
+      if (vis.zoomed) {
+        // Les dates du widget sont décalées de +11 h (convention de la page) :
+        // on repasse en millisecondes réelles pour comparer à la fenêtre.
+        var kFirst = -1, kLast = -1;
+        for (var kk = 0; kk < gis.length; kk++) {
+          var msK = d.dates[gis[kk]].getTime() - 11*36e5;
+          if (msK >= vis.t0 && msK <= vis.t1) { if (kFirst < 0) kFirst = kk; kLast = kk; }
+        }
+        if (kFirst >= 0) {
+          var vx0 = padL + kFirst*span, vx1 = padL + (kLast+1)*span;
+          ctx.fillStyle = 'rgba(6,16,30,.55)';
+          if (vx0 > padL) ctx.fillRect(padL, headH, vx0-padL, H-headH);
+          if (vx1 < W-padR) ctx.fillRect(vx1, headH, (W-padR)-vx1, H-headH);
+          // Liseré d'accent JUSTE SOUS l'en-tête des jours, pas en bas du canvas :
+          // le bas porte déjà les micro-heures (06h/12h/18h) et un trait + un
+          // libellé s'y seraient télescopés. Ici il souligne la portion claire et
+          // se lit comme « c'est cette tranche qui est détaillée en dessous »,
+          // pas comme « données manquantes ».
+          ctx.fillStyle = 'rgba(79,163,199,.9)';
+          ctx.fillRect(vx0, headH, vx1-vx0, 2);
+        }
+      }
+    } catch(_){}
   }
 
   // Bandeau jours (bleu foncé) cliquable — label raccourci si la bande est étroite
