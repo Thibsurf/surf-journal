@@ -581,6 +581,11 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     <div style="position:relative;width:100%;"><canvas id="swell-cmp" style="width:100%;display:block;cursor:crosshair;"></canvas></div>
     <div style="position:relative;width:100%;"><canvas id="swell-cmp-per" style="width:100%;display:none;cursor:crosshair;"></canvas></div>
     <div id="swell-cmp-readout" style="min-height:14px;margin-top:4px;font-size:11px;color:var(--muted);">← Survolez pour comparer hauteur/période des modèles disponibles (molette/pincement = zoomer)</div>
+    <!-- Légende de la bande de marée favorable (§10.5 priorité 3) — remplie au
+         redessin par _drawSwellCompare(), vide (et masquée) tant qu'aucune
+         préférence n'est réglée dans ⚙ Score. Une seule fois pour la pile
+         houle+période+vent : la répéter sur les trois panneaux serait du bruit. -->
+    <div id="cmp-tide-band-leg" style="display:none;font-size:11px;color:var(--faint);line-height:1.45;margin-top:3px;"></div>
     <!-- Spectre MARC (mer du vent + houles séparées) : seul modèle ici à distinguer les
          trains de houle individuellement (hauteur/période/direction/dispersion angulaire)
          — BOM/GFS/MF/ECMWF ne donnent qu'une houle globale, pas de comparatif possible,
@@ -5312,6 +5317,23 @@ function _drawSwellCompare() {
     if (anyHidden) legEl.innerHTML += '<button onclick="_resetSwellHidden()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>';
   }
 
+  // Légende de la bande de marée favorable (§10.5 priorité 3) — un bandeau
+  // vert sans légende serait une devinette, même logique que celle du ruban de
+  // vent (#arome-cmp-ribbon-leg). Masquée tant qu'aucune préférence n'est
+  // réglée : _spotTidePref() renvoie alors null, cf. showScoreSettings().
+  var tideLeg = document.getElementById('cmp-tide-band-leg');
+  if (tideLeg) {
+    var _tp = _spotTidePref(SPOTS[currentSpot]);
+    if (!_tp) { tideLeg.innerHTML = ''; tideLeg.style.display = 'none'; }
+    else {
+      var _stateLbl = { low: 'marée basse', mid: 'mi-marée', high: 'marée haute' }[_tp.state] || 'tout niveau';
+      var _phaseLbl = _tp.phase === 'rising' ? 'montante' : (_tp.phase === 'falling' ? 'descendante' : '');
+      tideLeg.style.display = 'block';
+      tideLeg.innerHTML = '<span style="color:#3dba8a;font-weight:700;">▬</span> fenêtre de marée favorable au spot — '
+        + _stateLbl + (_phaseLbl ? ' ' + _phaseLbl : '') + ' (réglable par spot dans ⚙ Score).';
+    }
+  }
+
   function nearest(pts, ms, tol) {
     var best = null, bd = tol || 3 * 3600000;
     pts.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
@@ -5615,6 +5637,9 @@ function _drawSwellCompare() {
     var mid0 = panelDayBands(ctx, X, t0, t1, W, H, padT, padB);
     // Nuit assombrie (§10.5) — sous la grille et les courbes.
     panelShadeIntervals(ctx, X, _nightIntervals(t0, t1), 'rgba(2,7,18,.38)', W, H, padT, padB);
+    // Fenêtre de marée favorable au spot (§10.5 priorité 3) — vide si le spot
+    // est réglé sur « indifférent » (⚙ Score). Même définition que le score.
+    panelShadeIntervals(ctx, X, _favorableTideIntervals(t0, t1), 'rgba(61,186,138,.10)', W, H, padT, padB);
     panelAxisLabel(ctx, 'Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), H, axFont);
     ctx.textAlign = 'right'; ctx.font = axFont;
     var hStep = (maxH - minH) > 4 ? 1 : 0.5;
@@ -5650,6 +5675,7 @@ function _drawSwellCompare() {
     perCtx.clearRect(0, 0, W, perH);
     var midP = panelDayBands(perCtx, X, t0, t1, W, perH, perPadT, perPadB);
     panelShadeIntervals(perCtx, X, _nightIntervals(t0, t1), 'rgba(2,7,18,.38)', W, perH, perPadT, perPadB);
+    panelShadeIntervals(perCtx, X, _favorableTideIntervals(t0, t1), 'rgba(61,186,138,.10)', W, perH, perPadT, perPadB);
     panelAxisLabel(perCtx, 'Période (s)', perH, axFont);
     var span = perDom.max - perDom.min;
     var pStep = span > 12 ? 5 : (span > 6 ? 2 : 1);
@@ -9391,6 +9417,8 @@ function _drawAromeCompareFromCache() {
     ctx.fillRect(X(t0), padT, X(now) - X(t0), H - padT - padB);
     // Nuit assombrie, même repère que sur les panneaux houle/période (§10.5).
     panelShadeIntervals(ctx, X, _nightIntervals(t0, t1), 'rgba(2,7,18,.38)', W, H, padT, padB);
+    // Fenêtre de marée favorable, même repère que houle/période (§10.5 priorité 3).
+    panelShadeIntervals(ctx, X, _favorableTideIntervals(t0, t1), 'rgba(61,186,138,.10)', W, H, padT, padB);
     // Grille horizontale (pas adaptatif : 5 kt par défaut, plus serré une fois zoomé
     // sur une fenêtre de valeurs étroite)
     ctx.textAlign = 'right'; ctx.font = axFont;
@@ -11307,7 +11335,12 @@ function _cmpTideAt(ms) {
   return {
     h: h,
     label: lvl < 0.28 ? 'marée basse' : (lvl > 0.72 ? 'marée haute' : 'mi-marée'),
-    arrow: rising ? '↑' : '↓'
+    arrow: rising ? '↑' : '↓',
+    // Valeurs brutes, en plus du label/flèche déjà formatés pour la barre de
+    // lecture — réutilisées par _favorableTideIntervals() pour partager
+    // exactement la même définition de niveau/sens que _tideMatches() (§10.5).
+    level01: lvl,
+    rising: rising
   };
 }
 function _renderCmpReadBar(atMs, isLive) {
@@ -11427,6 +11460,35 @@ function _nightIntervals(t0, t1) {
   });
   _nightBandsCache = { key: key, bands: out };
   return out;
+}
+
+// ─── Fenêtre de marée favorable pour les fonds de panneaux (chantier 10,
+// §10.5 priorité 3) ─────────────────────────────────────────────────────────
+// Échantillonne _cmpTideAt() (modèle harmonique local, pas de réseau) toutes
+// les 30 min et garde les plages où _tideMatches() est vrai — LA MÊME fonction
+// que celle qui pèse la marée dans le score (_tideAdj) : le graphe ne doit
+// jamais surligner autre chose que ce que le score récompense.
+// Vide si le spot est réglé sur « indifférent » (défaut) : _spotTidePref()
+// renvoie alors null et aucune bande n'est tracée — pas un bug, un choix.
+var _favTideBandsCache = { key: '', bands: [] };
+function _favorableTideIntervals(t0, t1) {
+  var pref = _spotTidePref(SPOTS[currentSpot]);
+  if (!pref) return [];
+  // Clé mémo sur la fenêtre ET la préférence : un réglage dans ⚙ Score
+  // recharge tout (loadForecast), mais autant ne pas dépendre de ça.
+  var key = pref.state + '_' + pref.phase + '_' + Math.round(t0 / 18e5) + '_' + Math.round(t1 / 18e5);
+  if (_favTideBandsCache.key === key) return _favTideBandsCache.bands;
+  var STEP = 18e5; // 30 min — assez fin pour ne pas rater une bascule PM/BM
+  var bands = [], open = null;
+  for (var ms = t0; ms <= t1; ms += STEP) {
+    var tide = _cmpTideAt(ms);
+    var ok = tide && _tideMatches(pref, tide.level01, tide.rising ? 'rising' : 'falling');
+    if (ok && open == null) open = ms;
+    else if (!ok && open != null) { bands.push([open, ms]); open = null; }
+  }
+  if (open != null) bands.push([open, t1]);
+  _favTideBandsCache = { key: key, bands: bands };
+  return bands;
 }
 
 // ─── COURBE DE MARÉE ──────────────────────────────────────────────────────

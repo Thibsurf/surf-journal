@@ -1,4 +1,4 @@
-# Reprise — état au 28/07/2026
+# Reprise — état au 28/07/2026 (soir)
 
 Point d'entrée pour continuer le travail sur `AUDIT-previsions.md`.
 Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
@@ -15,6 +15,7 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 | Vague 2 (T03, T05, T06, T08, T09, T11, T12, T14, T15, T17) | ✅ 27/07 |
 | Chantier 8 (T24), §11.9 (T25) | ✅ |
 | **Chantier 10 (T20, T21, T22, T23 partiel)** | ✅ 28/07 — voir ci-dessous |
+| **§10.5 priorité 3 — bande de marée favorable** (hors numérotation T, cf. ci-dessous) | ✅ 28/07 soir |
 | T13 (sécurité) | ⚠️ partiel — `X-Push-Key` fait, **RLS pas fait** |
 | T18 (chantier 2, modules) | ⚠️ 3 modules sur 13 |
 | T19, T27, T28, T30 | ❌ |
@@ -40,34 +41,39 @@ décalage de la vue satellite lors de la création d'un spot.
 
 ---
 
+## Fait depuis la reprise du 28/07 (soir)
+
+### Bande « fenêtre de marée favorable » (§10.5 priorité 3) — FAIT, à re-vérifier visuellement
+
+Implémenté exactement selon le plan laissé ici : `_favorableTideIntervals(t0, t1)`
+(juste après `_nightIntervals` dans `previsions.html`) échantillonne `_cmpTideAt`
+toutes les 30 min, garde les plages où `_tideMatches(pref, level01, phase)` est
+vrai, fusionne les plages contiguës, mémoïsé sur `(pref, fenêtre)`. `_cmpTideAt`
+renvoie maintenant aussi `level01`/`rising` bruts. Appelée dans les trois `draw()`
+(houle, période, vent) après la nuit et avant les courbes. Vide si
+`_spotTidePref()` renvoie `null`. Légende dans un nouvel élément permanent
+`#cmp-tide-band-leg` (sous le comparatif houle), mise à jour à chaque redessin
+dans `_drawSwellCompare()`, masquée par défaut. `CACHE_NAME` → `surf-nc-v27`.
+Détail complet dans `AUDIT.md` (entrée du 28/07 « Bande de marée favorable… »).
+
+⚠️ **Vérification faite en aveugle.** Ce poste n'a ni Chrome ni le protocole
+headless de `CLAUDE.md` (Node est dispo ici, contrairement à l'autre poste) :
+la logique d'intervalles a été validée par un test isolé avec un modèle de
+marée synthétique (14 bandes/7j pour un cycle 12,42h avec préférence
+« mi-marée + montante », chacune 1-1,5h, correctement centrée) et
+`node --check` sur les 5 blocs `<script>` inline — **mais jamais vu à l'écran**.
+**Première chose à faire en reprenant** : régler ⚙ Score sur « mi-marée +
+montante » sur un spot, capture d'écran (ou le protocole headless habituel), et
+contrôler que la bande verte tombe bien sur les mi-marées montantes de la
+courbe de marée de la page (protocole détaillé encore valable, il n'a pas
+changé). Vérifier aussi que la légende `#cmp-tide-band-leg` apparaît/disparaît
+correctement en basculant la préférence entre « indifférent » et un réglage.
+
+---
+
 ## Prochaines étapes, dans l'ordre recommandé
 
-### 1. Bande « fenêtre de marée favorable » (§10.5 priorité 3) — ~20 lignes
-
-**Tout est prêt, il ne manque que le tracé.** La préférence de marée existe
-désormais (`scoreParams.tidePref`, réglée dans ⚙ Score) et `_tideMatches()` est
-déjà extraite pour que le graphe et le score partagent la même définition.
-
-À faire dans `previsions.html` :
-
-1. Une fonction `_favorableTideIntervals(t0, t1)` : échantillonner `_cmpTideAt(ms)`
-   toutes les 30 min sur la fenêtre, garder les plages où
-   `_tideMatches(pref, level01, phase)` est vrai, fusionner les plages contiguës.
-   Mémoïser sur la fenêtre comme `_nightIntervals` le fait déjà.
-   Attention : `_cmpTideAt` renvoie `{h, label, arrow}` — il faut lui faire aussi
-   renvoyer `level01` et `rising`, ou refaire le calcul sur place.
-2. Appeler `panelShadeIntervals(ctx, X, intervals, 'rgba(61,186,138,.10)', …)` dans
-   les trois `draw()` (houle, période, vent), **après** la nuit et **avant** les
-   courbes.
-3. Ne rien tracer si `_spotTidePref(SPOTS[currentSpot])` renvoie `null`
-   (« indifférent » = pas de préférence, cas par défaut).
-4. Mentionner la bande dans une légende, sinon c'est une devinette — même logique
-   que la légende du ruban de vent (`#arome-cmp-ribbon-leg`).
-
-Vérifier : régler ⚙ sur « mi-marée + montante », capture d'écran, contrôler que les
-bandes tombent bien sur les mi-marées montantes de la courbe de marée de la page.
-
-### 2. T18 — chantier 2, extraction des modules restants
+### 1. T18 — chantier 2, extraction des modules restants
 
 **C'est le seul qui débloque les autres : T19 et T30 en dépendent tous les deux.**
 
@@ -89,18 +95,18 @@ pas tous contigus (le bloc requin/BMS est intercalé entre `drawTideMarnage` et
 Après chaque extraction : bumper `CACHE_NAME` dans `sw.js`, compléter `ASSETS`,
 recharger en headless et vérifier 0 `ReferenceError`.
 
-### 3. T30 — CSP en `<meta>` (après T18)
+### 2. T30 — CSP en `<meta>` (après T18)
 
 Bloqué aujourd'hui par ~1 255 `style="` inline dans le HTML et ~797 chaînes de
 style construites en JS, qui imposeraient `'unsafe-inline'`. À traiter après la
 migration vers des classes CSS.
 
-### 4. T19 — chargement à la demande (après T18)
+### 3. T19 — chargement à la demande (après T18)
 
 ENSO, carte Leaflet, Chart.js chargés seulement quand l'onglet correspondant est
 ouvert. C'est le vrai gain de performance au premier chargement.
 
-### 5. T13 — partie RLS (SQL côté Supabase)
+### 4. T13 — partie RLS (SQL côté Supabase)
 
 Les policies actuelles sur `model_forecast_cache` autorisent l'écriture publique :
 

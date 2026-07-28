@@ -953,3 +953,42 @@ l'élément obtient — ou change — sa taille. Sans layout, on ne pose plus ri
 plutôt que de poser une valeur fausse. Vérifié : conteneur 0×0 → rien posé ;
 conteneur rectangulaire → position calculée ; thumb réel du widget → `_satPt` et
 observer en place, 0 erreur JS.
+
+## Bande de marée favorable sur les panneaux (chantier 10, §10.5 priorité 3) — FAIT (2026-07-28)
+
+Dernière brique du fond contextuel des panneaux houle/période/vent (les trois
+autres — nuit, ruban offshore/travers/onshore, dégradé de confiance — étaient
+déjà en place). Tout le plumbing existait déjà (`scoreParams.tidePref` réglé
+dans ⚙ Score, `_tideMatches()` extraite) : il ne manquait que le tracé.
+
+`_favorableTideIntervals(t0, t1)` échantillonne `_cmpTideAt()` toutes les 30
+min sur la fenêtre, garde les plages où `_tideMatches(pref, level01, phase)`
+est vrai et fusionne les plages contiguës — mémoïsé sur `(pref, fenêtre)` comme
+`_nightIntervals()`. `_cmpTideAt()` expose maintenant aussi `level01` et
+`rising` bruts (en plus de `label`/`arrow` déjà formatés pour la barre de
+lecture), pour que la bande et la barre de lecture partagent la même lecture
+de marée sans dupliquer le calcul. Vide (et rien tracé) si `_spotTidePref()`
+renvoie `null` — cas par défaut, « indifférent » partout.
+
+Appelée dans les trois `draw()` (houle, période, vent), juste après la nuit et
+avant les courbes, avec `panelShadeIntervals(…, 'rgba(61,186,138,.10)', …)` —
+même primitive que la nuit, couleur verte cohérente avec le reste de l'UI
+(score, ruban offshore). Légende posée dans un élément permanent
+(`#cmp-tide-band-leg`, sous le comparatif houle) mis à jour à chaque redessin,
+masquée tant qu'aucune préférence n'est réglée — même logique que la légende
+du ruban de vent (`#arome-cmp-ribbon-leg`), pour la même raison : un bandeau
+coloré sans légende serait une devinette.
+
+**Vérifié hors-ligne** (pas de Chrome/Node sur le poste habituel, ce
+correctif a été fait sur l'autre PC — Node y est disponible) : extraction de
+la logique dans un test isolé avec un modèle de marée synthétique (sinusoïde
+12,42 h) — sur une fenêtre de 7 j avec préférence « mi-marée + montante », 14
+bandes obtenues pour ~13,5 cycles attendus, chacune 1-1,5 h, centrée sur un
+point qui vérifie bien `level01 ∈ (0.35, 0.65)` et `rising`. Préférence `null`
+→ tableau vide. `node --check` sur les 5 blocs `<script>` inline extraits de
+`previsions.html` : aucune erreur de syntaxe. `CACHE_NAME` → `surf-nc-v27`.
+
+**Restant du §10.5 après cette brique : rien.** Les 4 priorités (offshore/
+cross/onshore, nuit, marée favorable, dégradé de confiance) sont toutes
+posées. Prochaine étape recommandée par `REPRISE.md` : T18 (extraction des 10
+modules JS restants), qui débloque T19 et T30.
