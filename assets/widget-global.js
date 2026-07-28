@@ -688,7 +688,11 @@ function _gwDrawVectors(fi) {
   // de SVG. Remplace un premier jet (annotation texte + cône générique superposé
   // à une AUTRE source) qui débordait de la vue et n'était pas voulu — le cône ne
   // s'affiche que quand la houle affichée vient réellement de MARC.
-  var GW_MARC_PART_COLORS = ['#e8a057', '#4fa3c7', '#a99ff8', '#e05c5c', '#3dba8a', '#f0c674'];
+  // partition 0 (mer du vent) était en '#e8a057' — IDENTIQUE à la couleur de la
+  // flèche vent ci-dessus (col:'#e8a057' ligne ~670), signalé par l'utilisateur
+  // comme se confondant sur la vue satellite. Remplacé par un ton neutre distinct
+  // des deux flèches (houle #4fc3e8, vent #e8a057).
+  var GW_MARC_PART_COLORS = ['#94a3b8', '#4fa3c7', '#a99ff8', '#e05c5c', '#3dba8a', '#f0c674'];
   if (_gwExtraSrc === 'marc' || _gwExtraSrc === 'mix') {
     var marcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
     if (marcPts && marcPts.length) {
