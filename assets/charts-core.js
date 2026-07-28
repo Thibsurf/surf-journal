@@ -32,11 +32,18 @@ function panelHeight(kind, narrow) {
   return narrow ? 270 : 210; // houle / vent : panneau primaire
 }
 
+// Forçage temporaire de la densité de pixels, pour l'export image (§10.13) :
+// une capture partagée est regardée sur un autre écran que celui qui l'a
+// produite, donc on la rend à 2× même si l'appareil est en 1×. Posé le temps
+// d'un redessin puis remis à null — la taille CSS des panneaux ne change pas,
+// seul le backing store double, donc c'est invisible à l'écran.
+var PANEL_DPR_OVERRIDE = null;
+
 // Prépare un canvas HiDPI et renvoie son contexte déjà mis à l'échelle.
 // Centralisé parce que l'oubli du `ctx.scale(dpr,dpr)` après un `cv.width=`
 // est l'erreur classique (le tracé sort flou ou à moitié hors cadre).
 function panelSetup(cv, W, H) {
-  var dpr = window.devicePixelRatio || 1;
+  var dpr = PANEL_DPR_OVERRIDE || window.devicePixelRatio || 1;
   cv.width = W * dpr; cv.height = H * dpr;
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   var ctx = cv.getContext('2d');

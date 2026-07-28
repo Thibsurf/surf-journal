@@ -881,3 +881,41 @@ le code laisse croire le contraire. Deux options, à trancher :
 
 Rien n'a été inventé ici : pas de « fenêtre favorable » par défaut, qui aurait
 affiché une recommandation sans fondement.
+
+## Chantier 10 — export image du météogramme (§10.13) — FAIT (2026-07-28)
+
+Bouton « 📸 Partager » dans l'en-tête du comparatif houle : produit une image
+des panneaux empilés (houle + période + vent) **sur la fenêtre actuellement
+affichée, zoom compris**, avec le nom du spot, la plage horaire, la date
+d'édition, l'attribution des sources et la légende des modèles tracés.
+
+**Composition native, pas html2canvas.** Les trois panneaux SONT déjà des
+`<canvas>` : un `drawImage` suffit. Deux gains concrets — pas de dépendance CDN
+de 180 Ko chargée pour ça, et l'image est au pixel près ce que l'utilisateur a
+validé à l'écran (html2canvas re-rend le DOM dans un clone et peut diverger sur
+les polices ou les dégradés). La légende des modèles est redessinée nativement
+plutôt que recopiée du DOM, pour la même raison.
+
+**Densité forcée à 2×** le temps de l'export (`PANEL_DPR_OVERRIDE` dans
+charts-core.js) : la capture sera regardée sur un autre écran que celui qui l'a
+produite. Seul le backing store double, la taille CSS ne bouge pas — invisible à
+l'écran. Restauration garantie par un `restore()` idempotent appelé aussi bien
+dans le chemin nominal que dans le `finally` : un override laissé en place aurait
+figé toute la page en 2× jusqu'au rechargement. Vérifié : `PANEL_DPR_OVERRIDE`
+revient à `null` et le canvas écran reprend sa largeur d'origine, y compris quand
+l'export part d'une fenêtre zoomée.
+
+**Refactor au passage** : la sortie commune des exports (partage natif si
+`navigator.canShare`, sinon téléchargement + copie du résumé) est extraite de
+`shareSpotCard()` vers `_shareCanvasImage()`. C'était la seule partie réellement
+partageable entre les deux exports.
+
+**Bug attrapé à la vérification** : le résumé texte accompagnant l'image était
+construit depuis le `textContent` de la barre de lecture, qui recollait
+« 17hhoule 1.8 m » — à l'écran les blocs sont séparés par les `gap` du flex, pas
+par des caractères. `_renderCmpReadBar` expose désormais `_cmpReadBarText`, une
+version plate assemblée avec des « · ».
+
+Image produite vérifiée : 1680×1312 (panneaux 800 px × 2), en-tête + 3 panneaux
+alignés sur un axe unique + légende + pied de page, 0 erreur JS.
+`CACHE_NAME` → `surf-nc-v25`.

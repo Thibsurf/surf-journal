@@ -551,9 +551,15 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;" title="Compare la houle prévue par les modèles disponibles pour ce spot — utile pour juger de leur accord/désaccord sur les prochains jours.">🆚 Houle — comparatif modèles</div>
         <span id="swell-cmp-legend" style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);"></span>
       </div>
-      <div class="seg" role="group" aria-label="Train de houle affiché">
-        <button id="swell-mode-1" class="seg-b is-on" onclick="_setSwellMode('primary')" title="Houle primaire : le train de houle dominant" aria-pressed="true">Houle 1</button>
-        <button id="swell-mode-2" class="seg-b" onclick="_setSwellMode('secondary')" title="Houle secondaire : 2ᵉ train de houle, souvent partiellement voire pas disponible selon les modèles" aria-pressed="false">Houle 2</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="seg" role="group" aria-label="Train de houle affiché">
+          <button id="swell-mode-1" class="seg-b is-on" onclick="_setSwellMode('primary')" title="Houle primaire : le train de houle dominant" aria-pressed="true">Houle 1</button>
+          <button id="swell-mode-2" class="seg-b" onclick="_setSwellMode('secondary')" title="Houle secondaire : 2ᵉ train de houle, souvent partiellement voire pas disponible selon les modèles" aria-pressed="false">Houle 2</button>
+        </div>
+        <!-- Export image des panneaux empilés (§10.13) : houle + période + vent
+             sur la fenêtre actuellement affichée, zoom compris. -->
+        <button id="mg-share-btn" onclick="shareMeteogram()" title="Exporter les panneaux (houle, période, vent) en image, sur la fenêtre affichée — à envoyer tel quel"
+          style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:4px 9px;border-radius:10px;cursor:pointer;white-space:nowrap;">📸 Partager</button>
       </div>
     </div>
     <!-- Barre de lecture (§10.10) : synthèse du créneau lu, pilotée par le curseur
@@ -7060,6 +7066,28 @@ function _shareEnsureHtml2Canvas() {
     document.head.appendChild(s);
   });
 }
+// Sortie commune des exports image : partage natif si le navigateur le supporte
+// (mobile), sinon téléchargement + copie du résumé texte dans le presse-papier.
+// Extrait de shareSpotCard() pour être réutilisé par l'export du météogramme
+// (§10.13) — c'était la seule partie réellement partageable entre les deux.
+async function _shareCanvasImage(canvas, spotName, summaryLine) {
+  var blob = await new Promise(function(res){ canvas.toBlob(res, 'image/png', 0.95); });
+  if (!blob) throw new Error('toBlob null');
+  var slug = String(spotName || 'spot').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  var file = new File([blob], 'surf-' + slug + '.png', { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], text: summaryLine });
+    return;
+  }
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href = url; a.download = file.name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  try { _copyToClipboard(summaryLine); } catch(_){}
+  try { showToast('Image téléchargée + résumé copié 📋'); } catch(_){}
+}
+
 function _shareCaptureEl(el) {
   return html2canvas(el, {
     backgroundColor: '#0d1f3c',
@@ -7145,23 +7173,7 @@ async function shareSpotCard() {
     octx.font = '400 ' + Math.round(11 * dpr) + 'px "DM Sans", sans-serif';
     octx.fillText('via thibsurf.github.io', W / 2, H - Math.round(12 * dpr));
 
-    var blob = await new Promise(function(res){ out.toBlob(res, 'image/png', 0.95); });
-    if (!blob) throw new Error('toBlob null');
-    var slug = spotName.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
-      .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    var file = new File([blob], 'surf-'+slug+'.png', { type:'image/png' });
-
-    // Partage natif si supporté (mobile), sinon téléchargement + copie du résumé texte.
-    if (navigator.canShare && navigator.canShare({ files:[file] })) {
-      await navigator.share({ files:[file], text: summaryLine });
-    } else {
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a'); a.href = url; a.download = file.name;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
-      try { _copyToClipboard(summaryLine); } catch(_){}
-      try { showToast('Image téléchargée + résumé copié 📋'); } catch(_){}
-    }
+    await _shareCanvasImage(out, spotName, summaryLine);
   } catch(e) {
     console.warn('[share]', e);
     try { showToast('Partage impossible : ' + (e && e.message || e)); } catch(_){}
@@ -7170,6 +7182,124 @@ async function shareSpotCard() {
   }
 }
 
+
+// ─── Export image du météogramme empilé (chantier 10, §10.13) ───────────────
+// « Une image, les panneaux, la fenêtre choisie, le nom du spot et la date —
+// c'est exactement ce qu'on envoie dans le groupe WhatsApp la veille d'une
+// sortie. »
+//
+// Les trois panneaux SONT déjà des <canvas> : on les recopie tels quels par
+// drawImage, sans html2canvas. Deux avantages concrets — pas de dépendance CDN
+// de 180 Ko à charger pour ça, et l'image partagée est au pixel près ce que
+// l'utilisateur a validé à l'écran (html2canvas re-rend le DOM dans un clone et
+// peut diverger sur les polices ou les dégradés).
+//
+// La densité est forcée à 2× le temps de l'export (PANEL_DPR_OVERRIDE) : la
+// capture sera regardée sur un autre écran que celui qui l'a produite. Seul le
+// backing store double, la taille CSS ne bouge pas — invisible à l'écran.
+async function shareMeteogram() {
+  var card = document.getElementById('swell-cmp-card');
+  if (!card || card.style.display === 'none') { try { showToast('Comparatif pas encore chargé'); } catch(_){} return; }
+  var btn = document.getElementById('mg-share-btn');
+  var old = btn ? btn.innerHTML : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳'; }
+  var restored = false;
+  function restore() {
+    if (restored) return;
+    restored = true;
+    PANEL_DPR_OVERRIDE = null;
+    try { _redrawBothCmp(); } catch(_){}
+  }
+  try {
+    PANEL_DPR_OVERRIDE = 2;
+    _redrawBothCmp();
+
+    // Panneaux visibles, dans l'ordre de lecture (§10.3 : houle → période → vent).
+    var panels = [];
+    function addPanel(id, title) {
+      var cv = document.getElementById(id);
+      if (cv && cv.width && cv.offsetParent !== null && cv.style.display !== 'none') panels.push({ cv: cv, title: title });
+    }
+    addPanel('swell-cmp', null);
+    addPanel('swell-cmp-per', null);
+    addPanel('arome-cmp', null);
+    if (!panels.length) throw new Error('aucun panneau à exporter');
+
+    var S = 2; // échelle de composition, alignée sur PANEL_DPR_OVERRIDE
+    var pad = 20 * S, gap = 10 * S, headerH = 76 * S, legendH = 26 * S, footerH = 30 * S;
+    var W = Math.max.apply(null, panels.map(function(p){ return p.cv.width; })) + pad * 2;
+    var H = headerH + panels.reduce(function(s, p){ return s + p.cv.height; }, 0)
+          + gap * (panels.length - 1) + legendH + footerH;
+
+    var out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    var g = out.getContext('2d');
+    var grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0d1f3c'); grad.addColorStop(1, '#0a1628');
+    g.fillStyle = grad; g.fillRect(0, 0, W, H);
+
+    var spotName = (SPOTS[currentSpot] && SPOTS[currentSpot].name) || 'Spot';
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillStyle = '#e8eef4';
+    g.font = '700 ' + (21 * S) + 'px "Playfair Display", Georgia, serif';
+    g.fillText(spotName, pad, 30 * S);
+
+    // Fenêtre RÉELLEMENT affichée (zoom compris) : sans elle, une image cadrée
+    // sur un jour serait indiscernable d'une image sur la semaine.
+    var vis = _cmpVisibleWindow();
+    function fmtNC(ms) {
+      var d = new Date(ms + 11 * 36e5);
+      return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0')
+        + ' ' + String(d.getUTCHours()).padStart(2, '0') + 'h';
+    }
+    g.fillStyle = '#7a94aa';
+    g.font = '400 ' + (12 * S) + 'px "DM Sans", sans-serif';
+    g.fillText('Comparatif modèles · ' + fmtNC(vis.t0) + ' → ' + fmtNC(vis.t1) + ' (heure NC)', pad, 50 * S);
+    var dnow = new Date(Date.now() + 11 * 36e5);
+    g.fillText('Édité le ' + fmtNC(Date.now()) + ' · données Météo-France, Ifremer, NOAA, BOM, ECMWF', pad, 68 * S);
+
+    var y = headerH;
+    panels.forEach(function(p) {
+      g.drawImage(p.cv, pad, y);
+      y += p.cv.height + gap;
+    });
+
+    // Légende des modèles réellement tracés, redessinée nativement : recopier le
+    // DOM de la légende aurait ramené html2canvas pour trois pastilles.
+    y += (legendH - gap) / 2;
+    var lx = pad;
+    g.font = '600 ' + (11 * S) + 'px "DM Sans", sans-serif';
+    g.textBaseline = 'middle';
+    SWELL_MODELS.forEach(function(m) {
+      if (_swellHidden[m.key]) return;
+      var has = _swellCache && _swellCache[m.key] && (_swellCache[m.key].primary || []).length;
+      if (!has) return;
+      g.fillStyle = m.col;
+      g.fillRect(lx, y - 1 * S, 10 * S, 2.5 * S);
+      g.fillStyle = '#7a94aa';
+      g.fillText(m.label, lx + 14 * S, y);
+      lx += 14 * S + g.measureText(m.label).width + 14 * S;
+    });
+
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    g.fillStyle = '#3d5468';
+    g.font = '400 ' + (11 * S) + 'px "DM Sans", sans-serif';
+    g.fillText('via thibsurf.github.io', W / 2, H - 12 * S);
+
+    restore(); // rendu écran remis à la densité de l'appareil avant le partage
+
+    var summary = '🏄 ' + spotName
+      + (_cmpReadBarText ? ' — ' + _cmpReadBarText.replace(/ · — maintenant$/, '') : '')
+      + ' · via thibsurf.github.io';
+    await _shareCanvasImage(out, spotName + '-meteogramme', summary);
+  } catch (e) {
+    console.warn('[share meteogram]', e);
+    try { showToast('Export impossible : ' + (e && e.message || e)); } catch(_){}
+  } finally {
+    restore();
+    if (btn) { btn.disabled = false; btn.innerHTML = old; }
+  }
+}
 
 // ─── ENCART MÉTÉO meteo.nc ─────────────────────────────────────────────────
 function renderMeteoStrip(ncForecast) {
@@ -11194,7 +11324,14 @@ function _renderCmpReadBar(atMs, isLive) {
 
   var html = parts.join('');
   els.forEach(function(el) { if (el) el.innerHTML = html; });
+  // Version texte plate, pour le résumé qui accompagne l'export image (§10.13).
+  // À l'écran les blocs sont séparés par les `gap` du flex ; un textContent
+  // recollerait « 17hhoule 1.8 m » — illisible dans un message WhatsApp.
+  _cmpReadBarText = parts.map(function(p) {
+    return p.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  }).filter(Boolean).join(' · ');
 }
+var _cmpReadBarText = '';
 
 // ─── Intervalles de NUIT pour les fonds de panneaux (chantier 10, §10.5) ────
 // Un créneau nocturne n'est pas surfable : autant qu'il le paraisse sur les
