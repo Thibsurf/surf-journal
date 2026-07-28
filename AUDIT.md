@@ -1298,3 +1298,32 @@ bien Hs primaire (1,2 m) et T=12 s, cohérent avec la formule affichée partout.
 a11y cartes) + revue conforme sur tout le reste (spots, satellite, carte, score,
 unités, fuseau, alignements comparatif, mobile, robustesse, 6 onglets).
 `CACHE_NAME` : v32 → v34.
+
+### 3ᵉ vraie correction : couleurs de modèles incohérentes entre les 2 pages (29/07)
+
+Trouvé en revérifiant la cohérence des données présentées : 3 modèles avaient
+des couleurs DIFFÉRENTES entre `previsions.html` (`MODEL_STYLE`) et `index.html`
+(`MODEL_RELIABILITY_LABELS`) — meteo.nc vert vs or, MF global gris vs violet,
+ECMWF violet vs rouge. Cas le plus trompeur : le VIOLET = ECMWF sur Prévisions
+mais MF global sur le Journal. Comme l'outil de fiabilité houle du Journal sert
+à comparer avec les courbes de Prévisions, un même modèle doit y avoir la même
+couleur. Aligné le Journal sur Prévisions (page de référence). Les couleurs ne
+sont jamais figées dans les votes (seulement la clé du modèle) → correction
+rétroactive sur les votes déjà enregistrés. Commit `46425f89`, `CACHE_NAME` → v35.
+
+### Balayage final : 0 erreur JS sur les 7 onglets
+
+Collecteur `window.onerror` + `unhandledrejection`, clic programmatique sur
+chaque onglet (Comparer, Carte, Windy, Isofronts, Marée & Pêche, ENSO,
+Prévisions) avec 2,2 s d'attente entre chacun : **0 erreur** sur l'ensemble.
+
+### Bilan global de la revue previsions.html (29/07)
+
+**3 vrais bugs trouvés et corrigés** : (1) pied de page ENSO figé « mars 2026 »
+→ dynamique « juin 2026 » ; (2) cartes créneaux/comparateur inaccessibles au
+clavier → role/tabindex/aria ; (3) couleurs de 3 modèles incohérentes entre les
+deux pages → alignées. **Tout le reste vérifié conforme** : position des 7 spots
+exacte sur la carte, vue satellite centrée sur les 7, score/unités/fuseau sains,
+3 canvas du comparatif alignés au pixel, pas de scroll horizontal mobile,
+robustesse sur spot sans données, cohérence interne (puissance = ½Hs²T), 0 erreur
+JS sur les 7 onglets. `CACHE_NAME` : v32 → v35 sur la session.

@@ -1,7 +1,15 @@
-# Reprise — état au 28/07/2026 (soir)
+# Reprise — état au 29/07/2026
 
 Point d'entrée pour continuer le travail sur `AUDIT-previsions.md`.
 Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
+
+> **Nuit 28→29/07** : deux chantiers hors audit, terminés et poussés (détail
+> complet dans `AUDIT.md`, dernières sections). (1) Outil d'évaluation des
+> modèles de houle du Journal — 7 bugs corrigés + figure ajoutée. (2) Revue
+> complète de `previsions.html` (logique/UX/données/spots/satellite/carte) — 3
+> vrais bugs corrigés (pied ENSO figé, a11y cartes, couleurs modèles
+> incohérentes entre pages), tout le reste vérifié conforme, 0 erreur JS sur les
+> 7 onglets. `CACHE_NAME` monté jusqu'à v35.
 
 ---
 
