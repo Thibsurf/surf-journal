@@ -74,6 +74,7 @@ function _gwBuildModelFcast(key) {
     return best;
   }
   var out = { dates:[], sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], sw2NativeArr:[], wndH:[], totH:[],
+    sw3h:[], sw3t:[], sw3d:[], sw4h:[], sw4t:[], sw4d:[], sw5h:[], sw5t:[], sw5d:[], // trains de houle 3/4/5 (MARC seul, cf. spectre)
     wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
     sw2Native: key === 'marc' ? true : sec.length > 0 };
   entry.primary.forEach(function(p){
@@ -82,16 +83,24 @@ function _gwBuildModelFcast(key) {
       // MARC : hs/dir au sommet = houle TOTALE (toutes partitions confondues),
       // pas la houle primaire — la vraie décomposition est dans p.partitions[]
       // (convention WW3 : 0 = mer du vent, 1 = houle primaire, 2 = houle
-      // secondaire, cf. _fetchMarcWave). Reconstituer ici pour rester cohérent
-      // avec le sens de sw1h/sw2h/wndH partout ailleurs dans le widget — la
-      // houle 2 de MARC était accessible (déjà utilisée pour le spectre) mais
-      // pas branchée sur sw2h (signalé par l'utilisateur).
+      // secondaire, 3/4/5 = trains suivants par énergie décroissante, cf.
+      // _fetchMarcWave). Reconstituer ici pour rester cohérent avec le sens de
+      // sw1h/sw2h/wndH partout ailleurs dans le widget — la houle 2 de MARC était
+      // accessible (déjà utilisée pour le spectre) mais pas branchée sur sw2h
+      // (signalé par l'utilisateur), et houle 3/4/5 demandées ensuite en lignes.
       var part0 = p.partitions[0], part1 = p.partitions[1], part2 = p.partitions[2];
+      var part3 = p.partitions[3], part4 = p.partitions[4], part5 = p.partitions[5];
       out.sw1h.push(part1 ? part1.h : null); out.sw1t.push(part1 ? part1.t : null); out.sw1d.push(part1 ? part1.dir : null);
       out.sw2h.push(part2 ? part2.h : null); out.sw2t.push(part2 ? part2.t : null); out.sw2d.push(part2 ? part2.dir : null);
+      out.sw3h.push(part3 ? part3.h : null); out.sw3t.push(part3 ? part3.t : null); out.sw3d.push(part3 ? part3.dir : null);
+      out.sw4h.push(part4 ? part4.h : null); out.sw4t.push(part4 ? part4.t : null); out.sw4d.push(part4 ? part4.dir : null);
+      out.sw5h.push(part5 ? part5.h : null); out.sw5t.push(part5 ? part5.t : null); out.sw5d.push(part5 ? part5.dir : null);
       out.sw2NativeArr.push(!!part2);
       out.wndH.push(part0 ? part0.h : null);
-      out.totH.push(p.h);
+      // p.h = houle primaire (partition 1) depuis la normalisation de _fetchMarcWave/
+      // _fetchMarcArchive — la mer TOTALE est désormais dans p.totH (repli p.h si un
+      // vieux point de cache ne l'a pas encore).
+      out.totH.push(p.totH != null ? p.totH : p.h);
     } else {
       out.sw1h.push(p.h!=null?p.h:null); out.sw1t.push(p.t!=null?p.t:null); out.sw1d.push(p.dir!=null?p.dir:null);
       out.totH.push(p.totH!=null ? p.totH : p.h);
@@ -99,6 +108,11 @@ function _gwBuildModelFcast(key) {
       var s2 = nearestSec(p.ms);
       out.sw2h.push(s2 ? s2.h : null); out.sw2t.push(s2 ? s2.t : null); out.sw2d.push(s2 ? s2.dir : null);
       out.sw2NativeArr.push(!!s2); // par créneau : ce point précis a-t-il une vraie houle 2 (pas juste la série en général) ?
+      // Houle 3/4/5 : seul MARC les fournit (spectre WW3 par train) — null partout
+      // ailleurs, pour garder les tableaux alignés sans afficher de fausses lignes.
+      out.sw3h.push(null); out.sw3t.push(null); out.sw3d.push(null);
+      out.sw4h.push(null); out.sw4t.push(null); out.sw4d.push(null);
+      out.sw5h.push(null); out.sw5t.push(null); out.sw5d.push(null);
     }
     out.wSpd.push(p.windKt!=null ? p.windKt : null); // MFWAM: toujours null, pas de vent dans cette API
     out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale dispo ; MFWAM: rafale ARPEGE
@@ -195,7 +209,12 @@ function _gwBuildBestMix() {
   }
 
   var out = { dates: base.dates.slice(), sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], sw2NativeArr:[],
+    sw3h:[], sw3t:[], sw3d:[], sw4h:[], sw4t:[], sw4d:[], sw5h:[], sw5t:[], sw5d:[],
     wndH:[], totH:[], wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[] };
+  // Houle 3/4/5 : seul MARC les fournit — sur le mix, on les reprend telles quelles
+  // depuis MARC au créneau le plus proche (ces trains n'existent QUE là ; la
+  // priorité multi-modèle n'a pas de sens pour eux, aucun autre modèle n'en a).
+  function marcExtra(field, ms) { return nearestVal(marc, field, ms); }
   base.dates.forEach(function(dt){
     var ms = dt.getTime();
     out.sw1h.push(pick(HOULE_PRIORITY, 'sw1h', ms));
@@ -203,6 +222,9 @@ function _gwBuildBestMix() {
     out.sw1d.push(pick(HOULE_PRIORITY, 'sw1d', ms));
     var s2 = pickSw2(HOULE_PRIORITY, ms);
     out.sw2h.push(s2.h); out.sw2t.push(s2.t); out.sw2d.push(s2.dir); out.sw2NativeArr.push(s2.native);
+    out.sw3h.push(marcExtra('sw3h', ms)); out.sw3t.push(marcExtra('sw3t', ms)); out.sw3d.push(marcExtra('sw3d', ms));
+    out.sw4h.push(marcExtra('sw4h', ms)); out.sw4t.push(marcExtra('sw4t', ms)); out.sw4d.push(marcExtra('sw4d', ms));
+    out.sw5h.push(marcExtra('sw5h', ms)); out.sw5t.push(marcExtra('sw5t', ms)); out.sw5d.push(marcExtra('sw5d', ms));
     out.totH.push(pick(HOULE_PRIORITY, 'totH', ms));
     out.wndH.push(pick(HOULE_PRIORITY, 'wndH', ms));
     out.wSpd.push(pick(VENT_PRIORITY, 'wSpd', ms));
@@ -956,6 +978,20 @@ function _gwRenderGrid(d, day) {
   for (var bi=0; bi<N; bi++) colFr.push(Math.max(0.15, bounds[bi+1]-bounds[bi]).toFixed(1)+'fr');
   gridEl.style.gridTemplateColumns = lblW+' '+colFr.join(' ');
 
+  // Houle 3/4/5 (MARC / mix quand il pioche chez MARC) : lignes ajoutées seulement
+  // si au moins un créneau du jour a de la donnée — sinon rien (les autres modèles
+  // n'ont pas ces trains). Chaque train tient sur UNE ligne (flèche + m + période),
+  // comme H.2. Demandé par l'utilisateur pour les modèles à spectre complet.
+  var extraDefs = [
+    { lbl:'H.3', h:d.sw3h, t:d.sw3t, dir:d.sw3d },
+    { lbl:'H.4', h:d.sw4h, t:d.sw4t, dir:d.sw4d },
+    { lbl:'H.5', h:d.sw5h, t:d.sw5t, dir:d.sw5d }
+  ].filter(function(def){ return def.h && idxs.some(function(fi){ return def.h[fi] != null; }); });
+  var nExtra = extraDefs.length;
+  // Décalage de toutes les lignes SOUS la houle 2 (ligne 7) par le nombre de
+  // trains supplémentaires affichés — les numéros de grid-row ne sont plus figés.
+  var rCloud = 8 + nExtra, rSep = rCloud + 1, rTide = rSep + 1, rLevels = rTide + 1, rSun = rLevels + 1;
+
   var html = '';
   html += _gwLbl(1,'Heure');
   html += _gwLbl(2,'💨 Vent','Vent moyen (nds) + rafales');
@@ -964,7 +1000,8 @@ function _gwRenderGrid(d, day) {
   html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
   html += _gwLbl(6,'Dir.');
   html += _gwLbl(7,'H.2','Houle secondaire — hauteur + période, flèche = direction (Open-Meteo si non fournie). "≈" = résidu calculé (Hs-H1-mer du vent), pas une vraie houle secondaire modélisée — voir la cellule concernée.');
-  html += _gwLbl(8,'☁ 🌧','Nuages par altitude (haut/moyen/bas, opacité = couverture) + pluie en mm/3h — Open-Meteo');
+  extraDefs.forEach(function(def, ei){ html += _gwLbl(8+ei, def.lbl, 'Train de houle n°'+(ei+3)+' (spectre MARC, énergie décroissante) — hauteur + période, flèche = direction'); });
+  html += _gwLbl(rCloud,'☁ 🌧','Nuages par altitude (haut/moyen/bas, opacité = couverture) + pluie en mm/3h — Open-Meteo');
 
   idxs.forEach(function(fi, ci) {
     var col = ci+2;
@@ -1025,18 +1062,28 @@ function _gwRenderGrid(d, day) {
       + (s2h ? _gwPerPill(s2x.t, true) : '')
       + '</div>';
 
+    // Houle 3/4/5 (MARC/mix) — une ligne par train, même mise en forme que H.2.
+    extraDefs.forEach(function(def, ei){
+      var eh = def.h[fi], et = def.t && def.t[fi], ed = def.dir && def.dir[fi];
+      html += '<div class="gw-cell"'+gia+' style="grid-row:'+(8+ei)+';grid-column:'+col+';'+nBg+'">'
+        + (eh!=null && ed!=null ? svgArrow(ed,'#8aa0b8') : '')
+        + '<span class="v" style="color:'+hsCol(eh)+';font-size:11px;">'+(eh!=null?eh.toFixed(1)+'m':'—')+'</span>'
+        + (eh!=null ? _gwPerPill(et, true) : '')
+        + '</div>';
+    });
+
   });
 
   // ☁🌧 Bande météo unifiée : nappes de nuages par altitude + pluie (barres + mm) en bas
-  html += '<div id="gw-cloud-wrap" style="grid-row:8;grid-column:2/-1;position:relative;height:48px;"></div>';
+  html += '<div id="gw-cloud-wrap" style="grid-row:'+rCloud+';grid-column:2/-1;position:relative;height:48px;"></div>';
 
-  html += '<div class="gw-row-sep" style="grid-row:9;"></div>';
-  html += _gwLbl(10,'Marée');
-  html += '<div class="gw-tide-row" id="gw-tide-svg-wrap" style="grid-row:10;grid-column:2/-1;"></div>';
-  html += _gwLbl(11,'Niveaux','Pleines et basses mers du jour (heure · hauteur)');
-  html += '<div id="gw-levels-row" style="grid-row:11;grid-column:2/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;padding:2px 0;"></div>';
-  html += _gwLbl(12,'Soleil');
-  html += '<div class="gw-sun-row" id="gw-sun-wrap" style="grid-row:12;grid-column:2/-1;"></div>';
+  html += '<div class="gw-row-sep" style="grid-row:'+rSep+';"></div>';
+  html += _gwLbl(rTide,'Marée');
+  html += '<div class="gw-tide-row" id="gw-tide-svg-wrap" style="grid-row:'+rTide+';grid-column:2/-1;"></div>';
+  html += _gwLbl(rLevels,'Niveaux','Pleines et basses mers du jour (heure · hauteur)');
+  html += '<div id="gw-levels-row" style="grid-row:'+rLevels+';grid-column:2/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;padding:2px 0;"></div>';
+  html += _gwLbl(rSun,'Soleil');
+  html += '<div class="gw-sun-row" id="gw-sun-wrap" style="grid-row:'+rSun+';grid-column:2/-1;"></div>';
 
   gridEl.innerHTML = html;
 

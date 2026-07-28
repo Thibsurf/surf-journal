@@ -4428,10 +4428,24 @@ async function _fetchMarcWave(spot) {
         windKt = Math.sqrt(u*u + v*v) * 1.943844;
         windDir = (180 + (180/Math.PI) * Math.atan2(u, v) + 360) % 360;
       }
+      // Mer TOTALE : hs + période MOYENNE (t02) + direction moyenne — toutes
+      // composantes confondues (houles + mer du vent), donc période courte (~7s).
+      var totH = hsRaw[i] * MARC_SCALE.hs;
+      var totT = (t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null;
+      var totDir = (dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null;
+      // « Houle primaire » = le train de houle le plus énergétique = partition 1
+      // (période de PIC ~11-13s), cohérent avec ce que TOUS les autres modèles
+      // mettent dans .h/.t/.dir (BOM sig_ht_sw1/pk_wav_per, nc/gfs swell1...).
+      // BUG signalé par l'utilisateur : le tableau/graphe/fourchette lisaient .h/.t
+      // = mer totale/t02 (~7s) alors que le widget lisait partition 1 (~12s), d'où
+      // deux périodes et deux tailles différentes pour « MARC houle » d'un panneau
+      // à l'autre. On normalise .h/.t/.dir sur la houle primaire ; la mer totale
+      // reste accessible via totH/totT/totDir (cf. flèche blanche du spectre).
+      var p1 = partitions[1];
       primary.push({
-        ms: MARC_EPOCH_MS + times[i] * 86400000, h: hsRaw[i] * MARC_SCALE.hs,
-        t: (t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null,
-        dir: (dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null,
+        ms: MARC_EPOCH_MS + times[i] * 86400000,
+        h: p1 ? p1.h : totH, t: p1 ? p1.t : totT, dir: p1 ? p1.dir : totDir,
+        totH: totH, totT: totT, totDir: totDir,
         spread: okNum(sprRaw, i) ? sprRaw[i] * MARC_SCALE.spr : null,
         windKt: windKt, windDir: windDir,
         partitions: partitions,
@@ -4467,9 +4481,15 @@ async function _fetchMarcArchive(spot) {
       (row.hours || []).forEach(function(hh) {
         if (!hh || hh.hs == null) return;
         var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
+        // Même normalisation que _fetchMarcWave : .h/.t/.dir = houle primaire
+        // (partition 1, période de pic ~12s), pas la mer totale (hh.hs/t02, ~7s).
+        var parts = hh.partitions || [];
+        var p1 = parts[1];
         primary.push({
-          ms: ms, h: hh.hs, t: hh.t02, dir: hh.dir, spread: hh.spread,
-          windKt: hh.windKt, windDir: hh.windDir, partitions: hh.partitions || [],
+          ms: ms,
+          h: p1 ? p1.h : hh.hs, t: p1 ? p1.t : hh.t02, dir: p1 ? p1.dir : hh.dir,
+          totH: hh.hs, totT: hh.t02, totDir: hh.dir, spread: hh.spread,
+          windKt: hh.windKt, windDir: hh.windDir, partitions: parts,
         });
       });
     });
@@ -4715,15 +4735,20 @@ function _renderCmpExtremes(atMs) {
   if (wDirSpan) { var wLo = _compassLbl(wDirSpan.lo), wHi = _compassLbl(wDirSpan.hi); pills.push(pill('🧭 vent <b style="color:var(--text);">' + wLo + (wLo === wHi ? '' : '–' + wHi) + '</b>')); }
 
   // Repère simplifié : on combine, indépendamment, le vent le plus faible avec la
-  // période la plus longue disponibles (= configuration la plus « propre » possible
-  // si CES modèles-là ont raison) et inversement (vent fort + période courte = la
-  // plus agitée) — chaque valeur reste attribuée à SON modèle, jamais mélangées en
-  // une fausse prévision composite.
+  // période la plus longue ET la houle la plus GROSSE disponibles (= configuration
+  // la plus « propre et consistante » possible si CES modèles-là ont raison) et
+  // inversement (vent fort + période courte + houle la plus petite = la plus agitée
+  // et molle) — chaque valeur reste attribuée à SON modèle, jamais mélangées en une
+  // fausse prévision composite. Taille (Hs) ajoutée à la demande de l'utilisateur.
   var verdict = '';
   if (kR && tR) {
+    // Hs facultatif : l'encart peut n'avoir que le vent (ex. pas de comparatif houle
+    // sur ce spot) — on n'affiche la taille que si hR existe.
+    var bestHs = hR ? ' · houle <b>' + hR.hi.toFixed(1) + 'm</b> (' + hR.hiLbl + ')' : '';
+    var worstHs = hR ? ' · houle <b>' + hR.lo.toFixed(1) + 'm</b> (' + hR.loLbl + ')' : '';
     verdict = '<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px;font-size:11px;">'
-      + '<div><span style="color:#3dba8a;">🌤 Meilleur cas</span> — vent <b>' + Math.round(kR.lo) + ' nds</b> (' + kR.loLbl + ') · période <b>' + Math.round(tR.hi) + 's</b> (' + tR.hiLbl + ') <span style="color:var(--faint);">→ mer plus propre si ces modèles ont raison</span></div>'
-      + '<div><span style="color:#e05c5c;">🌧 Pire cas</span> — vent <b>' + Math.round(kR.hi) + ' nds</b> (' + kR.hiLbl + ') · période <b>' + Math.round(tR.lo) + 's</b> (' + tR.loLbl + ') <span style="color:var(--faint);">→ mer plus hachée si ces modèles ont raison</span></div>'
+      + '<div><span style="color:#3dba8a;">🌤 Meilleur cas</span> — vent <b>' + Math.round(kR.lo) + ' nds</b> (' + kR.loLbl + ') · période <b>' + Math.round(tR.hi) + 's</b> (' + tR.hiLbl + ')' + bestHs + ' <span style="color:var(--faint);">→ mer plus propre et consistante si ces modèles ont raison</span></div>'
+      + '<div><span style="color:#e05c5c;">🌧 Pire cas</span> — vent <b>' + Math.round(kR.hi) + ' nds</b> (' + kR.hiLbl + ') · période <b>' + Math.round(tR.lo) + 's</b> (' + tR.loLbl + ')' + worstHs + ' <span style="color:var(--faint);">→ mer plus hachée et molle si ces modèles ont raison</span></div>'
       + '</div>';
   }
   box.innerHTML = '<div style="font-size:11px;color:var(--faint);margin-bottom:5px;">Fourchette entre modèles au ' + lblMs + '</div>'
@@ -4742,6 +4767,7 @@ function _renderCmpTable() {
   var wrap = document.getElementById('cmp-table-wrap');
   if (!wrap) return;
   if (!_swellCache && !_aromeCmpCache) { wrap.innerHTML = ''; return; }
+  var JOURS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
   var STEP_H = 3, NSLOT = 16; // 3h × 16 = 48h — même cadence que MARC/BOM (3h)
   var nowNc = Date.now() + 11 * 3600000; // "heure NC" (cf. [[timestamps-utc11-vs-brut]])
@@ -4750,19 +4776,23 @@ function _renderCmpTable() {
   var slots = [];
   for (var i = 0; i < NSLOT; i++) {
     var ncMs = startNc + i * stepMs;
-    slots.push({ ncMs: ncMs, ms: ncMs - 11 * 3600000 });
+    var dd = new Date(ncMs), hh = dd.getUTCHours();
+    slots.push({ ncMs: ncMs, ms: ncMs - 11 * 3600000, hour: hh, dateKey: dd.getUTCDate(), night: hh < 6 || hh >= 19 });
   }
 
+  // Modèles portés par leur CLÉ (pas juste un libellé) pour récupérer couleur
+  // d'identité + résolution depuis MODEL_STYLE — demandé par l'utilisateur : voir
+  // les résolutions en clair, pas seulement au survol.
   var windDefs = [];
   if (_aromeCmpCache) {
     var wc = _aromeCmpCache;
     var atSt = _windCmpAtStation && wc.station;
     var wdefs = atSt
-      ? [['AROME', 'aro', wc.station.aro], ['meteo.nc', 'nc', wc.station.nc], ['GFS', 'gfs', wc.station.gfs], ['BOM', 'bom', wc.station.bom], ['MARC', 'marc', wc.station.marc]]
-      : [['AROME', 'aro', wc.aro], ['meteo.nc', 'nc', wc.pageNc], ['GFS', 'gfs', wc.pageGfs], ['BOM', 'bom', wc.bomWind], ['ECMWF', 'ecmwf', wc.ecmwfWind], ['MARC', 'marc', wc.marcWind]];
+      ? [['aro', wc.station.aro], ['nc', wc.station.nc], ['gfs', wc.station.gfs], ['bom', wc.station.bom], ['marc', wc.station.marc]]
+      : [['aro', wc.aro], ['nc', wc.pageNc], ['gfs', wc.pageGfs], ['bom', wc.bomWind], ['ecmwf', wc.ecmwfWind], ['marc', wc.marcWind]];
     wdefs.forEach(function(d) {
-      if (_windCmpHidden[d[1]]) return;
-      if (d[2] && d[2].length) windDefs.push({ label: d[0], pts: d[2] });
+      if (_windCmpHidden[d[0]]) return;
+      if (d[1] && d[1].length) windDefs.push({ key: d[0], pts: d[1] });
     });
   }
   var swellDefs = [];
@@ -4770,54 +4800,83 @@ function _renderCmpTable() {
     SWELL_MODELS.forEach(function(m) {
       if (_swellHidden[m.key]) return;
       var arr = _swellCache[m.key] && _swellCache[m.key].primary;
-      if (arr && arr.length) swellDefs.push({ label: m.label, pts: arr });
+      if (arr && arr.length) swellDefs.push({ key: m.key, pts: arr });
     });
   }
   if (!windDefs.length && !swellDefs.length) { wrap.innerHTML = ''; return; }
 
-  function fmtHour(ncMs) { return String(new Date(ncMs).getUTCHours()).padStart(2, '0') + 'h'; }
-  var headCells = slots.map(function(s, i) {
-    var chg = i === 0 || new Date(s.ncMs).getUTCDate() !== new Date(slots[i - 1].ncMs).getUTCDate();
-    var d = new Date(s.ncMs);
-    var lbl = fmtHour(s.ncMs) + (chg ? '<br><span style="opacity:.6;">' + String(d.getUTCDate()).padStart(2, '0') + '/' + (d.getUTCMonth() + 1) + '</span>' : '');
-    return '<th style="padding:3px 6px;font-size:10px;font-weight:500;color:var(--faint);border-left:' + (chg ? '1px solid var(--border)' : 'none') + ';white-space:nowrap;">' + lbl + '</th>';
-  }).join('');
+  var LBLW = 92; // largeur de la colonne modèle (sticky) — assez pour "MARC WW3 5,5 km"
+  function nightBg(s, base) { return s.night ? 'linear-gradient(rgba(0,0,0,.16),rgba(0,0,0,.16)),' + base : base; }
+
+  // En-tête sur 2 étages : bandeau JOUR (colspan par jour) + rangée HEURES —
+  // beaucoup plus lisible que la date entassée sous chaque heure (retour
+  // utilisateur : « que ça accroche l'œil, très facile à lire »).
+  var dayGroups = [];
+  slots.forEach(function(s, i) {
+    var last = dayGroups[dayGroups.length - 1];
+    if (last && last.dateKey === s.dateKey) last.span++;
+    else dayGroups.push({ dateKey: s.dateKey, span: 1, ncMs: s.ncMs });
+  });
+  var dayRow = '<th style="position:sticky;left:0;z-index:2;background:var(--deep);border-bottom:1px solid var(--border);"></th>'
+    + dayGroups.map(function(g, gi) {
+        var d = new Date(g.ncMs);
+        var shade = gi % 2 === 0 ? 'rgba(79,163,199,.06)' : 'transparent';
+        return '<th colspan="' + g.span + '" style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--text);text-align:center;border-left:2px solid var(--border-h);border-bottom:1px solid var(--border);background:' + shade + ';white-space:nowrap;">' + JOURS[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1) + '</th>';
+      }).join('');
+  var hourRow = '<th style="position:sticky;left:0;z-index:2;background:var(--deep);"></th>'
+    + slots.map(function(s, i) {
+        var chg = i === 0 || slots[i - 1].dateKey !== s.dateKey;
+        return '<th style="padding:2px 5px 4px;font-size:9.5px;font-weight:600;color:var(--muted);border-left:' + (chg ? '2px solid var(--border-h)' : '1px solid rgba(255,255,255,.04)') + ';background:' + nightBg(s, 'transparent') + ';white-space:nowrap;">' + String(s.hour).padStart(2, '0') + 'h</th>';
+      }).join('');
 
   // Petite flèche tournée en CSS (pas de svgArrow() ici — ses 24×24 SVG sont
-  // bien trop grandes pour une cellule de tableau à 10px) : convention de
-  // propagation identique (deg = provenance météo → +180° = où ça va),
-  // partagée avec svgArrow()/_gwDrawVectors.
+  // bien trop grandes pour une cellule de tableau) : convention de propagation
+  // identique (deg = provenance météo → +180° = où ça va), cf. svgArrow().
   function arrowSpan(deg) {
     if (deg == null) return '';
     var propDeg = (deg + 180) % 360;
-    return '<span style="display:inline-block;transform:rotate(' + Math.round(propDeg) + 'deg);font-size:9px;opacity:.85;">↑</span>';
+    return '<span style="display:inline-block;transform:rotate(' + Math.round(propDeg) + 'deg);opacity:.9;">↑</span>';
   }
   function rowsFor(defs, kind) {
     return defs.map(function(d) {
+      var st = (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE[d.key]) ? MODEL_STYLE[d.key] : { label: d.key, col: '#7a94aa', res: null };
       var cells = slots.map(function(s) {
         var p = _nearestPt(d.pts, s.ms, 1.6 * 3600000);
         var v = p ? (kind === 'wind' ? p.kt : p.h) : null;
-        if (v == null) return '<td style="padding:3px 6px;text-align:center;font-size:10px;color:var(--faint);">–</td>';
-        var bg = (kind === 'wind' ? windCol(v) : hsCol(v)) + '30'; // ~19% alpha
+        var chg = slots.indexOf(s) === 0 || slots[slots.indexOf(s) - 1].dateKey !== s.dateKey;
+        var bl = chg ? '2px solid var(--border-h)' : '1px solid rgba(255,255,255,.04)';
+        if (v == null) return '<td style="padding:4px 4px;text-align:center;font-size:10px;color:var(--faint);border-left:' + bl + ';background:' + nightBg(s, 'transparent') + ';">–</td>';
+        var valCol = (kind === 'wind' ? windCol(v) : hsCol(v));
+        var bg = nightBg(s, _rgbaFromHex(valCol, .30)); // fond = couleur de la valeur (plus marqué qu'avant : lecture au coup d'œil)
         var arrow = arrowSpan(p.dir);
-        var txt;
+        var main, sub;
         if (kind === 'wind') {
-          var gustTxt = p.gust != null ? '<span style="opacity:.6;font-size:8px;"> (' + Math.round(p.gust) + ')</span>' : '';
-          txt = Math.round(v) + arrow + gustTxt;
+          main = Math.round(v);
+          sub = p.gust != null ? '<span style="opacity:.62;font-size:8px;font-weight:500;">g' + Math.round(p.gust) + '</span>' : '';
         } else {
-          var perTxt = p.t != null ? '<span style="opacity:.7;font-size:8.5px;"> ' + Math.round(p.t) + 's</span>' : '';
-          txt = v.toFixed(1) + arrow + perTxt;
+          main = v.toFixed(1);
+          sub = p.t != null ? '<span style="opacity:.72;font-size:8px;font-weight:500;">' + Math.round(p.t) + 's</span>' : '';
         }
-        return '<td style="padding:3px 4px;text-align:center;font-size:10px;border-radius:3px;background:' + bg + ';color:var(--text);font-weight:600;white-space:nowrap;">' + txt + '</td>';
+        return '<td style="padding:4px 4px;text-align:center;font-size:11px;border-left:' + bl + ';background:' + bg + ';color:var(--text);font-weight:700;white-space:nowrap;line-height:1.15;">'
+          + '<div>' + main + ' <span style="font-weight:400;font-size:9px;opacity:.85;">' + arrow + '</span></div>'
+          + (sub ? '<div>' + sub + '</div>' : '') + '</td>';
       }).join('');
-      return '<tr><td style="padding:3px 8px 3px 0;font-size:10.5px;color:var(--muted);white-space:nowrap;position:sticky;left:0;background:var(--deep);">' + d.label + '</td>' + cells + '</tr>';
+      var resBadge = st.res ? '<span style="font-size:8.5px;font-weight:600;color:var(--deep);background:' + st.col + ';border-radius:5px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + st.res + '</span>' : '';
+      var labelCell = '<td style="padding:4px 8px 4px 8px;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';">'
+        + '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + st.col + ';margin-right:5px;vertical-align:middle;"></span>' + st.label + resBadge + '</td>';
+      return '<tr>' + labelCell + cells + '</tr>';
     }).join('');
   }
 
-  var html = '<table style="border-collapse:collapse;width:100%;"><thead><tr><th style="position:sticky;left:0;background:var(--deep);"></th>' + headCells + '</tr></thead><tbody>';
-  if (windDefs.length) html += '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:6px 0 2px;font-size:10.5px;color:var(--faint);font-weight:600;">💨 Vent (nds, ↑ direction, (rafales) si dispo)</td></tr>' + rowsFor(windDefs, 'wind');
-  if (swellDefs.length) html += '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:8px 0 2px;font-size:10.5px;color:var(--faint);font-weight:600;">🌊 Houle (m, ↑ direction, période)</td></tr>' + rowsFor(swellDefs, 'swell');
+  function sectionHdr(txt) {
+    return '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:9px 8px 3px;font-size:11px;color:var(--text);font-weight:700;letter-spacing:.02em;position:sticky;left:0;background:var(--deep);">' + txt + '</td></tr>';
+  }
+  var html = '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
+    + '<thead><tr>' + dayRow + '</tr><tr>' + hourRow + '</tr></thead><tbody>';
+  if (windDefs.length) html += sectionHdr('💨 Vent — nds · ↑ direction · <span style="font-weight:400;color:var(--muted);">g = rafales</span>') + rowsFor(windDefs, 'wind');
+  if (swellDefs.length) html += sectionHdr('🌊 Houle — m · ↑ direction · <span style="font-weight:400;color:var(--muted);">période en s</span>') + rowsFor(swellDefs, 'swell');
   html += '</tbody></table>';
+  html += '<div style="font-size:9.5px;color:var(--faint);margin-top:5px;line-height:1.4;">Pastille colorée = résolution du modèle (plus le chiffre est petit, plus le modèle est fin/local). Fond des cases coloré selon l\'intensité. Nuit grisée.</div>';
   wrap.innerHTML = html;
 }
 
@@ -5286,9 +5345,12 @@ function _drawSwellCompare() {
     });
     // Mer totale (hs/dir global) en flèche blanche par-dessus, repère "vue d'ensemble"
     // — même géométrie que le widget : part de l'extérieur (provenance), pointe vers
-    // le centre (arrivée au spot), pas l'inverse.
-    if (p.dir != null) {
-      var radT = (p.dir - 90) * Math.PI / 180;
+    // le centre (arrivée au spot), pas l'inverse. Direction MOYENNE totale = p.totDir
+    // depuis la normalisation (p.dir vaut désormais la houle primaire) ; repli p.dir
+    // pour un vieux point de cache sans totDir.
+    var _totDir = p.totDir != null ? p.totDir : p.dir;
+    if (_totDir != null) {
+      var radT = (_totDir - 90) * Math.PI / 180;
       var lenT = R - 4, stopRT = 6;
       var sxt = cx + lenT * Math.cos(radT), syt = cy + lenT * Math.sin(radT); // départ provenance
       var ext = cx + stopRT * Math.cos(radT), eyt = cy + stopRT * Math.sin(radT); // arrivée au centre
@@ -8298,15 +8360,23 @@ async function _fetchBomWind(spot) {
     function parseGrid(name) {
       var mm = text.match(new RegExp(name + '\\.' + name + '\\[\\d+\\]\\[1\\]\\[1\\]([\\s\\S]*?)(?:\\n\\n|$)'));
       if (!mm) return [];
-      var out = [], lineRe = /\[(\d+)\]\[0\],\s*([\-\d.]+)/g, lm;
+      // BUG corrigé (signalé : BOM = valeur fixe/plate sur tout le graphe en mode
+      // « à la station ») : le motif [\-\d.]+ ne capturait PAS le « E » de la notation
+      // scientifique, donc la valeur de remplissage terre « 1.0E36 » (les stations
+      // de mesure sont souvent à terre, hors grille du modèle de VAGUES BOM) était
+      // tronquée à « 1.0 » → un vent constant de ~1,9 nds à chaque pas de temps.
+      // Étendu à [\-\d.eE+], + garde validNum ci-dessous pour rejeter 1e36 au lieu
+      // de l'afficher (même correctif que _fetchBomWw3, oublié ici).
+      var out = [], lineRe = /\[(\d+)\]\[0\],\s*([\-\d.eE+]+)/g, lm;
       while ((lm = lineRe.exec(mm[1]))) out[+lm[1]] = parseFloat(lm[2]);
       return out;
     }
+    function validNum(v) { return v != null && !isNaN(v) && Math.abs(v) < 1e6; } // 1e36 = remplissage terre
     var times = parseFlat('time'), spd = parseGrid('wnd_spd'), dir = parseGrid('wnd_dir');
     var pts = [];
     for (var i = 0; i < times.length; i++) {
-      if (spd[i] == null || isNaN(spd[i])) continue;
-      pts.push({ ms: epochMs + times[i] * 1000, kt: spd[i] * 1.944, dir: dir[i] }); // m/s → kt
+      if (!validNum(spd[i])) continue;
+      pts.push({ ms: epochMs + times[i] * 1000, kt: spd[i] * 1.944, dir: validNum(dir[i]) ? dir[i] : null }); // m/s → kt
     }
     return pts;
   } catch (e) { console.warn('[BOM wind]', e && e.message); return []; }
