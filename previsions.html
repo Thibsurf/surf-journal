@@ -6205,10 +6205,13 @@ function renderBestSessions(sessions) {
     ) : '—';
     var isLast = rank === sessions.length - 1;
     return '<div onclick="bsfSelectSpot(' + s.spotIdx + ',' + s.startMs + ')" '
+      + 'role="button" tabindex="0" aria-label="Voir ' + escapeHtml(s.spot || '') + '" '
+      + 'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" '
       + 'style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;'
       + 'transition:background .15s;' + (isLast ? '' : 'border-bottom:1px solid var(--border);') + '" '
       + 'onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" '
-      + 'onmouseout="this.style.background=\'transparent\'">'
+      + 'onmouseout="this.style.background=\'transparent\'"'
+      + ' onfocus="this.style.background=\'rgba(255,255,255,.04)\'" onblur="this.style.background=\'transparent\'">'
 
       // Rang + score (dots)
       + '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:28px;">'
@@ -6424,9 +6427,12 @@ function renderCompare() {
     var tideTxt  = m.tide ? _tideLabel(m.tide.level01, m.tide.phase) : '—';
 
     return '<div onclick="bsfSelectSpot(' + r.idx + ',' + (m.startMs || 0) + ')" '
+      + 'role="button" tabindex="0" aria-label="Voir ' + escapeHtml(r.spot.name || '') + '" '
+      + 'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" '
       + 'style="cursor:pointer;border:1px solid ' + (isBest ? col : 'var(--border)') + ';border-radius:12px;'
       + 'padding:11px 13px;margin-bottom:9px;background:' + (isBest ? col + '14' : 'var(--deep)') + ';transition:background .15s;" '
-      + 'onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" onmouseout="this.style.background=\'' + (isBest ? col + '14' : 'var(--deep)') + '\'">'
+      + 'onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" onmouseout="this.style.background=\'' + (isBest ? col + '14' : 'var(--deep)') + '\'"'
+      + ' onfocus="this.style.background=\'rgba(255,255,255,.04)\'" onblur="this.style.background=\'' + (isBest ? col + '14' : 'var(--deep)') + '\'">'
 
       + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
       +   (isBest ? '<span style="font-size:11px;font-weight:700;color:' + col + ';background:' + col + '22;border:1px solid ' + col + '55;border-radius:20px;padding:2px 8px;white-space:nowrap;">🥇 ' + bestLbl + '</span>' : '')
