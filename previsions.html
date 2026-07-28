@@ -8404,10 +8404,18 @@ async function _loadAromeWidget(wgId, spot, station) {
     await _renderAromeCompare(null);
     return;
   }
+  // Archive Supabase lancée EN PARALLÈLE du live Windguru, pas seulement en
+  // repli séquentiel après coup : avant, un cache Worker froid (2 aller-retours
+  // Windguru en direct) pouvait bloquer la carte jusqu'à 12s avant même de
+  // commencer le repli (signalé : "le tableau arome met du temps à charger").
+  // Le Worker préchauffe désormais son propre cache par cron (~100 min), donc
+  // ce cas devient rare — cette parallélisation reste la sécurité pour le
+  // reste (cache froid malgré tout, Windguru indisponible, spot sans wgId).
+  var archPromise = _fetchAromeArchive(spot).catch(function(){ return null; });
   var j = null, errCode = null;
   if (wgId) {
     try {
-      var ctrl = new AbortController(); var tt = setTimeout(function(){ ctrl.abort(); }, 12000);
+      var ctrl = new AbortController(); var tt = setTimeout(function(){ ctrl.abort(); }, 8000);
       var r = await fetch(_NC_WORKER + '/arome?spot=' + wgId, { signal: ctrl.signal });
       clearTimeout(tt);
       var jr = await r.json().catch(function(){ return null; });
@@ -8418,7 +8426,9 @@ async function _loadAromeWidget(wgId, spot, station) {
     // Windguru absent (pas de wgId) ou indisponible pour ce spot → repli sur
     // l'archive GRIB2 décodée directement (ingestion/fetch_arome.py), à la lat/lon
     // du spot — mêmes tableau/graphe, juste une source différente (cf. j.model).
-    var jArch = await _fetchAromeArchive(spot);
+    // Déjà lancée en parallèle ci-dessus : cet await ne retarde donc plus rien
+    // dans le cas courant (elle a eu tout le temps du fetch live pour résoudre).
+    var jArch = await archPromise;
     if (jArch) { _renderAromeCardData(jArch, wgId, body); return; }
     _wgLoadedFor = null; // permettre une nouvelle tentative
     _aromeData = null; window._aromeColInfo = null; // jamais de données d'un autre spot

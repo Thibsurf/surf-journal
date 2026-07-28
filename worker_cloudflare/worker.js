@@ -124,6 +124,101 @@ async function pushTokenToSupabase(env, token) {
   }
 }
 
+// Fetch AROME (2 étapes Windguru) pour un id_spot donné — utilisé par la route
+// /arome ET par le pré-chauffage cron (prewarmArome). Lève AROME_NOT_AVAILABLE
+// si Windguru n'a pas le modèle 94 pour ce spot (limite fournisseur, pas une
+// panne), sinon l'erreur brute du fetch qui a échoué.
+async function fetchAromeFromWindguru(spot) {
+  const WG = "https://www.windguru.cz/int/iapi.php";
+  const H = { Referer: "https://www.windguru.cz/", "User-Agent": "Mozilla/5.0 (compatible; SurfNC/1.0)" };
+  const sres = await fetch(WG + "?q=forecast_spot&id_spot=" + spot, { headers: H });
+  if (!sres.ok) throw new Error("spot fetch " + sres.status);
+  const sj = await sres.json();
+  const tab = sj.tabs && sj.tabs[0];
+  const m94 = tab && (tab.id_model_arr || []).find(x => String(x.id_model) === "94");
+  if (!m94) throw new Error("AROME_NOT_AVAILABLE");
+  const fres = await fetch(
+    WG + "?q=forecast&id_model=94&rundef=" + encodeURIComponent(m94.rundef)
+      + "&initstr=" + m94.initstr + "&id_spot=" + spot
+      + "&WGCACHEABLE=21600&cachefix=" + encodeURIComponent(m94.cachefix),
+    { headers: H }
+  );
+  if (!fres.ok) throw new Error("forecast fetch " + fres.status);
+  const fj = await fres.json();
+  const f = fj.fcst || {};
+  const sp0 = sj.spots ? Object.values(sj.spots)[0] : null;
+  return {
+    ok: true, spot: Number(spot),
+    spotname: sp0 ? sp0.spotname : null,
+    init: fj.wgmodel ? fj.wgmodel.initstamp : null,
+    model: "AROME 2.5 km NC (Météo-France) · données via windguru.cz",
+    hours: f.hours || [], WINDSPD: f.WINDSPD || [], GUST: f.GUST || [],
+    WINDDIR: f.WINDDIR || [], TMP: f.TMP || [], APCP1: f.APCP1 || [], TCDC: f.TCDC || [],
+  };
+}
+
+// IDs Windguru des 7 spots par défaut — MÊME table que _wgIdForSpot() dans
+// previsions.html et wgIdForSpot() dans .github/scripts/cache-model-forecasts.mjs.
+// Dupliquée volontairement (pas de bundler dans ce projet, cf. CLAUDE.md) : si un
+// spot par défaut change d'id windguru, mettre à jour les trois.
+const KNOWN_WG_SPOTS = [6476, 208760, 208762, 207051, 208763, 208755, 4164];
+
+// Spots ajoutés par les utilisateurs (SPOTS.push côté client, synchronisé vers
+// shared_spots) avec un id windguru réglé dans ⚙ → à préchauffer aussi, sinon
+// seuls les 7 spots par défaut bénéficient du cache toujours chaud.
+async function fetchCustomWgIds(env) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return [];
+  try {
+    const r = await fetch(
+      env.SUPABASE_URL + "/rest/v1/shared_spots?id=eq.default&select=spots",
+      { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: "Bearer " + env.SUPABASE_ANON_KEY } }
+    );
+    const rows = await r.json();
+    const spots = rows && rows[0] && rows[0].spots ? JSON.parse(rows[0].spots) : [];
+    return spots.filter(s => s && s.wgId).map(s => Number(s.wgId));
+  } catch (e) {
+    console.error("[Cron] AROME prewarm: shared_spots fetch fail:", e.message);
+    return [];
+  }
+}
+
+// Pré-chauffe le cache edge /arome pour tous les spots connus, EN PARALLÈLE
+// (chaque spot est indépendant — Promise.allSettled pour qu'un échec ponctuel
+// sur un spot n'empêche pas les autres). Appelé depuis le cron existant (5 min),
+// mais throttlé à ~100 min par _shouldPrewarmArome() : sans ce garde-fou, on
+// spammerait Windguru toutes les 5 min pour rien (cache déjà chaud 2h).
+async function prewarmArome(env) {
+  const custom = await fetchCustomWgIds(env);
+  const ids = Array.from(new Set([...KNOWN_WG_SPOTS, ...custom]));
+  const cache = caches.default;
+  await Promise.allSettled(ids.map(async (wgId) => {
+    try {
+      const out = await fetchAromeFromWindguru(String(wgId));
+      const cacheKey = new Request("https://surf-nc-cache/arome-" + wgId);
+      await cache.put(cacheKey, new Response(JSON.stringify(out), {
+        headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200" },
+      }));
+      console.log("[Cron] AROME prewarm OK — spot", wgId);
+    } catch (e) {
+      // AROME_NOT_AVAILABLE est attendu pour certains spots (limite windguru,
+      // pas une panne) — pas la peine de crier au loup dans les logs pour ça.
+      const msg = String((e && e.message) || e);
+      if (msg !== "AROME_NOT_AVAILABLE") console.error("[Cron] AROME prewarm fail — spot", wgId, msg);
+    }
+  }));
+}
+
+// Throttle : le cron tourne toutes les 5 min (pour le token), mais le
+// pré-chauffage AROME ne doit tourner que toutes les ~100 min (< les 7200s de
+// Cache-Control) pour ne pas taper Windguru inutilement 12×/h.
+async function _shouldPrewarmArome(env) {
+  const last = await env.KV_BINDING.get("arome-last-warm");
+  const now = Date.now();
+  if (last && now - Number(last) < 100 * 60 * 1000) return false;
+  await env.KV_BINDING.put("arome-last-warm", String(now));
+  return true;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -264,6 +359,11 @@ export default {
       // 2 étapes : forecast_spot (params du run modèle 94) puis forecast.
       // Le Referer windguru.cz suffit ; cache edge 2h par spot (le modèle
       // tourne 4×/jour). Réponse réduite aux champs utiles.
+      // Logique de fetch extraite dans fetchAromeFromWindguru() (partagée avec
+      // le pré-chauffage du cron, cf. scheduled() plus bas) : avant, seule une
+      // vraie visite déclenchait ce fetch (2 aller-retours Windguru, parfois
+      // lents), et un utilisateur pouvait tomber sur un cache froid. Le cron
+      // le maintient chaud maintenant — ce chemin ne sert plus que de repli.
       if (url.pathname === "/arome") {
         const spot = url.searchParams.get("spot");
         if (!spot || !/^\d+$/.test(spot)) return json({ error: "missing/invalid spot" }, 400);
@@ -276,32 +376,14 @@ export default {
             headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },
           });
         }
-        const WG = "https://www.windguru.cz/int/iapi.php";
-        const H = { Referer: "https://www.windguru.cz/", "User-Agent": "Mozilla/5.0 (compatible; SurfNC/1.0)" };
-        const sres = await fetch(WG + "?q=forecast_spot&id_spot=" + spot, { headers: H });
-        if (!sres.ok) return json({ error: "spot fetch " + sres.status }, 502);
-        const sj = await sres.json();
-        const tab = sj.tabs && sj.tabs[0];
-        const m94 = tab && (tab.id_model_arr || []).find(x => String(x.id_model) === "94");
-        if (!m94) return json({ error: "AROME_NOT_AVAILABLE" }, 404);
-        const fres = await fetch(
-          WG + "?q=forecast&id_model=94&rundef=" + encodeURIComponent(m94.rundef)
-            + "&initstr=" + m94.initstr + "&id_spot=" + spot
-            + "&WGCACHEABLE=21600&cachefix=" + encodeURIComponent(m94.cachefix),
-          { headers: H }
-        );
-        if (!fres.ok) return json({ error: "forecast fetch " + fres.status }, 502);
-        const fj = await fres.json();
-        const f = fj.fcst || {};
-        const sp0 = sj.spots ? Object.values(sj.spots)[0] : null;
-        const out = {
-          ok: true, spot: Number(spot),
-          spotname: sp0 ? sp0.spotname : null,
-          init: fj.wgmodel ? fj.wgmodel.initstamp : null,
-          model: "AROME 2.5 km NC (Météo-France) · données via windguru.cz",
-          hours: f.hours || [], WINDSPD: f.WINDSPD || [], GUST: f.GUST || [],
-          WINDDIR: f.WINDDIR || [], TMP: f.TMP || [], APCP1: f.APCP1 || [], TCDC: f.TCDC || [],
-        };
+        let out;
+        try {
+          out = await fetchAromeFromWindguru(spot);
+        } catch (e) {
+          const msg = String((e && e.message) || e);
+          if (msg === "AROME_NOT_AVAILABLE") return json({ error: "AROME_NOT_AVAILABLE" }, 404);
+          return json({ error: msg }, 502);
+        }
         const body = JSON.stringify(out);
         await cache.put(cacheKey, new Response(body, {
           headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200" },
@@ -344,7 +426,7 @@ export default {
   //     [browser_rendering]
   //     binding = "BROWSER"
   //   puis : npm i @cloudflare/puppeteer
-  async scheduled(event, env) {
+  async scheduled(event, env, ctx) {
     console.log("[Cron] Tick —", new Date().toISOString());
     try {
       // ── Plan A (actif) ─────────────────────────────────────────────────────
@@ -357,6 +439,23 @@ export default {
           : "âge " + info.ageMin + "min"
       );
       await pushTokenToSupabase(env, token); // garde Supabase < 5 min frais pour le fallback mobile
+
+      // ── Pré-chauffage AROME (§ optimisation rafraîchissement, 28/07/2026) ──
+      // Piggyback sur ce même cron 5 min plutôt qu'un trigger dédié — throttlé
+      // à ~100 min par _shouldPrewarmArome(). Objectif : qu'un utilisateur ne
+      // tombe (quasi) jamais sur un cache /arome froid (2 aller-retours
+      // Windguru en direct, parfois lents — cf. AUDIT.md 28/07 "tableau arome
+      // met du temps à charger"). ctx.waitUntil : ne bloque pas le tick token
+      // ci-dessus, et garantit que la promesse se termine même après le retour
+      // de scheduled().
+      try {
+        if (await _shouldPrewarmArome(env)) {
+          console.log("[Cron] Pré-chauffage AROME…");
+          ctx.waitUntil(prewarmArome(env));
+        }
+      } catch (e) {
+        console.error("[Cron] Échec pré-chauffage AROME:", e.message);
+      }
 
       // ── Plan B (inactif — décommenter si Plan A bloqué par Cloudflare) ────
       // const puppeteer = (await import("@cloudflare/puppeteer")).default;
