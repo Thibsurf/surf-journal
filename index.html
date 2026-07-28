@@ -461,6 +461,17 @@ nav {
   background: rgba(0,0,0,0.3); padding: 2px 6px;
   border-radius: 4px; font-size: 12px; color: var(--text);
 }
+/* Lignes de vote "quel modèle a été le plus fiable" (Journal) — retour visuel
+   au survol/focus clavier, sinon rien ne distingue une ligne cliquable/
+   activable d'une simple ligne de tableau. */
+#model-table-form tr[role="button"]:hover,
+#model-table-form tr[role="button"]:focus-visible,
+[id^="model-table-detail-"] tr[role="button"]:hover,
+[id^="model-table-detail-"] tr[role="button"]:focus-visible {
+  background: rgba(255,255,255,.04);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 </style>
 </head>
 <body>
@@ -1991,7 +2002,14 @@ function _bindSessionHourManualFlag() {
   var sel = document.getElementById('f-session-hour');
   if (!sel || sel._manualBound) return;
   sel._manualBound = true;
-  sel.addEventListener('change', function() { this.dataset.userEdited = '1'; });
+  sel.addEventListener('change', function() {
+    this.dataset.userEdited = '1';
+    // Le tableau/graphe de fiabilité houle affiche la valeur la PLUS PROCHE de
+    // cette heure (cf. AUDIT.md 28/07) — sans ce refresh, changer l'heure après
+    // coup laissait le repère du graphe et les chiffres du tableau figés sur
+    // l'ancienne heure, en contradiction avec la légende affichée.
+    if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
+  });
 }
 
 // Ouvre le bloc « Conditions » (replié par défaut) si besoin et scrolle
@@ -3662,7 +3680,7 @@ function _modelTableHTML(rows, sessionHour, voteUrl) {
     var info = MODEL_RELIABILITY_LABELS[k];
     var r = rows[k];
     var dirLbl = r.dir != null ? (_degToCardinal(r.dir) || '') + ' ' + Math.round(r.dir) + '°' : '—';
-    return '<tr onclick="_castInlineModelVote(\'' + k + '\')" style="cursor:pointer;border-bottom:1px solid var(--border);">'
+    return '<tr onclick="_castInlineModelVote(\'' + k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-label="Voter ' + info.label + ' comme modèle le plus fiable" style="cursor:pointer;border-bottom:1px solid var(--border);">'
       + '<td style="padding:6px 4px;color:' + info.col + ';font-weight:600;font-size:12px;">' + info.label + '</td>'
       + '<td style="padding:6px 4px;text-align:center;font-size:12px;">' + (r.val != null ? r.val.toFixed(1) + 'm' : '—') + '</td>'
       + '<td style="padding:6px 4px;text-align:center;font-size:12px;">' + (r.period != null ? Math.round(r.period) + 's' : '—') + '</td>'
@@ -3690,7 +3708,7 @@ function _modelTableHTML(rows, sessionHour, voteUrl) {
     + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Direction</th>'
     + '<th style="padding:4px;"></th>'
     + '</tr></thead><tbody>' + trs + '</tbody></table>'
-    + '<div onclick="_castInlineModelVote(null)" style="cursor:pointer;text-align:center;padding:6px;font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);margin-top:2px;">Aucun modèle fiable pour cette session</div>';
+    + '<div onclick="_castInlineModelVote(null)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" style="cursor:pointer;text-align:center;padding:6px;font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);margin-top:2px;">Aucun modèle fiable pour cette session</div>';
 }
 
 // Petit météogramme canvas (pas de dépendance Chart.js ici, page déjà lourde
