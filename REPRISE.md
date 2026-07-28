@@ -78,6 +78,24 @@ aucune ligne de légende ni bande — le on/off fonctionne dans les deux sens.
 
 ---
 
+## Hors `AUDIT-previsions.md` — Journal (index.html), nuit du 28 au 29/07
+
+Demande directe de l'utilisateur (pas dans l'audit) : l'outil "quel modèle de
+houle a été le plus fiable" à la création d'une session ne montrait qu'une
+seule évaluation, jamais de figure. Root cause + fix + figure ajoutée, détail
+complet dans `AUDIT.md` ("Outil d'évaluation des modèles de houle…") : mauvaise
+résolution des coordonnées du spot (table statique au lieu du spot réel
+synchronisé depuis previsions.html), fenêtre d'éligibilité 2j → 30j, métrique
+"pic du jour" → "valeur à l'heure de session", mini-graphe canvas ajouté.
+
+L'utilisateur a demandé de continuer à repasser dessus (visuel/UX/mécanique)
+"jusqu'à épuisement des tokens" avant de dormir — repasses suivantes listées
+dans `AUDIT.md` en fin d'entrée. Si la session s'arrête au milieu, chercher
+dans `AUDIT.md` la dernière sous-section de cette entrée pour savoir où ça
+s'est arrêté exactement.
+
+---
+
 ## Prochaines étapes, dans l'ordre recommandé
 
 ### 1. T18 — chantier 2, extraction des modules restants

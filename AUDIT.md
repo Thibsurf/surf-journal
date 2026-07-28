@@ -1055,3 +1055,80 @@ quelques jours, via les logs Cloudflare (`wrangler tail` ou dashboard), que le
 throttle KV tient bien la cadence ~100 min sans dérive, et que le temps de
 chargement perçu de la carte AROME s'améliore en usage réel (pas seulement en
 local). Rien d'autre à faire dans l'immédiat.
+
+## Outil d'évaluation des modèles de houle (Journal, création de session) — FAIT (2026-07-28 nuit)
+
+Demande utilisateur : "je ne vois toujours pas de figure (une seule évaluation)"
+en créant une session — améliorer, vérifier, corriger, modifier l'évaluation si
+nécessaire. Root cause trouvée en lisant le code puis confirmée sur données
+réelles (Supabase), pas devinée.
+
+**Bug 1 (le principal) — mauvaise résolution des coordonnées du spot.**
+`_fetchModelTableRows` (le tableau de vote) n'interrogeait QUE la table
+statique `_SPOT_STATIONS`, alors que l'auto-remplissage météo
+(`_autoFillConditions`) consulte en plus, par priorité : config manuelle
+(⚙ Réglages prévisions) > spot synchronisé depuis previsions.html
+(`surf-spots-nc`, coordonnées réelles, y compris pour un spot ajouté sur la
+carte) > table statique > coords sauvées ponctuellement. Un spot comme
+"Gros Nem" (ajouté dans previsions.html à ses vraies coordonnées, ~-22.046/
+165.963) était supposé à tort dans la passe de Dumbéa (-22.35/166.24) par la
+table statique — le tableau de vote cherchait donc au mauvais endroit dans
+`model_forecast_cache` et pouvait ne trouver rien, ou un sous-ensemble de
+modèles par coïncidence de tolérance (0,02°). Extrait dans une fonction
+partagée `_resolveSpotCoords()`, utilisée par les deux (élimine aussi ~25
+lignes de logique dupliquée dans `_autoFillConditions`).
+
+**Bug 2 — fenêtre d'éligibilité bien trop courte.** `MODEL_RELIABILITY_WINDOW_DAYS`
+= 2 masquait ENTIÈREMENT la section (pas de message, juste invisible) dès
+qu'une session était saisie avec plus de 2 jours de retard — cas courant
+(rattraper le journal). Vérifié sur la table réelle : aucune purge,
+l'historique remonte déjà à 10+ jours et ne fait que s'allonger (job GitHub
+Actions 3×/jour). Passé à 30 jours — une borne de bon sens, pas une vraie
+limite de données ; le "pas de données" gracieux existait déjà pour le cas où
+rien n'est archivé.
+
+**Bug 3 (métrique trompeuse) — "best" = le PIC de la journée, pas la valeur à
+l'heure de session.** Un modèle pouvait paraître "le plus haut" à cause d'un
+pic à 3h du matin jamais surfé, pendant qu'un autre collait exactement au
+créneau réel. Changé pour prendre la valeur la plus proche de l'heure de
+session (`#f-session-hour` en création, `session_hour` en détail) — même
+logique que `_lookupModelCache` côté previsions.html, pour que les deux pages
+jugent les modèles sur le même critère.
+
+**Figure ajoutée.** `_drawModelReliabilityChart` : mini météogramme canvas
+(pas de dépendance Chart.js, page déjà lourde) — houle du jour par modèle,
+domaine Y borné au min-max réel (pas ancré à 0 : sinon les courbes se
+tassaient dans le dernier tiers, écarts entre modèles illisibles), repère
+vertical sur l'heure de session. Posé au-dessus du tableau existant, mêmes
+couleurs/ordre (`MODEL_RELIABILITY_ORDER` partagé) pour que texte et courbes
+ne se contredisent jamais.
+
+**Bonus.** `_modelVoteUrl` (lien profond vers previsions.html, `voteSpot`/
+`voteDate`/`voteHour`) était mort — plus appelé depuis que le vote se fait en
+inline — remis en service comme lien "Comparatif complet →" (rose des
+directions, spectre MARC, zoom) en complément du mini-graphe, et pour le cas
+« pas encore de données ». Commentaires obsolètes corrigés (l'un affirmait
+encore que le vote se faisait uniquement sur previsions.html).
+
+**Vérifié** (Edge headless, `file:///$(pwd -W)/...`, `__test_idx.html`
+supprimé après coup) sur données réelles (pas de mock) :
+- Ilot Ténia, aujourd'hui, 14h → 6/6 modèles, graphe avec pixels réels
+  (`getImageData`, 3419 px non transparents).
+- "Gros nem" AVANT correctif (`surf-spots-nc` vide) → résolvait sur Dumbéa
+  (comportement d'avant, conservé en repli). APRÈS avoir seedé `surf-spots-nc`
+  avec la vraie entrée "Gros Nem" → résout correctement `{-22.046, 165.963}`,
+  6/6 modèles, reproduisant exactement le bug signalé puis sa correction.
+- Ilot Ténia, J-5 (hors de l'ancienne fenêtre de 2j) → maintenant visible,
+  6/6 modèles. J-40 (hors des données réelles ET de la nouvelle fenêtre de
+  30j) → section correctement masquée, aucune régression du garde-fou.
+- Capture d'écran (420×2200, gabarit mobile) : graphe lisible, courbes
+  distinctes après l'ajustement du domaine Y, lien "Comparatif complet →"
+  visible, tableau 6 lignes cohérent avec le graphe.
+
+`node --check` sur les 3 blocs `<script>` inline : aucune erreur de syntaxe.
+
+**Restant à vérifier (repasses suivantes)** : le flux de vote depuis le DÉTAIL
+d'une session déjà enregistrée (pas seulement à la création) ; l'agrégation/
+migration des votes existants avec la nouvelle métrique "best" (les votes déjà
+enregistrés gardent leur `predictions` historique, non recalculé
+rétroactivement — à confirmer que rien n'en dépend de façon incohérente).

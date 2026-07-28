@@ -2208,6 +2208,43 @@ function _findPrevSpot(spotName) {
   } catch(e) { return null; }
 }
 
+// Résout les coordonnées marines précises d'un spot, dans le MÊME ordre de
+// priorité que l'auto-remplissage météo (_autoFillConditions, plus bas) :
+// 1) config manuelle du spot (⚙ Réglages prévisions, localStorage
+//    surf-spot-sources) — l'utilisateur a explicitement choisi ce point ;
+// 2) le spot synchronisé depuis previsions.html (surf-spots-nc) — le plus
+//    précis en pratique, ce sont les coordonnées réelles éditées sur la
+//    carte, y compris pour un spot custom qui n'existe dans AUCUNE table
+//    statique d'ici ;
+// 3) la table statique _SPOT_STATIONS (approximation figée, aux points marins
+//    meteo.nc connus au moment où elle a été écrite) ;
+// 4) des coordonnées brutes sauvées ponctuellement (surf-spot-coords).
+// Centralisé ici car _fetchModelTableRows() (fiabilité houle) n'utilisait
+// QUE l'étape 3 — un spot ajouté ou déplacé dans previsions.html (ex: "Gros
+// Nem", dont les vraies coordonnées ne sont PAS dans la passe de Dumbéa
+// contrairement à ce que la table statique suppose) faisait chercher au
+// mauvais endroit dans model_forecast_cache et ne trouvait rien, ou pire,
+// un seul modèle par coïncidence de tolérance — symptôme : "je ne vois
+// qu'une seule évaluation" alors que 6 modèles sont réellement archivés.
+function _resolveSpotCoords(spotVal) {
+  if (!spotVal || spotVal === '__autre__') return null;
+  var spotCfg = _getSpotSources()[spotVal];
+  if (spotCfg && spotCfg.lat != null && spotCfg.lon != null) {
+    return { name: spotCfg.label || spotVal, lat: spotCfg.lat, lon: spotCfg.lon };
+  }
+  var prevSpot = _findPrevSpot(spotVal);
+  if (prevSpot && prevSpot.lat != null && prevSpot.lon != null) {
+    return { name: prevSpot.marineName || prevSpot.name, lat: prevSpot.lat, lon: prevSpot.lon };
+  }
+  var station = _lookupSpotStation(spotVal);
+  if (station) return station;
+  try {
+    var saved = JSON.parse(localStorage.getItem('surf-spot-coords') || '{}')[spotVal];
+    if (saved && saved.lat != null && saved.lon != null) return { name: spotVal, lat: saved.lat, lon: saved.lon };
+  } catch (e) {}
+  return null;
+}
+
 // Heure cible pour l'autofill : début de la 1ère plage marée, sinon 9h
 function _getSessionHour() {
   try {
@@ -2333,29 +2370,12 @@ async function _autoFillConditions(targetDate) {
 
   var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
   var _spotCfg = _getSpotSources()[spotVal] || {};
-  if (_spotCfg.lat && _spotCfg.lon) {
-    _SPOT_STATIONS[spotVal] = { name: _spotCfg.label || spotVal, lat: _spotCfg.lat, lon: _spotCfg.lon };
-  }
-  var station = _lookupSpotStation(spotVal);
+  // Résolution centralisée (cf. _resolveSpotCoords) : config manuelle > spot
+  // synchronisé depuis previsions.html > table statique > coords sauvées.
+  var station = _resolveSpotCoords(spotVal);
 
-  // ── Nouveau spot : demander les coordonnées si pas dans le mapping ──
+  // ── Nouveau spot : demander les coordonnées si rien n'a résolu ──
   if (!station && spotVal && spotVal !== '__autre__') {
-    var savedCoords = null;
-    try { savedCoords = JSON.parse(localStorage.getItem('surf-spot-coords') || '{}')[spotVal]; } catch(e) {}
-    if (savedCoords) {
-      station = { name: spotVal, lat: savedCoords.lat, lon: savedCoords.lon };
-    } else {
-      // Essayer les spots configurés dans previsions.html (surf-spots-nc localStorage)
-      var _prevSpotEarly = _findPrevSpot(spotVal);
-      if (_prevSpotEarly && _prevSpotEarly.lat && _prevSpotEarly.lon) {
-        station = {
-          name: _prevSpotEarly.marineName || _prevSpotEarly.name,
-          lat:  _prevSpotEarly.lat,
-          lon:  _prevSpotEarly.lon
-        };
-      }
-    }
-    if (!station) {
       // Spot inconnu → proposer les stations NC (pas de coords brutes)
       if (stInfoEl) {
         var _ncStations = [
@@ -2385,23 +2405,8 @@ async function _autoFillConditions(targetDate) {
           + '<button type="button" onclick="_applyStationPick(\'' + spotVal + '\')" style="margin-top:4px;background:var(--accent);border:none;color:var(--ocean);border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:600;width:100%;">Utiliser cette station</button>';
       }
       return;
-    }
   } else if (!station) {
     station = _DEFAULT_STATION;
-  }
-
-  // ── Pont vers la config previsions.html (surf-spots-nc) ─────────────
-  // Si l'utilisateur a configuré ce spot dans les prévisions, on utilise
-  // ses coords précises (point marin meteo.nc exact) en priorité sur _SPOT_STATIONS
-  if (!_spotCfg.lat) { // seulement si pas de config manuelle dans index
-    var _prevSpot = _findPrevSpot(spotVal);
-    if (_prevSpot && _prevSpot.lat && _prevSpot.lon) {
-      station = {
-        name: _prevSpot.marineName || _prevSpot.name,
-        lat:  _prevSpot.lat,
-        lon:  _prevSpot.lon
-      };
-    }
   }
 
   var lat = station.lat, lon = station.lon;
@@ -3415,13 +3420,19 @@ function escapeHtml(v) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// FIABILITÉ HOULE PAR MODÈLE — lecture/agrégation côté Journal
+// FIABILITÉ HOULE PAR MODÈLE — lecture/agrégation + vote côté Journal
 // ═══════════════════════════════════════════════════════════════
-// Le vote lui-même se fait sur previsions.html (seule page qui a le fetch
-// BOM/Windguru/Open-Meteo) via un lien profond ; ici on lit le résultat
-// (colonne Supabase sessions.model_reliability si dispo, sinon repli
-// localStorage partagé même origine — cf. même mécanisme côté previsions.html)
-// et on décide si une session est dans la fenêtre où la comparaison a un sens.
+// Historique du commentaire (corrigé le 28/07/2026, était devenu faux) : à
+// l'origine le vote se faisait uniquement sur previsions.html via un lien
+// profond. Depuis, _fetchModelTableRows/_modelTableHTML/_castInlineModelVote
+// (plus bas) lisent directement model_forecast_cache (alimentée par le job
+// GitHub Actions 3×/jour, PAS par une visite de previsions.html) et votent
+// ici même, en HTML+canvas — plus besoin de changer de page. Le lien profond
+// vers previsions.html reste utile pour VOIR le comparatif complet (rose des
+// directions, spectre MARC, etc.), mais n'est plus nécessaire pour voter.
+// Le résultat du vote est stocké dans sessions.model_reliability si la
+// colonne existe, sinon repli localStorage (même origine, migré vers
+// Supabase dès que possible, cf. _migrateLocalVotesToSupabase).
 var MODEL_RELIABILITY_LABELS = {
   nc:    { label: 'meteo.nc',  col: '#3dba8a' },
   gfs:   { label: 'GFS',       col: '#4fa3c7' },
@@ -3434,15 +3445,19 @@ var MODEL_RELIABILITY_LABELS = {
   // (AUDIT-previsions.md §11.10). Couleur alignée sur SWELL_MODELS (previsions.html).
   marc:  { label: 'MARC WW3', col: '#7dd3fc' }
 };
-// Fenêtre où la comparaison multi-modèles a une chance d'avoir des données :
-// testé en conditions réelles (voir previsions.html, _renderVoteUI) — les
-// fetches BOM/Windguru/Open-Meteo utilisés pour le comparatif ne couvrent QUE
-// la fenêtre de prévision en cours (~à partir d'aujourd'hui), pas d'archive
-// historique dédiée. "Hier" est déjà à la limite ; au-delà, aucun modèle n'a
-// de données. On reste volontairement large ici (2j) : previsions.html vérifie
-// lui-même au créneau précis et affiche "indisponible" proprement si un modèle
-// donné n'a finalement rien pour cette date — ne bloque jamais faussement.
-var MODEL_RELIABILITY_WINDOW_DAYS = 2;
+// Fenêtre passée corrigée le 28/07/2026 : 2 jours cachait TOTALEMENT l'outil
+// (section masquée, aucun message) dès qu'une session était saisie avec un
+// peu de retard — un cas courant (rattraper le journal après plusieurs
+// jours). Vérifié sur la table réelle (model_forecast_cache, kind=
+// swell_primary) : aucune purge, l'historique remonte déjà à 10+ jours et ne
+// fait que s'allonger avec le temps (job GitHub Actions 3×/jour qui alimente
+// la table, cf. .github/scripts/cache-model-forecasts.mjs). 30 jours reste
+// une borne de bon sens (pas la peine de proposer ce vote pour une session
+// d'il y a 6 mois), pas une vraie limite de disponibilité des données : si
+// rien n'est archivé pour la date choisie, _renderModelTableInto affiche déjà
+// proprement "Pas encore de données…" — ce garde-fou ne doit donc jamais
+// masquer la section plus tôt que nécessaire.
+var MODEL_RELIABILITY_WINDOW_DAYS = 30;
 
 function _isRecentForModelVote(dateStr) {
   if (!dateStr) return false;
@@ -3549,11 +3564,18 @@ async function _migrateLocalVotesToSupabase() {
   if (migrated) console.log('🔄 Votes fiabilité migrés vers Supabase (multi-appareils):', migrated);
 }
 
-// Construit l'URL du lien profond vers previsions.html, pré-rempli pour
-// voter en contexte (courbes visibles). Sans id (session pas encore créée) →
-// mode "pending", le vote est retrouvé par spot+date à la sauvegarde.
+// Construit l'URL du lien profond vers previsions.html, pré-rempli pour voir
+// le comparatif COMPLET en contexte (courbes, rose, spectre MARC — le mini-
+// graphe inline ci-dessous reste volontairement sommaire). Sans id (session
+// pas encore créée) → mode "pending", le vote est retrouvé par spot+date à la
+// sauvegarde (cf. previsions.html, _initSwellVoteFromUrl). Remise en service
+// le 28/07/2026 : ce lien existait mais n'était plus appelé nulle part depuis
+// que le vote se fait aussi en inline (_castInlineModelVote) — utile quand
+// même comme raccourci "voir en détail", et systématiquement pour le cas où
+// aucune donnée n'est encore archivée.
 function _modelVoteUrl(opts) {
   var p = new URLSearchParams({ voteSpot: opts.spot, voteDate: opts.date });
+  if (opts.hour != null && !isNaN(opts.hour)) p.set('voteHour', opts.hour);
   if (opts.id) p.set('voteSession', opts.id); else p.set('votePending', '1');
   return 'previsions.html?' + p.toString();
 }
@@ -3578,10 +3600,26 @@ async function _hasModelCacheTableJournal() {
 // { modelKey: {val, period, dir} } — échantillon = heure de Hs max de la
 // journée pour chaque modèle (comparable d'un modèle à l'autre), ou null si
 // la table n'existe pas / rien archivé pour ce spot+date.
-async function _fetchModelTableRows(spotVal, dateVal) {
+// sessionHour (0-23, NC locale) : sert à choisir, par modèle, la valeur la
+// PLUS PROCHE DU CRÉNEAU RÉEL DE LA SESSION — avant, "best" prenait le MAX de
+// la journée entière, une métrique qui n'a rien à voir avec la question posée
+// ("quel modèle a été fiable POUR CETTE SESSION ?") : un modèle pouvait
+// paraître "le plus haut" à cause d'un pic à 3h du matin, jamais surfé, pendant
+// qu'un autre modèle collait exactement au créneau réel. Même logique que
+// previsions.html (_lookupModelCache : plus proche de l'heure cible), pour
+// que le Journal et Prévisions jugent les modèles sur le même critère.
+// Repli sur midi (12h) si l'heure de session est inconnue — jamais le pic.
+async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
   if (!(await _hasModelCacheTableJournal())) return null;
-  var station = _lookupSpotStation(spotVal);
+  // Résolution centralisée (cf. _resolveSpotCoords) : AVANT, seule la table
+  // statique _SPOT_STATIONS était consultée ici — un spot ajouté/déplacé dans
+  // previsions.html (coords réelles différentes de la supposition statique)
+  // faisait chercher au mauvais endroit et ne trouvait rien, ou seulement un
+  // modèle par coïncidence de tolérance (cf. AUDIT.md, "outil d'évaluation
+  // houle" du 28/07/2026).
+  var station = _resolveSpotCoords(spotVal);
   if (!station) return null;
+  var targetH = (sessionHour == null || isNaN(sessionHour)) ? 12 : sessionHour;
   try {
     var r = await sb.from('model_forecast_cache').select('model,lat,lon,hours').eq('date', dateVal).eq('kind', 'swell_primary');
     if (r.error || !r.data || !r.data.length) return null;
@@ -3592,8 +3630,13 @@ async function _fetchModelTableRows(spotVal, dateVal) {
     var out = {};
     rows.forEach(function(row) {
       if (!row.hours || !row.hours.length) return;
-      var best = row.hours.reduce(function(a, b) { return (b.val || 0) > (a.val || 0) ? b : a; }, row.hours[0]);
-      if (best.val != null) out[row.model] = { val: best.val, period: best.period, dir: best.dir };
+      var best = null, bd = Infinity;
+      row.hours.forEach(function(hh) {
+        if (hh.val == null) return;
+        var df = Math.abs(hh.h - targetH);
+        if (df < bd) { bd = df; best = hh; }
+      });
+      if (best) out[row.model] = { val: best.val, period: best.period, dir: best.dir, hours: row.hours };
     });
     return Object.keys(out).length ? out : null;
   } catch (e) { return null; }
@@ -3604,10 +3647,17 @@ async function _fetchModelTableRows(spotVal, dateVal) {
 // travers un attribut onclick="" (source du bug de guillemets ci-dessus).
 var _modelTableCtx = null;
 
-function _modelTableHTML(rows) {
-  var order = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'marc'];
-  var present = order.filter(function(k) { return rows[k]; });
+// order = ordre d'affichage COMMUN au tableau et au graphe (cf.
+// _drawModelReliabilityChart) : mêmes modèles, mêmes couleurs, même ordre —
+// sinon la légende (couleur du texte du modèle) et les courbes du graphe se
+// contrediraient, comme le bug déjà corrigé une fois sur previsions.html
+// (AUDIT-previsions.md T03, MODEL_STYLE unifié).
+var MODEL_RELIABILITY_ORDER = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'marc'];
+
+function _modelTableHTML(rows, sessionHour, voteUrl) {
+  var present = MODEL_RELIABILITY_ORDER.filter(function(k) { return rows[k]; });
   if (!present.length) return null;
+  var hourLbl = (sessionHour == null || isNaN(sessionHour)) ? 'midi (heure de session inconnue)' : (sessionHour + 'h');
   var trs = present.map(function(k) {
     var info = MODEL_RELIABILITY_LABELS[k];
     var r = rows[k];
@@ -3620,7 +3670,19 @@ function _modelTableHTML(rows) {
       + '<td style="padding:6px 4px;text-align:center;"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);"></span></td>'
       + '</tr>';
   }).join('');
-  return '<table style="width:100%;border-collapse:collapse;">'
+  // Figure : courbe houle du jour par modèle + repère vertical sur l'heure de
+  // session — sans ça le tableau ne montre qu'un chiffre par modèle, aucun
+  // moyen de voir VISUELLEMENT lequel collait le mieux à la tendance réelle
+  // (montée/baisse, pic avant/après le créneau). Dessinée après coup par
+  // _drawModelReliabilityChart (a besoin du canvas déjà dans le DOM pour
+  // connaître sa largeur réelle, cf. clientWidth).
+  return '<div style="position:relative;margin-bottom:6px;">'
+    + '<canvas class="model-rel-chart" style="width:100%;height:130px;display:block;"></canvas>'
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text-faint);margin-bottom:8px;">Houle (m) sur la journée, par modèle — repère vertical : '
+    + hourLbl + '. Les valeurs du tableau ci-dessous sont lues au plus proche de ce créneau, pas le pic de la journée.'
+    + (voteUrl ? ' <a href="' + voteUrl + '" target="_blank" style="color:var(--accent);white-space:nowrap;">Comparatif complet →</a>' : '') + '</div>'
+    + '<table style="width:100%;border-collapse:collapse;">'
     + '<thead><tr style="border-bottom:1px solid var(--border);">'
     + '<th style="text-align:left;padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Modèle</th>'
     + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Hauteur</th>'
@@ -3629,6 +3691,85 @@ function _modelTableHTML(rows) {
     + '<th style="padding:4px;"></th>'
     + '</tr></thead><tbody>' + trs + '</tbody></table>'
     + '<div onclick="_castInlineModelVote(null)" style="cursor:pointer;text-align:center;padding:6px;font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);margin-top:2px;">Aucun modèle fiable pour cette session</div>';
+}
+
+// Petit météogramme canvas (pas de dépendance Chart.js ici, page déjà lourde
+// et ce graphe est trivial : quelques lignes par modèle) — houle du jour,
+// 0-23h, un trait par modèle présent + repère vertical sur l'heure de
+// session. HiDPI comme les autres canvas de la page (spot-rose-canvas) : le
+// canvas doit déjà être dans le DOM (clientWidth) — appelé juste après avoir
+// posé le HTML dans _renderModelTableInto.
+function _drawModelReliabilityChart(canvas, rows, sessionHour) {
+  if (!canvas) return;
+  var present = MODEL_RELIABILITY_ORDER.filter(function(k) { return rows[k] && rows[k].hours && rows[k].hours.length; });
+  if (!present.length) { canvas.style.display = 'none'; return; }
+  var W = canvas.clientWidth || 300, H = 130;
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  var padL = 26, padR = 6, padT = 8, padB = 16;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+
+  // Domaine Y borné au min-max RÉEL des modèles (+ marge), pas ancré à 0 :
+  // la houle varie rarement de plus de quelques dizaines de cm d'un modèle à
+  // l'autre sur une même journée — un axe 0→max compressait toutes les
+  // courbes dans le dernier tiers du graphe, rendant les écarts entre
+  // modèles (précisément ce qu'on cherche à voir) illisibles.
+  var maxVal = 0, minVal = Infinity;
+  present.forEach(function(k) {
+    rows[k].hours.forEach(function(hh) {
+      if (hh.val == null) return;
+      if (hh.val > maxVal) maxVal = hh.val;
+      if (hh.val < minVal) minVal = hh.val;
+    });
+  });
+  if (minVal === Infinity) { minVal = 0; maxVal = 1; }
+  var span = Math.max(maxVal - minVal, 0.4); // jamais un domaine dégénéré (tous les modèles d'accord)
+  var domMin = Math.max(0, minVal - span * 0.15);
+  var domMax = maxVal + span * 0.15;
+
+  function X(h) { return padL + (h / 23) * plotW; }
+  function Y(v) { return padT + (1 - (v - domMin) / (domMax - domMin)) * plotH; }
+
+  // Grille horaire (0/6/12/18h) + axe hauteur
+  ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  [0, 6, 12, 18].forEach(function(h) {
+    var x = X(h);
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
+    ctx.fillText(h + 'h', x, H - 4);
+  });
+  ctx.textAlign = 'right';
+  ctx.fillText(domMax.toFixed(1) + 'm', padL - 4, padT + 8);
+  ctx.fillText(domMin.toFixed(1) + 'm', padL - 4, H - padB + 2);
+
+  // Repère vertical : heure de session
+  if (sessionHour != null && !isNaN(sessionHour)) {
+    var sx = X(sessionHour);
+    ctx.strokeStyle = 'rgba(253,224,104,.8)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(sx, padT); ctx.lineTo(sx, H - padB); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Une ligne par modèle, dans l'ORDRE COMMUN avec le tableau (couleurs
+  // MODEL_RELIABILITY_LABELS partagées) — les heures ne sont pas forcément
+  // 0..23 complet (créneaux 3h de meteo.nc par ex.) : trier + relier les
+  // points existants suffit, pas besoin d'interpoler les trous.
+  present.forEach(function(k) {
+    var pts = rows[k].hours.filter(function(hh) { return hh.val != null; })
+      .slice().sort(function(a, b) { return a.h - b.h; });
+    if (pts.length < 2) return;
+    ctx.strokeStyle = MODEL_RELIABILITY_LABELS[k].col; ctx.lineWidth = 1.8;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    pts.forEach(function(p, i) {
+      var x = X(p.h), y = Y(p.val);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
 }
 
 async function _castInlineModelVote(modelKey) {
@@ -3660,15 +3801,18 @@ async function _castInlineModelVote(modelKey) {
 // consulter d'abord. wrapEl reçoit le HTML ; ctx sert au clic (vote).
 async function _renderModelTableInto(wrapEl, spot, date, ctx) {
   wrapEl.innerHTML = '<div style="font-size:11px;color:var(--text-faint);padding:6px 0;">Chargement…</div>';
-  var rows = await _fetchModelTableRows(spot, date);
-  var tableHtml = rows ? _modelTableHTML(rows) : null;
+  var sessionHour = ctx && ctx.sessionHour;
+  var voteUrl = _modelVoteUrl({ spot: spot, date: date, hour: sessionHour, id: ctx && ctx.sessionId });
+  var rows = await _fetchModelTableRows(spot, date, sessionHour);
+  var tableHtml = rows ? _modelTableHTML(rows, sessionHour, voteUrl) : null;
   if (!tableHtml) {
     wrapEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Pas encore de données modèles archivées pour ce spot/cette date. '
-      + '<a href="previsions.html" target="_blank" style="color:var(--accent);">Ouvrir Prévisions</a> pour ce spot les met en cache automatiquement.</div>';
+      + '<a href="' + voteUrl + '" target="_blank" style="color:var(--accent);">Ouvrir Prévisions</a> pour ce spot les met en cache automatiquement.</div>';
     return;
   }
   _modelTableCtx = Object.assign({ spot: spot, date: date, rows: rows }, ctx);
   wrapEl.innerHTML = tableHtml;
+  _drawModelReliabilityChart(wrapEl.querySelector('canvas.model-rel-chart'), rows, sessionHour);
 }
 
 // Section HTML "Fiabilité houle" pour le détail d'une session (uniquement
@@ -3701,7 +3845,7 @@ function _renderModelReliabilitySection(s) {
 function _mountModelTableDetail(s) {
   var el = document.getElementById('model-table-detail-' + s.id);
   if (!el) return;
-  _renderModelTableInto(el, s.spot || (s.spots && s.spots[0]) || '', s.date, { sessionId: s.id, session: s, formMode: false });
+  _renderModelTableInto(el, s.spot || (s.spots && s.spots[0]) || '', s.date, { sessionId: s.id, session: s, formMode: false, sessionHour: s.session_hour });
 }
 function _reopenModelTableDetail(sessionId) {
   var s = (allSessions || []).find(function(x) { return x.id === sessionId; });
@@ -3746,7 +3890,9 @@ function _updateModelReliabilityFormSection() {
   wrap.style.display = 'block';
   wrap.innerHTML = '<label class="form-label">🌊 Quel modèle de houle a été le plus fiable pour cette session ?</label><div id="model-table-form"></div>';
   var el = document.getElementById('model-table-form');
-  _renderModelTableInto(el, spotVal, dateVal, { sessionId: sessionId, formMode: true });
+  var hourEl = document.getElementById('f-session-hour');
+  var sessionHour = hourEl && hourEl.value !== '' ? parseInt(hourEl.value, 10) : null;
+  _renderModelTableInto(el, spotVal, dateVal, { sessionId: sessionId, formMode: true, sessionHour: sessionHour });
 }
 
 // "Changer" depuis le formulaire : efface le vote déjà mis de côté (pending
