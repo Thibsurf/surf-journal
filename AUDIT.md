@@ -841,3 +841,43 @@ Vérifié en headless : cadrage correct des jours 0 à 3 (jour N → minuit−1h
 minuit+25h), refus au-delà de la fenêtre, zoom manuel puis retour vue complète,
 curseurs croisés et barre de lecture intacts, 0 erreur JS.
 `CACHE_NAME` → `surf-nc-v24` (widget-global.js modifié).
+
+## Chantier 10 — dégradé de confiance J+3 (§10.5 priorité 4) — FAIT (2026-07-28)
+
+Un voile laiteux qui s'épaissit vers la droite au-delà de J+3, posé PAR-DESSUS
+les courbes sur les trois panneaux : c'est leur aplomb qu'il s'agit de nuancer.
+Au-delà de J+3 les modèles divergent plus que le signal qu'ils décrivent, et une
+courbe tracée avec le même aplomb qu'à J+1 ment par omission. Volontairement très
+léger (alpha final 0,075) — nuancer la lecture, pas rendre la zone illisible.
+Repère « J+3 · fiabilité en baisse » porté par le seul panneau houle ; le répéter
+trois fois sur trois panneaux empilés aurait été du bruit. Le trait n'est tracé
+que si l'échéance tombe DANS la fenêtre, sinon il se collerait au bord gauche et
+se lirait comme un axe.
+
+Le ruban d'orientation du vent est dessiné APRÈS le voile : c'est un état
+(offshore/travers/onshore), pas une valeur incertaine — le délaver n'aurait eu
+aucun sens.
+
+## §10.5 priorité 3 (fenêtre de marée favorable) — NON FAISABLE EN L'ÉTAT
+
+La bande verticale « fenêtre de marée favorable au spot » suppose de savoir ce
+qui est favorable À CE SPOT. Cette préférence est censée vivre dans
+`spot.tidePref` (`{state:'low'|'mid'|'high', phase:'rising'|'falling'|'any'}`),
+lue par `_tideAdj()` (L5911).
+
+**Vérifié sur les données réelles plutôt que supposé : 0 des 7 spots ne définit
+`tidePref`.** Les clés d'un spot sont `name, lat, lon, wg, tideId, tideName,
+obsId, obsName, marineId, marineName, scoreParams` — pas de `tidePref`, ni dans
+le JSON `shared_spots` de Supabase, ni écrite par aucune UI (`grep` sur
+`previsions.html`, `index.html`, `assets/*.js` : 2 occurrences, toutes deux DANS
+`_tideAdj`).
+
+Conséquence à signaler au-delà du chantier 10 : **`_tideAdj()` renvoie donc
+toujours 0** — la marée ne pèse en fait rien dans le score de session, alors que
+le code laisse croire le contraire. Deux options, à trancher :
+1. ajouter le réglage de préférence de marée par spot dans `showScoreSettings`
+   (⚙︎), ce qui débloque À LA FOIS la bande §10.5 et le score de session ;
+2. supprimer `_tideAdj` et la clé `tidePref` si la marée n'est pas un critère.
+
+Rien n'a été inventé ici : pas de « fenêtre favorable » par défaut, qui aurait
+affiché une recommandation sans fondement.

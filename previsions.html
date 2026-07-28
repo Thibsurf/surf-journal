@@ -5629,6 +5629,10 @@ function _drawSwellCompare() {
     ctx.beginPath(); ctx.rect(padL, padT, W - padL - padR, H - padT - padB); ctx.clip();
     activeModels.forEach(function(m) { drawSmooth(series[m.key], m.col); });
     ctx.restore();
+    // Voile de confiance au-delà de J+3, PAR-DESSUS les courbes (§10.5) : c'est
+    // leur aplomb qu'il s'agit de nuancer. Repère textuel porté par ce seul
+    // panneau — le répéter sur la période et le vent serait du bruit.
+    panelConfidenceFade(ctx, X, Date.now() + 3 * 864e5, t0, t1, W, H, padT, padB, 'J+3 · fiabilité en baisse', axFont);
     drawPer();
   }
 
@@ -5667,6 +5671,7 @@ function _drawSwellCompare() {
       perCtx.stroke();
     });
     perCtx.restore();
+    panelConfidenceFade(perCtx, X, Date.now() + 3 * 864e5, t0, t1, W, perH, perPadT, perPadB, null, axFont);
     panelDayLabels(perCtx, X, midP, t1, W, perH, axFont);
   }
 
@@ -9294,8 +9299,12 @@ function _drawAromeCompareFromCache() {
     // Points sur les mesures (réelles)
     ctx.fillStyle = MODEL_STYLE.obs.col;
     obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.7, 0, Math.PI * 2); ctx.fill(); });
-    // Ruban de qualité du vent EN DERNIER : posé par-dessus les courbes, sinon
-    // une série qui passe dans le bas du panneau le hachait.
+    // Voile de confiance au-delà de J+3 (§10.5), par-dessus les courbes. Pas de
+    // repère textuel ici : le panneau houle le porte déjà pour la pile.
+    panelConfidenceFade(ctx, X, now + 3 * 864e5, t0, t1, W, H, padT, padB, null, axFont);
+    // Ruban de qualité du vent EN DERNIER : posé par-dessus les courbes ET le
+    // voile, sinon une série qui passe dans le bas du panneau le hachait et le
+    // dégradé le délavait — c'est un état, pas une valeur incertaine.
     panelRibbon(ctx, X, _windQualSegs, W, H, padB, 5);
   }
   // Curseur sur un calque séparé (§10.12) : ce graphe porte jusqu'à 9 séries,

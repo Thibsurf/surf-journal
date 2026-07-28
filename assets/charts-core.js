@@ -172,6 +172,44 @@ function panelRibbon(ctx, X, segments, W, H, padB, thickness) {
   ctx.restore();
 }
 
+// Dégradé de confiance au-delà d'une échéance (§10.5, priorité 4). Un voile
+// laiteux qui s'épaissit vers la droite : au-delà de J+3, les modèles divergent
+// plus que le signal qu'ils prétendent décrire, et une courbe tracée avec le
+// même aplomb qu'à J+1 ment par omission. Volontairement TRÈS léger — il s'agit
+// de nuancer la lecture, pas de rendre la zone illisible.
+// `label` posé une seule fois par pile de panneaux (sinon trois fois le même
+// repère sur trois panneaux empilés = du bruit).
+function panelConfidenceFade(ctx, X, fromMs, t0, t1, W, H, padT, padB, label, font) {
+  if (fromMs >= t1) return;
+  var xFrom = Math.max(PANEL_GEOM.l, X(Math.max(fromMs, t0)));
+  var xEnd = W - PANEL_GEOM.r;
+  if (xEnd <= xFrom) return;
+  var g = ctx.createLinearGradient(xFrom, 0, xEnd, 0);
+  g.addColorStop(0, 'rgba(200,220,240,0)');
+  g.addColorStop(1, 'rgba(200,220,240,.075)');
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PANEL_GEOM.l, padT, W - PANEL_GEOM.l - PANEL_GEOM.r, H - padT - padB);
+  ctx.clip();
+  ctx.fillStyle = g;
+  ctx.fillRect(xFrom, padT, xEnd - xFrom, H - padT - padB);
+  // Repère seulement si l'échéance tombe DANS la fenêtre (sinon le trait se
+  // collerait au bord gauche et se lirait comme un axe).
+  if (fromMs > t0) {
+    ctx.strokeStyle = 'rgba(200,220,240,.28)';
+    ctx.setLineDash([2, 4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(xFrom, padT); ctx.lineTo(xFrom, H - padB); ctx.stroke();
+    ctx.setLineDash([]);
+    if (label) {
+      ctx.font = font || '9px DM Sans,sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(200,220,240,.5)';
+      ctx.fillText(label, xFrom + 3, padT + 1);
+    }
+  }
+  ctx.restore();
+}
+
 // Trait "maintenant" (jaune pointillé) — même signature visuelle sur tous les
 // panneaux, c'est le repère que l'œil cherche en premier.
 function panelNowLine(ctx, X, t0, t1, H, padT, padB) {
