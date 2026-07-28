@@ -728,3 +728,46 @@ au redessin, jamais dans un gabarit conditionnel**.
 Vérifié en headless (900 px et 500 px, données réseau réelles) : 0 erreur JS,
 alignement au pixel, zoom partagé, isolation du zoom en mode historique
 (`_cmpZoom` intact), bascules aller-retour de l'historique, curseurs croisés.
+
+## Chantier 10 — fonds contextuels : nuit + orientation du vent (§10.5) — FAIT (2026-07-28)
+
+Le fond des panneaux était vide. L'audit y voyait deux informations
+prioritaires ; les deux sont posées.
+
+**Nuit assombrie, sur les trois panneaux.** Un créneau nocturne n'est pas
+surfable, autant qu'il le paraisse. `_nightIntervals()` réutilise `calcSunTimes()`
+via ses deux sorties brutes `noonH` (midi solaire en heures UTC) et `ha0`
+(demi-durée du jour) plutôt que ses chaînes d'affichage. Piège documenté dans le
+code : `noonH − ha0` est NÉGATIF (le lever NC ~06 h = ~19 h UTC la veille) et
+c'est correct — l'arithmétique en millisecondes le gère, il ne faut surtout pas
+« corriger » ce signe. Mémoïsé sur la fenêtre, sinon Meeus tournait à chaque
+redraw des trois panneaux. Vérifié sur données réelles : 17h26 → 06h24 NC, soit
+90,5 h de nuit sur une fenêtre de 168 h — cohérent avec les 06h25/17h27 affichés
+ailleurs dans la page.
+
+**Aplat alterné un jour sur deux SUPPRIMÉ.** Avec la nuit assombrie, un
+troisième niveau de gris se superposait aux deux autres et plus rien ne disait
+quelle bande signifiait quoi. Les traits de minuit suffisent à délimiter les
+jours. Le fond ne porte plus que de l'information.
+
+**Ruban offshore / travers / onshore sous les courbes de vent.** L'angle
+vent↔spot est LA variable décisive et n'apparaissait sur aucun graphe alors
+qu'elle est déjà dans le moteur de score. Seuils volontairement identiques à
+`calcSurfScore()` (≤60° offshore, >120° onshore, sur `windDirIdeal` réglable par
+spot) — un graphe qui contredirait le score sur le même créneau serait pire que
+pas de graphe. Ruban fin en bas plutôt qu'aplat pleine hauteur : ce panneau
+porte jusqu'à 9 séries.
+
+**Choix de la série de référence, corrigé après mesure.** Premier jet : la plus
+fine disponible (AROME 2,5 km). Résultat observé à l'écran — AROME ne va qu'à
+J+2, le ruban s'arrêtait au tiers de la fenêtre et laissait le reste vide.
+Critère final : **couverture de la fenêtre affichée d'abord, résolution ensuite**
+(5 % de marge pour éviter que deux séries quasi équivalentes se volent la place).
+Effet : sur la fenêtre complète c'est BOM WW3 qui pilote le ruban, et en zoomant
+sur les jours à venir la référence bascule sur un modèle plus fin. Une seule
+série, jamais une moyenne : les modèles divergent sur la direction (le badge de
+corrélation juste en dessous le chiffre), moyenner masquerait ce désaccord
+derrière un ruban faussement lisse. Le modèle retenu est nommé dans la légende.
+
+Vérifié en headless : 0 erreur JS, bascule de la série de référence au zoom et
+retour, curseurs croisés intacts.

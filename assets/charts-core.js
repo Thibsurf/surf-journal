@@ -110,27 +110,66 @@ function panelYDomain(vals, opts) {
   return { min: min, max: max };
 }
 
-// Bandes alternées un jour sur deux + trait vertical à minuit NC.
+// Traits verticaux à minuit NC (séparateurs de jours).
 // Jour calendaire de Nouvelle-Calédonie = UTC+11 sans heure d'été (§A) : on
 // décale de 11 h avant d'arrondir au jour, jamais getDate() local.
 // Renvoie le ms du premier minuit NC affiché, réutilisé par l'appelant pour
 // placer les libellés de date.
+//
+// Il y avait ici un aplat alterné un jour sur deux, supprimé : depuis que les
+// panneaux assombrissent la NUIT (panelShadeIntervals, §10.5), un troisième
+// niveau de gris se superposait aux deux autres et on ne distinguait plus quelle
+// bande voulait dire quoi. Les traits de minuit suffisent à délimiter les jours,
+// et le fond ne porte plus que de l'information — pas de la décoration.
 function panelDayBands(ctx, X, t0, t1, W, H, padT, padB) {
   var mid0 = Math.ceil((t0 + 11 * 36e5) / 864e5) * 864e5 - 11 * 36e5;
-  var bandI = 0;
-  for (var bms = mid0 - 864e5; bms < t1; bms += 864e5, bandI++) {
-    if (bandI % 2 !== 0) {
-      ctx.fillStyle = 'rgba(255,255,255,.018)';
-      var x0 = Math.max(PANEL_GEOM.l, X(bms));
-      var x1 = Math.min(X(bms + 864e5), W - PANEL_GEOM.r);
-      if (x1 > x0) ctx.fillRect(x0, padT, x1 - x0, H - padT - padB);
-    }
-  }
   for (var ms = mid0; ms < t1; ms += 864e5) {
     ctx.strokeStyle = 'rgba(255,255,255,.09)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
   }
   return mid0;
+}
+
+// Aplats verticaux sur une liste d'intervalles [[msDebut, msFin], …] (§10.5).
+// Sert à poser sur le fond ce qui n'est pas une courbe mais conditionne quand
+// même la lecture : la nuit d'abord (un créneau nocturne n'est pas surfable,
+// autant qu'il le paraisse), plus tard la fenêtre de marée favorable.
+// Clip sur la zone de tracé : un intervalle qui déborde ne doit pas repeindre
+// la marge des étiquettes d'axe.
+function panelShadeIntervals(ctx, X, intervals, color, W, H, padT, padB) {
+  if (!intervals || !intervals.length) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PANEL_GEOM.l, padT, W - PANEL_GEOM.l - PANEL_GEOM.r, H - padT - padB);
+  ctx.clip();
+  ctx.fillStyle = color;
+  for (var i = 0; i < intervals.length; i++) {
+    var x0 = X(intervals[i][0]), x1 = X(intervals[i][1]);
+    if (x1 <= x0) continue;
+    ctx.fillRect(x0, padT, x1 - x0, H - padT - padB);
+  }
+  ctx.restore();
+}
+
+// Ruban d'état en bas d'un panneau : une bande fine de segments colorés
+// (`segments` = [[msDebut, msFin, couleur], …]). Choisi plutôt qu'un aplat
+// pleine hauteur pour le vent : ce panneau porte jusqu'à 9 séries, un fond
+// teinté sur toute la hauteur les rendrait illisibles.
+function panelRibbon(ctx, X, segments, W, H, padB, thickness) {
+  if (!segments || !segments.length) return;
+  var th = thickness || 5;
+  var y = H - padB - th;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PANEL_GEOM.l, y, W - PANEL_GEOM.l - PANEL_GEOM.r, th);
+  ctx.clip();
+  for (var i = 0; i < segments.length; i++) {
+    var x0 = X(segments[i][0]), x1 = X(segments[i][1]);
+    if (x1 <= x0) continue;
+    ctx.fillStyle = segments[i][2];
+    ctx.fillRect(x0, y, x1 - x0, th);
+  }
+  ctx.restore();
 }
 
 // Trait "maintenant" (jaune pointillé) — même signature visuelle sur tous les

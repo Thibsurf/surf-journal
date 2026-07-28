@@ -5591,6 +5591,8 @@ function _drawSwellCompare() {
   function draw() {
     ctx.clearRect(0, 0, W, H);
     var mid0 = panelDayBands(ctx, X, t0, t1, W, H, padT, padB);
+    // Nuit assombrie (§10.5) — sous la grille et les courbes.
+    panelShadeIntervals(ctx, X, _nightIntervals(t0, t1), 'rgba(2,7,18,.38)', W, H, padT, padB);
     panelAxisLabel(ctx, 'Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), H, axFont);
     ctx.textAlign = 'right'; ctx.font = axFont;
     var hStep = (maxH - minH) > 4 ? 1 : 0.5;
@@ -5621,6 +5623,7 @@ function _drawSwellCompare() {
     if (!showPer) return;
     perCtx.clearRect(0, 0, W, perH);
     var midP = panelDayBands(perCtx, X, t0, t1, W, perH, perPadT, perPadB);
+    panelShadeIntervals(perCtx, X, _nightIntervals(t0, t1), 'rgba(2,7,18,.38)', W, perH, perPadT, perPadB);
     panelAxisLabel(perCtx, 'Période (s)', perH, axFont);
     var span = perDom.max - perDom.min;
     var pStep = span > 12 ? 5 : (span > 6 ? 2 : 1);
@@ -8278,6 +8281,9 @@ function _aromeCmpShellHtml() {
     + '<div id="arome-cmp-axis-note" style="font-size:11px;color:var(--faint);line-height:1.45;margin-bottom:6px;"></div>'
     + '<div id="arome-cmp-wrap" style="width:100%;position:relative;"><canvas id="arome-cmp"></canvas></div>'
     + '<div id="arome-cmp-readout" style="min-height:14px;margin-top:4px;font-size:11px;color:var(--muted);">← Survolez pour lire les valeurs au même instant (molette/pincement = zoomer)</div>'
+    // Légende du ruban de qualité du vent — remplie au redessin (elle nomme le
+    // modèle de référence et le cap offshore du spot, tous deux variables).
+    + '<div id="arome-cmp-ribbon-leg" style="font-size:11px;color:var(--faint);line-height:1.45;margin-top:3px;"></div>'
     // Sous les courbes de vent (et non au-dessus, où c'était facile à manquer) :
     // seul le vent a une vraie mesure au sol pour comparer les modèles — la
     // houle n'a pas d'instrument équivalent, d'où le vote subjectif après-coup
@@ -9047,6 +9053,86 @@ function _drawAromeCompareFromCache() {
     el.innerHTML = spdLine + dirLine + caveat;
   })();
 
+  // ── Ruban offshore / cross / onshore (§10.5, priorité 1 de l'audit) ────────
+  // L'angle vent↔spot est LA variable décisive et n'apparaissait sur aucun des
+  // deux graphes, alors qu'elle est déjà dans le moteur de score. Les seuils
+  // sont ceux de calcSurfScore() — volontairement les MÊMES, sinon le graphe et
+  // le score se contrediraient sur le même créneau.
+  //   windDirIdeal = direction VERS laquelle souffle le vent quand il est
+  //   offshore au spot (réglable par spot, cf. showScoreSettings). Les séries
+  //   donnent une PROVENANCE : d'où +180° avant comparaison.
+  // Ruban fin en bas plutôt qu'aplat pleine hauteur : ce panneau porte jusqu'à
+  // 9 séries, un fond teinté partout les noierait.
+  var WIND_Q_COL = { off: 'rgba(61,186,138,.75)', cross: 'rgba(232,196,74,.6)', on: 'rgba(224,92,92,.6)' };
+  // Série de référence : UNE seule série, pas une moyenne — les modèles
+  // divergent sur la direction (le badge de corrélation juste en dessous le
+  // chiffre), moyenner masquerait ce désaccord derrière un ruban faussement
+  // lisse.
+  // Critère = COUVERTURE de la fenêtre affichée d'abord, résolution ensuite.
+  // Mesuré : AROME (2,5 km, le plus fin) ne va qu'à J+2, il ne couvrait qu'un
+  // tiers du ruban et laissait le reste vide. Avec ce critère il gagne quand on
+  // zoome sur les deux jours à venir — exactement quand sa finesse compte — et
+  // cède la place à un modèle global sur la fenêtre complète. Les 5 % de marge
+  // évitent que deux séries de couverture quasi identique se volent la place au
+  // moindre point de plus.
+  function _windRefSeries() {
+    var order = [['aro', aro], ['nc', pageNc], ['marc', marcWind], ['gfs', pageGfs], ['bom', bomWind], ['ecmwf', ecmwfWind]];
+    var best = null;
+    for (var i = 0; i < order.length; i++) {
+      var pts = (order[i][1] || []).filter(function(p) { return p.dir != null && isFinite(p.dir); })
+        .sort(function(a, b){ return a.ms - b.ms; });
+      if (pts.length < 2) continue;
+      var cov = 0;
+      for (var k = 0; k < pts.length - 1; k++) {
+        if (pts[k + 1].ms - pts[k].ms > 4 * 36e5) continue;
+        var s0 = Math.max(pts[k].ms, t0), s1 = Math.min(pts[k + 1].ms, t1);
+        if (s1 > s0) cov += s1 - s0;
+      }
+      if (cov <= 0) continue;
+      if (!best || cov > best.cov * 1.05) best = { key: order[i][0], pts: pts, cov: cov };
+    }
+    return best;
+  }
+  function _windQualityAt(dirFrom) {
+    var ideal = SCORE_PARAMS.windDirIdeal == null ? 270 : SCORE_PARAMS.windDirIdeal;
+    var to = (dirFrom + 180) % 360;
+    var diff = Math.abs(((to - ideal + 180 + 360) % 360) - 180);
+    return diff <= 60 ? 'off' : (diff > 120 ? 'on' : 'cross');
+  }
+  // Segments = intervalles entre points consécutifs de la série de référence,
+  // colorés par la qualité du point de gauche. Pas d'interpolation angulaire :
+  // une bascule de direction entre deux pas de temps est une vraie incertitude,
+  // la lisser lui donnerait une précision qu'elle n'a pas.
+  var _windRef = _windRefSeries();
+  var _windQualSegs = [];
+  if (_windRef) {
+    for (var _i = 0; _i < _windRef.pts.length - 1; _i++) {
+      var a = _windRef.pts[_i], b = _windRef.pts[_i + 1];
+      if (b.ms - a.ms > 4 * 36e5) continue; // trou dans la série : pas de ruban inventé
+      _windQualSegs.push([a.ms, b.ms, WIND_Q_COL[_windQualityAt(a.dir)]]);
+    }
+  }
+  // Légende du ruban, posée dans un élément permanent (le gabarit n'est
+  // construit qu'une fois, cf. #arome-cmp-axis-note) : elle nomme le modèle de
+  // référence et le cap du spot, tous deux variables. Un bandeau coloré sans
+  // légende serait une devinette.
+  var ribLeg = document.getElementById('arome-cmp-ribbon-leg');
+  if (ribLeg) {
+    if (!_windQualSegs.length) {
+      ribLeg.innerHTML = ''; ribLeg.style.display = 'none';
+    } else {
+      var _refLbl = (MODEL_STYLE[_windRef.key] && MODEL_STYLE[_windRef.key].label) || _windRef.key;
+      var _idealDeg = SCORE_PARAMS.windDirIdeal == null ? 270 : SCORE_PARAMS.windDirIdeal;
+      ribLeg.style.display = 'block';
+      ribLeg.innerHTML = 'Bandeau sous les courbes — orientation du vent au spot d\'après <b>' + _refLbl + '</b> : '
+        + '<span style="color:#3dba8a;font-weight:700;">▬</span> offshore · '
+        + '<span style="color:#e8c44a;font-weight:700;">▬</span> travers · '
+        + '<span style="color:#e05c5c;font-weight:700;">▬</span> onshore. '
+        + 'Mêmes seuils que le score de session : offshore = vent soufflant vers le '
+        + _compassLbl(_idealDeg) + ' (réglable par spot dans ⚙︎).';
+    }
+  }
+
   // Couche STATIQUE (fond, grille, séries) — redessinée seulement au changement
   // de données, de fenêtre de zoom ou de modèles visibles.
   function draw() {
@@ -9054,6 +9140,8 @@ function _drawAromeCompareFromCache() {
     // Fond passé (mesures) légèrement teinté
     ctx.fillStyle = 'rgba(61,186,138,.05)';
     ctx.fillRect(X(t0), padT, X(now) - X(t0), H - padT - padB);
+    // Nuit assombrie, même repère que sur les panneaux houle/période (§10.5).
+    panelShadeIntervals(ctx, X, _nightIntervals(t0, t1), 'rgba(2,7,18,.38)', W, H, padT, padB);
     // Grille horizontale (pas adaptatif : 5 kt par défaut, plus serré une fois zoomé
     // sur une fenêtre de valeurs étroite)
     ctx.textAlign = 'right'; ctx.font = axFont;
@@ -9141,6 +9229,9 @@ function _drawAromeCompareFromCache() {
     // Points sur les mesures (réelles)
     ctx.fillStyle = MODEL_STYLE.obs.col;
     obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.7, 0, Math.PI * 2); ctx.fill(); });
+    // Ruban de qualité du vent EN DERNIER : posé par-dessus les courbes, sinon
+    // une série qui passe dans le bas du panneau le hachait.
+    panelRibbon(ctx, X, _windQualSegs, W, H, padB, 5);
   }
   // Curseur sur un calque séparé (§10.12) : ce graphe porte jusqu'à 9 séries,
   // un scrub redessinait plusieurs milliers de segments par mouvement de souris.
@@ -10899,6 +10990,53 @@ function calcSunTimes(year, month, day) {
     decl:decl,noon:fmt(noon),noonH:noon,ha0:ha0,
     dayLenMin: isNaN(ha0) ? null : Math.round(2*ha0*60)
   };
+}
+
+// ─── Intervalles de NUIT pour les fonds de panneaux (chantier 10, §10.5) ────
+// Un créneau nocturne n'est pas surfable : autant qu'il le paraisse sur les
+// graphes plutôt que de laisser lire une belle houle à 2 h du matin.
+//
+// calcSunTimes() rend des chaînes ("06h25") pour l'affichage, mais aussi les
+// deux valeurs brutes dont on a besoin : `noonH` (midi solaire, en heures UTC
+// après 0 h UT de la date demandée) et `ha0` (demi-durée du jour, en heures).
+// Le lever = noonH − ha0 peut être négatif : ça retombe sur la veille en UTC,
+// ce qui est correct (le lever NC ~06 h = ~19 h UTC la veille) — l'arithmétique
+// en millisecondes le gère toute seule, ne surtout pas "corriger" ce signe.
+//
+// Mémoïsé sur la fenêtre : ces bandes sont redessinées à chaque redraw des
+// trois panneaux, et le calcul de Meeus n'a pas à tourner 20 fois pour rien.
+var _nightBandsCache = { key: '', bands: [] };
+function _nightIntervals(t0, t1) {
+  var key = Math.round(t0 / 36e5) + '_' + Math.round(t1 / 36e5);
+  if (_nightBandsCache.key === key) return _nightBandsCache.bands;
+  var bands = [];
+  // Une journée de marge de chaque côté : la nuit qui chevauche le bord de
+  // fenêtre doit être peinte jusqu'au bord, pas s'arrêter net.
+  for (var ms = t0 - 864e5; ms <= t1 + 864e5; ms += 864e5) {
+    // Jour calendaire NC (+11 h, sans heure d'été) — convention de la page.
+    var dNC = new Date(ms + 11 * 36e5);
+    var y = dNC.getUTCFullYear(), mo = dNC.getUTCMonth() + 1, d = dNC.getUTCDate();
+    var s = calcSunTimes(y, mo, d);
+    if (!s || s.noonH == null || !isFinite(s.ha0)) continue;
+    var dayStartUTC = Date.UTC(y, mo - 1, d);
+    var riseMs = dayStartUTC + (s.noonH - s.ha0) * 36e5;
+    var setMs  = dayStartUTC + (s.noonH + s.ha0) * 36e5;
+    // Nuit = du coucher de CE jour au lever du LENDEMAIN (donc setMs → riseMs+24h,
+    // à ~4 min près de variation de durée du jour, invisible à cette échelle).
+    bands.push([setMs, riseMs + 864e5]);
+  }
+  // Fusionne les recouvrements éventuels et coupe aux bornes de la fenêtre.
+  bands.sort(function(a, b){ return a[0] - b[0]; });
+  var out = [];
+  bands.forEach(function(b) {
+    var s0 = Math.max(b[0], t0), s1 = Math.min(b[1], t1);
+    if (s1 <= s0) return;
+    var last = out[out.length - 1];
+    if (last && s0 <= last[1]) { last[1] = Math.max(last[1], s1); return; }
+    out.push([s0, s1]);
+  });
+  _nightBandsCache = { key: key, bands: out };
+  return out;
 }
 
 // ─── COURBE DE MARÉE ──────────────────────────────────────────────────────
