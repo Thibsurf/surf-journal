@@ -95,9 +95,25 @@ Tout est en ES5 avec des globals, donc déplacer un bloc vers un `.js` chargé e
 `<script defer>` ne change rien tant que l'ordre est conservé.
 
 ⚠️ Les plages de lignes du §2 de l'audit **ont bougé** depuis le 26/07 — les
-recalculer, ne pas les reprendre telles quelles. Et attention : les blocs ne sont
-pas tous contigus (le bloc requin/BMS est intercalé entre `drawTideMarnage` et
-`drawMoon`).
+recalculer, ne pas les reprendre telles quelles. Et attention, c'est plus grave
+que « pas tous contigus » : **vérifié le 28/07 soir**, la queue actuelle du
+fichier (L11500-14330 environ) mélange en vrac ce qui devait être
+`tides-astro.js` ET `alerts.js` — marée/lune (`renderTideCurve`, `drawMoon`,
+`drawFishingScore`), météo (`loadOpenMeteoMeteo`, UV), alertes (requin, cyclone,
+BMS), **mais aussi** panneaux historiques de vérification modèle
+(`loadPastConditions`, `_loadGFSHistoricalPanel`), le dialogue `showSpotSettings`
+(⚙ Réglages spot, 320 lignes), la synchro token, et la carte Navigation
+(`updateNavIndicator`) — sept familles de fonctions différentes intercalées,
+pas deux. La table de `AUDIT-previsions.md` §2 décrit l'organisation du
+26/07, qui ne tient plus : ne pas supposer qu'un module = une plage
+contiguë, vérifier au cas par cas avec `grep -n "^function \|^async function "`
+avant de couper quoi que ce soit.
+
+Ça reste **mécaniquement sûr** (fonctions globales ES5, l'ordre physique dans le
+fichier n'a jamais compté), mais chaque « module » demande maintenant de
+repérer et déplacer une dizaine de fonctions non contiguës au lieu d'une plage
+unique — plus lent, plus de points de coupe = plus de risque d'erreur de copier-
+coller. À budgéter en conséquence.
 
 Après chaque extraction : bumper `CACHE_NAME` dans `sw.js`, compléter `ASSETS`,
 recharger en headless et vérifier 0 `ReferenceError`.
