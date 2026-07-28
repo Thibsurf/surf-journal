@@ -118,6 +118,12 @@ coller. À budgéter en conséquence.
 Après chaque extraction : bumper `CACHE_NAME` dans `sw.js`, compléter `ASSETS`,
 recharger en headless et vérifier 0 `ReferenceError`.
 
+**Décision du 28/07 soir** : proposé de continuer T18 (alerts.js d'abord) après
+avoir chiffré le vrai coût ci-dessus — l'utilisateur a préféré ne pas lancer ça
+en fin de session. Reste la prochaine étape recommandée, juste plus lente que
+prévu. Repartir de la liste `_renderSharkRisk` → `openNavBMSDetail` déjà repérée
+ci-dessus pour `alerts.js`.
+
 ### 2. T30 — CSP en `<meta>` (après T18)
 
 Bloqué aujourd'hui par ~1 255 `style="` inline dans le HTML et ~797 chaînes de
@@ -146,6 +152,24 @@ Worker. Idem pour `shared_tokens`.
 ⚠️ Précédent à ne pas répéter : un correctif de sécurité (`X-Push-Key`) avait cassé
 le push de token sans aucune erreur visible côté client. Vérifier le chemin
 légitime **après** avoir durci les droits.
+
+**Découverte du 28/07 soir, importante avant de retoucher ça** : les deux tables
+n'ont PAS le même profil de risque. `model_forecast_cache` est un pur cas
+d'archive (`update → using(false)` sans risque). `shared_tokens` est différent :
+`assets/nc-token.js:73` fait un vrai `sb.from('shared_tokens').upsert(...)`
+**depuis le navigateur avec la clé anon** pour pousser le token meteo.nc — si
+`update` y est bloqué, cet upsert casse en silence à la première collision,
+soit exactement l'incident `X-Push-Key` qu'il ne faut pas reproduire. Le
+Worker (`worker_cloudflare/worker.js:109-111`) écrit aussi `shared_tokens`,
+mais avec `SUPABASE_ANON_KEY` — **pas de `service_role`** configuré côté
+Worker actuellement (confirmé : aucune clé `service_role` dans le repo, et le
+Worker n'a pas ce secret). Un vrai verrouillage de `shared_tokens` demande donc
+1) la clé `service_role` (Project Settings → API sur Supabase — sensible, à ne
+récupérer/poser en secret Wrangler qu'avec l'accord explicite de l'utilisateur),
+2) adapter le Worker pour écrire avec, 3) retirer l'upsert client de
+`nc-token.js`. Proposé à l'utilisateur le 28/07 soir (fix minimal
+`model_forecast_cache` seul / fix complet avec la clé / rien) → **rien pour
+l'instant**, T13 reste en l'état (écriture publique sur les deux tables).
 
 ---
 
