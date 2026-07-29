@@ -562,6 +562,12 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:4px 9px;border-radius:10px;cursor:pointer;white-space:nowrap;">📸 Partager</button>
       </div>
     </div>
+    <!-- Molette direction + curseurs période/hauteur — DUPLIQUÉS ici (même état
+         partagé que la copie du tableau plus bas, cf. _cmpRefreshFilteredViews) :
+         demande utilisateur, un indicateur texte seul n'était pas assez clair,
+         régler le filtre directement à côté des courbes qu'il affecte est plus
+         lisible que d'avoir à redescendre jusqu'au tableau. -->
+    <div id="cmp-dir-controls-graph" style="margin-bottom:8px;"></div>
     <!-- Barre de lecture (§10.10) : synthèse du créneau lu, pilotée par le curseur
          des DEUX comparatifs (houle et vent) — la même barre est répétée dans la
          carte AROME pour rester sous les yeux quel que soit le graphe survolé. -->
@@ -4902,6 +4908,21 @@ function _cmpRefreshFilteredViews() {
   _renderCmpTable();
   if (typeof _drawSwellCompare === 'function') _drawSwellCompare();
 }
+// Rend la molette + les 2 curseurs dans #cmp-dir-controls-graph, juste sous
+// l'en-tête du comparatif houle (suffixe 'g', cf. _CMP_FILTER_SUFFIXES) —
+// appelée par _drawSwellCompare() à chaque redessin, comme elle gère déjà sa
+// propre légende (#swell-cmp-legend). Aucun modèle de houle disponible ⇒ rien
+// à filtrer, on vide le conteneur plutôt que d'afficher des contrôles inertes.
+function _renderCmpGraphFilters() {
+  var el = document.getElementById('cmp-dir-controls-graph');
+  if (!el) return;
+  if (!_swellCache) { el.innerHTML = ''; return; }
+  var hasAnySwell = SWELL_MODELS.some(function(m) { return _swellCache[m.key] && _swellCache[m.key].primary && _swellCache[m.key].primary.length; });
+  if (!hasAnySwell) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">'
+    + _cmpDirWheelHtml('g') + _cmpSliderHtml('period', 'g') + _cmpSliderHtml('height', 'g') + '</div>';
+  _cmpAttachDirWheel('g'); _cmpAttachSlider('period', 'g'); _cmpAttachSlider('height', 'g');
+}
 // Efface les 3 filtres houle d'un coup — accessible depuis le raccourci affiché
 // sur la légende du graphe (cf. _drawSwellCompare), sans avoir à redescendre
 // jusqu'au tableau pour cliquer les 3 liens "Effacer" un par un.
@@ -4915,7 +4936,16 @@ function _cmpClearAllSwellFilters() {
 // ─── Molette de direction (cercle SVG, 2 poignées glissables) ──────────────
 // Convention degrés = provenance météo, 0°=N en haut, sens horaire — même
 // convention que partout ailleurs dans ce fichier (arrowSpan, svgArrow()).
-var _CMP_DIR_R = 38; // rayon de l'anneau (viewBox 100×100, centre 50,50)
+// DEUX instances simultanées (table "fourchette" + graphe comparatif houle,
+// cf. _CMP_FILTER_SUFFIXES) partageant le même état — demande utilisateur
+// ("répliquer la molette pour les courbes, plus clair") : un id par instance
+// (suffixe), mais _cmpDirWheelUpdateLive met à jour LES DEUX en même temps
+// pendant un drag, pour qu'elles restent visuellement synchronisées.
+var _CMP_FILTER_SUFFIXES = ['t', 'g']; // t = tableau, g = graphe
+// Rayon réduit (38→33) : les repères N/E/S/O à R+13 dépassaient légèrement le
+// viewBox 0-100 (centré 50,50) → lettres rognées (signalé par l'utilisateur).
+// R=33 + offset 13 = 46, marge de 4 de chaque côté — tient dans le viewBox.
+var _CMP_DIR_R = 33; // rayon de l'anneau (viewBox 100×100, centre 50,50)
 function _cmpDirToXY(deg, r) {
   var rad = deg * Math.PI / 180;
   return { x: 50 + r * Math.sin(rad), y: 50 - r * Math.cos(rad) };
@@ -4924,7 +4954,7 @@ function _cmpDirFromXY(x, y) {
   var deg = Math.atan2(x - 50, -(y - 50)) * 180 / Math.PI;
   return ((deg % 360) + 360) % 360;
 }
-function _cmpDirWheelHtml() {
+function _cmpDirWheelHtml(suffix) {
   var active = _cmpDirFilter.min != null && _cmpDirFilter.max != null;
   // Position par défaut des poignées tant qu'aucune plage n'est encore active
   // (135°/225°, secteur SE plausible pour une houle NC) — juste pour avoir
@@ -4943,44 +4973,46 @@ function _cmpDirWheelHtml() {
     return '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3).toFixed(1) + '" text-anchor="middle" font-size="8" fill="rgba(255,255,255,.4)">' + t[0] + '</text>';
   }).join('');
   return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px;">'
-    + '<svg id="cmp-dir-wheel" viewBox="0 0 100 100" width="86" height="86" style="touch-action:none;flex:none;">'
+    + '<svg id="cmp-dir-wheel-' + suffix + '" viewBox="0 0 100 100" width="86" height="86" style="touch-action:none;flex:none;overflow:visible;">'
     + '<circle cx="50" cy="50" r="' + R + '" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="6"/>'
-    + '<path id="cmp-dir-arc" d="' + arcPath + '" fill="none" stroke="' + (active ? '#fde068' : 'rgba(255,255,255,.15)') + '" stroke-width="6" stroke-linecap="round"/>'
+    + '<path id="cmp-dir-arc-' + suffix + '" d="' + arcPath + '" fill="none" stroke="' + (active ? '#fde068' : 'rgba(255,255,255,.15)') + '" stroke-width="6" stroke-linecap="round"/>'
     + ticks + lbls
-    + '<circle id="cmp-dir-h-min" cx="' + pMin.x.toFixed(2) + '" cy="' + pMin.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle minimum" aria-valuenow="' + Math.round(dMin) + '" aria-valuemin="0" aria-valuemax="360"/>'
-    + '<circle id="cmp-dir-h-max" cx="' + pMax.x.toFixed(2) + '" cy="' + pMax.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle maximum" aria-valuenow="' + Math.round(dMax) + '" aria-valuemin="0" aria-valuemax="360"/>'
+    + '<circle id="cmp-dir-h-min-' + suffix + '" cx="' + pMin.x.toFixed(2) + '" cy="' + pMin.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle minimum" aria-valuenow="' + Math.round(dMin) + '" aria-valuemin="0" aria-valuemax="360"/>'
+    + '<circle id="cmp-dir-h-max-' + suffix + '" cx="' + pMax.x.toFixed(2) + '" cy="' + pMax.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle maximum" aria-valuenow="' + Math.round(dMax) + '" aria-valuemin="0" aria-valuemax="360"/>'
     + '</svg>'
     + '<div style="font-size:10.5px;color:var(--muted);line-height:1.6;">'
-    + '<div>🎯 Surligner houle : <b id="cmp-dir-live-lbl" style="color:' + (active ? '#fde068' : 'var(--muted)') + ';">' + (active ? (Math.round(dMin) + '°–' + Math.round(dMax) + '°') : 'glisser un repère pour activer') + '</b></div>'
+    + '<div>🎯 Surligner houle : <b id="cmp-dir-live-lbl-' + suffix + '" style="color:' + (active ? '#fde068' : 'var(--muted)') + ';">' + (active ? (Math.round(dMin) + '°–' + Math.round(dMax) + '°') : 'glisser un repère pour activer') + '</b></div>'
     + '<div style="font-size:9.5px;color:var(--faint);">2 repères sur le cercle — glisser, ou flèches ←/→ au clavier'
     + (active ? ' · <a href="javascript:void(0)" onclick="_cmpClearDirFilter()" style="color:var(--accent);">Effacer</a>' : '') + '</div>'
     + '</div>'
     + '</div>';
 }
-// Met à jour UNIQUEMENT la molette (position des poignées, arc, libellé) sans
-// toucher au reste du tableau — appelé à chaque frame d'un drag, doit rester
-// bon marché (pas de reconstruction de wrap.innerHTML, qui casserait le drag
-// en cours en remplaçant les nœuds SVG sous le pointeur).
+// Met à jour LES DEUX instances (position des poignées, arc, libellé) sans
+// toucher au reste du tableau/graphe — appelé à chaque frame d'un drag, doit
+// rester bon marché (pas de reconstruction du DOM, qui casserait le drag en
+// cours en remplaçant les nœuds SVG sous le pointeur).
 function _cmpDirWheelUpdateLive(key, deg) {
   _cmpDirWheelLive[key] = deg;
-  var svg = document.getElementById('cmp-dir-wheel');
-  if (!svg) return;
   var R = _CMP_DIR_R;
   var dMin = _cmpDirWheelLive.min != null ? _cmpDirWheelLive.min : (_cmpDirFilter.min != null ? _cmpDirFilter.min : 135);
   var dMax = _cmpDirWheelLive.max != null ? _cmpDirWheelLive.max : (_cmpDirFilter.max != null ? _cmpDirFilter.max : 225);
   var pMin = _cmpDirToXY(dMin, R), pMax = _cmpDirToXY(dMax, R);
-  var hMin = document.getElementById('cmp-dir-h-min'), hMax = document.getElementById('cmp-dir-h-max');
-  if (hMin) { hMin.setAttribute('cx', pMin.x.toFixed(2)); hMin.setAttribute('cy', pMin.y.toFixed(2)); hMin.setAttribute('aria-valuenow', Math.round(dMin)); hMin.setAttribute('fill', '#fde068'); }
-  if (hMax) { hMax.setAttribute('cx', pMax.x.toFixed(2)); hMax.setAttribute('cy', pMax.y.toFixed(2)); hMax.setAttribute('aria-valuenow', Math.round(dMax)); hMax.setAttribute('fill', '#fde068'); }
   var span = ((dMax - dMin) % 360 + 360) % 360, largeArc = span > 180 ? 1 : 0;
-  var arcEl = document.getElementById('cmp-dir-arc');
-  if (arcEl) { arcEl.setAttribute('d', 'M ' + pMin.x.toFixed(2) + ' ' + pMin.y.toFixed(2) + ' A ' + R + ' ' + R + ' 0 ' + largeArc + ' 1 ' + pMax.x.toFixed(2) + ' ' + pMax.y.toFixed(2)); arcEl.setAttribute('stroke', '#fde068'); }
-  var lbl = document.getElementById('cmp-dir-live-lbl');
-  if (lbl) { lbl.textContent = Math.round(dMin) + '°–' + Math.round(dMax) + '°'; lbl.style.color = '#fde068'; }
+  var d = 'M ' + pMin.x.toFixed(2) + ' ' + pMin.y.toFixed(2) + ' A ' + R + ' ' + R + ' 0 ' + largeArc + ' 1 ' + pMax.x.toFixed(2) + ' ' + pMax.y.toFixed(2);
+  var lblTxt = Math.round(dMin) + '°–' + Math.round(dMax) + '°';
+  _CMP_FILTER_SUFFIXES.forEach(function(suffix) {
+    var hMin = document.getElementById('cmp-dir-h-min-' + suffix), hMax = document.getElementById('cmp-dir-h-max-' + suffix);
+    if (hMin) { hMin.setAttribute('cx', pMin.x.toFixed(2)); hMin.setAttribute('cy', pMin.y.toFixed(2)); hMin.setAttribute('aria-valuenow', Math.round(dMin)); hMin.setAttribute('fill', '#fde068'); }
+    if (hMax) { hMax.setAttribute('cx', pMax.x.toFixed(2)); hMax.setAttribute('cy', pMax.y.toFixed(2)); hMax.setAttribute('aria-valuenow', Math.round(dMax)); hMax.setAttribute('fill', '#fde068'); }
+    var arcEl = document.getElementById('cmp-dir-arc-' + suffix);
+    if (arcEl) { arcEl.setAttribute('d', d); arcEl.setAttribute('stroke', '#fde068'); }
+    var lbl = document.getElementById('cmp-dir-live-lbl-' + suffix);
+    if (lbl) { lbl.textContent = lblTxt; lbl.style.color = '#fde068'; }
+  });
 }
 // Valide le drag en cours (ou l'ajustement clavier) : fixe _cmpDirFilter et
-// redessine tout le tableau (c'est ICI, pas pendant le drag, que le
-// surlignage des cases houle se met à jour).
+// redessine tout (c'est ICI, pas pendant le drag, que le surlignage se met à
+// jour — table ET graphe, cf. _cmpRefreshFilteredViews).
 function _cmpDirWheelCommit() {
   if (_cmpDirWheelLive.min == null && _cmpDirWheelLive.max == null) return;
   var dMin = _cmpDirWheelLive.min != null ? _cmpDirWheelLive.min : (_cmpDirFilter.min != null ? _cmpDirFilter.min : 135);
@@ -4989,11 +5021,11 @@ function _cmpDirWheelCommit() {
   _cmpDirWheelLive = { min: null, max: null };
   _cmpRefreshFilteredViews();
 }
-// Attache les gestionnaires souris/tactile/clavier sur les 2 poignées — appelé
-// après CHAQUE `wrap.innerHTML = html` (les nœuds SVG sont neufs à chaque
-// redessin, donc les écouteurs précédents ont disparu avec eux).
-function _cmpAttachDirWheel() {
-  var svg = document.getElementById('cmp-dir-wheel');
+// Attache les gestionnaires souris/tactile/clavier sur les 2 poignées d'UNE
+// instance (suffix) — appelé après CHAQUE redessin de CETTE instance (les
+// nœuds SVG sont neufs, les écouteurs précédents ont disparu avec eux).
+function _cmpAttachDirWheel(suffix) {
+  var svg = document.getElementById('cmp-dir-wheel-' + suffix);
   if (!svg) return;
   function svgPoint(evt) {
     var t = (evt.touches && evt.touches[0]) ? evt.touches[0] : evt;
@@ -5026,7 +5058,7 @@ function _cmpAttachDirWheel() {
     };
   }
   ['min', 'max'].forEach(function(key) {
-    var h = document.getElementById('cmp-dir-h-' + key);
+    var h = document.getElementById('cmp-dir-h-' + key + '-' + suffix);
     if (!h) return;
     h.addEventListener('mousedown', startDrag(key));
     h.addEventListener('touchstart', startDrag(key), { passive: false });
@@ -5076,7 +5108,9 @@ function _cmpSliderFmt(key, val) {
   var def = _CMP_SLIDER_DEFS[key];
   return (def.step < 1 ? val.toFixed(1) : Math.round(val)) + def.unit;
 }
-function _cmpSliderHtml(key) {
+// DEUX instances simultanées (même raison que la molette ci-dessus, cf.
+// _CMP_FILTER_SUFFIXES) : id suffixé, _cmpSliderUpdateLive met à jour les deux.
+function _cmpSliderHtml(key, suffix) {
   var def = _CMP_SLIDER_DEFS[key];
   var current = key === 'period' ? _cmpMinPeriod : _cmpMinHeight;
   var active = current != null;
@@ -5084,28 +5118,31 @@ function _cmpSliderHtml(key) {
   var x = _cmpSliderX(key, val);
   return '<div style="display:flex;flex-direction:column;gap:2px;">'
     + '<span style="font-size:9.5px;color:var(--muted);">' + def.label + '</span>'
-    + '<svg id="cmp-slider-' + key + '" viewBox="0 0 ' + _CMP_SLIDER_W + ' 26" width="' + _CMP_SLIDER_W + '" height="26" style="touch-action:none;">'
+    + '<svg id="cmp-slider-' + key + '-' + suffix + '" viewBox="0 0 ' + _CMP_SLIDER_W + ' 26" width="' + _CMP_SLIDER_W + '" height="26" style="touch-action:none;overflow:visible;">'
     + '<line x1="' + _CMP_SLIDER_PAD + '" y1="13" x2="' + (_CMP_SLIDER_W - _CMP_SLIDER_PAD) + '" y2="13" stroke="rgba(255,255,255,.12)" stroke-width="4" stroke-linecap="round"/>'
-    + '<line id="cmp-slider-' + key + '-fill" x1="' + _CMP_SLIDER_PAD + '" y1="13" x2="' + x.toFixed(1) + '" y2="13" stroke="' + (active ? def.col : 'rgba(255,255,255,.2)') + '" stroke-width="4" stroke-linecap="round"/>'
-    + '<circle id="cmp-slider-' + key + '-h" cx="' + x.toFixed(1) + '" cy="13" r="7" fill="' + (active ? def.col : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="' + def.label + '" aria-valuemin="' + def.min + '" aria-valuemax="' + def.max + '" aria-valuenow="' + val + '"/>'
+    + '<line id="cmp-slider-' + key + '-' + suffix + '-fill" x1="' + _CMP_SLIDER_PAD + '" y1="13" x2="' + x.toFixed(1) + '" y2="13" stroke="' + (active ? def.col : 'rgba(255,255,255,.2)') + '" stroke-width="4" stroke-linecap="round"/>'
+    + '<circle id="cmp-slider-' + key + '-' + suffix + '-h" cx="' + x.toFixed(1) + '" cy="13" r="7" fill="' + (active ? def.col : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="' + def.label + '" aria-valuemin="' + def.min + '" aria-valuemax="' + def.max + '" aria-valuenow="' + val + '"/>'
     + '</svg>'
-    + '<span id="cmp-slider-' + key + '-lbl" style="font-size:9.5px;color:' + (active ? def.col : 'var(--faint)') + ';">' + (active ? ('≥ ' + _cmpSliderFmt(key, val)) : 'inactif')
+    + '<span id="cmp-slider-' + key + '-' + suffix + '-lbl" style="font-size:9.5px;color:' + (active ? def.col : 'var(--faint)') + ';">' + (active ? ('≥ ' + _cmpSliderFmt(key, val)) : 'inactif')
     + (active ? ' · <a href="javascript:void(0)" onclick="_cmpClearSlider(\'' + key + '\')" style="color:var(--accent);">Effacer</a>' : '') + '</span>'
     + '</div>';
 }
-// Met à jour UNIQUEMENT le curseur (position, remplissage, libellé) sans
-// toucher au reste du tableau — même raison que _cmpDirWheelUpdateLive (pas de
-// reconstruction du DOM pendant le drag, qui le casserait sous le pointeur).
+// Met à jour LES DEUX instances (position, remplissage, libellé) sans toucher
+// au reste — même raison que _cmpDirWheelUpdateLive (pas de reconstruction du
+// DOM pendant le drag, qui le casserait sous le pointeur).
 function _cmpSliderUpdateLive(key, val) {
   _cmpSliderLive[key] = val;
   var def = _CMP_SLIDER_DEFS[key];
   var x = _cmpSliderX(key, val);
-  var h = document.getElementById('cmp-slider-' + key + '-h');
-  var fill = document.getElementById('cmp-slider-' + key + '-fill');
-  var lbl = document.getElementById('cmp-slider-' + key + '-lbl');
-  if (h) { h.setAttribute('cx', x.toFixed(1)); h.setAttribute('fill', def.col); h.setAttribute('aria-valuenow', val); }
-  if (fill) { fill.setAttribute('x2', x.toFixed(1)); fill.setAttribute('stroke', def.col); }
-  if (lbl) { lbl.textContent = '≥ ' + _cmpSliderFmt(key, val); lbl.style.color = def.col; }
+  var lblTxt = '≥ ' + _cmpSliderFmt(key, val);
+  _CMP_FILTER_SUFFIXES.forEach(function(suffix) {
+    var h = document.getElementById('cmp-slider-' + key + '-' + suffix + '-h');
+    var fill = document.getElementById('cmp-slider-' + key + '-' + suffix + '-fill');
+    var lbl = document.getElementById('cmp-slider-' + key + '-' + suffix + '-lbl');
+    if (h) { h.setAttribute('cx', x.toFixed(1)); h.setAttribute('fill', def.col); h.setAttribute('aria-valuenow', val); }
+    if (fill) { fill.setAttribute('x2', x.toFixed(1)); fill.setAttribute('stroke', def.col); }
+    if (lbl) { lbl.textContent = lblTxt; lbl.style.color = def.col; }
+  });
 }
 function _cmpSliderCommit(key) {
   if (_cmpSliderLive[key] == null) return;
@@ -5118,9 +5155,9 @@ function _cmpClearSlider(key) {
   if (key === 'period') _cmpMinPeriod = null; else _cmpMinHeight = null;
   _cmpRefreshFilteredViews();
 }
-function _cmpAttachSlider(key) {
-  var svg = document.getElementById('cmp-slider-' + key);
-  var h = document.getElementById('cmp-slider-' + key + '-h');
+function _cmpAttachSlider(key, suffix) {
+  var svg = document.getElementById('cmp-slider-' + key + '-' + suffix);
+  var h = document.getElementById('cmp-slider-' + key + '-' + suffix + '-h');
   if (!svg || !h) return;
   function svgX(evt) {
     var t = (evt.touches && evt.touches[0]) ? evt.touches[0] : evt;
@@ -5312,14 +5349,24 @@ function _renderCmpTable() {
     var bits = [];
     if (hiddenSwellCount) bits.push(hiddenSwellCount + ' modèle(s) houle masqué(s) <a href="javascript:void(0)" onclick="_resetSwellHidden()" style="color:var(--accent);">↺ réafficher</a>');
     if (hiddenWindCount) bits.push(hiddenWindCount + ' modèle(s) vent masqué(s) <a href="javascript:void(0)" onclick="_resetWindCmpHidden()" style="color:var(--accent);">↺ réafficher</a>');
-    hiddenBanner = '<div style="font-size:10.5px;color:var(--warn,#e8a057);background:rgba(232,160,87,.08);border:1px solid rgba(232,160,87,.25);border-radius:6px;padding:5px 8px;margin-bottom:8px;">⚠ ' + bits.join(' · ') + '</div>';
+    // position:sticky — sinon ce bandeau défile HORIZONTALEMENT avec le
+    // tableau (7j de large) et disparaît dès qu'on avance dans les jours,
+    // exactement comme les filtres ci-dessous (même cause, même correctif).
+    hiddenBanner = '<div style="position:sticky;left:0;font-size:10.5px;color:var(--warn,#e8a057);background:rgba(232,160,87,.08);border:1px solid rgba(232,160,87,.25);border-radius:6px;padding:5px 8px;margin-bottom:8px;width:fit-content;max-width:100%;">⚠ ' + bits.join(' · ') + '</div>';
   }
   if (!windDefs.length && !swellDefs.length) { wrap.innerHTML = hiddenBanner; return; }
   // Molette direction + 2 curseurs (période/hauteur min.) côte à côte — mêmes
   // filtres, combinés par _cmpSwellCellMatches (ET logique, cf. plus haut).
+  // position:sticky;left:0 : le tableau fait 7j de large et défile
+  // horizontalement dans #cmp-table-wrap — sans ça, ces contrôles (posés en
+  // haut du conteneur scrollable, pas dans une colonne sticky comme les
+  // libellés de modèle) glissaient hors champ dès qu'on avançait dans les
+  // jours (signalé par l'utilisateur : "ça doit rester visible et
+  // accessible"). background opaque : sinon le contenu du tableau scrollé
+  // transparaîtrait dessous.
   var filtersHtml = swellDefs.length
-    ? '<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:7px;">'
-      + _cmpDirWheelHtml() + _cmpSliderHtml('period') + _cmpSliderHtml('height') + '</div>'
+    ? '<div style="position:sticky;left:0;z-index:3;background:var(--deep);display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:7px;padding-bottom:2px;width:fit-content;max-width:100%;">'
+      + _cmpDirWheelHtml('t') + _cmpSliderHtml('period', 't') + _cmpSliderHtml('height', 't') + '</div>'
     : '';
   var html = hiddenBanner + filtersHtml + '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
     + '<thead><tr>' + dayRow + '</tr><tr>' + hourRow + '</tr></thead><tbody>';
@@ -5328,7 +5375,7 @@ function _renderCmpTable() {
   html += '</tbody></table>';
   html += '<div style="font-size:9.5px;color:var(--faint);margin-top:5px;line-height:1.4;">Pastille colorée = résolution du modèle (plus le chiffre est petit, plus le modèle est fin/local). Fond des cases coloré selon l\'intensité. Nuit grisée.</div>';
   wrap.innerHTML = html;
-  if (swellDefs.length) { _cmpAttachDirWheel(); _cmpAttachSlider('period'); _cmpAttachSlider('height'); }
+  if (swellDefs.length) { _cmpAttachDirWheel('t'); _cmpAttachSlider('period', 't'); _cmpAttachSlider('height', 't'); }
 }
 
 function _swellToPts(d, comp) {
@@ -5706,20 +5753,10 @@ function _drawSwellCompare() {
         + '</span>';
     }).join('') || '<span style="color:var(--faint);">Aucun modèle avec de la houle ' + (comp === 'secondary' ? 'secondaire' : 'primaire') + ' pour ce spot</span>';
     if (anyHidden) legEl.innerHTML += '<button onclick="_resetSwellHidden()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>';
-    // Indicateur du filtre houle (molette + curseurs, réglés plus bas dans le
-    // tableau "fourchette inter-modèles") : pas de contrôles dupliqués ICI,
-    // juste un rappel que l'anneau doré sur les points vient de ce filtre
-    // partagé, + un accès rapide pour l'effacer sans redescendre le chercher.
-    var dirActive = _cmpDirFilter.min != null && _cmpDirFilter.max != null;
-    if (dirActive || _cmpMinPeriod != null || _cmpMinHeight != null) {
-      var parts = [];
-      if (dirActive) parts.push(Math.round(_cmpDirFilter.min) + '°–' + Math.round(_cmpDirFilter.max) + '°');
-      if (_cmpMinPeriod != null) parts.push('≥' + Math.round(_cmpMinPeriod) + 's');
-      if (_cmpMinHeight != null) parts.push('≥' + _cmpMinHeight.toFixed(1) + 'm');
-      legEl.innerHTML += '<span style="color:#fde068;font-size:10.5px;margin-left:4px;">🎯 ' + parts.join(' · ')
-        + ' <a href="javascript:void(0)" onclick="_cmpClearAllSwellFilters()" style="color:var(--accent);">effacer</a></span>';
-    }
   }
+  // Molette + curseurs dupliqués ici (cf. commentaire HTML sur #cmp-dir-controls-graph) —
+  // même état partagé que la copie du tableau, remplace l'ancien indicateur texte seul.
+  _renderCmpGraphFilters();
 
   // Légende de la bande de marée favorable (§10.5 priorité 3) — un bandeau
   // vert sans légende serait une devinette, même logique que celle du ruban de
@@ -6031,18 +6068,34 @@ function _drawSwellCompare() {
     // Points discrets sur les créneaux réels (texture, repères de confiance)
     ctx.fillStyle = col;
     pts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.h), 1.6, 0, Math.PI * 2); ctx.fill(); });
-    // Anneau doré sur les points qui satisfont les filtres houle (molette
-    // direction + curseurs période/hauteur, réglés plus bas sur la page dans le
-    // tableau "fourchette inter-modèles") — MÊME état partagé
-    // (_cmpSwellCellMatches), pas de contrôles dupliqués : régler le filtre une
-    // fois l'applique aux deux vues (demande utilisateur — répond aussi au
-    // "faut-il dupliquer les boutons ?" : non, l'état est déjà module-level,
-    // seul le REDESSIN de ce graphe manquait, cf. les commit/clear du filtre).
-    ctx.strokeStyle = '#fde068'; ctx.lineWidth = 1.6;
-    pts.forEach(function(p) {
-      if (!_cmpSwellCellMatches(p)) return;
-      ctx.beginPath(); ctx.arc(X(p.ms), Y(p.h), 4.5, 0, Math.PI * 2); ctx.stroke();
+  }
+  // Bande verticale (pas un anneau par point) pour le filtre houle — un anneau
+  // sur CHAQUE point de CHAQUE modèle qui matche faisait "le bazar" avec 5-6
+  // courbes qui se chevauchent (retour utilisateur) : une seule bande dorée
+  // translucide, sur toute la hauteur du panneau, aux créneaux où AU MOINS UN
+  // modèle actif satisfait le filtre — même principe que les bandes nuit/marée
+  // favorable déjà dessinées ci-dessous (panelShadeIntervals), donc cohérent
+  // visuellement au lieu d'ajouter un nouveau langage graphique.
+  function _cmpSwellMatchIntervals() {
+    var anyFilter = (_cmpDirFilter.min != null && _cmpDirFilter.max != null) || _cmpMinPeriod != null || _cmpMinHeight != null;
+    if (!anyFilter) return [];
+    var marks = [];
+    activeModels.forEach(function(m) {
+      series[m.key].forEach(function(p) { if (_cmpSwellCellMatches(p)) marks.push(p.ms); });
     });
+    if (!marks.length) return [];
+    marks.sort(function(a, b) { return a - b; });
+    // Demi-fenêtre = demi-pas d'échantillonnage typique (3h) : transforme des
+    // points isolés en bande CONTINUE et lisible plutôt que des traits fins
+    // difficiles à voir sur un panneau de plusieurs jours.
+    var half = 1.5 * 3600000, merged = [];
+    marks.forEach(function(ms) {
+      var s = ms - half, e = ms + half;
+      var last = merged[merged.length - 1];
+      if (last && s <= last[1]) { if (e > last[1]) last[1] = e; }
+      else merged.push([s, e]);
+    });
+    return merged;
   }
 
   // Couche STATIQUE des deux panneaux (fond, grille, courbes) — redessinée
@@ -6056,6 +6109,8 @@ function _drawSwellCompare() {
     // Fenêtre de marée favorable au spot (§10.5 priorité 3) — vide si le spot
     // est réglé sur « indifférent » (⚙ Score). Même définition que le score.
     panelShadeIntervals(ctx, X, _favorableTideIntervals(t0, t1), 'rgba(61,186,138,.10)', W, H, padT, padB);
+    // Filtre houle (molette + curseurs) : bande dorée, vide si aucun filtre actif.
+    panelShadeIntervals(ctx, X, _cmpSwellMatchIntervals(), 'rgba(253,224,104,.16)', W, H, padT, padB);
     panelAxisLabel(ctx, 'Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), H, axFont);
     ctx.textAlign = 'right'; ctx.font = axFont;
     var hStep = (maxH - minH) > 4 ? 1 : 0.5;

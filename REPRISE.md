@@ -82,6 +82,18 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > dupliqué, juste le redessin qui manquait (`_cmpRefreshFilteredViews`). Petit
 > indicateur + lien "effacer" ajouté sur la légende du graphe. `CACHE_NAME` →
 > v42 (frontend).
+>
+> **Suite immédiate (5)** (détail `AUDIT.md`, dernière section) : 3 retours
+> après coup. (1) L'indicateur texte seul n'était pas assez pratique →
+> molette + curseurs VRAIMENT dupliqués sous l'en-tête du comparatif houle
+> (suffixes d'id `t`/`g`, état partagé, synchronisés en direct pendant un
+> drag). (2) Les anneaux par point faisaient "le bazar" avec plusieurs
+> courbes → remplacés par UNE bande verticale translucide (mêmes
+> intervalles fusionnés, même utilitaire `panelShadeIntervals` que les
+> bandes nuit/marée déjà en place). (3) Rayon de la molette réduit 38→33
+> (repères N/E/S/O qui dépassaient le viewBox) + le bloc de filtres passe en
+> `position:sticky;left:0` (disparaissait en scrollant les 7 jours du
+> tableau, comme les libellés de modèle déjà sticky). `CACHE_NAME` → v43.
 
 ---
 

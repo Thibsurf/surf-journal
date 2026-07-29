@@ -1668,3 +1668,64 @@ filtre est actif, le disparaît après `_cmpClearAllSwellFilters()`. 3/3 runs
 sans erreur JS.
 
 `CACHE_NAME` → v42.
+
+### Suite immédiate (5) — molette dupliquée, bande au lieu d'anneaux, clipping
+
+Trois retours après la mise en place des filtres partagés :
+1. "répliquer la molette pour les courbes aussi, plus clair" — l'indicateur
+   texte seul (session précédente) n'était pas assez pratique, préfère les
+   vrais contrôles à côté du graphe.
+2. "ronds sur courbes ok mais un peu le bazar, meilleure idée ?" — un anneau
+   par point par modèle (5-6 courbes qui se chevauchent) faisait trop de bruit
+   visuel.
+3. "bords de la molette coupés, lettres NSOW coupées" + "quand on avance dans
+   les jours, ces barres de réglages/molette disparaissent avec le
+   glissement, ça doit rester visible et accessible".
+
+**Molette + curseurs dupliqués** (previsions.html) : toutes les fonctions
+(`_cmpDirWheelHtml/UpdateLive/Commit`, `_cmpAttachDirWheel`,
+`_cmpSliderHtml/UpdateLive/Commit`, `_cmpAttachSlider`) prennent maintenant un
+suffixe d'id (`_CMP_FILTER_SUFFIXES = ['t','g']` : table/graphe) pour coexister
+sans collision de `document.getElementById`. `_cmpDirWheelUpdateLive`/
+`_cmpSliderUpdateLive` mettent à jour LES DEUX instances à chaque frame d'un
+drag (boucle sur les 2 suffixes), pour qu'elles restent synchronisées
+visuellement pendant le geste, pas seulement après validation. Nouvelle
+fonction `_renderCmpGraphFilters()` (rend la copie 'g' dans
+`#cmp-dir-controls-graph`, sous l'en-tête du comparatif houle), appelée par
+`_drawSwellCompare()` à chaque redessin — même pattern que sa légende
+existante. L'ancien indicateur texte + lien "effacer" sur la légende est
+retiré (redondant maintenant que les vrais contrôles sont juste à côté).
+
+**Bande au lieu d'anneaux** : `drawSmooth` ne dessine plus d'anneau par point
+matché. Nouvelle fonction `_cmpSwellMatchIntervals()` (dans `_drawSwellCompare`)
+rassemble les timestamps de TOUS les points de TOUS les modèles actifs qui
+matchent, les élargit d'une demi-fenêtre (1,5h) et fusionne les intervalles qui
+se chevauchent → une bande verticale continue, dessinée via
+`panelShadeIntervals` (même utilitaire déjà utilisé pour la nuit et la marée
+favorable — cohérent visuellement, pas un nouveau langage graphique) au lieu
+d'un anneau par point.
+
+**Clipping corrigé** : rayon de la molette réduit 38→33 (les repères N/E/S/O à
+R+13 dépassaient le viewBox 0-100 de ~1 unité — vérifié après coup que 33+13=46
+tient avec marge de 4). `overflow:visible` ajouté sur les SVG par précaution
+supplémentaire.
+
+**Reste visible au scroll** : le conteneur des filtres (table ET bandeau
+"modèles masqués") passe en `position:sticky;left:0` — sans ça, posés en haut
+du conteneur scrollable (`#cmp-table-wrap`, 7j de large) mais PAS dans une
+colonne sticky comme les libellés de modèle, ils défilaient hors champ dès
+qu'on avançait dans les jours. Même technique déjà utilisée par les cellules
+de libellé du tableau (`position:sticky;left:0`), juste appliquée au bloc de
+contrôles entier.
+
+Vérifié en direct (harnais `__test.html`) : les 2 wheels + 4 sliders (2 clés ×
+2 suffixes) sont bien présents ; glisser la poignée de la copie GRAPHE met à
+jour `_cmpDirFilter` ET la position de la poignée de la copie TABLE au même
+`cx` (83.00 des deux côtés) — synchronisation confirmée ; recherche
+programmatique de coordonnées SVG hors `[0,100]` sur les 2 instances → 0
+(clipping résolu, pas juste par calcul) ; bande dorée sur le canvas houle
+(23613 pixels détectés, contre des anneaux dispersés avant) ; scroll simulé à
+70% de la largeur du tableau → la molette reste au même offset visuel dans le
+viewport (`wheelStillVisible: true`). 3/3 runs sans erreur JS.
+
+`CACHE_NAME` → v43.
