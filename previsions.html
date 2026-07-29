@@ -531,10 +531,11 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     🔑 <span id="token-btn-label" style="font-size:11px;"></span></button>
   <button onclick="toggleTheme()" id="theme-toggle-btn"
     title="Basculer thème clair / sombre"
+    aria-label="Basculer thème clair / sombre" aria-pressed="false"
     style="background:none;border:1px solid var(--border);color:var(--faint);
     padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:13px;line-height:1;
     white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;">
-    <span id="theme-toggle-icon">🌙</span></button>
+    <span id="theme-toggle-icon" aria-hidden="true">🌙</span></button>
   <button class="nav-hamburger" id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
 </nav>
 
@@ -2231,6 +2232,10 @@ function _snApplyThemeChrome(t) {
   if (mc) mc.content = (t === 'light') ? '#e9eff5' : '#0a1628';
   var ic = document.getElementById('theme-toggle-icon');
   if (ic) ic.textContent = (t === 'light') ? '🌞' : '🌙';
+  // aria-pressed = état "thème clair actif" pour les lecteurs d'écran (l'icône
+  // emoji seule ne dit pas l'état ; cf. aria-hidden posé dessus).
+  var tb = document.getElementById('theme-toggle-btn');
+  if (tb) tb.setAttribute('aria-pressed', t === 'light' ? 'true' : 'false');
 }
 function _snRedrawThemedCharts() {
   if (typeof renderGlobalWidget === 'function') { try { renderGlobalWidget(); } catch (e) {} }
