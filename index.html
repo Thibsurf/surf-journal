@@ -1175,7 +1175,16 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
       <label class="form-label">Observations</label>
       <textarea class="form-textarea" id="f-obs" placeholder="Conditions, anecdotes, ressenti…"></textarea>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.5rem;">
+    <!-- Barre d'actions COLLANTE (29/07/2026) : le formulaire fait ~3400 px de
+         haut, il fallait le scroller entièrement pour atteindre « Enregistrer »
+         sur mobile. Sticky en bas du modal (qui scrolle en interne, max-height
+         90vh) → le bouton reste toujours à portée. Marges négatives = pleine
+         largeur jusqu'aux coins arrondis du modal ; bottom:-2rem compense le
+         padding 2rem du modal pour coller au bord bas ; fond opaque + bordure
+         haute pour se détacher du contenu qui défile dessous. -->
+    <div style="position:sticky;bottom:-2rem;z-index:3;display:flex;gap:8px;justify-content:flex-end;
+                margin:0.5rem -2rem -2rem;padding:0.9rem 2rem;background:var(--deep);
+                border-top:1px solid var(--border);border-radius:0 0 16px 16px;">
       <button class="btn btn-secondary" onclick="closeModal('modal-add')">Annuler</button>
       <button class="btn btn-primary" onclick="saveSession()" id="btn-save-session">Enregistrer</button>
     </div>
