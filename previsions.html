@@ -2236,6 +2236,14 @@ function _snRedrawThemedCharts() {
   if (typeof renderGlobalWidget === 'function') { try { renderGlobalWidget(); } catch (e) {} }
   if (typeof _redrawBothCmp === 'function') { try { _redrawBothCmp(); } catch (e) {} }
   if (typeof ensoRender === 'function' && typeof _ensoData !== 'undefined' && _ensoData) { try { ensoRender(); } catch (e) {} }
+  // Onglet Marée & Pêche : ses canvas (marée, lune, orbite, arc solaire, score
+  // solunaire, timeline) sont thémés au tracé mais n'init qu'une fois (mareeInited)
+  // et ne se redessinaient PAS à la bascule — rester dessus en basculant figeait
+  // l'ancien thème. renderTideCurve ne refait pas de réseau (redessine le cache
+  // marée déjà chargé, comme les appels existants), sûr à rappeler ici.
+  if (typeof mareeInited !== 'undefined' && mareeInited && typeof renderTideCurve === 'function') {
+    try { renderTideCurve(typeof tideDayOffset !== 'undefined' ? (tideDayOffset || 0) : 0); } catch (e) {}
+  }
 }
 function toggleTheme() {
   var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
@@ -11740,6 +11748,12 @@ function drawSunArc(s, year, month, day) {
   cv.style.width = W+'px'; cv.style.height = H+'px';
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0,0,W,H);
+  // Thème : les bandes ciel (nuit/crépuscule/or) sont des couleurs SÉMANTIQUES
+  // du ciel réel → identiques dans les deux thèmes. Mais la ligne d'horizon et
+  // les labels (00/12/24h, lever/coucher) sont dessinés dans la bande basse
+  // TRANSPARENTE = le fond de la page : blanc/jaune pâle dessus devenait
+  // illisible sur le fond clair du thème clair. On les thème donc.
+  var lit = (typeof _panelLight === 'function') && _panelLight();
 
   // Convertir hh:mm string → fraction du jour (0-1)
   function tFrac(str) {
@@ -11808,24 +11822,26 @@ function drawSunArc(s, year, month, day) {
   ctx.beginPath();
   ctx.moveTo(pad.l, H-pad.b);
   ctx.lineTo(W-pad.r, H-pad.b);
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = lit ? 'rgba(15,35,55,0.18)' : 'rgba(255,255,255,0.12)';
   ctx.lineWidth = 1;
   ctx.stroke();
 
   // Labels horizon
   ctx.font = '8px DM Sans,sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillStyle = lit ? 'rgba(60,80,95,0.75)' : 'rgba(255,255,255,0.4)';
   ctx.textAlign = 'left'; ctx.fillText('00h', pad.l, H-4);
   ctx.textAlign = 'center'; ctx.fillText('12h', W/2, H-4);
   ctx.textAlign = 'right'; ctx.fillText('24h', W-pad.r, H-4);
 
-  // Lever/coucher labels
+  // Lever/coucher labels — #fde068 (jaune pâle) illisible sur fond clair : ambre
+  // foncé en thème clair (même token que --sun clair, #8a5c0f).
+  var sunLabel = lit ? '#8a5c0f' : '#fde068';
   if(s.sunrise){
-    ctx.fillStyle='#fde068'; ctx.textAlign='center';
+    ctx.fillStyle=sunLabel; ctx.textAlign='center';
     ctx.fillText(s.sunrise, xOf(riseF), H-pad.b+12);
   }
   if(s.sunset){
-    ctx.fillStyle='#fde068'; ctx.textAlign='center';
+    ctx.fillStyle=sunLabel; ctx.textAlign='center';
     ctx.fillText(s.sunset, xOf(setF), H-pad.b+12);
   }
 
