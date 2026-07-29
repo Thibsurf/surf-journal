@@ -62,7 +62,13 @@ try {
   --font-d:'Playfair Display',Georgia,serif;--font-b:'DM Sans',system-ui,sans-serif;
   --r:12px;--rs:8px;
   --nav-bg:rgba(10,22,40,.92);--nav-bg-mobile:rgba(10,22,40,.98);
-  --sun:#fde068;--accent2:#b9d0eb;
+  --sun:#fde068;
+  /* Houle du météogramme. En sombre, la primaire est PLUS CLAIRE que la totale
+     (pâle sur fond nuit). Sur blanc cette logique s'inverse : les deux bleus
+     devenaient indiscernables (écart mesuré 1,1:1). En clair on garde donc le
+     même contraste relatif en inversant — barre large claire, cœur étroit
+     foncé : écart porté à ~4:1. Valeurs sombres = celles d'origine. */
+  --sw-tot:rgba(79,163,199,.9);--sw-pri:rgba(185,208,235,.95);
   /* Fonds « en creux » (plus sombres que la carte en thème sombre) : posés en
      noir translucide, ils viraient au gris sale sur la carte blanche du thème
      clair — d'où une variable plutôt qu'un rgba(0,0,0,…) figé. */
@@ -94,7 +100,7 @@ try {
   --text:#17232f;--muted:#4f6373;--faint:#5c7080;
   --accent:#1a729b;--warm:#a8631f;--tube:#5b3fc4;--ok:#127a4e;--bad:#c73e3e;
   --nav-bg:rgba(238,242,246,.92);--nav-bg-mobile:rgba(238,242,246,.98);
-  --sun:#8a5c0f;--accent2:#4a7aa0;
+  --sun:#8a5c0f;--sw-tot:#6fb0d4;--sw-pri:#0b4a6f;
   --sunken:rgba(15,35,55,.055);--night-row:rgba(15,35,55,.05);
   --fab-bg:rgba(255,255,255,.95);--tip-bg:rgba(255,255,255,.97);
   --popup-bg:rgba(255,255,255,.97);--canvasbtn-bg:rgba(255,255,255,.88);
@@ -599,8 +605,8 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <div style="font-size:11px;color:var(--muted);display:flex;gap:12px;row-gap:4px;flex-wrap:wrap;margin-top:5px;">
           <span><span style="color:#3dba8a;font-weight:700;">━</span> vent moyen</span>
           <span><span style="color:#e05c5c;font-weight:700;">◆</span> rafales</span>
-          <span><span style="color:rgba(79,163,199,.9);font-weight:700;">▮</span> houle totale</span>
-          <span><span style="color:var(--accent2);font-weight:700;">▮</span> houle primaire</span>
+          <span><span style="color:var(--sw-tot);font-weight:700;">▮</span> houle totale</span>
+          <span><span style="color:var(--sw-pri);font-weight:700;">▮</span> houle primaire</span>
         </div>
       </div>
       <div class="gw-sat-panel" id="gw-sat-panel"

@@ -1894,4 +1894,38 @@ texte de la nav (Y 36-45, delta ≤6/255) ; démontré causé par le bouton de b
 lui-même — en le masquant (`display:none`), la nouvelle version est **pixel pour
 pixel identique** à l'ancienne sur toute la page.
 
+### Quatrième passe — lisibilité du widget en thème clair (même jour)
+
+Retour utilisateur sur capture : dans le météogramme, « houle totale » et
+« houle primaire » étaient indiscernables, et la grille paraissait sale.
+Trois causes, toutes propres au thème clair :
+
+1. **Les deux bleus de houle.** En sombre, la primaire est PLUS CLAIRE que la
+   totale (pâle sur fond nuit) — écart 1,80:1, qui marche parce que les deux
+   teintes sont très éloignées en clarté par rapport au fond. Transposé tel quel
+   sur blanc, ça donnait #1a729b vs #4a7aa0, soit ~1,1:1 : illisible. La logique
+   est **inversée** en clair — barre large CLAIRE (#6fb0d4) + cœur étroit FONCÉ
+   (#0b4a6f), écart porté à ~4:1. Variables `--sw-tot`/`--sw-pri`, partagées
+   avec les pastilles de légende pour qu'elles ne puissent plus diverger.
+2. **Le voile de nuit** (`rgba(0,0,0,.22)` sur les colonnes 19h-6h) virait au
+   gris sale sur carte blanche et écrasait toute la grille → teinte bleu-ardoise
+   légère `rgba(30,60,95,.10)` en clair.
+3. **Flèches et libellés de direction** (`#e8a057` / `#4fa3c7` à 75 %) : trop
+   pâles sur blanc → `#a8631f` / `#1a729b` opaques.
+
+**Régression sombre trouvée à cette occasion** : la pastille « houle primaire »
+de la légende utilisait `--accent2`, dont la valeur sombre `#b9d0eb` est OPAQUE
+alors que l'original était `rgba(185,208,235,.95)`. Le diff de pixels de la passe
+précédente ne l'avait pas vue **parce que le widget est masqué quand aucune
+donnée n'est chargée, et que ce diff coupait le réseau**. `--accent2` est
+supprimée au profit de `--sw-tot`/`--sw-pri`, dont les valeurs sombres sont
+exactement celles d'origine.
+
+**Vérification** : diff de pixels du widget **avec données injectées de façon
+déterministe** (`window._gwActiveData` stubbé à l'identique dans les deux
+versions, temps figé) — ce qui couvre enfin barres, légende, grille, voile de
+nuit et flèches : **0 pixel de différence en thème sombre**. Leçon de méthode :
+un diff de pixels ne vaut que pour ce qui est effectivement rendu — couper le
+réseau masque les composants pilotés par les données.
+
 `CACHE_NAME` → v43.

@@ -644,8 +644,10 @@ function _gwDrawOverview() {
   }
   gis.forEach(function(fi, k){
     var x = xOf(k), tot = d.totH[fi], p1 = d.sw1h[fi];
-    if (tot!=null) bar(x, yH(tot), bw, 'rgba(' + _gwSemRGB('accent') + ',.85)');
-    if (p1!=null)  bar(x, yH(p1), bw*0.56, _panelLight() ? '#4a7aa0' : 'rgba(185,208,235,.85)');
+    // Clair : totale claire + primaire foncée (cf. --sw-tot/--sw-pri) — sur blanc
+    // deux bleus proches devenaient indiscernables. Sombre : valeurs d'origine.
+    if (tot!=null) bar(x, yH(tot), bw, _panelLight() ? '#6fb0d4' : 'rgba(79,163,199,.85)');
+    if (p1!=null)  bar(x, yH(p1), bw*0.56, _panelLight() ? '#0b4a6f' : 'rgba(185,208,235,.85)');
   });
 
   // Remplissage doux sous la courbe de vent (lisibilité de la zone vent)
@@ -1101,14 +1103,17 @@ function _gwRenderGrid(d, day) {
     var gia = ' data-gi="'+fi+'"'; // survol → vecteurs satellite sur ce créneau
     // Colonnes de nuit ombrées (comme le graphe de référence et le tableau détaillé)
     var isN = hh < 6 || hh >= 19;
-    var nBg = isN ? 'background:rgba(0,0,0,.22);' : '';
+    // Voile de nuit : noir 22% sur la carte blanche donnait un gris sale qui
+    // écrasait toute la grille — en clair, teinte bleu-ardoise légère à la place.
+    var _nightVeil = _panelLight() ? 'rgba(30,60,95,.10)' : 'rgba(0,0,0,.22)';
+    var nBg = isN ? 'background:'+_nightVeil+';' : '';
 
     html += '<div class="gw-cell gw-hour"'+gia+' style="grid-row:1;grid-column:'+col+';'+nBg+'">'+String(hh).padStart(2,'0')+'h</div>';
 
     // Cellules à fond coloré : composer l'ombre de nuit PAR-DESSUS la couleur de valeur
     function vBg(colStr){
       return isN
-        ? 'background:linear-gradient(rgba(0,0,0,.22),rgba(0,0,0,.22)),linear-gradient('+colStr+','+colStr+');'
+        ? 'background:linear-gradient('+_nightVeil+','+_nightVeil+'),linear-gradient('+colStr+','+colStr+');'
         : 'background:'+colStr+';';
     }
     var ws = d.wSpd && d.wSpd[fi]!=null ? d.wSpd[fi] : null;
@@ -1120,8 +1125,10 @@ function _gwRenderGrid(d, day) {
       + '<span class="u">'+(showG?'<span style="color:'+windCol(wg)+';font-weight:700;">'+Math.round(wg)+'g</span>':'nds')+'</span></div>';
 
     var wd = d.wDir && d.wDir[fi];
-    html += '<div class="gw-cell"'+gia+' style="grid-row:3;grid-column:'+col+';'+nBg+'">'+(wd!=null?svgArrow(wd,'#e8a057')
-      + '<span class="u" style="color:rgba(232,160,87,.75);">'+Math.round(wd)+'°</span>':'—')+'</div>';
+    var _dirW = _panelLight() ? '#a8631f' : '#e8a057';
+    var _dirWlbl = _panelLight() ? '#a8631f' : 'rgba(232,160,87,.75)';
+    html += '<div class="gw-cell"'+gia+' style="grid-row:3;grid-column:'+col+';'+nBg+'">'+(wd!=null?svgArrow(wd,_dirW)
+      + '<span class="u" style="color:'+_dirWlbl+';">'+Math.round(wd)+'°</span>':'—')+'</div>';
 
     var tot = d.totH && d.totH[fi];
     html += '<div class="gw-cell"'+gia+' style="grid-row:4;grid-column:'+col+';'+vBg(_gwAlpha(hsCol(tot),.14))+'">'
@@ -1133,8 +1140,10 @@ function _gwRenderGrid(d, day) {
       + _gwPerPill(s1t)+'</div>';
 
     var s1d = d.sw1d && d.sw1d[fi];
-    html += '<div class="gw-cell"'+gia+' style="grid-row:6;grid-column:'+col+';'+nBg+'">'+(s1d!=null?svgArrow(s1d,'#4fa3c7')
-      + '<span class="u" style="color:rgba(79,163,199,.75);">'+Math.round(s1d)+'°</span>':'—')+'</div>';
+    var _dirS = _panelLight() ? '#1a729b' : '#4fa3c7';
+    var _dirSlbl = _panelLight() ? '#1a729b' : 'rgba(79,163,199,.75)';
+    html += '<div class="gw-cell"'+gia+' style="grid-row:6;grid-column:'+col+';'+nBg+'">'+(s1d!=null?svgArrow(s1d,_dirS)
+      + '<span class="u" style="color:'+_dirSlbl+';">'+Math.round(s1d)+'°</span>':'—')+'</div>';
 
     var s2h = d.sw2h && d.sw2h[fi];
     var s2x = s2h ? _gwSw2Extra(d, fi) : { t:null, dir:null };
