@@ -1929,3 +1929,85 @@ un diff de pixels ne vaut que pour ce qui est effectivement rendu — couper le
 réseau masque les composants pilotés par les données.
 
 `CACHE_NAME` → v43.
+
+---
+
+## Session du 30/07/2026 (nuit) — reprise thème clair + audits transversaux
+
+Reprise après que l'autre session a poussé le **thème clair** (9 commits
+`c751499d`→`be49a7a0` : bascule 🌙/🌞, palette `:root[data-theme="light"]`,
+graphes thémés à la main, molette + filtres houle appliqués aux courbes). Git
+local mis à jour (fast-forward). Retour utilisateur : le **surlignage des
+créneaux qui matchent la molette** manque de visibilité en clair. Puis consigne
+ouverte : auditer back/front/UX/cache jusqu'à épuisement, chaque correctif
+vérifié = 1 commit.
+
+### 1. Surlignage molette lisible en clair (`f50961df`, v45)
+
+Le doré translucide `.16` des créneaux matchés ressort sur le fond nuit du thème
+sombre mais s'efface sur blanc. **Bande du comparatif** (canvas) : ambre plus
+dense + **liseré aux 2 bords** en clair (`_panelSwellMatchFill/Edge` dans
+`charts-core.js` ; `panelShadeIntervals` gagne un param `edgeColor` optionnel).
+**Tableau** : outline `#fde068` en dur → `var(--sun)` (= `#8a5c0f` en clair, suit
+la bascule sans re-render). **Sombre prouvé bit-à-bit identique** (fill exact,
+edge `null` → bloc liseré sauté) en headless déterministe : aplat seul 990 px
+sans liseré en sombre, +liseré en clair (1056 px).
+
+### 2. SÉCURITÉ — XSS stocké via le cache AROME global (`24bac492`, v46)
+
+Le cache global Supabase `arome_wg_cache` (introduit `d5d39409`) est à **écriture
+publique** (clé anon publique, RLS `with check(true)`/`using(true)`). La réponse
+`/arome` peut donc en provenir : un tiers y pousse un blob `data` avec
+`model:"<img onerror=…>"` (et `ok/hours/init` valides pour passer les gardes
+client L9053), rendu sans échappement par `_renderAromeCardData` via
+`body.innerHTML` (L9282). Avant le cache Supabase, `model` était une constante
+serveur — le pull a rendu le champ contrôlable par un tiers. **Correctif au
+sink** : `escapeHtml(j.model)`. Seul point où une chaîne de `/arome` atteint le
+DOM (`spotname` n'est pas rendu). **Recommandé (non fait — accès Supabase / deploy
+Worker manuel requis)** : durcir la RLS d'`arome_wg_cache` (`update using(false)`,
+écriture `service_role`) et forcer `data.model` à la constante côté Worker.
+
+### 3. Thème clair — régressions de couleur trouvées et corrigées
+
+- **`drawSunArc`** (`558e18db`, v47) : ligne d'horizon + labels 00/12/24h + heures
+  de lever/coucher dessinés dans la bande basse TRANSPARENTE du canvas = fond de
+  page → blanc `.4` / `#fde068` pâle illisibles sur clair. Thémés (ardoise / ambre
+  `#8a5c0f`). Bandes ciel (nuit/crépuscule/or) laissées identiques — couleurs
+  sémantiques, pas de la chrome.
+- **Bascule onglet Marée** (même commit) : la Marée n'init qu'une fois
+  (`mareeInited`) et n'était pas dans `_snRedrawThemedCharts` → basculer en RESTANT
+  dessus figeait l'ancien thème sur TOUS ses canvas (même ceux déjà thémés). Ajout
+  d'un `renderTideCurve(tideDayOffset)` gardé (pas de refetch, juste un redessin).
+- **3 textes blancs codés en dur** (`f41171de`, v49) sur fond `var(--deep)`=blanc :
+  label date/heure de la rose des houles (blanc `.7`), point « pas de pluie » et
+  séparateurs `·` du survol AROME (blanc `.12`/`.15`). Thémés via `_panelLight()`.
+
+**Vérifié fine, laissé tel quel** (pas des bugs) : molette SVG (déjà thémée :
+`_panelGridRGB`, labels N/E/S/O, arc/poignées `#8a5c0f`) ; légende de carte
+(glass sombre sur tuiles = motif standard, lisible partout) ; `drawMoon`/rose
+(scènes autonomes) ; carte de partage (design figé volontaire). Sweep des fonds
+sombres JS : un seul (`rgba(8,20,35,.88)` = légende carte, intentionnel).
+
+### 4. Cache / PWA (`c2178696`, v48)
+
+`marine_fuel_pro.html` est précaché dans `sw.js` mais **pas `assets/fuel-core.js`**
+dont il dépend → Fuel Pro cassé hors-ligne au 1er lancement. Ajouté au précache
+(+ favicons 16/32 du `<head>`). Rappel : `cache.addAll` rejette EN BLOC si un seul
+404 → n'ajouter que des fichiers vérifiés existants.
+
+### 5. Audits sans changement (vérifiés conformes)
+
+- **Worker** (`worker_cloudflare/worker.js`) : cache Supabase AROME correct
+  (`spot` validé `/^\d+$/`, `encodeURIComponent`, `Number(wgId)`, âge ≤150 min,
+  `ctx.waitUntil`). CORS `*` acceptable (proxy météo public), POST `/token`
+  protégé `X-Push-Key`. `/proxy` : garde `startsWith("https://meteo.nc/")`
+  robuste (le `/` obligatoire termine l'autorité → astuces `@`/`:`/`.evil` en
+  échec, fail-closed).
+- **Logique molette** : `_cmpSwellCellMatches` = ET logique des 3 filtres, gardes
+  null correctes ; `_cmpDirInRange` gère le wrap-around 360° (branche `min>max`).
+- **index.html** : AUCUNE infra de thème clair (dark-only) — le thème clair est
+  EXCLUSIF à `previsions.html`. Incohérence produit à signaler (basculer clair
+  puis aller au Journal reste sombre), pas un bug.
+
+**Non-régression finale** : harnais headless, 7 onglets × cycle sombre→clair
+×2 → **0 erreur JS**. `CACHE_NAME` : v44 → **v49**.

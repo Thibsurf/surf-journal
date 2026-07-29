@@ -94,6 +94,23 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > (repères N/E/S/O qui dépassaient le viewBox) + le bloc de filtres passe en
 > `position:sticky;left:0` (disparaissait en scrollant les 7 jours du
 > tableau, comme les libellés de modèle déjà sticky). `CACHE_NAME` → v43.
+>
+> **Nuit 30/07** (détail `AUDIT.md`, section « Session du 30/07/2026 (nuit) ») :
+> reprise après le push du **thème clair** par l'autre session (fast-forward).
+> (1) **Surlignage molette lisible en clair** : bande du comparatif = ambre dense
+> + liseré aux bords ; outline du tableau `#fde068`→`var(--sun)`. Sombre prouvé
+> bit-à-bit identique. (2) **SÉCURITÉ — XSS stocké** : `arome_wg_cache` (cache
+> AROME global, écriture publique) permettait d'injecter du HTML via le champ
+> `model` rendu par `body.innerHTML` (`_renderAromeCardData` L9282) →
+> `escapeHtml`. **Reste à faire (accès Supabase/deploy Worker)** : durcir la RLS
+> d'`arome_wg_cache` + forcer `model` côté Worker. (3) **Régressions couleur clair
+> corrigées** : `drawSunArc` (labels/horizon invisibles), redraw Marée à la
+> bascule (n'init qu'une fois), 3 textes blancs sur fond blanc (rose, table
+> AROME). (4) **Cache PWA** : `fuel-core.js` absent du précache → Fuel Pro cassé
+> hors-ligne, ajouté. (5) Vérifs conformes : Worker (garde SSRF `/proxy` robuste,
+> cache Supabase correct), logique molette (wrap-around 360° OK), index.html =
+> dark-only (thème clair exclusif à previsions.html). 0 erreur JS sur 7 onglets ×
+> 2 thèmes. `CACHE_NAME` → **v49**.
 
 ---
 
