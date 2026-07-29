@@ -2027,3 +2027,49 @@ dont il dépend → Fuel Pro cassé hors-ligne au 1er lancement. Ajouté au pré
 
 **Non-régression finale** : harnais headless, 7 onglets × cycle sombre→clair
 ×2 → **0 erreur JS**. `CACHE_NAME` : v44 → **v49**.
+
+---
+
+## Session du 30/07/2026 — refonte navigation (sous-nav collante) (`f513d895`)
+
+**Demande** : la page Prévisions donnait l'impression de deux menus redondants —
+les onglets en haut ET la boussole flottante 🧭. Diagnostic : pas une duplication
+mais **deux niveaux de navigation qui se ressemblaient sans hiérarchie**. Les
+onglets changent de VUE (`showTab`) ; la boussole sautait à une SECTION de la
+longue page Prévisions (ancres). Rien ne les distinguait visuellement.
+
+### Refonte (previsions.html, un seul fichier, inline)
+
+- **Barre du haut = les VUES** : diviseur (`border-left` + padding) avant le logo
+  pour détacher les liens inter-apps (Journal/Sorties/Fuel) du titre de *cette*
+  page ; pastille `--glass` sur l'onglet actif (avant : accent seul, peu visible).
+- **Nouvelle `<nav id="forecast-subnav">` collante « Sur cette page » = les
+  SECTIONS**, sous les onglets, **en remplacement de la boussole flottante
+  (supprimée)** : chips scrollables, **scroll-spy** (surligne la section en cours
+  de lecture, handler `scroll` throttlé par `rafThrottle`), saut décalé sous les
+  DEUX barres collantes (l'ancien `scrollIntoView` cachait le titre derrière la
+  nav). `aria-current` sur le chip actif.
+- Visible seulement sur l'onglet Prévisions (`showTab` bascule `.show`) ; masquée
+  en mode widget (couverte par le sélecteur générique `html.widget-mode nav`,
+  l'élément ÉTANT un `<nav>`).
+
+### Piège rencontré (nouveau)
+
+Le sélecteur d'**élément** `nav{…;height:52px;display:flex;gap:1rem}` s'applique
+AUSSI à toute nouvelle `<nav>`. La règle ID l'emporte sur `top`/`z-index`/
+`display`, mais `height:52px` fuyait (conteneur 52px pour 42px de chips) →
+neutralisé par un `height:auto` explicite et commenté. **À retenir : toute future
+`<nav>` hérite de ce bloc.**
+
+### Vérification (headless Edge, poste Windows)
+
+- `node --check` sur les 2 blocs JS touchés = OK.
+- **Scroll-spy runtime** (injection `__diag`) : `activeTop=bsf-wrap`,
+  `activeAtSecNav=sec-nav`, `activeAtSecHs=sec-hs`, `_quickNavTo` sans erreur.
+- **Bascule d'onglets** : sous-nav `forecast→visible`, `compare/maree→masquée`,
+  retour `forecast→visible`.
+- Visuel : thèmes clair + sombre, desktop + mobile (label « Sur cette page »
+  masqué sur mobile, chips compacts) ; boussole absente du coin bas-droit.
+
+**Non touché** : ES5 strict conservé (que des `var`) ; pas de bump `sw.js` (HTML
+network-first) ; pas d'extraction vers `assets/`.
