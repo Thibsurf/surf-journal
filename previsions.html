@@ -115,12 +115,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* NAV */
 nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:blur(12px);
   border-bottom:1px solid var(--border);padding:0 1.5rem;height:52px;display:flex;align-items:center;gap:1rem;}
-.logo{font-family:var(--font-d);font-size:1.05rem;color:var(--text);margin-right:auto;}
+/* padding+bordure gauche : sépare visuellement le groupe « autres apps »
+   (Journal/Sorties/Fuel) du titre de CETTE page — deux natures différentes. */
+.logo{font-family:var(--font-d);font-size:1.05rem;color:var(--text);margin-right:auto;padding-left:.9rem;border-left:1px solid var(--border);}
 .logo span{color:var(--accent);}
 .nav-tab{background:none;border:none;cursor:pointer;color:var(--muted);font-family:var(--font-b);
   font-size:12px;padding:5px 10px;border-radius:var(--rs);transition:all .2s;white-space:nowrap;flex-shrink:0;}
 .nav-tab:hover{color:var(--text);background:var(--glass);}
-.nav-tab.active{color:var(--accent);}
+.nav-tab.active{color:var(--accent);background:var(--glass);}
 #last-update{font-size:11px;color:var(--faint);}
 #data-source-badge .ds-txt{margin-left:4px;}
 
@@ -128,6 +130,37 @@ nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:
 .nav-hamburger{display:none;background:none;border:1px solid var(--border);color:var(--muted);
   padding:5px 8px;border-radius:var(--rs);cursor:pointer;font-size:16px;line-height:1;margin-left:auto;}
 .nav-tabs-group{display:flex;align-items:center;gap:4px;}
+
+/* ─── SOUS-NAVIGATION (sections de la page Prévisions) ────────────────────────
+   Barre collante SOUS la nav principale, visible seulement sur l'onglet
+   Prévisions. Elle remplace l'ancienne boussole flottante : même rôle (sauter à
+   une section de cette longue page) mais permanente et SURLIGNÉE au défilement
+   (scroll-spy), pour lever l'ambiguïté « deux menus de navigation qui se
+   ressemblent ». La nav principale = quelle VUE ; cette barre = quelle SECTION. */
+/* height:auto — annule explicitement le height:52px du sélecteur partagé nav{}
+   (cet élément EST un <nav>, il en hérite) : la barre doit épouser ses 42px de
+   chips, pas laisser 10px de vide sous eux. */
+#forecast-subnav{position:sticky;top:52px;z-index:990;display:none;height:auto;
+  background:var(--nav-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);padding:0 1.5rem;}
+#forecast-subnav.show{display:block;}
+/* défilement horizontal des chips ; barre de scroll masquée pour rester propre */
+.fsub-scroll{display:flex;align-items:center;gap:6px;height:42px;overflow-x:auto;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;scroll-behavior:smooth;}
+.fsub-scroll::-webkit-scrollbar{display:none;}
+.fsub-scroll::before{content:'Sur cette page';flex:0 0 auto;font-size:10px;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-right:2px;}
+.fsub-chip{flex:0 0 auto;background:none;border:1px solid transparent;color:var(--muted);
+  font-family:var(--font-b);font-size:12px;padding:5px 11px;border-radius:999px;cursor:pointer;
+  white-space:nowrap;display:flex;align-items:center;gap:5px;transition:color .18s,background .18s,border-color .18s;}
+.fsub-chip:hover{color:var(--text);background:var(--glass);}
+.fsub-chip.active{color:var(--accent);background:var(--glass);border-color:var(--border-h);font-weight:600;}
+
+/* Décalage d'ancrage : les sections visées par la sous-nav ne doivent pas être
+   cachées derrière les DEUX barres collantes (nav 52px + sous-nav ~42px). Doublé
+   par le calcul JS de _quickNavTo() pour les vieux iOS sans scroll-margin-top. */
+#bsf-wrap,#gw-widget,#swell-cmp-card,#wg-arome-card,#sec-nav,#sec-hs,#sec-weekly-stats,#table-detail-wrap{scroll-margin-top:104px;}
+
 @media(max-width:680px){
   .nav-hamburger{display:flex;}
   .nav-tabs-group{
@@ -143,7 +176,15 @@ nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:
   .logo{font-size:.95rem;}
   /* Bandeau compact mobile : moins de padding/gap, badge en pastille seule, logo court */
   nav{padding:0 .7rem;gap:.5rem;}
+  /* Sous-nav mobile : padding réduit + chips un poil plus compacts, fond plus
+     opaque (var mobile) car elle recouvre du contenu au défilement. */
+  #forecast-subnav{padding:0 .7rem;background:var(--nav-bg-mobile);}
+  .fsub-scroll{height:38px;gap:4px;}
+  .fsub-scroll::before{display:none;}
+  .fsub-chip{font-size:11.5px;padding:5px 9px;}
   .logo-suffix{display:none;}
+  /* diviseur avant le logo réduit sur mobile (largeur nav = flex sans wrap) */
+  .logo{padding-left:.5rem;}
   #data-source-badge .ds-txt{display:none;}
   #data-source-badge{padding:2px 6px;}
   /* Liens inter-app réduits à leur icône : sur téléphone, texte + logo + badge +
@@ -484,7 +525,6 @@ table.ft .night td{background:var(--night-row);}
 /* ── MODE WIDGET (?widget=1) : uniquement le météogramme, sans chrome ── */
 html.widget-mode nav,
 html.widget-mode #token-sync-status,
-html.widget-mode #quick-nav-menu,
 html.widget-mode .container > *:not(#gw-widget),
 html.widget-mode #gw-widget .gw-tools,
 html.widget-mode #gw-ov-readout { display:none !important; }
@@ -537,6 +577,23 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;">
     <span id="theme-toggle-icon" aria-hidden="true">🌙</span></button>
   <button class="nav-hamburger" id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
+</nav>
+
+<!-- Sous-navigation de la page « Prévisions » (sections internes). Remplace la
+     boussole flottante. Visible par défaut (onglet Prévisions actif au chargement),
+     masquée sur les autres onglets par showTab(). class="show" d'origine =
+     affichée dès le premier rendu. Scroll-spy géré en bas de page. -->
+<nav id="forecast-subnav" class="show" aria-label="Sections de la page Prévisions">
+  <div class="fsub-scroll" id="fsub-scroll">
+    <button class="fsub-chip" data-target="bsf-wrap" onclick="_quickNavTo('bsf-wrap')">🏄 Créneaux</button>
+    <button class="fsub-chip" data-target="gw-widget" onclick="_quickNavTo('gw-widget')">📊 Widget</button>
+    <button class="fsub-chip" data-target="swell-cmp-card" onclick="_quickNavTo('swell-cmp-card')">🆚 Comparatif</button>
+    <button class="fsub-chip" data-target="wg-arome-card" onclick="_quickNavTo('wg-arome-card')">🌀 AROME</button>
+    <button class="fsub-chip" data-target="sec-nav" onclick="_quickNavTo('sec-nav')">⚓ Navigation</button>
+    <button class="fsub-chip" data-target="sec-hs" onclick="_quickNavTo('sec-hs')">🌊 Houle</button>
+    <button class="fsub-chip" data-target="sec-weekly-stats" onclick="_quickNavTo('sec-weekly-stats')">📈 Historique</button>
+    <button class="fsub-chip" data-target="table-detail-wrap" onclick="_quickNavTo('table-detail-wrap')">📋 Tableau</button>
+  </div>
 </nav>
 
 <!--  PAGE FORECAST  -->
@@ -2292,11 +2349,12 @@ function showTab(name, btn) {
   document.getElementById('tab-'+name).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
-  // Menu flottant de navigation rapide : pertinent seulement sur la longue page Prévisions
-  var _qnFab = document.getElementById('quick-nav-fab');
-  if (_qnFab) {
-    _qnFab.classList.toggle('show', name === 'forecast');
-    if (name !== 'forecast') { var _qnM = document.getElementById('quick-nav-menu'); if (_qnM) _qnM.classList.remove('open'); }
+  // Sous-navigation collante : pertinente seulement sur la longue page Prévisions.
+  // (Remplace l'ancienne boussole flottante ; même garde d'affichage.)
+  var _fsub = document.getElementById('forecast-subnav');
+  if (_fsub) {
+    _fsub.classList.toggle('show', name === 'forecast');
+    if (name === 'forecast' && typeof _fsubUpdateActive === 'function') _fsubUpdateActive();
   }
   if(name==='map' && !mapInited){
     initMap(); mapInited=true;
@@ -15258,58 +15316,73 @@ function openNavBMSDetail() {
   }
 </script>
 
-<!-- Menu flottant de navigation rapide — page « Prévisions » uniquement (longue
-     page, plusieurs sections) ; masqué sur les autres onglets via showTab(). -->
-<style>
-  /* Fond en var(--deep) : la pastille écrit son icône en var(--accent), qui
-     s'assombrit en thème clair — sur un navy figé elle devenait illisible. */
-  #quick-nav-fab{position:fixed;right:16px;bottom:20px;width:46px;height:46px;border-radius:50%;
-    background:var(--fab-bg);border:1px solid rgba(79,163,199,.4);color:var(--accent);
-    font-size:20px;cursor:pointer;z-index:900;box-shadow:0 4px 16px rgba(0,0,0,.4);
-    display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
-  #quick-nav-fab.show{display:flex;}
-  #quick-nav-menu{position:fixed;right:16px;bottom:74px;z-index:900;display:none;
-    background:var(--deep);border:1px solid var(--border);border-radius:var(--r);
-    padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:170px;}
-  #quick-nav-menu.open{display:block;}
-  #quick-nav-menu button{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;
-    color:var(--text);font-family:var(--font-b);font-size:12px;padding:8px 10px;border-radius:var(--rs);
-    cursor:pointer;text-align:left;}
-  #quick-nav-menu button:hover{background:var(--glass);}
-</style>
-<button id="quick-nav-fab" class="show" onclick="_toggleQuickNav()" title="Navigation rapide" aria-label="Navigation rapide">🧭</button>
-<div id="quick-nav-menu">
-  <button onclick="_quickNavTo('bsf-wrap')">🏄 Meilleurs créneaux</button>
-  <button onclick="_quickNavTo('gw-widget')">📊 Widget météo</button>
-  <button onclick="_quickNavTo('swell-cmp-card')">🆚 Comparatif houle</button>
-  <button onclick="_quickNavTo('wg-arome-card')">🌀 AROME / Puissance</button>
-  <button onclick="_quickNavTo('sec-nav')">⚓ Navigation</button>
-  <button onclick="_quickNavTo('sec-hs')">🌊 Houle détail</button>
-  <button onclick="_quickNavTo('sec-weekly-stats')">📈 Historique 7 jours</button>
-  <button onclick="_quickNavTo('table-detail-wrap')">📋 Tableau horaire</button>
-</div>
 <script>
-  function _toggleQuickNav() {
-    var m = document.getElementById('quick-nav-menu');
-    if (m) m.classList.toggle('open');
-  }
+  // ─── SOUS-NAVIGATION « Sur cette page » (sections de l'onglet Prévisions) ───
+  // Remplace l'ancienne boussole flottante 🧭. La barre est déclarée en HTML
+  // (#forecast-subnav) juste sous la nav ; ici : le saut vers une section + le
+  // scroll-spy qui surligne la section en cours de lecture.
+
+  // Saut vers une section. Décale la cible sous les DEUX barres collantes
+  // (nav 52px + sous-nav) : sinon le titre de section reste caché derrière elles.
   function _quickNavTo(id) {
     var el = document.getElementById(id);
     if (!el) return;
     if (el.tagName === 'DETAILS' && !el.open) el.open = true; // ex: tableau replié sur mobile
-    // Historique 7 jours vit maintenant dans l'accordéon Cache météo (replié par défaut)
+    // Historique 7 jours vit dans l'accordéon Cache météo (replié par défaut)
     var panel = document.getElementById('past-conditions-panel');
     if (panel && panel.contains(el) && panel.style.display === 'none') togglePastConditions();
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    var m = document.getElementById('quick-nav-menu');
-    if (m) m.classList.remove('open');
+    var sub = document.getElementById('forecast-subnav');
+    var off = 52 + (sub && sub.classList.contains('show') ? (sub.offsetHeight || 42) : 0) + 8;
+    var y = el.getBoundingClientRect().top + window.pageYOffset - off;
+    // scrollTo({behavior}) est ignoré par les vieux iOS → repli sur la forme 2 args
+    if ('scrollBehavior' in document.documentElement.style) window.scrollTo({ top: y, behavior: 'smooth' });
+    else window.scrollTo(0, y);
+    _fsubSetActive(id); // surlignage immédiat, sans attendre l'événement scroll
   }
-  // Fermer le menu si on clique ailleurs sur la page
-  document.addEventListener('click', function(e) {
-    var m = document.getElementById('quick-nav-menu'), fab = document.getElementById('quick-nav-fab');
-    if (!m || !m.classList.contains('open')) return;
-    if (!m.contains(e.target) && e.target !== fab) m.classList.remove('open');
-  });
+
+  var _FSUB_IDS = ['bsf-wrap','gw-widget','swell-cmp-card','wg-arome-card','sec-nav','sec-hs','sec-weekly-stats','table-detail-wrap'];
+  // Applique la classe .active au chip visé et le fait défiler dans la barre.
+  function _fsubSetActive(id) {
+    var sub = document.getElementById('forecast-subnav');
+    if (!sub) return;
+    var chips = sub.getElementsByClassName('fsub-chip'), active = null;
+    for (var i = 0; i < chips.length; i++) {
+      var on = chips[i].getAttribute('data-target') === id;
+      if (on) { chips[i].classList.add('active'); chips[i].setAttribute('aria-current', 'true'); active = chips[i]; }
+      else { chips[i].classList.remove('active'); chips[i].removeAttribute('aria-current'); }
+    }
+    if (active) _fsubScrollChipIntoView(active);
+  }
+  // Détermine la section « en cours » = la dernière franchie sous les barres.
+  function _fsubUpdateActive() {
+    var sub = document.getElementById('forecast-subnav');
+    if (!sub || !sub.classList.contains('show')) return;
+    var off = 52 + (sub.offsetHeight || 42) + 12;
+    var activeId = null;
+    for (var i = 0; i < _FSUB_IDS.length; i++) {
+      var el = document.getElementById(_FSUB_IDS[i]);
+      if (!el || el.offsetParent === null) continue; // section masquée (display:none / panneau replié)
+      if (el.getBoundingClientRect().top - off <= 0) activeId = _FSUB_IDS[i];
+    }
+    if (!activeId) { // encore au-dessus de la 1re section : prendre la 1re visible
+      for (var j = 0; j < _FSUB_IDS.length; j++) {
+        var e2 = document.getElementById(_FSUB_IDS[j]);
+        if (e2 && e2.offsetParent !== null) { activeId = _FSUB_IDS[j]; break; }
+      }
+    }
+    _fsubSetActive(activeId);
+  }
+  // Ne fait défiler la barre que si le chip actif déborde de la zone visible.
+  function _fsubScrollChipIntoView(chip) {
+    var sc = document.getElementById('fsub-scroll'); if (!sc) return;
+    var cl = chip.offsetLeft, cr = cl + chip.offsetWidth;
+    if (cl < sc.scrollLeft + 8) sc.scrollLeft = cl - 16;
+    else if (cr > sc.scrollLeft + sc.clientWidth - 8) sc.scrollLeft = cr - sc.clientWidth + 16;
+  }
+  window.addEventListener('scroll', rafThrottle(_fsubUpdateActive), { passive: true });
+  // Surlignage initial (l'onglet Prévisions est actif au chargement).
+  if (document.readyState !== 'loading') _fsubUpdateActive();
+  else window.addEventListener('load', _fsubUpdateActive);
 
   // Tooltips « ⓘ » tactiles : l'attribut title= natif ne se déclenche qu'au
   // survol souris, jamais au tap sur mobile (signalé par l'utilisateur). Ciblé
