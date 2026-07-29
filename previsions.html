@@ -123,6 +123,10 @@ nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:
 .nav-tab.active{color:var(--accent);}
 #last-update{font-size:11px;color:var(--faint);}
 #data-source-badge .ds-txt{margin-left:4px;}
+/* Liens inter-apps en ICÔNE SEULE partout (desktop compris) : le bandeau
+   débordait (token coupé à droite). L'icône + le title au survol suffisent —
+   moins de texte concurrent avec les onglets de vue. */
+.nav-link-txt{display:none;}
 
 /* HAMBURGER MOBILE */
 .nav-hamburger{display:none;background:none;border:1px solid var(--border);color:var(--muted);
@@ -511,10 +515,10 @@ html.widget-mode #gw-widget { margin-bottom:0; }
   <div class="nav-tabs-group" id="nav-tabs-group">
     <button class="nav-tab active" onclick="showTab('forecast',this);closeNavMenu()">📊 Prévisions</button>
     <button class="nav-tab" onclick="showTab('compare',this);closeNavMenu()">⚖️ Comparer</button>
-    <button class="nav-tab" onclick="showTab('map',this);closeNavMenu()">🗺️ Carte spots</button>
+    <button class="nav-tab" onclick="showTab('map',this);closeNavMenu()" title="Carte des spots">🗺️ Carte</button>
     <button class="nav-tab" onclick="showTab('windy',this);closeNavMenu()">🌊 Windy</button>
     <button class="nav-tab" onclick="showTab('synop',this);closeNavMenu()">🗺 Isofronts</button>
-    <button class="nav-tab" onclick="showTab('maree',this);closeNavMenu()">🌊 Marée &amp; Pêche</button>
+    <button class="nav-tab" onclick="showTab('maree',this);closeNavMenu()" title="Marée &amp; Pêche">🌊 Marée</button>
     <button class="nav-tab" onclick="showTab('enso',this);closeNavMenu()">📈 ENSO</button>
     <button class="nav-tab" onclick="showTab('forecast');shareSpotCard();closeNavMenu()" title="Partager le jour actuellement affiché dans le widget (image WhatsApp) — change de jour là-bas avant de partager">📤 Partager</button>
   </div>
@@ -3775,8 +3779,9 @@ async function loadForecast(i) {
         _luEl.textContent = '📴 Cache du ' + _od.toLocaleDateString('fr-FR', { day:'numeric', month:'short', timeZone:'Pacific/Noumea' })
           + ' ' + _od.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Pacific/Noumea' }) + ' · ' + s.name;
       } else {
-        _luEl.textContent = 'Màj ' + new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Pacific/Noumea' })
-          + ' · ' + s.name + (ncMarine && ncMarine.properties ? ' · meteo.nc' : '');
+        // Bandeau volontairement court : le nom du spot est déjà affiché dans le
+        // contenu, et la source (meteo.nc) est déjà dans la pastille #data-source-badge.
+        _luEl.textContent = 'Màj ' + new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Pacific/Noumea' });
       }
     }
 

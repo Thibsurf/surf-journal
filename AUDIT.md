@@ -2073,3 +2073,25 @@ neutralisé par un `height:auto` explicite et commenté. **À retenir : toute fu
 
 **Non touché** : ES5 strict conservé (que des `var`) ; pas de bump `sw.js` (HTML
 network-first) ; pas d'extraction vers `assets/`.
+
+### REVERTÉ le 30/07 (`be28a1a8`) — la 2ᵉ barre rendait plus chargé, pas moins
+
+Retour utilisateur sans ambiguïté : « c'est horrible et surchargé ». La demande de
+départ était de *réduire* les menus ; ajouter une 2ᵉ barre pleine largeur faisait
+l'inverse. Revert de `f513d895` → retour à la barre unique + boussole flottante.
+
+**Leçon** : le problème réel n'était pas l'absence de sous-nav, c'était le
+**bandeau du haut déjà saturé** (14+ éléments, débordement horizontal, token coupé).
+
+### À la place — allègement de la barre UNIQUE (`____`, à compléter au commit)
+
+- Liens inter-apps (Journal/Sorties/Fuel) en **icône seule** aussi sur desktop
+  (`.nav-link-txt{display:none}` global) — c'était le gros poste de largeur.
+- Onglets verbeux raccourcis : « Carte spots » → « Carte », « Marée & Pêche » →
+  « Marée » (title au survol conservé).
+- Bandeau `#last-update` : « Màj HH:MM · <spot> · meteo.nc » → « Màj HH:MM ». Le
+  spot est déjà dans le contenu, la source déjà dans la pastille
+  `#data-source-badge` (« meteo.nc direct ») → suppression d'une double info.
+- Résultat vérifié headless : tout tient sur **une ligne** à 1280px (plus de token
+  coupé), mobile inchangé (onglets dans le ☰). Boussole flottante conservée
+  (saut de section = 1 icône discret, pas une barre).
