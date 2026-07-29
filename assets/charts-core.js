@@ -22,6 +22,15 @@ function _panelGridRGB() { return _panelLight() ? '15,35,55' : '255,255,255'; }
 function _panelLabelRGB() { return _panelLight() ? '60,80,95' : '122,148,170'; }
 function _panelFadeRGB() { return _panelLight() ? '40,70,100' : '200,220,240'; }
 function _panelNowColor() { return _panelLight() ? 'rgba(194,121,13,.85)' : 'rgba(253,224,104,.75)'; }
+// Bande « créneaux qui matchent le filtre houle » (molette + curseurs, comparatif
+// inter-modèles). Le doré translucide .16 ressort sur le fond nuit du thème
+// sombre mais s'efface sur le blanc du thème clair : en clair on prend un ambre
+// plus dense (même teinte que la ligne "maintenant", _panelNowColor) ET un liseré
+// aux bords (_panelSwellMatchEdge) pour délimiter une bande parfois étroite.
+// Valeur sombre = exactement celle d'avant le thème clair, liseré null → aucun
+// changement sur le rendu sombre.
+function _panelSwellMatchFill() { return _panelLight() ? 'rgba(194,121,13,.20)' : 'rgba(253,224,104,.16)'; }
+function _panelSwellMatchEdge() { return _panelLight() ? 'rgba(194,121,13,.9)' : null; }
 
 // Marges horizontales imposées à TOUT panneau à axe temporel. `l` doit tenir
 // l'étiquette d'axe la plus large des panneaux empilés ("18s", "1,5", "25") à
@@ -155,7 +164,7 @@ function panelDayBands(ctx, X, t0, t1, W, H, padT, padB) {
 // autant qu'il le paraisse), plus tard la fenêtre de marée favorable.
 // Clip sur la zone de tracé : un intervalle qui déborde ne doit pas repeindre
 // la marge des étiquettes d'axe.
-function panelShadeIntervals(ctx, X, intervals, color, W, H, padT, padB) {
+function panelShadeIntervals(ctx, X, intervals, color, W, H, padT, padB, edgeColor) {
   if (!intervals || !intervals.length) return;
   ctx.save();
   ctx.beginPath();
@@ -166,6 +175,22 @@ function panelShadeIntervals(ctx, X, intervals, color, W, H, padT, padB) {
     var x0 = X(intervals[i][0]), x1 = X(intervals[i][1]);
     if (x1 <= x0) continue;
     ctx.fillRect(x0, padT, x1 - x0, H - padT - padB);
+  }
+  // Liseré vertical optionnel aux bords de chaque bande. Un aplat translucide
+  // seul se perd sur fond blanc (thème clair) quand la bande est étroite ;
+  // ourler ses deux bords la rend lisible sans l'assombrir. Paramètre non passé
+  // ailleurs → le thème sombre et les bandes nuit/marée gardent leur rendu.
+  if (edgeColor) {
+    ctx.strokeStyle = edgeColor; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var j = 0; j < intervals.length; j++) {
+      var xa = X(intervals[j][0]), xb = X(intervals[j][1]);
+      if (xb <= xa) continue;
+      var ea = Math.round(xa) + 0.5, eb = Math.round(xb) + 0.5;
+      ctx.moveTo(ea, padT); ctx.lineTo(ea, H - padB);
+      ctx.moveTo(eb, padT); ctx.lineTo(eb, H - padB);
+    }
+    ctx.stroke();
   }
   ctx.restore();
 }

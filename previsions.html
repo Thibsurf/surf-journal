@@ -5458,7 +5458,11 @@ function _renderCmpTable() {
         // d'œil quand un modèle prévoit une houle dans la fenêtre qui compte pour le
         // spot. Houle seulement (kind==='swell') : le vent n'est pas concerné.
         var cellMatch = kind === 'swell' && _cmpSwellCellMatches(p);
-        var outline = cellMatch ? 'outline:2px solid #fde068;outline-offset:-2px;' : '';
+        // var(--sun) et non #fde068 en dur : ce doré (identique en thème sombre)
+        // devient un pâle jaune illisible sur les cases blanches du thème clair.
+        // La variable suit la bascule (--sun = ambre foncé #8a5c0f en clair) sans
+        // re-render du tableau, et laisse le rendu sombre à l'identique.
+        var outline = cellMatch ? 'outline:2px solid var(--sun);outline-offset:-2px;' : '';
         return '<td style="padding:4px 4px;text-align:center;font-size:11px;border-left:' + bl + ';background:' + bg + ';color:var(--text);font-weight:700;white-space:nowrap;line-height:1.15;' + outline + '">'
           + '<div>' + main + ' <span style="font-weight:400;font-size:9px;opacity:.85;">' + arrow + '</span></div>'
           + (sub ? '<div>' + sub + '</div>' : '') + '</td>';
@@ -6239,7 +6243,10 @@ function _drawSwellCompare() {
     // est réglé sur « indifférent » (⚙ Score). Même définition que le score.
     panelShadeIntervals(ctx, X, _favorableTideIntervals(t0, t1), 'rgba(61,186,138,.10)', W, H, padT, padB);
     // Filtre houle (molette + curseurs) : bande dorée, vide si aucun filtre actif.
-    panelShadeIntervals(ctx, X, _cmpSwellMatchIntervals(), 'rgba(253,224,104,.16)', W, H, padT, padB);
+    // Couleur + liseré thémés (charts-core.js) : le doré translucide seul
+    // disparaissait sur le fond blanc du thème clair — ambre plus dense + bords
+    // ourlés en clair, rendu sombre inchangé (cf. _panelSwellMatchFill/Edge).
+    panelShadeIntervals(ctx, X, _cmpSwellMatchIntervals(), _panelSwellMatchFill(), W, H, padT, padB, _panelSwellMatchEdge());
     panelAxisLabel(ctx, 'Houle ' + (comp === 'secondary' ? '2 (m)' : '1 (m)'), H, axFont);
     ctx.textAlign = 'right'; ctx.font = axFont;
     var hStep = (maxH - minH) > 4 ? 1 : 0.5;
