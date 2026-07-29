@@ -2346,7 +2346,7 @@ function _updateTokenBtn() {
   } else {
     btn.style.color = 'var(--warm)'; btn.style.borderColor = 'var(--warm)';
     btn.innerHTML = '🔑 ? <span id="token-btn-label" style="font-size:11px;"></span>';
-    btn.title = 'Aucun token — cliquer pour en obtenir un';
+    btn.title = 'meteo.nc en attente — prévisions via GFS · détails';
   }
 }
 
@@ -2579,7 +2579,16 @@ function showNcTokenPrompt() {
     + '<span style="color:'+tokColor+';font-size:18px;">'+tokIcon+'</span>'
     + '<div><div style="color:'+tokColor+';font-weight:600;font-size:11px;">' + tokLabel + '</div>'
     + (tokExpiry ? '<div style="font-size:11px;color:'+tokColor+';opacity:.8;">' + tokExpiry + '</div>' : '')
-    + '<div style="font-size:11px;color:var(--faint);margin-top:2px;">Renouvelé automatiquement via le cloud</div>'
+    // Sous-texte adapté à l'état : pour « aucun token » on RASSURE (l'appli
+    // marche via GFS, le token se renouvelle tout seul) au lieu de laisser
+    // croire à une panne — cf. retour utilisateur sur le message peu clair.
+    + '<div style="font-size:11px;color:var(--faint);margin-top:2px;">'
+    + (tokStatus === 'none'
+        ? 'Prévisions affichées via GFS en attendant · le token meteo.nc se renouvelle tout seul via le cloud'
+        : tokStatus === 'expired'
+          ? 'Renouvellement automatique en cours via le cloud'
+          : 'Renouvelé automatiquement via le cloud')
+    + '</div>'
     + '</div></div>'
 
     // Mini-diagnostic : statut par source (rempli en asynchrone après ouverture)
@@ -4390,6 +4399,37 @@ function _marcWindow(N, lastTimeDays) {
   var t1 = Math.min(N - 1, t0 + NSTEPS - 1);
   return { t0: t0, t1: t1 };
 }
+// « Houle primaire » MARC = la partition la PLUS ÉNERGÉTIQUE de type HOULE
+// (période de pic ≥ 8 s), et NON un index fixe. BUG signalé par l'utilisateur
+// (« pour MARC ça n'est pas la houle primaire qui est affichée » / « MARC
+// n'annonçait pas ce qui est affiché ») : les partitions WW3 de ce produit MARC
+// ne sont PAS numérotées de façon stable — vérifié sur données réelles le
+// 29/07/2026, la houle dominante est tantôt la partition 0, tantôt la 1 ; la
+// partition 0 est parfois la mer du vent (ex. Mato 0,63 m / 3,4 s), parfois la
+// houle dominante (ex. Dumbéa 1,61 m / 11,3 s). L'ancien code prenait
+// `partitions[1]` en dur → affichait régulièrement une petite houle secondaire
+// (0,48 m / 13 s) à la place de la dominante (1,61 m / 11 s). On sélectionne
+// désormais la plus grosse partition dont la période indique une houle ; repli
+// sur la plus grosse partition tout court si aucune n'atteint le seuil (mer du
+// vent pure, rare pour du surf). Seuil 8 s : au-dessus = houle, en dessous =
+// mer du vent (les houles NC surfables sont à 10-14 s, la mer du vent à 3-7 s).
+function _marcPrimarySwell(partitions) {
+  if (!partitions || !partitions.length) return null;
+  var best = null, i, p;
+  for (i = 0; i < partitions.length; i++) {
+    p = partitions[i];
+    if (!p || p.h == null) continue;
+    if (p.t != null && p.t < 8) continue; // mer du vent → exclue
+    if (!best || p.h > best.h) best = p;
+  }
+  if (!best) { // aucune houle « propre » : repli sur la partition la plus haute
+    for (i = 0; i < partitions.length; i++) {
+      p = partitions[i];
+      if (p && p.h != null && (!best || p.h > best.h)) best = p;
+    }
+  }
+  return best;
+}
 async function _fetchMarcWave(spot) {
   var ctrl = new AbortController();
   // BUG corrigé (signalé utilisateur : spectre MARC absent la plupart des jours) :
@@ -4475,15 +4515,13 @@ async function _fetchMarcWave(spot) {
       var totH = hsRaw[i] * MARC_SCALE.hs;
       var totT = (t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null;
       var totDir = (dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null;
-      // « Houle primaire » = le train de houle le plus énergétique = partition 1
-      // (période de PIC ~11-13s), cohérent avec ce que TOUS les autres modèles
+      // « Houle primaire » = train de houle le plus énergétique (cf.
+      // _marcPrimarySwell — PAS un index fixe, les partitions ne sont pas
+      // numérotées stablement), cohérent avec ce que TOUS les autres modèles
       // mettent dans .h/.t/.dir (BOM sig_ht_sw1/pk_wav_per, nc/gfs swell1...).
-      // BUG signalé par l'utilisateur : le tableau/graphe/fourchette lisaient .h/.t
-      // = mer totale/t02 (~7s) alors que le widget lisait partition 1 (~12s), d'où
-      // deux périodes et deux tailles différentes pour « MARC houle » d'un panneau
-      // à l'autre. On normalise .h/.t/.dir sur la houle primaire ; la mer totale
-      // reste accessible via totH/totT/totDir (cf. flèche blanche du spectre).
-      var p1 = partitions[1];
+      // La mer totale reste accessible via totH/totT/totDir (flèche blanche du
+      // spectre).
+      var p1 = _marcPrimarySwell(partitions);
       primary.push({
         ms: MARC_EPOCH_MS + times[i] * 86400000,
         h: p1 ? p1.h : totH, t: p1 ? p1.t : totT, dir: p1 ? p1.dir : totDir,
@@ -4523,10 +4561,12 @@ async function _fetchMarcArchive(spot) {
       (row.hours || []).forEach(function(hh) {
         if (!hh || hh.hs == null) return;
         var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
-        // Même normalisation que _fetchMarcWave : .h/.t/.dir = houle primaire
-        // (partition 1, période de pic ~12s), pas la mer totale (hh.hs/t02, ~7s).
+        // Même normalisation que _fetchMarcWave : .h/.t/.dir = houle primaire =
+        // partition la plus énergétique de type houle (cf. _marcPrimarySwell —
+        // PAS partitions[1] en dur, cf. le bug corrigé le 29/07), pas la mer
+        // totale (hh.hs/t02, ~5-7s).
         var parts = hh.partitions || [];
-        var p1 = parts[1];
+        var p1 = _marcPrimarySwell(parts);
         primary.push({
           ms: ms,
           h: p1 ? p1.h : hh.hs, t: p1 ? p1.t : hh.t02, dir: p1 ? p1.dir : hh.dir,
@@ -14355,17 +14395,16 @@ function openNavBMSDetail() {
     }
   } catch(e) {}
 
-  // 2. Si pas de token local, tenter Supabase (peut faire 401 → lent)
+  // 2. Fast-path SILENCIEUX : si pas de token local, tenter Supabase pour peupler
+  //    _ncToken avant l'étape de résolution ci-dessous. AUCUN bandeau ici — le
+  //    worker autonome (cron meteo.nc) est ENCORE essayé plus bas, donc annoncer
+  //    « ⚠ Pas de token » maintenant serait prématuré et FAUX : bug signalé par
+  //    l'utilisateur (« pop-up "aucun token" à chaque fois, message pas clair,
+  //    ça marche ou pas ? »). Le vrai état est décidé après avoir tenté TOUTES
+  //    les sources, et communiqué là-bas — de façon rassurante (l'appli marche
+  //    via GFS/Open-Meteo même sans token meteo.nc).
   if (!hasLocal) {
-    _showTokenSyncStatus('Synchronisation token...', '#4fa3c7');
-    var synced = await _syncTokenFromSupabase();
-    if (synced) {
-      _showTokenSyncStatus('Token synchronisé ✓', '#3dba8a');
-      _hideTokenSyncStatus(2000);
-    } else {
-      _showTokenSyncStatus('⚠ Pas de token meteo.nc', '#e05c5c');
-      _hideTokenSyncStatus(4000);
-    }
+    try { await _syncTokenFromSupabase(); } catch(e) {}
   } else {
     // Token local dispo : sync Supabase en arrière-plan sans bloquer
     _syncTokenFromSupabase().catch(function(){});
@@ -14447,12 +14486,22 @@ function openNavBMSDetail() {
       if (_gotToken) return;
       console.info('[Boot] Token pas encore dispo — affichage Open-Meteo en attendant');
       _fallbackDisplayed = true; // (BONUS 3) pour le toast de bascule quand le token NC arrivera
+      // Message CLAIR et rassurant (pas alarmant) : l'appli fonctionne, elle
+      // affiche juste GFS le temps que meteo.nc réponde (ou en repli durable si
+      // meteo.nc est vraiment indispo). Remplace l'ancien « ⚠ Pas de token »
+      // rouge qui laissait croire à une panne bloquante.
+      _showTokenSyncStatus('Prévisions via GFS · meteo.nc en attente', '#e8a057');
+      _hideTokenSyncStatus(5000);
       loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
     }, 4000);
 
     var _onToken = function(tok, source) {
       if (_gotToken || !_adoptToken(tok, source)) return;
       _gotToken = true; clearTimeout(_fallbackTimer);
+      // Ne confirmer que si le repli GFS avait DÉJÀ été affiché (sinon boot
+      // silencieux : les vraies données meteo.nc apparaissent, pas besoin de
+      // bandeau). La bascule GFS → meteo.nc, elle, mérite un mot.
+      if (_fallbackDisplayed) { _showTokenSyncStatus('✓ meteo.nc chargé', '#3dba8a'); _hideTokenSyncStatus(2500); }
       // même si le fallback Open-Meteo est déjà affiché, on recharge avec les vraies données NC
       loadForecast(currentSpot).then(function(){ triggerBSF(); }).catch(function(){ triggerBSF(); });
     };

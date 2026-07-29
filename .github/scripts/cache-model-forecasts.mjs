@@ -129,8 +129,27 @@ async function fetchBom(spot) {
 //   (m/s, est/nord) : vent au point de grille — même résolution que la houle,
 //   en bonus pour le comparatif vent.
 const MARC_BASE = 'https://tds1.ifremer.fr/thredds/dodsC/MARC-WW3_CALEDONIE_3MIN-FOR_FULL_TIME_SERIE';
-const MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1 };
+const MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1, phs: 0.002, ptp: 0.01, pdir: 0.1 };
 const MARC_EPOCH_MS = Date.UTC(1990, 0, 1); // "days since 1990-01-01T00:00:00", cf. .das
+const MARC_PARTITIONS = [0, 1, 2, 3, 4, 5];
+// « Houle primaire » MARC = partition la plus énergétique de type HOULE (Tp≥8s),
+// PAS la mer totale (hs/t02). BUG signalé le 29/07/2026 : ce script écrivait
+// `swell_primary` = { val: hs, period: t02 } = MER TOTALE avec période MOYENNE
+// (~5 s) au lieu de la houle dominante (~11 s) — d'où « MARC n'annonçait pas ce
+// qui est affiché » dans le Journal (période complètement fausse). Même logique
+// que _marcPrimarySwell() dans previsions.html (partitions non numérotées
+// stablement : la dominante est tantôt P0, tantôt P1). `parts` = tableau de
+// { h, t, dir } | null. Repli sur la plus grosse partition si aucune ≥ 8 s.
+function marcPrimarySwell(parts) {
+  let best = null;
+  for (const p of parts) {
+    if (!p || p.h == null) continue;
+    if (p.t != null && p.t < 8) continue; // mer du vent → exclue
+    if (!best || p.h > best.h) best = p;
+  }
+  if (!best) for (const p of parts) { if (p && p.h != null && (!best || p.h > best.h)) best = p; }
+  return best;
+}
 async function fetchMarcTimeLen() {
   try {
     const r = await fetchWithTimeout(MARC_BASE + '.dds');
@@ -148,6 +167,9 @@ async function fetchMarc(spot) {
     const latIdx = Math.max(0, Math.min(220, Math.round((spot.lat - -24.0) / 0.05)));
     const lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
     const vars = ['hs', 't02', 'dir', 'uwnd', 'vwnd'];
+    // Partitions phs/ptp/pdir (0-5) : nécessaires pour extraire la houle DOMINANTE
+    // (cf. marcPrimarySwell) au lieu de la mer totale hs/t02.
+    MARC_PARTITIONS.forEach(p => vars.push(`phs${p}`, `ptp${p}`, `pdir${p}`));
     const url = MARC_BASE + `.ascii?time%5B${t0}:1:${t1}%5D,` + vars.map(v =>
       `${v}%5B${t0}:1:${t1}%5D%5B${latIdx}:1:${latIdx}%5D%5B${lonIdx}:1:${lonIdx}%5D`
     ).join(',');
@@ -173,14 +195,30 @@ async function fetchMarc(spot) {
     const times = parseFlat('time');
     const hsRaw = parseGrid('hs'), t02Raw = parseGrid('t02'), dirRaw = parseGrid('dir');
     const uRaw = parseGrid('uwnd'), vRaw = parseGrid('vwnd');
+    const partRaw = {};
+    MARC_PARTITIONS.forEach(p => { partRaw[p] = { h: parseGrid(`phs${p}`), t: parseGrid(`ptp${p}`), dir: parseGrid(`pdir${p}`) }; });
+    const okN = (a, i) => a[i] != null && !isNaN(a[i]);
     const swell = [], wind = [];
     for (let i = 0; i < times.length; i++) {
       const ms = MARC_EPOCH_MS + times[i] * 86400000;
       if (hsRaw[i] != null && !isNaN(hsRaw[i])) {
+        // Partitions de ce pas de temps, puis houle dominante (cf. marcPrimarySwell).
+        const parts = MARC_PARTITIONS.map(p => {
+          const pr = partRaw[p];
+          if (!okN(pr.h, i)) return null;
+          return {
+            h: pr.h[i] * MARC_SCALE.phs,
+            t: okN(pr.t, i) ? pr.t[i] * MARC_SCALE.ptp : null,
+            dir: okN(pr.dir, i) ? pr.dir[i] * MARC_SCALE.pdir : null,
+          };
+        });
+        const p1 = marcPrimarySwell(parts);
+        // Repli sur la mer totale si aucune partition (jamais observé mais robuste).
         swell.push({
-          ms, val: hsRaw[i] * MARC_SCALE.hs,
-          period: (t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null,
-          dir: (dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null,
+          ms,
+          val: p1 ? p1.h : hsRaw[i] * MARC_SCALE.hs,
+          period: p1 ? p1.t : ((t02Raw[i] != null && !isNaN(t02Raw[i])) ? t02Raw[i] * MARC_SCALE.t02 : null),
+          dir: p1 ? p1.dir : ((dirRaw[i] != null && !isNaN(dirRaw[i])) ? dirRaw[i] * MARC_SCALE.dir : null),
         });
       }
       if (uRaw[i] != null && vRaw[i] != null && !isNaN(uRaw[i]) && !isNaN(vRaw[i])) {
