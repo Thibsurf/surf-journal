@@ -8432,8 +8432,12 @@ function renderRose(idx) {
     }
     // Ligne 1 : date + heure (à la place du centre)
     var lbl = d.lbl[i] || '';
+    // Fond de rose-sat-card = var(--deep) = BLANC en thème clair : ce label
+    // date/heure en blanc .7 y était invisible. Ardoise foncée en clair, valeur
+    // sombre inchangée.
+    var _roseLblCol = (typeof _panelLight === 'function' && _panelLight()) ? 'rgba(23,35,47,.85)' : 'rgba(255,255,255,.7)';
     var legHtml = '<div style="width:100%;text-align:center;font-size:11px;font-weight:700;'
-      + 'color:rgba(255,255,255,.7);padding:3px 0 4px;letter-spacing:.03em;">'
+      + 'color:' + _roseLblCol + ';padding:3px 0 4px;letter-spacing:.03em;">'
       + lbl + '</div>';
     // Ligne 2 : houle 1
     legHtml += '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;width:100%;">';
@@ -9277,7 +9281,7 @@ function _renderAromeCardData(j, wgId, body) {
     // cumul 2h (pas horaire du modèle)
     var v = 0, any = false;
     [c.i, c.i + 1].forEach(function(k) { if (j.APCP1[k] != null) { v += j.APCP1[k]; any = true; } });
-    if (!any || v < 0.05) return td('<span style="color:rgba(255,255,255,.12);">·</span>');
+    if (!any || v < 0.05) return td('<span style="color:' + ((typeof _panelLight === 'function' && _panelLight()) ? 'rgba(15,35,55,.18)' : 'rgba(255,255,255,.12)') + ';">·</span>');
     return td('<b style="color:#7dd3fc;">' + (v < 10 ? v.toFixed(1) : Math.round(v)) + '</b>', 'background:rgba(125,211,252,.10);');
   }).join('') + '</tr>';
   _tdReset(); tableHtml += '<tr><td style="position:sticky;left:0;background:var(--deep);z-index:1;padding:3px 6px;color:var(--muted);">🌡 °C</td>' + cols.map(function(c) {
@@ -9434,7 +9438,8 @@ function _aromeHoverInfo(info) {
       }
     }
   } catch(e) {}
-  bar.innerHTML = parts.join(' <span style="color:rgba(255,255,255,.15);">·</span> ');
+  var _hbSep = (typeof _panelLight === 'function' && _panelLight()) ? 'rgba(15,35,55,.22)' : 'rgba(255,255,255,.15)';
+  bar.innerHTML = parts.join(' <span style="color:' + _hbSep + ';">·</span> ');
 }
 
 // Vent BOM (WaveWatch III régional, même serveur/grille que la houle BOM,
