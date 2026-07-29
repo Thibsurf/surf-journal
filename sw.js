@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v47';
+const CACHE_NAME = 'surf-nc-v48';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -14,8 +14,15 @@ const ASSETS = [
   '/surf-journal/assets/enso.js',
   '/surf-journal/assets/widget-global.js',
   '/surf-journal/assets/settings-utils.js',
+  // fuel-core.js : marine_fuel_pro.html est précaché mais son cœur de calcul ne
+  // l'était pas → la page Fuel Pro restait cassée hors-ligne au 1er lancement.
+  '/surf-journal/assets/fuel-core.js',
   '/surf-journal/favicon.ico',
-  '/surf-journal/favicon.png'
+  '/surf-journal/favicon.png',
+  // Favicons référencés dans le <head> de chaque page (petits, complètent le
+  // précache pour un affichage hors-ligne cohérent).
+  '/surf-journal/icons/favicon-16x16.png',
+  '/surf-journal/icons/favicon-32x32.png'
 ];
 
 self.addEventListener('install', event => {
