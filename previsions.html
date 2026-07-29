@@ -4890,7 +4890,26 @@ function _cmpDirInRange(deg, min, max) {
 }
 function _cmpClearDirFilter() {
   _cmpDirFilter = { min: null, max: null };
+  _cmpRefreshFilteredViews();
+}
+// Un seul état de filtre (_cmpDirFilter/_cmpMinPeriod/_cmpMinHeight), DEUX vues
+// à tenir à jour : le tableau "fourchette inter-modèles" (_renderCmpTable) ET
+// les courbes du comparatif houle juste au-dessus (_drawSwellCompare, anneau
+// doré sur les points qui matchent, cf. drawSmooth) — demande utilisateur :
+// appliquer les mêmes filtres aux deux vues SANS dupliquer les contrôles.
+// _drawSwellCompare se garde déjà elle-même si _swellCache n'est pas prêt.
+function _cmpRefreshFilteredViews() {
   _renderCmpTable();
+  if (typeof _drawSwellCompare === 'function') _drawSwellCompare();
+}
+// Efface les 3 filtres houle d'un coup — accessible depuis le raccourci affiché
+// sur la légende du graphe (cf. _drawSwellCompare), sans avoir à redescendre
+// jusqu'au tableau pour cliquer les 3 liens "Effacer" un par un.
+function _cmpClearAllSwellFilters() {
+  _cmpDirFilter = { min: null, max: null };
+  _cmpMinPeriod = null;
+  _cmpMinHeight = null;
+  _cmpRefreshFilteredViews();
 }
 
 // ─── Molette de direction (cercle SVG, 2 poignées glissables) ──────────────
@@ -4968,7 +4987,7 @@ function _cmpDirWheelCommit() {
   var dMax = _cmpDirWheelLive.max != null ? _cmpDirWheelLive.max : (_cmpDirFilter.max != null ? _cmpDirFilter.max : 225);
   _cmpDirFilter = { min: dMin, max: dMax };
   _cmpDirWheelLive = { min: null, max: null };
-  _renderCmpTable();
+  _cmpRefreshFilteredViews();
 }
 // Attache les gestionnaires souris/tactile/clavier sur les 2 poignées — appelé
 // après CHAQUE `wrap.innerHTML = html` (les nœuds SVG sont neufs à chaque
@@ -5093,11 +5112,11 @@ function _cmpSliderCommit(key) {
   var val = _cmpSliderLive[key];
   if (key === 'period') _cmpMinPeriod = val; else _cmpMinHeight = val;
   _cmpSliderLive[key] = null;
-  _renderCmpTable();
+  _cmpRefreshFilteredViews();
 }
 function _cmpClearSlider(key) {
   if (key === 'period') _cmpMinPeriod = null; else _cmpMinHeight = null;
-  _renderCmpTable();
+  _cmpRefreshFilteredViews();
 }
 function _cmpAttachSlider(key) {
   var svg = document.getElementById('cmp-slider-' + key);
@@ -5687,6 +5706,19 @@ function _drawSwellCompare() {
         + '</span>';
     }).join('') || '<span style="color:var(--faint);">Aucun modèle avec de la houle ' + (comp === 'secondary' ? 'secondaire' : 'primaire') + ' pour ce spot</span>';
     if (anyHidden) legEl.innerHTML += '<button onclick="_resetSwellHidden()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>';
+    // Indicateur du filtre houle (molette + curseurs, réglés plus bas dans le
+    // tableau "fourchette inter-modèles") : pas de contrôles dupliqués ICI,
+    // juste un rappel que l'anneau doré sur les points vient de ce filtre
+    // partagé, + un accès rapide pour l'effacer sans redescendre le chercher.
+    var dirActive = _cmpDirFilter.min != null && _cmpDirFilter.max != null;
+    if (dirActive || _cmpMinPeriod != null || _cmpMinHeight != null) {
+      var parts = [];
+      if (dirActive) parts.push(Math.round(_cmpDirFilter.min) + '°–' + Math.round(_cmpDirFilter.max) + '°');
+      if (_cmpMinPeriod != null) parts.push('≥' + Math.round(_cmpMinPeriod) + 's');
+      if (_cmpMinHeight != null) parts.push('≥' + _cmpMinHeight.toFixed(1) + 'm');
+      legEl.innerHTML += '<span style="color:#fde068;font-size:10.5px;margin-left:4px;">🎯 ' + parts.join(' · ')
+        + ' <a href="javascript:void(0)" onclick="_cmpClearAllSwellFilters()" style="color:var(--accent);">effacer</a></span>';
+    }
   }
 
   // Légende de la bande de marée favorable (§10.5 priorité 3) — un bandeau
@@ -5999,6 +6031,18 @@ function _drawSwellCompare() {
     // Points discrets sur les créneaux réels (texture, repères de confiance)
     ctx.fillStyle = col;
     pts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.h), 1.6, 0, Math.PI * 2); ctx.fill(); });
+    // Anneau doré sur les points qui satisfont les filtres houle (molette
+    // direction + curseurs période/hauteur, réglés plus bas sur la page dans le
+    // tableau "fourchette inter-modèles") — MÊME état partagé
+    // (_cmpSwellCellMatches), pas de contrôles dupliqués : régler le filtre une
+    // fois l'applique aux deux vues (demande utilisateur — répond aussi au
+    // "faut-il dupliquer les boutons ?" : non, l'état est déjà module-level,
+    // seul le REDESSIN de ce graphe manquait, cf. les commit/clear du filtre).
+    ctx.strokeStyle = '#fde068'; ctx.lineWidth = 1.6;
+    pts.forEach(function(p) {
+      if (!_cmpSwellCellMatches(p)) return;
+      ctx.beginPath(); ctx.arc(X(p.ms), Y(p.h), 4.5, 0, Math.PI * 2); ctx.stroke();
+    });
   }
 
   // Couche STATIQUE des deux panneaux (fond, grille, courbes) — redessinée

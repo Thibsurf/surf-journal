@@ -68,6 +68,20 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > est inactif mais inoffensif (comportement identique à avant). + 2 curseurs
 > linéaires (période min./houle min.) à côté de la molette, combinés par ET
 > logique. `CACHE_NAME` → v41 (frontend).
+>
+> **Suite immédiate (4)** : Worker DÉPLOYÉ en prod (`meteo-proxy-worker`,
+> version `a8301fce...`) — table Supabase créée par l'utilisateur, cache
+> global vérifié fonctionnel bout en bout (`arome_wg_cache` peuplée après un
+> cache-miss réel). 2 pièges de déploiement rencontrés et documentés
+> (`AUDIT.md`) : `npx wrangler deploy` résolvait le mauvais `wrangler.jsonc`
+> (racine, autre Worker) sans `--config ./wrangler.toml` explicite ; Node
+> système trop vieux (v12, besoin v22+ via `nvm use v22.23.1`, déjà installé).
+> + Les 3 filtres houle (direction/période/hauteur) s'appliquent maintenant
+> AUSSI aux courbes du comparatif houle (anneau doré sur les points qui
+> matchent), pas seulement au tableau — même état partagé, aucun contrôle
+> dupliqué, juste le redessin qui manquait (`_cmpRefreshFilteredViews`). Petit
+> indicateur + lien "effacer" ajouté sur la légende du graphe. `CACHE_NAME` →
+> v42 (frontend).
 
 ---
 

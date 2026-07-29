@@ -1626,3 +1626,45 @@ après ce correctif (vs 2 échecs sur les 10 précédents).
 
 `CACHE_NAME` → v41 (frontend seulement — le Worker suit son propre déploiement,
 cf. ci-dessus).
+
+### Suite immédiate (4) — déploiement Worker réel + filtres houle sur les courbes
+
+Le Worker a finalement été déployé PAR moi (demande explicite : "fait la
+commande du worker toi même"), après deux obstacles trouvés en le faisant :
+(1) `npx wrangler deploy`, même lancé depuis `worker_cloudflare/`, résolvait
+`../wrangler.jsonc` (config d'un AUTRE Worker, `surf-journal`, assets-based,
+sans rapport — probablement parce que `worker_cloudflare/` n'a pas son propre
+`package.json`, donc npx remonte au `package.json` racine et wrangler suit) →
+tentait de bundler TOUT le dépôt comme assets, y compris `.git/objects/...`
+(199 Mio) → échec "Asset too large". Corrigé avec `--config ./wrangler.toml`
+explicite. (2) Node système = v12.22.9, wrangler 4.x exige v22+ → activé
+`nvm use v22.23.1` (déjà installé sur le poste, juste pas actif par défaut).
+Déployé : `meteo-proxy-worker`, version `a8301fce-b017-498c-8bf9-c25977dbd1cc`.
+Vérifié en production : `wrangler tail` pendant des requêtes réelles → 200 OK
+sur `/arome` et `/token` (aucune régression), ET surtout `arome_wg_cache`
+(table Supabase créée par l'utilisateur entre-temps) contient désormais une
+ligne réelle (`wg_id:207051`, `updated_at` frais) après un cache-miss sur ce
+spot → la chaîne cache-miss → fetch Windguru → écriture Supabase fonctionne
+bout en bout en prod, pas seulement en théorie.
+
+**Filtres houle appliqués aux courbes de comparaison** (demande utilisateur :
+"possible de les appliquer aux courbes... faut-il dupliquer les boutons ?").
+Réponse : non, aucun contrôle dupliqué — l'état (`_cmpDirFilter`/
+`_cmpMinPeriod`/`_cmpMinHeight`) était déjà module-level, il ne manquait que
+(a) le REDESSIN du graphe quand le filtre change (les commit/clear
+n'appelaient que `_renderCmpTable()`, jamais `_drawSwellCompare()`) et (b) le
+TRACÉ du résultat sur le canvas. Ajouté `_cmpRefreshFilteredViews()` (appelle
+les deux vues, remplace les appels épars à `_renderCmpTable()` seule dans les 4
+handlers de commit/clear) et un anneau doré sur les points de `drawSmooth` qui
+satisfont `_cmpSwellCellMatches` (même fonction que le tableau). Ajouté aussi
+un petit indicateur + lien "effacer" sur la légende du graphe (au-dessus,
+avant la section fourchette) pour que le filtre actif reste visible et
+accessible sans redescendre jusqu'aux contrôles.
+Vérifié en direct (canvas, `getImageData` — seule méthode fiable pour un tracé
+canvas, cf. protocole de vérification de ce fichier) : filtre plein cercle/seuils
+bas → 6073 pixels dorés détectés sur le canvas (vs 0 sans filtre) ; filtre
+impossible (hauteur ≥999m) → 0 ; légende affiche bien l'indicateur 🎯 quand un
+filtre est actif, le disparaît après `_cmpClearAllSwellFilters()`. 3/3 runs
+sans erreur JS.
+
+`CACHE_NAME` → v42.
