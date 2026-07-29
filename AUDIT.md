@@ -1327,3 +1327,59 @@ exacte sur la carte, vue satellite centrée sur les 7, score/unités/fuseau sain
 3 canvas du comparatif alignés au pixel, pas de scroll horizontal mobile,
 robustesse sur spot sans données, cohérence interne (puissance = ½Hs²T), 0 erreur
 JS sur les 7 onglets. `CACHE_NAME` : v32 → v35 sur la session.
+
+## Session du 29/07/2026 (soir) — token, MARC (données fausses), formulaire
+
+Trois retours utilisateur, tous traités et vérifiés sur données réelles :
+
+### 1. Token — pop-up « aucun token » à chaque boot, message pas clair
+`previsions.html`. L'étape 2 du boot affichait un bandeau ROUGE « ⚠ Pas de token
+meteo.nc » après avoir tenté UNIQUEMENT Supabase, AVANT que le worker autonome
+(cron) ne soit essayé juste après → prématuré et faux (le token arrive en
+général tout de suite après). Corrigé : étape 2 = fast-path SILENCIEUX ; la
+messagerie passe dans la résolution finale (worker ∥ Supabase) — repli 4s =
+message clair/rassurant « Prévisions via GFS · meteo.nc en attente » (ambre,
+pas rouge), arrivée tardive = « ✓ meteo.nc chargé ». Modal token : sous-texte
+« aucun token » rassure désormais (appli via GFS + renouvellement auto cloud).
+Vérifié : boot sans token local → aucun bandeau alarmant, 0 erreur JS. (commit
+inclus dans 6692fa2b + 4a57518f)
+
+### 2. MARC — houle affichée FAUSSE (2 endroits, même cause racine)
+LE gros bug de la session. « Houle primaire » MARC mal définie :
+
+- **previsions.html** (comparatif houle) : prenait `partitions[1]` en DUR. Or
+  les partitions WW3 de ce produit MARC ne sont PAS numérotées de façon stable
+  — vérifié sur données Supabase réelles le 29/07 : la houle dominante est
+  tantôt partition 0, tantôt 1 ; partition 0 est parfois la mer du vent (Mato
+  0,63 m / 3,4 s), parfois la houle dominante (Dumbéa 1,61 m / 11,3 s). Le code
+  affichait donc souvent une petite houle secondaire (0,48 m / 13 s) à la place
+  de la dominante (1,61 m / 11 s).
+- **index.html / Journal** (comparaison modèles) : encore pire — le script
+  d'ingestion `cache-model-forecasts.mjs` écrivait `swell_primary` = { val: hs,
+  period: t02 } = MER TOTALE avec période MOYENNE (~5-6 s) au lieu de la houle
+  dominante (~11 s). Hauteur proche mais PÉRIODE complètement fausse.
+
+Correction commune : `_marcPrimarySwell()`/`marcPrimarySwell()` = partition la
+plus énergétique de type HOULE (Tp ≥ 8 s, exclut la mer du vent), repli sur la
+plus grosse si aucune ≥ 8 s. Appliqué aux 3 chemins (`_fetchMarcWave`,
+`_fetchMarcArchive`, ingestion `fetchMarc` + ajout du fetch phs/ptp/pdir).
+Vérifié : test unitaire 6 cas réels (dont exclusion mer du vent + repli) ;
+previsions live → Dumbéa MARC = 1,6 m / 11 s (comparatif now-row), au lieu de
+0,5 m ; ingestion testée end-to-end sur OPeNDAP → primaire 2,55 m / 11,1 s vs
+ancienne mer totale 2,56 m / 5,9 s. ⚠ Le Journal se corrige au PROCHAIN run du
+GitHub Action (3×/j) qui repeuple `model_forecast_cache` — les valeurs déjà en
+base restent fausses jusque-là (rien à faire, juste attendre le cron).
+(commit 6692fa2b)
+
+### 3. Formulaire d'ajout de session — barre d'action collante
+`index.html`. Le formulaire fait ~3400 px : il fallait tout scroller pour
+atteindre « Enregistrer » sur mobile. Barre « Annuler / Enregistrer » rendue
+sticky en bas du modal (qui scrolle en interne, max-height 90vh) → toujours à
+portée. Vérifié en headless (haut ET bas du scroll). (commit 4a57518f)
+
+### Passe finale — 0 régression
+Balayage `window.onerror`+`unhandledrejection` après TOUTES les modifs :
+`index.html` → 0 erreur ; `previsions.html` sur les 6 onglets → 0 erreur.
+`CACHE_NAME` : v35 → v37 sur la session.
+
+thib c'est ok

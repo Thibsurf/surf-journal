@@ -10,6 +10,18 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > vrais bugs corrigés (pied ENSO figé, a11y cartes, couleurs modèles
 > incohérentes entre pages), tout le reste vérifié conforme, 0 erreur JS sur les
 > 7 onglets. `CACHE_NAME` monté jusqu'à v35.
+>
+> **Soir 29/07** : 3 retours utilisateur traités (détail `AUDIT.md`, section
+> « Session du 29/07/2026 (soir) »). (1) **Token** : plus de bandeau rouge
+> prématuré « aucun token » au boot (message clair/rassurant, GFS en repli).
+> (2) **MARC — données FAUSSES** (le gros) : « houle primaire » prenait une
+> partition en dur (previsions) ou la mer totale/période moyenne (Journal) au
+> lieu de la houle DOMINANTE — les partitions WW3 ne sont pas numérotées
+> stablement. Corrigé partout via `_marcPrimarySwell()` (partition la plus
+> énergétique de type houle, Tp≥8s). ⚠ Le Journal se corrige au prochain run du
+> GitHub Action (repeuple `model_forecast_cache`) — pas instantané. (3)
+> **Formulaire session** : barre « Enregistrer » rendue collante. 0 régression
+> (0 erreur JS index+previsions). `CACHE_NAME` → v37.
 
 ---
 
