@@ -9279,7 +9279,11 @@ function _renderAromeCardData(j, wgId, body) {
   tableHtml += '</table></div>';
   tableHtml += '<div id="arome-hover-bar" style="min-height:15px;margin-top:5px;font-size:11px;color:var(--muted);">← Survolez une colonne : détail du créneau + comparaison meteo.nc</div>';
   var initNC = new Date(j.init * 1000 + 11 * 3600000);
-  tableHtml += '<div style="font-size:11px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + (j.model || '')
+  // escapeHtml : j.model peut venir du cache global Supabase arome_wg_cache
+  // (écriture publique, clé anon) — une ligne empoisonnée pousserait sinon du
+  // HTML arbitraire ici via body.innerHTML plus bas (XSS stocké). Champ affiché
+  // tel quel = seul point où une chaîne de la réponse /arome atteint le DOM.
+  tableHtml += '<div style="font-size:11px;color:var(--faint);padding:6px 2px 2px;">Run ' + String(initNC.getUTCDate()).padStart(2,'0') + '/' + String(initNC.getUTCMonth()+1).padStart(2,'0') + ' ' + String(initNC.getUTCHours()).padStart(2,'0') + 'h NC · ' + escapeHtml(j.model || '')
     + (wgId ? ' · <a href="https://www.windguru.cz/' + wgId + '" target="_blank" style="color:var(--accent);text-decoration:none;">windguru ↗</a>' : '') + '</div>';
   // Comparatif vent : mesures station (passé) vs AROME/meteo.nc/GFS/BOM/ECMWF
   var cmpHtml = _aromeCmpShellHtml();
