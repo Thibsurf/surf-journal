@@ -3954,7 +3954,7 @@ function renderObs(data, spot, used) {
     h = data;
   }
   if(!h||!h.length){
-    el.innerHTML='<div style="color:var(--faint);font-size:11px;padding:4px;">⚠ '+((spot&&spot.obsName)||'Station')+' — pas de données</div>';
+    el.innerHTML='<div style="color:var(--faint);font-size:11px;padding:4px;">⚠ '+escapeHtml((spot&&spot.obsName)||'Station')+' — pas de données</div>';
     return;
   }
   var last=null;
@@ -3981,7 +3981,7 @@ function renderObs(data, spot, used) {
     +'<div style="font-size:11px;color:var(--muted);">Rafales '+(wgKt||'—')+' nds</div></div>'
     +(t!==null?'<div style="margin-left:auto;text-align:right;"><div style="font-size:1.2rem;font-weight:600;font-family:var(--font-d);">'+t.toFixed(1)+'°</div><div style="font-size:11px;color:var(--faint);">air · '+hStr+'</div></div>':'')
     +'</div><div style="font-size:11px;color:var(--faint);margin-top:3px;">'
-      +((used&&used.station)?used.station.name:(spot.obsName||spot.name))
+      +escapeHtml((used&&used.station)?used.station.name:(spot.obsName||spot.name))
       +((used&&used.fallback)?' · ≈ station proche (vent)':'')+'</div>';
 }
 
@@ -4017,7 +4017,7 @@ function renderTideEncart(tide, spot) {
       +'</div>';
     if(idx<all.length-1) html+='<div style="color:var(--faint);font-size:11px;">·</div>';
   });
-  html+='<div style="margin-left:auto;font-size:11px;color:var(--faint);">'+(spot.tideName||'Nouméa')+'</div></div>';
+  html+='<div style="margin-left:auto;font-size:11px;color:var(--faint);">'+escapeHtml(spot.tideName||'Nouméa')+'</div></div>';
   el.innerHTML=html;
 }
 
@@ -4241,7 +4241,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   // Indicateur source dans le nav
   var lastUpEl = document.getElementById('last-update');
   if(lastUpEl) lastUpEl.innerHTML = 'Màj '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Pacific/Noumea'})
-    +' · '+spot.name
+    +' · '+escapeHtml(spot.name)
     +(useNC?' <span style="color:#3dba8a;font-size:11px;">● meteo.nc</span>':' <span style="color:var(--muted);font-size:11px;">● GFS</span>');
 
   // Stats actuelles (guard si données vides)
@@ -9032,7 +9032,7 @@ async function _loadAromeWidget(wgId, spot, station) {
   if (_wgLoadedFor === loadKey) return;
   var body = document.getElementById('wg-arome-body'); if (!body) return;
   _wgLoadedFor = loadKey;
-  body.innerHTML = '<div class="loading" style="padding:14px;"><div class="spin"></div> AROME 2.5 km' + (station ? ' — ' + station.name : '') + '…</div>';
+  body.innerHTML = '<div class="loading" style="padding:14px;"><div class="spin"></div> AROME 2.5 km' + (station ? ' — ' + escapeHtml(station.name) : '') + '…</div>';
   // Mode « à la station » : Windguru est lié à un spot fixe (pas de notion de
   // « point libre »), donc uniquement l'archive GRIB2 aux coordonnées de la
   // station — même logique que _fetchWindAtStation pour le comparatif ci-dessous.
@@ -9045,7 +9045,7 @@ async function _loadAromeWidget(wgId, spot, station) {
     // figure (bug signalé par l'utilisateur).
     _aromeData = null; window._aromeColInfo = null;
     body.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px 10px 4px;line-height:1.5;">Pas encore d\'archive GRIB2 pour '
-      + station.name + ' (le job GitHub Actions passe 3×/jour).</div>' + _aromeCmpShellHtml();
+      + escapeHtml(station.name) + ' (le job GitHub Actions passe 3×/jour).</div>' + _aromeCmpShellHtml();
     await _renderAromeCompare(null);
     return;
   }
@@ -10475,7 +10475,7 @@ function _fetchObsWind(s, m) {
     if (rTxt) rainStr = '<div style="font-size:11px;color:#7dd3fc;margin-top:2px;">🌧 ' + rTxt + '</div>';
     m.setTooltipContent(
       '<div style="min-width:120px;">'
-      + '<div style="font-weight:600;font-size:11px;color:#c8e6ff;margin-bottom:4px;">' + s.name + '</div>'
+      + '<div style="font-weight:600;font-size:11px;color:#c8e6ff;margin-bottom:4px;">' + escapeHtml(s.name) + '</div>'
       + '<div style="display:flex;align-items:baseline;gap:4px;">'
       + '<span style="font-size:22px;font-weight:700;color:' + col + ';line-height:1;">' + Math.round(spd) + '</span>'
       + '<span style="font-size:11px;color:#7aafd4;">nds</span>'
@@ -10681,7 +10681,7 @@ async function fetchStationForecast(lat, lon) {
 
 function renderObsHistoryPanel(panel) {
   var stOpts = OBS_STATIONS.map(function(s, i) {
-    return '<option value="' + i + '">' + s.name + '</option>';
+    return '<option value="' + i + '">' + escapeHtml(s.name) + '</option>';
   }).join('');
 
   panel.innerHTML =
@@ -11234,14 +11234,14 @@ function showAddSpotDialog(lat, lon) {
 
   // Construire les options select
   var portOpts = PORTS_REF.map(function(p,i){
-    return '<option value="'+i+'"'+(p.name===port0.name?' selected':'')+'>'+p.name+'</option>';
+    return '<option value="'+i+'"'+(p.name===port0.name?' selected':'')+'>'+escapeHtml(p.name)+'</option>';
   }).join('');
   var obsOpts = OBS_STATIONS.map(function(s,i){
-    return '<option value="'+i+'"'+(s.name===obs0.name?' selected':'')+'>'+s.name+'</option>';
+    return '<option value="'+i+'"'+(s.name===obs0.name?' selected':'')+'>'+escapeHtml(s.name)+'</option>';
   }).join('');
   var marineOpts = '<option value="">— Auto (lat/lon)</option>'
     + MARINE_SPOTS.map(function(m,i){
-        return '<option value="'+i+'"'+(m.id===marine0.id?' selected':'')+'>'+m.name+'</option>';
+        return '<option value="'+i+'"'+(m.id===marine0.id?' selected':'')+'>'+escapeHtml(m.name)+'</option>';
       }).join('');
 
   div.innerHTML='<div style="font-weight:600;color:var(--accent);margin-bottom:12px;font-size:13px;">📍 Nouveau spot</div>'
@@ -11332,9 +11332,9 @@ function addMarkerToMap(spot,i) {
       +'<div style="position:absolute;bottom:7px;right:8px;font-size:11px;color:rgba(180,220,255,.65);font-family:monospace;">'+s.lat.toFixed(3)+'° '+s.lon.toFixed(3)+'°</div>'
       +'</div></div>'
       +'<div style="font-size:11px;color:var(--faint);margin-bottom:7px;line-height:1.7;padding:0 2px;">'
-      +'⚓ '+(s.marineName||'Auto lat/lon')
-      +' · 🌊 '+(s.tideName||'Nouméa')
-      +' · 📡 '+(s.obsName||'—')
+      +'⚓ '+escapeHtml(s.marineName||'Auto lat/lon')
+      +' · 🌊 '+escapeHtml(s.tideName||'Nouméa')
+      +' · 📡 '+escapeHtml(s.obsName||'—')
       +'</div>'
       +'<button onclick="selectSpotFromMap('+idx+')" '
       +'style="display:block;width:100%;padding:8px;margin-bottom:5px;border-radius:7px;'
@@ -14488,20 +14488,20 @@ function showSpotSettings(forceOpen) {
   var curHsSrc = spot.hsSrc || 'nc'; // 'nc' ou 'gfs'
 
   var portOptions = PORTS_LIST.map(function(p) {
-    return '<option value="'+p.id+'"'+(p.id===curTide?' selected':'')+'>'+p.name+'</option>';
+    return '<option value="'+p.id+'"'+(p.id===curTide?' selected':'')+'>'+escapeHtml(p.name)+'</option>';
   }).join('');
   var obsOptions = OBS_LIST.map(function(o) {
-    return '<option value="'+o.id+'"'+(o.id===curObs?' selected':'')+'>'+o.name+'</option>';
+    return '<option value="'+o.id+'"'+(o.id===curObs?' selected':'')+'>'+escapeHtml(o.name)+'</option>';
   }).join('');
   var marineOptions = '<option value=""'+(curMarine===''?' selected':'')+'>— Auto (lat/lon)</option>'
     + MARINE_SPOTS.map(function(m) {
-        return '<option value="'+m.id+'"'+(m.id===curMarine?' selected':'')+'>'+m.name+'</option>';
+        return '<option value="'+m.id+'"'+(m.id===curMarine?' selected':'')+'>'+escapeHtml(m.name)+'</option>';
       }).join('');
 
   div.innerHTML =
     // Titre
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'
-    +'<div style="font-weight:700;color:var(--accent);font-size:14px;">⚙ '+spot.name+'</div>'
+    +'<div style="font-weight:700;color:var(--accent);font-size:14px;">⚙ '+escapeHtml(spot.name)+'</div>'
     +'<button id="ss-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;">×</button>'
     +'</div>'
 
