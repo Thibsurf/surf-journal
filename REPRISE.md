@@ -102,8 +102,13 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > bit-à-bit identique. (2) **SÉCURITÉ — XSS stocké** : `arome_wg_cache` (cache
 > AROME global, écriture publique) permettait d'injecter du HTML via le champ
 > `model` rendu par `body.innerHTML` (`_renderAromeCardData` L9282) →
-> `escapeHtml`. **Reste à faire (accès Supabase/deploy Worker)** : durcir la RLS
-> d'`arome_wg_cache` + forcer `model` côté Worker. (3) **Régressions couleur clair
+> `escapeHtml`. **PUIS 2e XSS** (`7afb306a`) : `shared_spots` = ligne globale
+> `id='default'` écrivable par tous (clé anon) → un nom de spot piégé se propage
+> à tous ; 16 champs (name/obsName/marineName/tideName/station.name) alignés sur
+> `escapeHtml` (l'incohérence avec compare/journal ÉTAIT la faille ; vérifié :
+> nom `<img onerror>` injecté → non exécuté). **Reste à faire (accès
+> Supabase/deploy Worker)** : durcir la RLS d'`arome_wg_cache` ET de
+> `shared_spots` + forcer `model` côté Worker. (3) **Régressions couleur clair
 > corrigées** : `drawSunArc` (labels/horizon invisibles), redraw Marée à la
 > bascule (n'init qu'une fois), 3 textes blancs sur fond blanc (rose, table
 > AROME). (4) **Cache PWA** : `fuel-core.js` absent du précache → Fuel Pro cassé

@@ -1967,6 +1967,22 @@ DOM (`spotname` n'est pas rendu). **Recommandé (non fait — accès Supabase / 
 Worker manuel requis)** : durcir la RLS d'`arome_wg_cache` (`update using(false)`,
 écriture `service_role`) et forcer `data.model` à la constante côté Worker.
 
+**2 bis. SÉCURITÉ — XSS stocké via les noms de spots partagés (`7afb306a`, v51).**
+`shared_spots` est une **unique ligne globale `id='default'`**
+(`_pushSpotsToSupabase`/`_loadSpotsFromSupabase`) que TOUS lisent au boot et que
+n'importe qui écrit (clé anon). Un nom de spot piégé (`name`/`obsName`/
+`marineName`/`tideName`) se propage à tous et s'exécute partout où il atteint
+`innerHTML` sans échappement. Les cartes comparer/journal/input échappaient déjà
+— **l'incohérence était la faille**. 16 champs alignés sur `escapeHtml` :
+indicateur nav (L4244), titre ⚙ (L14504), chargement/erreur/archive AROME
+(`station.name` L9035/L9048), bandeau obs (L3957), résumé station (L3984),
+tooltip carte Leaflet (`setTooltipContent` L10478), légende marnage (`tideName`
+L4020), résumé marine/marée/obs (L11335-37) et 7 `<option>` de sélecteurs.
+`showToast`/`confirm` rendent du TEXTE (sûrs) ; `textContent` idem. **Vérifié** :
+nom piégé `<img onerror>` injecté dans `SPOTS[0].name` + `renderCompare()` en
+headless → **payload NON exécuté**, 0 erreur. Complément à faire : RLS
+`shared_spots` côté Supabase (même profil que `arome_wg_cache`/T13).
+
 ### 3. Thème clair — régressions de couleur trouvées et corrigées
 
 - **`drawSunArc`** (`558e18db`, v47) : ligne d'horizon + labels 00/12/24h + heures
