@@ -3673,22 +3673,31 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
   if (!station) return null;
   var targetH = (sessionHour == null || isNaN(sessionHour)) ? 12 : sessionHour;
   try {
-    var r = await sb.from('model_forecast_cache').select('model,lat,lon,hours').eq('date', dateVal).eq('kind', 'swell_primary');
+    var r = await sb.from('model_forecast_cache').select('model,lat,lon,hours,issued_at').eq('date', dateVal).eq('kind', 'swell_primary');
     if (r.error || !r.data || !r.data.length) return null;
     var rows = r.data.filter(function(row) {
       return Math.abs(row.lat - station.lat) < 0.02 && Math.abs(row.lon - station.lon) < 0.02;
     });
     if (!rows.length) return null;
-    var out = {};
+    // Le cron (cache-model-forecasts.mjs) tourne bien plus souvent que "3×/jour" et
+    // n'écrase jamais l'ancien run (id suffixé par runTag, cf. le script) : plusieurs
+    // lignes coexistent pour un même modèle/date, y compris des lignes ANTÉRIEURES à
+    // un correctif de calcul (ex. bug MARC houle totale/période moyenne au lieu de
+    // houle dominante, corrigé 29/07 — vérifié sur Supabase : une ligne du 27/07
+    // porte encore period≈5s, celle du 29/07 period≈11s pour la même date cible).
+    // Sans filtrer sur issued_at, ce garde une ligne au hasard de l'ordre renvoyé par
+    // Supabase → régression silencieuse à chaque bug de calcul déjà corrigé.
+    var out = {}, outIssued = {};
     rows.forEach(function(row) {
       if (!row.hours || !row.hours.length) return;
+      if (out[row.model] && outIssued[row.model] >= row.issued_at) return;
       var best = null, bd = Infinity;
       row.hours.forEach(function(hh) {
         if (hh.val == null) return;
         var df = Math.abs(hh.h - targetH);
         if (df < bd) { bd = df; best = hh; }
       });
-      if (best) out[row.model] = { val: best.val, period: best.period, dir: best.dir, hours: row.hours };
+      if (best) { out[row.model] = { val: best.val, period: best.period, dir: best.dir, hours: row.hours }; outIssued[row.model] = row.issued_at; }
     });
     return Object.keys(out).length ? out : null;
   } catch (e) { return null; }

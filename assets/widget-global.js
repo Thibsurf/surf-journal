@@ -40,6 +40,27 @@ function _gwSetSrc(src) {
   renderGlobalWidget();
 }
 
+// Classe les partitions MARC d'un pas de temps par ÉNERGIE/PÉRIODE, jamais par
+// position dans le tableau (cf. _marcPrimarySwell, previsions.html : les
+// partitions WW3 de ce produit ne sont pas numérotées de façon stable — la
+// dominante est tantôt à l'index 0, tantôt à l'index 1). Ré-appelle
+// _marcPrimarySwell (déjà utilisée en amont pour p.h/p.t/p.dir) juste pour
+// obtenir LA MÊME référence d'objet et l'exclure du reste du classement — pas
+// pour la recalculer différemment. windSea = plus grosse partition de période
+// < 8 s (mer du vent) ; secondary/third/fourth/fifth = partitions de houle
+// (Tp≥8s) restantes, triées par hauteur décroissante.
+function _gwMarcClassifyPartitions(partitions) {
+  var primaryRef = (typeof _marcPrimarySwell === 'function') ? _marcPrimarySwell(partitions) : null;
+  var windSea = null, swellRest = [];
+  (partitions || []).forEach(function(p) {
+    if (!p || p.h == null || p === primaryRef) return;
+    if (p.t != null && p.t < 8) { if (!windSea || p.h > windSea.h) windSea = p; return; }
+    swellRest.push(p);
+  });
+  swellRest.sort(function(a, b) { return b.h - a.h; });
+  return { primary: primaryRef, windSea: windSea, secondary: swellRest[0] || null, third: swellRest[1] || null, fourth: swellRest[2] || null, fifth: swellRest[3] || null };
+}
+
 // Reconstruit un objet au format _fcastData depuis _swellCache[key] ('bom'|'mf'),
 // repeuplé par _renderSwellCompare() (comparatif houle plus bas dans la page,
 // chargé au même moment) — même schéma que _ncFcastData/_omFcastData pour que le
@@ -81,23 +102,29 @@ function _gwBuildModelFcast(key) {
     out.dates.push(new Date(p.ms + 11*3600000)); // même convention que partout : UTC+11 lu en getUTC*
     if (key === 'marc' && p.partitions) {
       // MARC : hs/dir au sommet = houle TOTALE (toutes partitions confondues),
-      // pas la houle primaire — la vraie décomposition est dans p.partitions[]
-      // (convention WW3 : 0 = mer du vent, 1 = houle primaire, 2 = houle
-      // secondaire, 3/4/5 = trains suivants par énergie décroissante, cf.
-      // _fetchMarcWave). Reconstituer ici pour rester cohérent avec le sens de
-      // sw1h/sw2h/wndH partout ailleurs dans le widget — la houle 2 de MARC était
-      // accessible (déjà utilisée pour le spectre) mais pas branchée sur sw2h
-      // (signalé par l'utilisateur), et houle 3/4/5 demandées ensuite en lignes.
-      var part0 = p.partitions[0], part1 = p.partitions[1], part2 = p.partitions[2];
-      var part3 = p.partitions[3], part4 = p.partitions[4], part5 = p.partitions[5];
-      out.sw1h.push(part1 ? part1.h : null); out.sw1t.push(part1 ? part1.t : null); out.sw1d.push(part1 ? part1.dir : null);
-      out.sw2h.push(part2 ? part2.h : null); out.sw2t.push(part2 ? part2.t : null); out.sw2d.push(part2 ? part2.dir : null);
-      out.sw3h.push(part3 ? part3.h : null); out.sw3t.push(part3 ? part3.t : null); out.sw3d.push(part3 ? part3.dir : null);
-      out.sw4h.push(part4 ? part4.h : null); out.sw4t.push(part4 ? part4.t : null); out.sw4d.push(part4 ? part4.dir : null);
-      out.sw5h.push(part5 ? part5.h : null); out.sw5t.push(part5 ? part5.t : null); out.sw5d.push(part5 ? part5.dir : null);
-      out.sw2NativeArr.push(!!part2);
-      out.wndH.push(part0 ? part0.h : null);
-      // p.h = houle primaire (partition 1) depuis la normalisation de _fetchMarcWave/
+      // pas la houle primaire — la vraie décomposition est dans p.partitions[].
+      // BUG corrigé (signalé par l'utilisateur : « MARC n'annonçait pas ce qui
+      // est affiché », valeurs fausses dans CE widget alors que le Mix — qui
+      // pioche pourtant sa houle chez MARC en premier, cf. HOULE_PRIORITY plus
+      // bas — semblait bon) : ce bloc prenait `partitions[0]`=mer du vent,
+      // `[1]`=primaire, `[2..5]`=trains suivants EN DUR. Or les partitions WW3
+      // de ce produit ne sont PAS numérotées de façon stable (cf.
+      // _marcPrimarySwell dans previsions.html, même cause racine déjà
+      // corrigée le 29/07 pour le comparatif — ce fichier-ci ne l'avait pas
+      // reçue). p.h/p.t/p.dir SONT déjà la houle primaire correctement
+      // sélectionnée (_marcPrimarySwell, appliquée en amont par
+      // _fetchMarcWave/_fetchMarcArchive) : les réutiliser directement plutôt
+      // que de retrouver un index fixe. Le reste du spectre (mer du vent,
+      // houle 2 à 5) est reclassé ici par énergie/période, pas par position.
+      var cls = _gwMarcClassifyPartitions(p.partitions);
+      out.sw1h.push(p.h!=null?p.h:null); out.sw1t.push(p.t!=null?p.t:null); out.sw1d.push(p.dir!=null?p.dir:null);
+      out.sw2h.push(cls.secondary ? cls.secondary.h : null); out.sw2t.push(cls.secondary ? cls.secondary.t : null); out.sw2d.push(cls.secondary ? cls.secondary.dir : null);
+      out.sw3h.push(cls.third ? cls.third.h : null); out.sw3t.push(cls.third ? cls.third.t : null); out.sw3d.push(cls.third ? cls.third.dir : null);
+      out.sw4h.push(cls.fourth ? cls.fourth.h : null); out.sw4t.push(cls.fourth ? cls.fourth.t : null); out.sw4d.push(cls.fourth ? cls.fourth.dir : null);
+      out.sw5h.push(cls.fifth ? cls.fifth.h : null); out.sw5t.push(cls.fifth ? cls.fifth.t : null); out.sw5d.push(cls.fifth ? cls.fifth.dir : null);
+      out.sw2NativeArr.push(!!cls.secondary);
+      out.wndH.push(cls.windSea ? cls.windSea.h : null);
+      // p.h = houle primaire depuis la normalisation de _fetchMarcWave/
       // _fetchMarcArchive — la mer TOTALE est désormais dans p.totH (repli p.h si un
       // vieux point de cache ne l'a pas encore).
       out.totH.push(p.totH != null ? p.totH : p.h);

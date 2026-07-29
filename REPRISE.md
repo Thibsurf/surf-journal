@@ -22,6 +22,21 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > GitHub Action (repeuple `model_forecast_cache`) — pas instantané. (3)
 > **Formulaire session** : barre « Enregistrer » rendue collante. 0 régression
 > (0 erreur JS index+previsions). `CACHE_NAME` → v37.
+>
+> **Nuit 29/07** : MARC encore faux malgré le fix du soir — 2 VRAIS bugs
+> distincts trouvés en revérifiant sur données Supabase réelles (détail
+> `AUDIT.md`, section « Session du 29/07/2026 (nuit) »). **(A)** Le cron
+> `cache-model-forecasts.mjs` archive une ligne par run (quasi horaire) sans
+> jamais purger — d'anciennes lignes PRÉ-correctif (period≈5s) coexistaient
+> avec les nouvelles (period≈11s) pour la même date/modèle, et 2 lecteurs
+> (`index.html:_fetchModelTableRows`, `previsions.html:_renderCachedModelsBlock`)
+> ne filtraient pas sur `issued_at` → valeur arbitraire selon l'ordre Supabase.
+> Corrigé : les deux gardent désormais la ligne la plus récente par modèle.
+> **(B)** `assets/widget-global.js` (widget compact + Mix) n'avait jamais reçu
+> le correctif du soir : indexait encore `partitions[1]/[2]/[0]` en dur.
+> Corrigé (`_gwMarcClassifyPartitions`, même logique que `_marcPrimarySwell`).
+> Les 4 autres modèles (BOM/MF/GFS/ECMWF) revérifiés : chacun utilise bien son
+> champ "houle primaire" natif, aucun recalcul erroné trouvé. `CACHE_NAME` → v38.
 
 ---
 

@@ -13407,7 +13407,7 @@ async function _renderCachedModelsBlock(spot, date) {
   try {
     var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
     var res = await _tokenSbClient.from('model_forecast_cache')
-      .select('model,kind,hours').eq('date', date).eq('lat', spot.lat).eq('lon', spot.lon);
+      .select('model,kind,hours,issued_at').eq('date', date).eq('lat', spot.lat).eq('lon', spot.lon);
     if (!res || !res.data || !res.data.length) return '';
     // Échantillon = heure de session du spot (ou 7h) pour chaque modèle/kind.
     var targetH = spot.sessionHour || 7;
@@ -13417,13 +13417,23 @@ async function _renderCachedModelsBlock(spot, date) {
       hours.forEach(function(h) { var df = Math.abs((h.h != null ? h.h : 12) - targetH); if (df < bd) { bd = df; best = h; } });
       return best;
     }
-    var byModel = {}; // model -> { swell:{val,period,dir}, wind:{val,dir} }
+    // Le cron (cache-model-forecasts.mjs) archive une NOUVELLE ligne à (quasi)
+    // chaque run (id suffixé par runTag) sans purger les précédentes : plusieurs
+    // lignes coexistent pour un même modèle/date/kind, y compris d'anciennes
+    // lignes écrites avant un correctif de calcul (cf. même bug corrigé côté
+    // Journal, index.html:_fetchModelTableRows). Garder la plus récente
+    // (issued_at) par modèle/kind, sinon la ligne retenue dépend de l'ordre
+    // arbitraire renvoyé par Supabase.
+    var byModel = {}, byModelIssued = {}; // model -> { swell:{val,period,dir}, wind:{val,dir} }
     res.data.forEach(function(row) {
+      var key = row.model + '|' + row.kind;
+      if (byModelIssued[key] && byModelIssued[key] >= row.issued_at) return;
       var p = pick(row.hours);
       if (!p) return;
       byModel[row.model] = byModel[row.model] || {};
       if (row.kind === 'swell_primary') byModel[row.model].swell = { val: p.val, period: p.period, dir: p.dir };
       else if (row.kind === 'wind') byModel[row.model].wind = { val: p.val, dir: p.dir };
+      byModelIssued[key] = row.issued_at;
     });
     var order = ['nc', 'gfs', 'bom', 'mf', 'ecmwf'];
     var present = order.filter(function(k) { return byModel[k]; });

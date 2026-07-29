@@ -1383,3 +1383,87 @@ Balayage `window.onerror`+`unhandledrejection` après TOUTES les modifs :
 `CACHE_NAME` : v35 → v37 sur la session.
 
 thib c'est ok
+
+## Session du 29/07/2026 (nuit) — MARC toujours faux malgré le fix précédent
+
+Retour utilisateur : le tableau « Quel modèle de houle a été le plus fiable »
+(Journal) affichait encore MARC WW3 à 1,4 m / 6 s / S 187°, alors que le
+correctif `6692fa2b` (même soirée) était censé avoir réglé « houle primaire
+MARC » partout. Demande : revérifier houle primaire de TOUS les modèles dans
+tous les graphes/tableaux/widgets, pas seulement re-croire le commit précédent.
+
+**2 bugs distincts trouvés, tous deux liés à la même cause profonde (cache
+Supabase qui accumule plutôt qu'il n'écrase) :**
+
+### Bug A — lignes archivées PRÉ-correctif jamais filtrées (le symptôme du screenshot)
+`cache-model-forecasts.mjs` tourne bien plus souvent que "3×/jour" (observé :
+quasi horaire) et son id inclut un `runTag` (heure du run) → chaque run ajoute
+une NOUVELLE ligne `model_forecast_cache` (kind=`swell_primary`) au lieu
+d'écraser la précédente ; rien ne purge l'historique. Vérifié sur Supabase en
+direct (Dumbéa, 2026-07-29) : une ligne du 27/07 (avant `6692fa2b`) porte
+encore `period≈5s` (mer totale/t02, l'ANCIEN bug), une ligne du 29/07 (après)
+porte `period≈11.3s` (houle dominante correcte) — LES DEUX COEXISTENT pour la
+même date/modèle/spot. Deux lecteurs de `kind=swell_primary` ne filtraient PAS
+sur la fraîcheur (`issued_at`) et pouvaient donc retomber sur n'importe quelle
+ligne, y compris une pré-correctif :
+- `index.html:_fetchModelTableRows` (le tableau du screenshot) — corrigé :
+  garde désormais, par modèle, la ligne au `issued_at` le plus récent.
+- `previsions.html:_renderCachedModelsBlock` (bloc « Modèles archivés » du
+  comparatif) — même bug (nc/gfs/bom/mf/ecmwf ; MARC n'y figure pas), même
+  correctif.
+`_lookupModelCache` (previsions.html, utilisé pour le vote) avait lui déjà
+`.order('issued_at', {ascending:false}).limit(1)` — épargné.
+Vérifié en rejouant `_fetchModelTableRows('Grand bac','2026-07-29',7)` en
+direct (harnais `__test.html`+`--dump-dom`) : MARC → 1,6 m / 11 s (au lieu
+d'une valeur arbitraire pré/post-correctif selon l'ordre Supabase).
+
+### Bug B — assets/widget-global.js n'avait PAS reçu le correctif du 29/07
+Le widget compact (`_gwBuildModelFcast('marc')`, utilisé par la vue globale ET
+par le "Mix" via `HOULE_PRIORITY`) recalculait houle 1/houle 2/mer du vent en
+indexant `p.partitions[1]`/`[2]`/`[0]` EN DUR — exactement le bug que
+`6692fa2b` avait corrigé ailleurs (`_marcPrimarySwell`), mais ce fichier avait
+été extrait de previsions.html (chantier T18) AVANT ce correctif et n'a jamais
+été retouché. `p.h/p.t/p.dir` (déjà la houle primaire correcte, calculée en
+amont par `_fetchMarcWave`/`_fetchMarcArchive`) existaient sur l'objet mais
+n'étaient PAS utilisés pour houle 1 — c'est exactement le « widget MARC faux »
+signalé (le Mix, qui utilise ce même `_gwBuildModelFcast('marc')` en 1ère
+priorité, en aurait hérité aussi si la source la plus proche en temps avait été
+MARC ; il peut sembler "bon" quand il retombe sur meteo.nc à un créneau où le
+point MARC le plus proche portait la valeur fausse).
+Corrigé : houle 1 = `p.h/p.t/p.dir` directement (déjà correct, pas recalculé) ;
+houle 2 à 5 et mer du vent reclassées par `_gwMarcClassifyPartitions()`
+(nouvelle fonction, même logique que `_marcPrimarySwell` : mer du vent =
+partition Tp<8s la plus haute, houle 2/3/4/5 = partitions Tp≥8s restantes
+triées par hauteur décroissante) — plus aucun index fixe sur les partitions
+MARC dans tout le dépôt (grep confirmé : 0 occurrence restante hors
+commentaires historiques).
+Vérifié en direct (fetch MARC réel via `_swellCache.marc`, harnais
+`__test.html`) : houle 1 reconstruite = 1,9 m/13,1 s (= `p.h/p.t` exactement,
+cohérence interne confirmée), mer du vent = 1,3 m/6,6 s (bien la partition
+Tp<8s, pas l'index 0 par hasard), houle 2 = 0,24 m/14,9 s (bien exclue de la
+primaire par référence, pas par position).
+
+### Vérification des AUTRES modèles (demande explicite : "pour les autres modèles aussi")
+Chaque modèle utilise-t-il vraiment SA variable "houle primaire" native, pas un
+recalcul ? Relu `cache-model-forecasts.mjs` + fetchs live `previsions.html` :
+- **BOM WW3** : `sig_ht_sw1`/`pk_wav_per`/`mn_dir_sw1` (train de houle 1 natif
+  BOM, PAS `sig_wav_ht`/mer totale). Cohérent partout.
+- **MF global / GFS** (Open-Meteo Marine) : `swell_wave_height/period/direction`
+  (PAS `wave_height`, qui est la mer totale incluant vent). Cohérent partout.
+- **ECMWF** (Windguru iapi.php) : `SWELL1`/`SWPER1`/`SWDIR1` (canal houle dédié
+  Windguru, PAS `WVHGT`). Cohérent partout.
+- **meteo.nc** : `primary_swell_height/period/direction` (champs API dédiés,
+  repli `wave_height` seulement si absent). Cohérent partout.
+Aucun recalcul erroné trouvé sur ces 4 modèles — seul MARC recalculait (WW3
+multi-partitions, les autres exposent déjà un champ "primaire" direct).
+
+### Vérification finale
+Balayage `window.onerror`+`unhandledrejection` sur `index.html` et
+`previsions.html` (tous onglets) après les 2 correctifs → 0 erreur.
+`CACHE_NAME` → v38.
+
+**Point d'attention pour la suite** : Bug A peut se reproduire pour N'IMPORTE
+QUEL futur correctif de calcul touchant `cache-model-forecasts.mjs`, tant que
+les lecteurs de `model_forecast_cache` ne filtrent pas systématiquement sur
+`issued_at`. Envisager une purge périodique des lignes anciennes (ou un index
+unique par date/modèle/kind sans runTag) si ça revient.
