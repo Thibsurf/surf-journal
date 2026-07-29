@@ -4863,13 +4863,66 @@ function _renderCmpExtremes(atMs) {
 // _renderCmpExtremes (_swellCache/_aromeCmpCache), aucun fetch réseau propre —
 // appelé une seule fois quand l'un des deux caches se (re)peuple, pas à chaque
 // survol (contrairement à _renderCmpExtremes qui, lui, doit suivre le curseur).
+// Filtre optionnel (case houle du tableau _renderCmpTable) : plage de direction
+// houle à mettre en valeur, réglée via les 2 champs de _cmpDirFilterHtml().
+// null/null = pas de filtre (comportement par défaut, rien de surligné). Un
+// état MODULE-LEVEL (pas local à _renderCmpTable) : la fonction reconstruit
+// out.innerHTML entièrement à chaque appel (refresh curseur/toggle modèle/
+// changement d'onglet), donc la valeur des champs eux-mêmes serait perdue à
+// chaque redessin si elle n'était pas conservée ici et réinjectée dans le HTML.
+var _cmpDirFilter = { min: null, max: null };
+
+// Teste si `deg` tombe dans [min,max], EN TENANT COMPTE DU CERCLE (ex: plage
+// 350°→20° traverse le nord) — une comparaison naïve min<=deg<=max casserait
+// toute plage à cheval sur 0°/360°, un cas courant pour une houle de secteur N.
+function _cmpDirInRange(deg, min, max) {
+  if (deg == null || min == null || max == null) return false;
+  var d = ((deg % 360) + 360) % 360;
+  if (min <= max) return d >= min && d <= max;
+  return d >= min || d <= max;
+}
+
+function _cmpApplyDirFilter() {
+  var minEl = document.getElementById('cmp-dir-min'), maxEl = document.getElementById('cmp-dir-max');
+  // Clamp (PAS de modulo) : un modulo 360 aurait transformé un max=360 saisi
+  // ("de 0 à 360" = tout le cercle, cas naturel en tapant les bornes affichées
+  // par l'input) en 0, créant une plage dégénérée [0,0] au lieu de "tout".
+  // Le passage par 0°/360° (ex: houle secteur N, 350°→10°) reste géré par la
+  // branche min>max de _cmpDirInRange, qui n'a pas besoin de cette normalisation.
+  var min = minEl && minEl.value !== '' && !isNaN(+minEl.value) ? Math.max(0, Math.min(360, +minEl.value)) : null;
+  var max = maxEl && maxEl.value !== '' && !isNaN(+maxEl.value) ? Math.max(0, Math.min(360, +maxEl.value)) : null;
+  _cmpDirFilter = { min: min, max: max };
+  _renderCmpTable();
+}
+function _cmpClearDirFilter() {
+  _cmpDirFilter = { min: null, max: null };
+  _renderCmpTable();
+}
+function _cmpDirFilterHtml() {
+  var active = _cmpDirFilter.min != null || _cmpDirFilter.max != null;
+  return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px;font-size:10.5px;color:var(--muted);">'
+    + '<span>🎯 Surligner houle direction entre</span>'
+    + '<input type="number" id="cmp-dir-min" min="0" max="360" step="5" value="' + (_cmpDirFilter.min != null ? _cmpDirFilter.min : '') + '" placeholder="°" '
+    + 'style="width:50px;padding:2px 4px;font-size:10.5px;background:var(--card,rgba(255,255,255,.05));border:1px solid var(--border);border-radius:4px;color:var(--text);" onchange="_cmpApplyDirFilter()" aria-label="Direction houle minimum (degrés)">'
+    + '<span>et</span>'
+    + '<input type="number" id="cmp-dir-max" min="0" max="360" step="5" value="' + (_cmpDirFilter.max != null ? _cmpDirFilter.max : '') + '" placeholder="°" '
+    + 'style="width:50px;padding:2px 4px;font-size:10.5px;background:var(--card,rgba(255,255,255,.05));border:1px solid var(--border);border-radius:4px;color:var(--text);" onchange="_cmpApplyDirFilter()" aria-label="Direction houle maximum (degrés)">'
+    + (active ? '<button type="button" onclick="_cmpClearDirFilter()" style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">Effacer</button>' : '<span style="font-size:9.5px;color:var(--faint);">(optionnel)</span>')
+    + '</div>';
+}
+
 function _renderCmpTable() {
   var wrap = document.getElementById('cmp-table-wrap');
   if (!wrap) return;
   if (!_swellCache && !_aromeCmpCache) { wrap.innerHTML = ''; return; }
   var JOURS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
-  var STEP_H = 3, NSLOT = 16; // 3h × 16 = 48h — même cadence que MARC/BOM (3h)
+  // 7 jours (168h) plutôt que 48h : la plupart des modèles (nc/GFS/MF/ECMWF)
+  // couvrent bien au-delà de 48h — cadre artificiellement limité à 2 jours
+  // avant (retour utilisateur : "la plupart ont 7j"). MARC/BOM ont un horizon
+  // réel plus court (~J+1,7 pour MARC) : leurs colonnes au-delà se contentent
+  // d'afficher "–" (déjà géré, cf. v==null plus bas), pas une régression.
+  var STEP_H = 3, NSLOT = 56; // 3h × 56 = 168h = 7j — cadence commune à MARC/BOM (3h)
   var nowNc = Date.now() + 11 * 3600000; // "heure NC" (cf. [[timestamps-utc11-vs-brut]])
   var stepMs = STEP_H * 3600000;
   var startNc = Math.ceil(nowNc / stepMs) * stepMs; // prochain créneau rond
@@ -4957,7 +5010,14 @@ function _renderCmpTable() {
           main = v.toFixed(1);
           sub = p.t != null ? '<span style="opacity:.72;font-size:8px;font-weight:500;">' + Math.round(p.t) + 's</span>' : '';
         }
-        return '<td style="padding:4px 4px;text-align:center;font-size:11px;border-left:' + bl + ';background:' + bg + ';color:var(--text);font-weight:700;white-space:nowrap;line-height:1.15;">'
+        // Filtre optionnel de direction houle (_cmpDirFilter, réglé via les 2 champs
+        // au-dessus du tableau) : encadre les cases dont la direction tombe dans la
+        // plage demandée, pour repérer d'un coup d'œil quand chaque modèle prévoit une
+        // houle dans l'orientation qui compte pour le spot (demande utilisateur).
+        // Houle seulement (kind==='swell') : le vent n'est pas concerné par ce filtre.
+        var dirMatch = kind === 'swell' && _cmpDirInRange(p.dir, _cmpDirFilter.min, _cmpDirFilter.max);
+        var outline = dirMatch ? 'outline:2px solid #fde068;outline-offset:-2px;' : '';
+        return '<td style="padding:4px 4px;text-align:center;font-size:11px;border-left:' + bl + ';background:' + bg + ';color:var(--text);font-weight:700;white-space:nowrap;line-height:1.15;' + outline + '">'
           + '<div>' + main + ' <span style="font-weight:400;font-size:9px;opacity:.85;">' + arrow + '</span></div>'
           + (sub ? '<div>' + sub + '</div>' : '') + '</td>';
       }).join('');
@@ -4971,7 +5031,8 @@ function _renderCmpTable() {
   function sectionHdr(txt) {
     return '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:9px 8px 3px;font-size:11px;color:var(--text);font-weight:700;letter-spacing:.02em;position:sticky;left:0;background:var(--deep);">' + txt + '</td></tr>';
   }
-  var html = '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
+  var dirFilterHtml = swellDefs.length ? _cmpDirFilterHtml() : '';
+  var html = dirFilterHtml + '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
     + '<thead><tr>' + dayRow + '</tr><tr>' + hourRow + '</tr></thead><tbody>';
   if (windDefs.length) html += sectionHdr('💨 Vent — nds · ↑ direction · <span style="font-weight:400;color:var(--muted);">g = rafales</span>') + rowsFor(windDefs, 'wind');
   if (swellDefs.length) html += sectionHdr('🌊 Houle — m · ↑ direction · <span style="font-weight:400;color:var(--muted);">période en s</span>') + rowsFor(swellDefs, 'swell');
@@ -13405,9 +13466,18 @@ var MODEL_CACHE_LABELS = {
 async function _renderCachedModelsBlock(spot, date) {
   if (typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return '';
   try {
-    var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
+    // Tolérance 0,05° (~5,5km) plutôt qu'une égalité stricte sur lat/lon : les
+    // coordonnées archivées dérivent d'un run à l'autre pour un même spot logique
+    // (écriture cron avec shared_spots arrondi vs écriture client avec les
+    // coordonnées précises du moment, spot repositionné sur la carte…) — une
+    // égalité stricte peut ne renvoyer AUCUNE ligne dès que la moindre dérive
+    // existe entre l'écriture et cette lecture (même cause que la fenêtre de
+    // tolérance élargie côté index.html:_fetchModelTableRows, cf. son
+    // commentaire pour la mesure faite sur Ilot Ténia le 29/07).
     var res = await _tokenSbClient.from('model_forecast_cache')
-      .select('model,kind,hours,issued_at').eq('date', date).eq('lat', spot.lat).eq('lon', spot.lon);
+      .select('model,kind,hours,issued_at,lat,lon').eq('date', date)
+      .gte('lat', spot.lat - 0.05).lte('lat', spot.lat + 0.05)
+      .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05);
     if (!res || !res.data || !res.data.length) return '';
     // Échantillon = heure de session du spot (ou 7h) pour chaque modèle/kind.
     var targetH = spot.sessionHour || 7;

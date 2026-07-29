@@ -3675,8 +3675,21 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
   try {
     var r = await sb.from('model_forecast_cache').select('model,lat,lon,hours,issued_at').eq('date', dateVal).eq('kind', 'swell_primary');
     if (r.error || !r.data || !r.data.length) return null;
+    // Tolérance élargie 0,02°→0,05° (~2,2km→~5,5km) : les coordonnées archivées
+    // DÉRIVENT d'un run à l'autre pour un même spot logique (écriture cron avec
+    // shared_spots arrondi vs écriture client avec les coordonnées précises du
+    // moment, spot repositionné sur la carte…). Vérifié sur Supabase le 29/07 :
+    // pour Ilot Ténia, un point archivé avant le correctif MARC (-22.01831,
+    // 165.91981) tombait à 0,02019° de la position canonique actuelle
+    // (-22.01, 165.94) — À PEINE hors de l'ancienne fenêtre 0,02°, alors qu'un
+    // point plus proche (0,00... °) mais PLUS ANCIEN pouvait rester dedans côté
+    // longitude. Avec une fenêtre trop juste, le tri par fraîcheur (juste en
+    // dessous) peut de nouveau retomber sur une ligne pré-correctif simplement
+    // parce que la ligne fraîche est passée hors champ à cause de la dérive —
+    // aucun des spots du dépôt n'est assez proche l'un de l'autre pour qu'un
+    // rayon de 0,05° en confonde deux (vérifié sur les 7 spots).
     var rows = r.data.filter(function(row) {
-      return Math.abs(row.lat - station.lat) < 0.02 && Math.abs(row.lon - station.lon) < 0.02;
+      return Math.abs(row.lat - station.lat) < 0.05 && Math.abs(row.lon - station.lon) < 0.05;
     });
     if (!rows.length) return null;
     // Le cron (cache-model-forecasts.mjs) tourne bien plus souvent que "3×/jour" et

@@ -37,6 +37,13 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > Corrigé (`_gwMarcClassifyPartitions`, même logique que `_marcPrimarySwell`).
 > Les 4 autres modèles (BOM/MF/GFS/ECMWF) revérifiés : chacun utilise bien son
 > champ "houle primaire" natif, aucun recalcul erroné trouvé. `CACHE_NAME` → v38.
+>
+> **Suite immédiate** (détail `AUDIT.md`, dernière section) : les coordonnées
+> archivées dérivent légèrement d'un run à l'autre pour un même spot — fenêtre
+> de tolérance 0,02°→0,05° (index.html) et égalité stricte→plage 0,05°
+> (previsions.html `_renderCachedModelsBlock`). + 2 demandes : fourchette
+> inter-modèles portée à 7j (était 48h), et surlignage optionnel d'une plage de
+> direction houle sur ce tableau. `CACHE_NAME` → v39.
 
 ---
 

@@ -1467,3 +1467,54 @@ QUEL futur correctif de calcul touchant `cache-model-forecasts.mjs`, tant que
 les lecteurs de `model_forecast_cache` ne filtrent pas systématiquement sur
 `issued_at`. Envisager une purge périodique des lignes anciennes (ou un index
 unique par date/modèle/kind sans runTag) si ça revient.
+
+### Suite immédiate — dérive de coordonnées + 2 demandes fonctionnelles
+
+Retour utilisateur après déploiement : toujours 3 valeurs différentes vu sur 3
+endroits (widget, tableau du Journal, fourchette inter-modèles). Déploiement
+vérifié réellement en ligne (`curl` sur `thibsurf.github.io/surf-journal/sw.js`
+→ `v38`, présence confirmée du code corrigé dans les 3 fichiers) — pas un
+problème de déploiement. En creusant sur Supabase : les coordonnées archivées
+pour un même spot logique DÉRIVENT d'un run à l'autre (écriture cron avec
+`shared_spots` arrondi vs écriture client avec les coordonnées précises du
+moment) — mesuré sur Ilot Ténia, un point pré-correctif à (-22.01831,
+165.91981) tombe à 0,02019° de la position canonique (-22.01, 165.94), À PEINE
+hors de l'ancienne fenêtre de tolérance 0,02° de `_fetchModelTableRows`. Avec
+une fenêtre trop juste, le tri par fraîcheur peut retomber sur une ligne
+pré-correctif simplement parce que la ligne fraîche est sortie du rayon de
+recherche. Élargi à 0,05° (aucun des 7 spots n'est assez proche d'un autre pour
+qu'un tel rayon en confonde deux). Même souci en pire côté
+`previsions.html:_renderCachedModelsBlock`, qui filtrait par ÉGALITÉ STRICTE
+sur lat/lon (`.eq('lat',...).eq('lon',...)`) — une dérive de la moindre décimale
+suffit à ne renvoyer AUCUNE ligne. Remplacé par un filtre de plage 0,05°
+(cohérent avec l'autre lecteur).
+
+Question posée : la houle 1/2 de MARC est-elle la sortie brute du modèle ou
+remaniée ? Réponse honnête donnée à l'utilisateur : MARC/WW3 ne fournit QUE des
+partitions non ordonnées (0-5) — contrairement à BOM/GFS/MF/ECMWF qui exposent
+chacun un champ houle primaire natif directement exploitable — donc une
+classification par période/énergie (`_marcPrimarySwell`) est NÉCESSAIRE côté
+app pour en tirer « houle 1 »/« houle 2 »/« mer du vent ». C'est un reclassement
+justifié par l'absence de convention stable du produit source, pas un calcul
+arbitraire au sens où le nombre lui-même serait inventé.
+
+Deux demandes traitées dans la foulée (mêmes fichiers, même zone) :
+- **Horizon 7 jours** : `_renderCmpTable` (tableau "fourchette inter-modèles")
+  était plafonné à `NSLOT=16` (3h×16=48h) alors que la plupart des modèles
+  couvrent bien au-delà — porté à `NSLOT=56` (7j). MARC/BOM, à horizon réel
+  plus court, affichent simplement "–" au-delà (déjà géré).
+- **Surlignage direction houle (optionnel)** : 2 champs numériques (min/max,
+  0-360°) au-dessus du tableau, `onchange` (pas `oninput`, qui aurait fait
+  perdre le focus du champ à chaque frappe puisque le tableau entier est
+  reconstruit à chaque appel) → `outline` doré sur les cases houle dont la
+  direction tombe dans la plage, comparaison circulaire (`_cmpDirInRange`,
+  gère une plage traversant 0°/360°, ex. secteur N 350°→10°). État conservé
+  dans une variable module (`_cmpDirFilter`) pour survivre aux redessins.
+  Bug trouvé et corrigé en testant : normaliser par modulo 360 transformait un
+  max=360 saisi ("de 0 à 360" = tout le cercle) en 0 → plage dégénérée [0,0].
+  Remplacé par un clamp (pas de modulo) sur la saisie.
+
+Vérifié en direct (harnais `__test.html`) : tableau à 57 colonnes (7j), filtre
+plein cercle → 237 cases surlignées, filtre étroit (359°-359,5°) → 0, valeurs
+des champs conservées après redessin, 0 erreur JS sur les deux pages.
+`CACHE_NAME` → v39.
