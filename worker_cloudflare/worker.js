@@ -182,11 +182,75 @@ async function fetchCustomWgIds(env) {
   }
 }
 
+// ── Cache global AROME (Supabase) — complète caches.default ─────────────────
+// caches.default (utilisé ci-dessus/plus bas) est LOCAL À CHAQUE COLO Cloudflare :
+// le cron ne chauffe que le(s) colo(s) où IL s'exécute, jamais tous les edges du
+// réseau. Un utilisateur routé vers un colo différent retombe donc sur un cache
+// froid → 2 aller-retours Windguru en direct (lent), MALGRÉ le préchauffage —
+// symptôme signalé début 30/07 : "AROME/Ténia toujours long à charger malgré
+// ctrl+shift+r" (qui ne peut de toute façon rien y faire, c'est un problème
+// serveur, pas un cache client). Supabase répond de façon identique depuis
+// N'IMPORTE QUEL colo (simple appel REST HTTPS, pas un cache d'edge) : ce niveau
+// est donc TOUJOURS chaud partout dès qu'UN SEUL cron a tourné une fois, où que
+// la requête atterrisse. Nécessite la table `arome_wg_cache` (créée manuellement,
+// on n'a que la clé anon) :
+//   create table arome_wg_cache (
+//     wg_id bigint primary key, data jsonb not null,
+//     updated_at timestamptz not null default now()
+//   );
+//   alter table arome_wg_cache enable row level security;
+//   create policy "Public read arome wg cache" on arome_wg_cache for select using (true);
+//   create policy "Public write arome wg cache" on arome_wg_cache for insert with check (true);
+//   create policy "Public update arome wg cache" on arome_wg_cache for update using (true);
+// Silencieux si la table n'existe pas encore (jamais bloquant) : le comportement
+// retombe alors sur l'existant (caches.default puis fetch Windguru live).
+async function getAromeFromSupabase(env, wgId) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return null;
+  try {
+    const r = await fetch(
+      env.SUPABASE_URL + "/rest/v1/arome_wg_cache?wg_id=eq." + encodeURIComponent(wgId) + "&select=data,updated_at",
+      { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: "Bearer " + env.SUPABASE_ANON_KEY } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    const row = rows && rows[0];
+    if (!row || !row.data) return null;
+    // Accepté jusqu'à ~150 min (marge au-delà du throttle cron de 100 min, pour
+    // un run en retard) — passé ce délai, mieux vaut un fetch live à jour.
+    const ageMs = Date.now() - new Date(row.updated_at).getTime();
+    if (ageMs > 150 * 60 * 1000) return null;
+    return row.data;
+  } catch (e) {
+    console.warn("[arome supabase] read fail", e.message);
+    return null;
+  }
+}
+async function putAromeToSupabase(env, wgId, data) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetch(env.SUPABASE_URL + "/rest/v1/arome_wg_cache", {
+      method: "POST",
+      headers: {
+        apikey: env.SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + env.SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ wg_id: Number(wgId), data, updated_at: new Date().toISOString() }),
+    });
+    if (!r.ok) console.warn("[arome supabase] write fail", r.status, await r.text().catch(() => ""));
+  } catch (e) {
+    console.warn("[arome supabase] write fail", e.message);
+  }
+}
+
 // Pré-chauffe le cache edge /arome pour tous les spots connus, EN PARALLÈLE
 // (chaque spot est indépendant — Promise.allSettled pour qu'un échec ponctuel
 // sur un spot n'empêche pas les autres). Appelé depuis le cron existant (5 min),
 // mais throttlé à ~100 min par _shouldPrewarmArome() : sans ce garde-fou, on
 // spammerait Windguru toutes les 5 min pour rien (cache déjà chaud 2h).
+// Écrit maintenant dans caches.default (rapide, ce colo) ET Supabase (global,
+// tous les colos) — cf. getAromeFromSupabase ci-dessus pour le pourquoi.
 async function prewarmArome(env) {
   const custom = await fetchCustomWgIds(env);
   const ids = Array.from(new Set([...KNOWN_WG_SPOTS, ...custom]));
@@ -198,6 +262,7 @@ async function prewarmArome(env) {
       await cache.put(cacheKey, new Response(JSON.stringify(out), {
         headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200" },
       }));
+      await putAromeToSupabase(env, wgId, out);
       console.log("[Cron] AROME prewarm OK — spot", wgId);
     } catch (e) {
       // AROME_NOT_AVAILABLE est attendu pour certains spots (limite windguru,
@@ -220,7 +285,7 @@ async function _shouldPrewarmArome(env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     const cors = {
@@ -364,6 +429,10 @@ export default {
       // vraie visite déclenchait ce fetch (2 aller-retours Windguru, parfois
       // lents), et un utilisateur pouvait tomber sur un cache froid. Le cron
       // le maintient chaud maintenant — ce chemin ne sert plus que de repli.
+      // 3 niveaux, du plus rapide au plus lent : (1) caches.default de CE colo,
+      // (2) arome_wg_cache Supabase (global, chaud partout dès qu'un cron a
+      // tourné une fois quelque part — cf. getAromeFromSupabase), (3) fetch
+      // Windguru live (seul chemin vraiment lent, dernier recours).
       if (url.pathname === "/arome") {
         const spot = url.searchParams.get("spot");
         if (!spot || !/^\d+$/.test(spot)) return json({ error: "missing/invalid spot" }, 400);
@@ -372,6 +441,19 @@ export default {
         let hit = await cache.match(cacheKey);
         if (hit) {
           return new Response(hit.body, {
+            status: 200,
+            headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },
+          });
+        }
+        const fromSupabase = await getAromeFromSupabase(env, spot);
+        if (fromSupabase) {
+          const body = JSON.stringify(fromSupabase);
+          // Réchauffe le cache LOCAL de ce colo au passage : la prochaine requête
+          // sur ce même edge n'aura même plus besoin du round-trip Supabase.
+          ctx.waitUntil(cache.put(cacheKey, new Response(body, {
+            headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200" },
+          })));
+          return new Response(body, {
             status: 200,
             headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },
           });
@@ -388,6 +470,9 @@ export default {
         await cache.put(cacheKey, new Response(body, {
           headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200" },
         }));
+        // Répare le cache global pour les AUTRES colos aussi (pas seulement
+        // celui-ci) — pas la peine d'attendre pour répondre à cette requête.
+        ctx.waitUntil(putAromeToSupabase(env, spot, out));
         return new Response(body, {
           status: 200,
           headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },

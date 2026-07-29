@@ -56,6 +56,18 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > avant de migrer vers un stockage Supabase comme MARC). Molette SVG (2
 > poignées glissables) à la place des 2 champs numériques pour la plage de
 > direction. `CACHE_NAME` → v40.
+>
+> **Suite immédiate (3)** : traité la piste cache AROME (détail `AUDIT.md`,
+> dernière section) — `worker_cloudflare/worker.js` gagne un niveau Supabase
+> (`arome_wg_cache`, global, tous colos) entre `caches.default` (local, rapide)
+> et le fetch Windguru live (lent, dernier recours). **⚠ ACTION REQUISE avant
+> que ça serve à quelque chose** : (1) créer la table `arome_wg_cache` dans
+> Supabase (SQL en commentaire dans `worker.js`), (2) `wrangler deploy` manuel
+> depuis `worker_cloudflare/` — ce Worker n'a pas de CI, contrairement au
+> frontend (Cloudflare Pages, auto sur push). Sans ces 2 étapes le code poussé
+> est inactif mais inoffensif (comportement identique à avant). + 2 curseurs
+> linéaires (période min./houle min.) à côté de la molette, combinés par ET
+> logique. `CACHE_NAME` → v41 (frontend).
 
 ---
 

@@ -1567,3 +1567,62 @@ drag par événements souris réels) : glisser la poignée min vers l'est →
 poignée focus) → pas de 5° ; 0 erreur JS.
 
 `CACHE_NAME` → v40.
+
+### Suite immédiate (3) — cache global AROME (Supabase) + 2 curseurs linéaires
+
+Demande utilisateur : traiter la piste "cache par-colo" identifiée pour la
+lenteur AROME (au lieu de la documenter seulement), et ajouter à côté de la
+molette direction deux curseurs adaptés (linéaires, pas circulaires) pour une
+période minimale et une hauteur de houle minimale.
+
+**Cache AROME global** (`worker_cloudflare/worker.js`) : ajouté
+`getAromeFromSupabase`/`putAromeToSupabase`, nouvelle table `arome_wg_cache`
+(SQL en commentaire dans le fichier, à créer manuellement — seule la clé anon
+est disponible). `/arome` consulte maintenant, dans l'ordre : (1)
+`caches.default` de CE colo (le plus rapide, inchangé), (2) `arome_wg_cache`
+Supabase — répond pareil depuis N'IMPORTE QUEL colo, donc toujours chaud dès
+qu'UN SEUL cron a tourné une fois quelque part, contrairement à
+`caches.default` qui ne réchauffe QUE le(s) colo(s) où il s'exécute — (3) fetch
+Windguru live en dernier recours, avec écriture en tâche de fond
+(`ctx.waitUntil`) vers Supabase pour réparer les AUTRES colos. `prewarmArome`
+écrit désormais aux deux niveaux. `env.SUPABASE_URL`/`SUPABASE_ANON_KEY`
+déjà configurés (`wrangler.toml`), aucun nouveau secret requis.
+Signature `fetch(request, env, ctx)` : `ctx` ajouté (absent avant, nécessaire
+pour `ctx.waitUntil`).
+Vérifié : le fichier modifié se charge et s'exécute sans erreur en tant que
+module ES (chargé via un serveur HTTP local, `file://` bloque les modules par
+CORS — testé avec un module trivial de contrôle pour confirmer que c'est bien
+une restriction connue de Chrome et non une vraie erreur de syntaxe) ; export
+default avec `fetch`/`scheduled` intacts.
+**⚠ Ce Worker n'a pas de déploiement automatique (pas de credentials Cloudflare
+disponibles ici) — nécessite un `wrangler deploy` manuel depuis
+`worker_cloudflare/`, ET la création préalable de la table `arome_wg_cache`
+dans Supabase (SQL fourni en commentaire dans le fichier). Sans ces deux
+étapes, le code est poussé mais inactif — l'ancien comportement (caches.default
+seul) continue jusque-là, aucune régression, juste pas encore le bénéfice.**
+
+**2 curseurs linéaires** (période min. / houle min., `previsions.html`) :
+même esprit que la molette (glisser + clavier, mise à jour DOM directe pendant
+le drag, redessin de la table seulement au relâchement), mais une SEULE
+poignée par curseur (seuil "au moins X", pas un intervalle — direction reste
+circulaire donc plage à 2 bornes, période/hauteur sont des seuils simples).
+Combinés à la direction par un ET logique (`_cmpSwellCellMatches`) : une case
+n'est surlignée que si TOUS les filtres actifs sont satisfaits. Vérifié en
+direct (drag réel + clavier) : glisser "période" à fond → filtre à 20s (0
+case, cohérent — très peu de houle atteint 20s) ; glisser "hauteur" à ~25% →
+~0,7-0,8m, 224 cases seules (période effacée) ; les deux combinés → 0 cases
+(ET très restrictif, cohérent) ; effacer progressivement → le compte remonte
+correctement. 0 erreur JS.
+
+**Effet de bord trouvé et corrigé en testant** : `windBgCol()` (carte AROME,
+`_renderAromeCardData`) référence `WIND_COL_THRESHOLDS` (assets/settings-utils.js,
+chargé en `<script defer>`) sans repli — observé de façon intermittente en
+test (~2 fois sur 10 runs, jamais isolé avec certitude, probablement une
+contention de charge propre au harnais de test `file://` en rafale) un
+`ReferenceError` si ce script n'a par extraordinaire pas fini de s'exécuter.
+Ajouté un repli en dur `[7,12,17,23]` (mêmes valeurs) par prudence, sur le
+chemin justement en cours de fiabilisation cette session. 6/6 runs propres
+après ce correctif (vs 2 échecs sur les 10 précédents).
+
+`CACHE_NAME` → v41 (frontend seulement — le Worker suit son propre déploiement,
+cf. ci-dessus).
