@@ -610,7 +610,7 @@ function _gwDrawOverview() {
 
   // Micro-heures sous les barres (06h / 12h / 18h de chaque jour)
   ctx.font = '6.5px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.75)';
+  ctx.fillStyle = _panelLight() ? 'rgba(60,80,95,.75)' : 'rgba(255,255,255,.28)';
   gis.forEach(function(fi, k){
     var hh2 = d.dates[fi].getUTCHours();
     if (hh2===6 || hh2===12 || hh2===18) ctx.fillText(hh2+'h', xOf(k), H-1);
@@ -645,7 +645,7 @@ function _gwDrawOverview() {
   gis.forEach(function(fi, k){
     var x = xOf(k), tot = d.totH[fi], p1 = d.sw1h[fi];
     if (tot!=null) bar(x, yH(tot), bw, 'rgba(' + _gwSemRGB('accent') + ',.85)');
-    if (p1!=null)  bar(x, yH(p1), bw*0.56, _gwCssVar('--accent2', '#b9d0eb'));
+    if (p1!=null)  bar(x, yH(p1), bw*0.56, _panelLight() ? '#4a7aa0' : 'rgba(185,208,235,.85)');
   });
 
   // Remplissage doux sous la courbe de vent (lisibilité de la zone vent)
@@ -1283,7 +1283,7 @@ function _gwRenderClouds(d, day) {
 
   // Repères d'étages discrets à gauche
   ctx.font = '6.5px DM Sans,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.75)';
+  ctx.fillStyle = _cloudLight ? 'rgba(60,80,95,.8)' : 'rgba(122,148,170,.55)';
   if (hasLayers) { ctx.fillText('haut', 2, 2+zH*0.17); ctx.fillText('moy', 2, 2+zH*0.5); ctx.fillText('bas', 2, 2+zH*0.83); }
   ctx.fillStyle = _cloudLight ? 'rgba(20,110,150,.8)' : 'rgba(79,195,232,.6)';
   ctx.fillText('mm', 2, rainTop+laneH/2-1);
@@ -1485,7 +1485,7 @@ function _gwRenderTideRow(d, day) {
   ctx.beginPath();
   ctx.moveTo(samples[0].x, yOf(samples[0].h)-0.8);
   samples.forEach(function(p){ ctx.lineTo(p.x, yOf(p.h)-0.8); });
-  ctx.strokeStyle = 'rgba(' + _panelFadeRGB() + ',0.25)'; ctx.lineWidth = 0.8; ctx.stroke();
+  ctx.strokeStyle = _panelLight() ? 'rgba(40,70,100,0.25)' : 'rgba(220,240,255,0.25)'; ctx.lineWidth = 0.8; ctx.stroke();
 
   // Marqueur « maintenant » (jaune pointillé + point + hauteur actuelle)
   var nowMs = Date.now();

@@ -1855,4 +1855,43 @@ synthétiques complètes (Chart.js réellement chargé, confirmé) ; captures
 headless clair+sombre des onglets Marée et Isofronts — thème sombre visuellement
 identique à avant le chantier.
 
+### Troisième passe — preuve de non-régression du thème sombre (même jour)
+
+Demande explicite : « la page de base ne doit pas être altérée, le clair c'est du
+bonus. » La vérification à l'œil ne suffisait pas — mise en place d'un **diff de
+pixels avant/après** (`git worktree` sur 97ad3292), rendu déterministe (`Date.now`
+figé, `Math.random` figé, réseau coupé via `--host-resolver-rules`), sur les 6
+onglets.
+
+Ça a trouvé de **vraies régressions du thème sombre** que la relecture avait
+laissées passer : en factorisant, j'avais remplacé des couleurs par des helpers
+dont la branche sombre ne rendait PAS la valeur d'origine — soit l'alpha, soit la
+teinte de base avait changé. Une douzaine de sites :
+`rgba(255,255,255,.55)` → `rgba(122,148,170,.85)` (libellés marée, rose, orbite),
+`rgba(255,255,100,.35)` → `rgba(253,224,104,.75)` (trait « maintenant » de la
+marée, qui n'a jamais été la même teinte que `panelNowLine`),
+`rgba(220,240,255,.25)` → `rgba(200,220,240,.25)`, les alphas de grille ENSO
+(0.04→0.08, 0.08→0.16, 0.15→0.25), les fonds `--sunken` appliqués à des encarts
+qui avaient chacun leur alpha (.25/.3/.35/.4), et surtout les libellés de
+crépuscules passés d'un `rgba(...,0.7/0.8/0.9)` à une variable **opaque**.
+
+Corrigé partout en rendant la branche sombre littéralement égale à l'original
+(ternaires explicites, ou variables dédiées `--tw-*`, `--anim-*`, `--fab-bg`,
+`--tip-bg`, `--popup-bg`, `--canvasbtn-bg` dont la valeur sombre est celle
+d'avant). Un détecteur automatique (résolution symbolique des helpers en mode
+sombre, comparaison des littéraux de couleur au fichier d'origine) tourne
+maintenant à 0 divergence.
+
+**Piège de méthode à retenir** : le rendu headless n'est pas déterministe entre
+processus — le MÊME fichier rendu deux fois donnait 272 px d'écart (delta ≤7) sur
+l'anticrénelage des libellés de nav. Comparer deux captures brutes produit donc
+des faux positifs. Méthode retenue : 2 rendus par version, et ne retenir un pixel
+que s'il est **stable dans chaque version** ET différent entre les deux.
+
+**Résultat final** : hors nav, le thème sombre est **strictement identique au
+pixel près** sur les 6 onglets. Le seul écart restant est confiné à la ligne de
+texte de la nav (Y 36-45, delta ≤6/255) ; démontré causé par le bouton de bascule
+lui-même — en le masquant (`display:none`), la nouvelle version est **pixel pour
+pixel identique** à l'ancienne sur toute la page.
+
 `CACHE_NAME` → v43.

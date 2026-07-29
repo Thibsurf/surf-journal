@@ -1074,14 +1074,19 @@ function ensoRender() {
   // sur la carte claire du thème clair, d'où la bascule vers un gris-bleu foncé.
   // hoverlabel reste volontairement fixe (petite bulle sombre autonome, lisible
   // sur les deux thèmes, comme les visualisations jour/nuit de widget-global.js).
-  var _ensoGridRGB = _ensoLight ? '30,55,75' : '255,255,255';
+  // Alphas DISTINCTS par thème et non un alpha commun : le sombre garde
+  // exactement ses valeurs d'origine (0.04 / 0.08 / 0.15), le clair a besoin
+  // d'un peu plus pour qu'un bleu-nuit translucide reste visible sur blanc.
+  function _ensoGrid(aDark, aLight) {
+    return _ensoLight ? 'rgba(30,55,75,' + aLight + ')' : 'rgba(255,255,255,' + aDark + ')';
+  }
   var LAYOUT = {
     paper_bgcolor: 'transparent', plot_bgcolor: 'rgba(255,255,255,0.02)',
     font: { family: 'DM Sans, sans-serif', color: _ensoLight ? '#3c505f' : '#7a94aa', size: 10 },
     margin: { l: 44, r: 16, t: 10, b: 40 },
     legend: { orientation: 'h', y: -0.18, font: { size: 9 } },
-    xaxis: { gridcolor: 'rgba(' + _ensoGridRGB + ',0.08)', linecolor: 'rgba(' + _ensoGridRGB + ',0.16)' },
-    yaxis: { gridcolor: 'rgba(' + _ensoGridRGB + ',0.08)', linecolor: 'rgba(' + _ensoGridRGB + ',0.16)' },
+    xaxis: { gridcolor: _ensoGrid(0.04, 0.09), linecolor: _ensoGrid(0.08, 0.16) },
+    yaxis: { gridcolor: _ensoGrid(0.04, 0.09), linecolor: _ensoGrid(0.08, 0.16) },
     hoverlabel: { bgcolor: '#0d1f3c', bordercolor: '#2a4060', font: { family: 'DM Sans', size: 11 } },
   };
   var CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d','lasso2d'] };
@@ -1103,7 +1108,7 @@ function ensoRender() {
       line: { color: 'rgba(79,163,199,0.4)', dash: 'dot', width: 1 }, hoverinfo: 'skip', showlegend: false },
   ], Object.assign({}, LAYOUT, {
     height: 300,
-    yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'Anomalie °C', zeroline: true, zerolinecolor: 'rgba(' + _ensoGridRGB + ',0.25)' }),
+    yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'Anomalie °C', zeroline: true, zerolinecolor: _ensoGrid(0.15, 0.28) }),
     annotations: [
       { x: dates[dates.length-1], y: 0.5,  yanchor: 'bottom', text: 'El Niño', showarrow: false, font: { size: 8, color: _ensoLight ? '#c73e3e' : 'rgba(224,92,92,0.7)' }, xanchor: 'right' },
       { x: dates[dates.length-1], y: -0.5, yanchor: 'top',    text: 'La Niña', showarrow: false, font: { size: 8, color: _ensoLight ? '#1a729b' : 'rgba(79,163,199,0.7)' }, xanchor: 'right' },

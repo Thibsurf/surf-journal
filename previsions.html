@@ -67,6 +67,22 @@ try {
      noir translucide, ils viraient au gris sale sur la carte blanche du thème
      clair — d'où une variable plutôt qu'un rgba(0,0,0,…) figé. */
   --sunken:rgba(0,0,0,.25);--night-row:rgba(0,0,0,.15);
+  /* Surfaces flottantes (popup de carte, tooltip, bouton flottant, bouton de
+     zoom sur canvas) : elles portent du texte en variable thémée, donc leur fond
+     doit suivre le thème — sinon noir sur bleu nuit en clair. Une variable par
+     surface et NON un var(--deep) commun : les 4 avaient chacune sa teinte et
+     son alpha, et les unifier aurait modifié le rendu du thème sombre (mesuré :
+     le bouton flottant décalait de 3/255 sur 1366 px). Valeurs sombres ci-dessous
+     = exactement celles d'avant le thème clair. */
+  --fab-bg:rgba(13,31,60,.92);--tip-bg:rgba(13,31,60,.95);
+  --popup-bg:rgba(8,22,38,.97);--canvasbtn-bg:rgba(6,16,30,.75);
+  /* Encarts des schémas météo : alphas d'origine conservés à l'identique. */
+  --anim-bg:rgba(0,0,0,.35);--anim-bd:rgba(255,255,255,.05);
+  --scene-bg:rgba(0,0,0,.4);--symbox-bg:rgba(0,0,0,.3);
+  /* Crépuscules : les alphas font partie de la teinte d'origine (0.7/0.8/0.9),
+     les reprendre tels quels évite de modifier le rendu sombre. */
+  --tw-astro:rgba(123,108,246,0.7);--tw-naut:rgba(79,163,199,0.8);
+  --tw-civil:rgba(232,160,87,0.8);--tw-noon:rgba(253,224,104,0.9);
 }
 /* Thème clair — mêmes rôles de variable, contrastes WCAG AA recalculés sur les
    nouveaux fonds (voir AUDIT.md du 29/07) plutôt qu'un simple négatif : --accent,
@@ -80,6 +96,11 @@ try {
   --nav-bg:rgba(238,242,246,.92);--nav-bg-mobile:rgba(238,242,246,.98);
   --sun:#8a5c0f;--accent2:#4a7aa0;
   --sunken:rgba(15,35,55,.055);--night-row:rgba(15,35,55,.05);
+  --fab-bg:rgba(255,255,255,.95);--tip-bg:rgba(255,255,255,.97);
+  --popup-bg:rgba(255,255,255,.97);--canvasbtn-bg:rgba(255,255,255,.88);
+  --anim-bg:rgba(15,35,55,.05);--anim-bd:rgba(15,35,55,.10);
+  --scene-bg:rgba(15,35,55,.06);--symbox-bg:rgba(15,35,55,.05);
+  --tw-astro:#5b3fc4;--tw-naut:#1a729b;--tw-civil:#a8631f;--tw-noon:#8a5c0f;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font-b);background:var(--ocean);color:var(--text);min-height:100vh;font-size:14px;}
@@ -295,7 +316,7 @@ table.ft .night td{background:var(--night-row);}
    et .popup-title var(--accent) — sur un fond resté sombre, le texte du popup de
    spot devenait noir sur bleu nuit (invisible) en thème clair. */
 .surf-popup .leaflet-popup-content-wrapper{
-  background:var(--deep)!important;
+  background:var(--popup-bg)!important;
   border:1px solid rgba(79,163,199,.3)!important;
   border-radius:10px!important;
   box-shadow:0 8px 32px rgba(0,0,0,.6)!important;
@@ -306,7 +327,7 @@ table.ft .night td{background:var(--night-row);}
   min-width:200px!important;
 }
 .surf-popup .leaflet-popup-tip-container .leaflet-popup-tip{
-  background:var(--deep)!important;
+  background:var(--popup-bg)!important;
 }
 .leaflet-obs-tooltip{background:rgba(8,20,35,0.92)!important;border:1px solid rgba(79,163,199,.35)!important;border-radius:7px!important;color:#aac8e0!important;font-family:var(--font-b)!important;font-size:11px!important;padding:5px 9px!important;box-shadow:0 4px 16px rgba(0,0,0,.5)!important;}
 .leaflet-obs-tooltip.leaflet-tooltip-top::before{border-top-color:rgba(79,163,199,.35)!important;}
@@ -359,7 +380,7 @@ table.ft .night td{background:var(--night-row);}
 @keyframes slideLeft{from{transform:translateX(6px);opacity:0}to{transform:translateX(0);opacity:1}}
 @keyframes occlusAnim{0%,100%{opacity:1}50%{opacity:0.5}}
 @keyframes stationAnim{0%,100%{transform:scaleX(1)}50%{transform:scaleX(1.04)}}
-.scene{background:var(--sunken);border-radius:10px;padding:16px;margin-bottom:6px;position:relative;overflow:hidden;height:120px;}
+.scene{background:var(--scene-bg);border-radius:10px;padding:16px;margin-bottom:6px;position:relative;overflow:hidden;height:120px;}
 .scene-label{position:absolute;top:8px;left:10px;font-size:11px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.08em;}
 .air-mass{position:absolute;bottom:0;height:55px;border-radius:4px 4px 0 0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:.08em;}
 .air-warm{background:linear-gradient(to top,rgba(239,68,68,.22),rgba(239,68,68,.06));border-top:2px solid rgba(239,68,68,.6);color:#f87171;width:44%;left:0;animation:warmAdvance 2.8s ease-in-out infinite alternate;}
@@ -381,7 +402,7 @@ table.ft .night td{background:var(--night-row);}
 .cell-desc{font-size:11px;color:var(--muted);text-align:center;max-width:90px;}
 .front-card{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:flex-start;gap:14px;margin-bottom:8px;transition:background .2s;}
 .front-card:hover{background:rgba(255,255,255,.06);}
-.symbol-box{flex-shrink:0;width:76px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--sunken);}
+.symbol-box{flex-shrink:0;width:76px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--symbox-bg);}
 .sym-warm svg line,.sym-warm .semicircle{stroke:#ef4444;stroke-width:2.5;fill:#ef4444;}
 .sym-cold .triangle{fill:#3b82f6;}
 /* Légende enrichie */
@@ -406,7 +427,7 @@ table.ft .night td{background:var(--night-row);}
 
 /* ── Onglet Animations : coupes SVG animées ─────────────────────────────── */
 .arome-hl{background:rgba(79,163,199,.18)!important;box-shadow:inset 0 0 0 1px rgba(79,163,199,.45);}
-.anim-card{background:var(--sunken);border:1px solid var(--border);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;}
+.anim-card{background:var(--anim-bg);border:1px solid var(--anim-bd);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;}
 .anim-title{font-size:11px;font-weight:700;margin-bottom:7px;}
 /* Titres des schémas météo : pastels calés sur le fond sombre (1,1 à 2,5:1 sur
    la carte claire, illisibles) — versions saturées pour le thème clair. Classes
@@ -1673,7 +1694,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
       <!-- Fond en var(--deep) et non un navy figé : le contenu est écrit en
            var(--accent)/var(--text), qui s'assombrissent en thème clair — sur un
            fond resté sombre ça donnait du bleu foncé sur bleu nuit. -->
-      <div id="tide-tooltip" style="display:none;position:absolute;background:var(--deep);border:1px solid rgba(79,163,199,.4);border-radius:8px;padding:8px 12px;font-size:11px;pointer-events:none;white-space:nowrap;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.28);"></div>
+      <div id="tide-tooltip" style="display:none;position:absolute;background:var(--tip-bg);border:1px solid rgba(79,163,199,.4);border-radius:8px;padding:8px 12px;font-size:11px;pointer-events:none;white-space:nowrap;z-index:10;"></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;" id="tide-events-row"></div>
   </div>
@@ -4786,7 +4807,7 @@ function _attachCmpZoom(cv, zoomState, redraw, noBtn) {
     btn.type = 'button';
     // Fond var(--deep) : le libellé est en var(--muted), qui s'assombrit en
     // thème clair — sur un navy figé il devenait gris foncé sur bleu nuit.
-    btn.style.cssText = 'position:absolute;top:2px;right:2px;z-index:2;background:var(--deep);'
+    btn.style.cssText = 'position:absolute;top:2px;right:2px;z-index:2;background:var(--canvasbtn-bg);'
       + 'border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:2px 8px;'
       + 'font-size:11px;font-family:var(--font-b);cursor:pointer;line-height:1.5;';
     (cv.parentElement || cv).appendChild(btn);
@@ -5065,7 +5086,7 @@ function _cmpDirWheelHtml(suffix) {
   }).join('');
   var lbls = [['N', 0], ['E', 90], ['S', 180], ['O', 270]].map(function(t) {
     var p = _cmpDirToXY(t[1], R + 13);
-    return '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3).toFixed(1) + '" text-anchor="middle" font-size="8" fill="rgba(' + _panelLabelRGB() + ',.6)">' + t[0] + '</text>';
+    return '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3).toFixed(1) + '" text-anchor="middle" font-size="8" fill="rgba(' + (_panelLight() ? '60,80,95,.85' : '255,255,255,.4') + ')">' + t[0] + '</text>';
   }).join('');
   var _wheelSun = _panelLight() ? '#8a5c0f' : '#fde068';
   return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px;">'
@@ -8261,7 +8282,7 @@ function renderRose(idx) {
     ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+R*Math.cos(a),cy+R*Math.sin(a));
     ctx.strokeStyle='rgba('+_panelGridRGB()+',0.05)'; ctx.lineWidth=0.8; ctx.stroke();
     ctx.font=(j%2===0?'bold 10':'8')+'px DM Sans,sans-serif';
-    ctx.fillStyle=j%2===0?'rgba('+_panelLabelRGB()+',.85)':'rgba('+_panelLabelRGB()+',.5)';
+    ctx.fillStyle=_panelLight()?(j%2===0?'rgba(60,80,95,.9)':'rgba(60,80,95,.55)'):(j%2===0?'rgba(255,255,255,.55)':'rgba(255,255,255,.25)');
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(dir, cx+(R+14)*Math.cos(a), cy+(R+14)*Math.sin(a));
   });
@@ -11542,7 +11563,7 @@ function drawOrbit(sun, year, month, day) {
     ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle=s.col; ctx.textAlign=align;
     var lblX = lx + (align==='left'?3:align==='right'?-3:0);
     ctx.fillText(s.lbl, lblX, ly-1);
-    ctx.font='7px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',0.75)';
+    ctx.font='7px DM Sans,sans-serif'; ctx.fillStyle=_orbitLight?'rgba(60,80,95,0.8)':'rgba(255,255,255,0.3)';
     ctx.fillText(s.sub, lblX, ly+8);
   });
 
@@ -11631,7 +11652,7 @@ function drawOrbit(sun, year, month, day) {
   ctx.fillStyle='rgba(79,163,199,0.5)';
   ctx.beginPath(); ctx.arc(axSx,axSy,1.5,0,2*Math.PI); ctx.fill();
   // Label N discret
-  ctx.font='bold 7px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',0.9)'; ctx.textAlign='center';
+  ctx.font='bold 7px DM Sans,sans-serif'; ctx.fillStyle=_orbitLight?'rgba(60,80,95,0.9)':'rgba(255,255,255,0.55)'; ctx.textAlign='center';
   ctx.fillText('N', axNx, axNy-4);
   ctx.fillText('23.5°', ex+10, ey-4);
 
@@ -11678,15 +11699,15 @@ function renderTwilightAndOrbit(year, month, day) {
   // donc les teintes pâles pensées pour fond sombre (ex. #fde068 ~1,2:1 sur
   // blanc) doivent suivre le thème comme --tube/--accent/--warm/--sun.
   el.innerHTML=
-    row('🌑','Aube astronomique',s.astroTwilightDawn,'var(--tube)')+
-    row('🌒','Aube nautique',s.nautDawn,'var(--accent)')+
-    row('🌓','Aube civile',s.civilDawn,'var(--warm)')+
+    row('🌑','Aube astronomique',s.astroTwilightDawn,'var(--tw-astro)')+
+    row('🌒','Aube nautique',s.nautDawn,'var(--tw-naut)')+
+    row('🌓','Aube civile',s.civilDawn,'var(--tw-civil)')+
     row('🌅','Lever du soleil',s.sunrise,'var(--sun)')+
-    row('☀','Midi solaire',s.solarNoon,'var(--sun)')+
+    row('☀','Midi solaire',s.solarNoon,'var(--tw-noon)')+
     row('🌇','Coucher du soleil',s.sunset,'var(--sun)')+
-    row('🌆','Crépuscule civil',s.civilDusk,'var(--warm)')+
-    row('🌃','Crépuscule nautique',s.nautDusk,'var(--accent)')+
-    row('🌌','Crépuscule astro.',s.astroTwilightDusk,'var(--tube)');
+    row('🌆','Crépuscule civil',s.civilDusk,'var(--tw-civil)')+
+    row('🌃','Crépuscule nautique',s.nautDusk,'var(--tw-naut)')+
+    row('🌌','Crépuscule astro.',s.astroTwilightDusk,'var(--tw-astro)');
   drawOrbit(s, year, month, day);
   // Arc solaire du jour + heures dorées/bleues
   drawSunArc(s, year, month, day);
@@ -12422,7 +12443,7 @@ function renderTideCurve(offset) {
   for(var djl=0; djl<nDays; djl++){
     var djDate=new Date(tgt.getTime()+djl*864e5);
     var djLbl = (djl===0 && offset===0) ? "Auj." : DAY_FR[djDate.getUTCDay()]+' '+djDate.getUTCDate()+'/'+(djDate.getUTCMonth()+1);
-    ctx.font='bold 11px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',.85)';
+    ctx.font='bold 11px DM Sans,sans-serif'; ctx.fillStyle=_panelLight()?'rgba(60,80,95,.9)':'rgba(255,255,255,.55)';
     if(nDays===1){
       ctx.textAlign='left';
       ctx.fillText(djLbl, pad.l+2, pad.t+10);
@@ -12442,7 +12463,7 @@ function renderTideCurve(offset) {
     var gy=tyH(gh);
     ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(W-pad.r,gy);
     ctx.strokeStyle='rgba('+_panelGridRGB()+',0.05)'; ctx.lineWidth=1; ctx.stroke();
-    ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',.85)';
+    ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle=_panelLight()?'rgba(60,80,95,.9)':'rgba(255,255,255,.55)';
     ctx.textAlign='right'; ctx.fillText(gh.toFixed(1)+'m',pad.l-3,gy+3);
   });
 
@@ -12458,7 +12479,7 @@ function renderTideCurve(offset) {
       ctx.strokeStyle='rgba('+_panelGridRGB()+',0.12)'; ctx.lineWidth=1; ctx.stroke();
       if(nDays>1 && hh2!==12) continue;
       var hLabel=String(hh2).padStart(2,'0')+'h';
-      ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',.85)'; ctx.textAlign='center';
+      ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle=_panelLight()?'rgba(60,80,95,.9)':'rgba(255,255,255,.55)'; ctx.textAlign='center';
       ctx.fillText(hLabel, hx2, H-8);
     }
   }
@@ -12486,7 +12507,7 @@ function renderTideCurve(offset) {
     if(niT<allPts.length){
       var nyT=tyH(allPts[niT].h);
       ctx.beginPath(); ctx.moveTo(nxT,pad.t); ctx.lineTo(nxT,H-pad.b);
-      ctx.strokeStyle=_panelNowColor(); ctx.lineWidth=1.5; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle=_panelLight()?'rgba(194,121,13,.5)':'rgba(255,255,100,0.35)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
       ctx.beginPath(); ctx.arc(nxT,nyT,5,0,2*Math.PI);
       ctx.fillStyle=_panelLight()?'#8a5c0f':'#fde068'; ctx.fill();
     }
@@ -12512,7 +12533,7 @@ function renderTideCurve(offset) {
           ctx.fillText(ev.tidal_height.toFixed(2)+'m',px3,dir2==='up'?py3-9:py3+15);
           var hNC=Math.floor((ms2+11*3600000)%(86400000)/3600000);
           var minNC2=Math.floor(((ms2+11*3600000)%3600000)/60000);
-          ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',0.75)';
+          ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle=_panelLight()?'rgba(60,80,95,0.8)':'rgba(255,255,255,0.4)';
           ctx.fillText(String(hNC).padStart(2,'0')+'h'+String(minNC2).padStart(2,'0'),px3,dir2==='up'?py3-19:py3+25);
         });
       }
@@ -12757,7 +12778,7 @@ function drawSolunarTimeline(y,m,d,solun){
   // graduations heures
   [0,6,12,18,24].forEach(function(h){ var xx=X(h*60);
     if(h>0&&h<24){ g.strokeStyle='rgba('+_panelGridRGB()+',0.08)'; g.lineWidth=1; g.beginPath(); g.moveTo(xx,10); g.lineTo(xx,H); g.stroke(); }
-    g.fillStyle='rgba('+_panelLabelRGB()+',0.65)'; g.font='8px DM Mono,monospace'; g.textAlign='center';
+    g.fillStyle=_panelLight()?'rgba(60,80,95,0.8)':'rgba(255,255,255,0.40)'; g.font='8px DM Mono,monospace'; g.textAlign='center';
     g.fillText(h+'h', Math.min(W-7,Math.max(7,xx)), 8);
   });
   // PM/BM
@@ -13173,7 +13194,7 @@ function _renderSharkRisk(precipDays) {
   // Barre de turbidité compacte
   var turbHtml='<div style="display:flex;gap:2px;height:5px;border-radius:3px;overflow:hidden;margin-bottom:3px;">';
   LEVELS.forEach(function(lv,i){
-    turbHtml+='<div style="flex:1;background:'+(i<=level?lv.col:'rgba('+_panelGridRGB()+',.14)')+';'
+    turbHtml+='<div style="flex:1;background:'+(i<=level?lv.col:(_panelLight()?'rgba(15,35,55,.14)':'rgba(255,255,255,.07)'))+';'
       +(i===level?'box-shadow:0 0 6px '+lv.col+'88;':'')+'transition:all .4s;"></div>';
   });
   turbHtml+='</div>'
@@ -15200,7 +15221,7 @@ function openNavBMSDetail() {
   /* Fond en var(--deep) : la pastille écrit son icône en var(--accent), qui
      s'assombrit en thème clair — sur un navy figé elle devenait illisible. */
   #quick-nav-fab{position:fixed;right:16px;bottom:20px;width:46px;height:46px;border-radius:50%;
-    background:var(--deep);border:1px solid rgba(79,163,199,.4);color:var(--accent);
+    background:var(--fab-bg);border:1px solid rgba(79,163,199,.4);color:var(--accent);
     font-size:20px;cursor:pointer;z-index:900;box-shadow:0 4px 16px rgba(0,0,0,.4);
     display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
   #quick-nav-fab.show{display:flex;}
