@@ -4864,13 +4864,20 @@ function _renderCmpExtremes(atMs) {
 // appelé une seule fois quand l'un des deux caches se (re)peuple, pas à chaque
 // survol (contrairement à _renderCmpExtremes qui, lui, doit suivre le curseur).
 // Filtre optionnel (case houle du tableau _renderCmpTable) : plage de direction
-// houle à mettre en valeur, réglée via les 2 champs de _cmpDirFilterHtml().
-// null/null = pas de filtre (comportement par défaut, rien de surligné). Un
-// état MODULE-LEVEL (pas local à _renderCmpTable) : la fonction reconstruit
-// out.innerHTML entièrement à chaque appel (refresh curseur/toggle modèle/
-// changement d'onglet), donc la valeur des champs eux-mêmes serait perdue à
-// chaque redessin si elle n'était pas conservée ici et réinjectée dans le HTML.
+// houle à mettre en valeur, réglée via la molette SVG (_cmpDirWheelHtml/
+// _cmpAttachDirWheel ci-dessous, demande utilisateur : "possible de faire via
+// une molette avec les deux rayons de la plage ?"). null/null = pas de filtre
+// (comportement par défaut, rien de surligné). État MODULE-LEVEL (pas local à
+// _renderCmpTable) : la fonction reconstruit wrap.innerHTML entièrement à
+// chaque appel (refresh curseur/toggle modèle/changement d'onglet), donc la
+// plage choisie serait perdue à chaque redessin si elle n'était pas conservée
+// ici et réinjectée dans le HTML.
 var _cmpDirFilter = { min: null, max: null };
+// Position courante des 2 poignées PENDANT un drag, avant validation (évite de
+// reconstruire toute la table à 60 fps pendant le geste — seule la molette
+// elle-même est mise à jour en direct, cf. _cmpDirWheelUpdateLive ; la table
+// n'est redessinée qu'au relâchement, cf. _cmpDirWheelCommit).
+var _cmpDirWheelLive = { min: null, max: null };
 
 // Teste si `deg` tombe dans [min,max], EN TENANT COMPTE DU CERCLE (ex: plage
 // 350°→20° traverse le nord) — une comparaison naïve min<=deg<=max casserait
@@ -4881,34 +4888,142 @@ function _cmpDirInRange(deg, min, max) {
   if (min <= max) return d >= min && d <= max;
   return d >= min || d <= max;
 }
-
-function _cmpApplyDirFilter() {
-  var minEl = document.getElementById('cmp-dir-min'), maxEl = document.getElementById('cmp-dir-max');
-  // Clamp (PAS de modulo) : un modulo 360 aurait transformé un max=360 saisi
-  // ("de 0 à 360" = tout le cercle, cas naturel en tapant les bornes affichées
-  // par l'input) en 0, créant une plage dégénérée [0,0] au lieu de "tout".
-  // Le passage par 0°/360° (ex: houle secteur N, 350°→10°) reste géré par la
-  // branche min>max de _cmpDirInRange, qui n'a pas besoin de cette normalisation.
-  var min = minEl && minEl.value !== '' && !isNaN(+minEl.value) ? Math.max(0, Math.min(360, +minEl.value)) : null;
-  var max = maxEl && maxEl.value !== '' && !isNaN(+maxEl.value) ? Math.max(0, Math.min(360, +maxEl.value)) : null;
-  _cmpDirFilter = { min: min, max: max };
-  _renderCmpTable();
-}
 function _cmpClearDirFilter() {
   _cmpDirFilter = { min: null, max: null };
   _renderCmpTable();
 }
-function _cmpDirFilterHtml() {
-  var active = _cmpDirFilter.min != null || _cmpDirFilter.max != null;
-  return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px;font-size:10.5px;color:var(--muted);">'
-    + '<span>🎯 Surligner houle direction entre</span>'
-    + '<input type="number" id="cmp-dir-min" min="0" max="360" step="5" value="' + (_cmpDirFilter.min != null ? _cmpDirFilter.min : '') + '" placeholder="°" '
-    + 'style="width:50px;padding:2px 4px;font-size:10.5px;background:var(--card,rgba(255,255,255,.05));border:1px solid var(--border);border-radius:4px;color:var(--text);" onchange="_cmpApplyDirFilter()" aria-label="Direction houle minimum (degrés)">'
-    + '<span>et</span>'
-    + '<input type="number" id="cmp-dir-max" min="0" max="360" step="5" value="' + (_cmpDirFilter.max != null ? _cmpDirFilter.max : '') + '" placeholder="°" '
-    + 'style="width:50px;padding:2px 4px;font-size:10.5px;background:var(--card,rgba(255,255,255,.05));border:1px solid var(--border);border-radius:4px;color:var(--text);" onchange="_cmpApplyDirFilter()" aria-label="Direction houle maximum (degrés)">'
-    + (active ? '<button type="button" onclick="_cmpClearDirFilter()" style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">Effacer</button>' : '<span style="font-size:9.5px;color:var(--faint);">(optionnel)</span>')
+
+// ─── Molette de direction (cercle SVG, 2 poignées glissables) ──────────────
+// Convention degrés = provenance météo, 0°=N en haut, sens horaire — même
+// convention que partout ailleurs dans ce fichier (arrowSpan, svgArrow()).
+var _CMP_DIR_R = 38; // rayon de l'anneau (viewBox 100×100, centre 50,50)
+function _cmpDirToXY(deg, r) {
+  var rad = deg * Math.PI / 180;
+  return { x: 50 + r * Math.sin(rad), y: 50 - r * Math.cos(rad) };
+}
+function _cmpDirFromXY(x, y) {
+  var deg = Math.atan2(x - 50, -(y - 50)) * 180 / Math.PI;
+  return ((deg % 360) + 360) % 360;
+}
+function _cmpDirWheelHtml() {
+  var active = _cmpDirFilter.min != null && _cmpDirFilter.max != null;
+  // Position par défaut des poignées tant qu'aucune plage n'est encore active
+  // (135°/225°, secteur SE plausible pour une houle NC) — juste pour avoir
+  // quelque chose à attraper ; le premier drag active le filtre.
+  var dMin = active ? _cmpDirFilter.min : 135, dMax = active ? _cmpDirFilter.max : 225;
+  var R = _CMP_DIR_R, HR = 7;
+  var pMin = _cmpDirToXY(dMin, R), pMax = _cmpDirToXY(dMax, R);
+  var span = ((dMax - dMin) % 360 + 360) % 360, largeArc = span > 180 ? 1 : 0;
+  var arcPath = 'M ' + pMin.x.toFixed(2) + ' ' + pMin.y.toFixed(2) + ' A ' + R + ' ' + R + ' 0 ' + largeArc + ' 1 ' + pMax.x.toFixed(2) + ' ' + pMax.y.toFixed(2);
+  var ticks = [0, 90, 180, 270].map(function(d) {
+    var po = _cmpDirToXY(d, R + 6), pi = _cmpDirToXY(d, R - 2);
+    return '<line x1="' + pi.x.toFixed(1) + '" y1="' + pi.y.toFixed(1) + '" x2="' + po.x.toFixed(1) + '" y2="' + po.y.toFixed(1) + '" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>';
+  }).join('');
+  var lbls = [['N', 0], ['E', 90], ['S', 180], ['O', 270]].map(function(t) {
+    var p = _cmpDirToXY(t[1], R + 13);
+    return '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3).toFixed(1) + '" text-anchor="middle" font-size="8" fill="rgba(255,255,255,.4)">' + t[0] + '</text>';
+  }).join('');
+  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px;">'
+    + '<svg id="cmp-dir-wheel" viewBox="0 0 100 100" width="86" height="86" style="touch-action:none;flex:none;">'
+    + '<circle cx="50" cy="50" r="' + R + '" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="6"/>'
+    + '<path id="cmp-dir-arc" d="' + arcPath + '" fill="none" stroke="' + (active ? '#fde068' : 'rgba(255,255,255,.15)') + '" stroke-width="6" stroke-linecap="round"/>'
+    + ticks + lbls
+    + '<circle id="cmp-dir-h-min" cx="' + pMin.x.toFixed(2) + '" cy="' + pMin.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle minimum" aria-valuenow="' + Math.round(dMin) + '" aria-valuemin="0" aria-valuemax="360"/>'
+    + '<circle id="cmp-dir-h-max" cx="' + pMax.x.toFixed(2) + '" cy="' + pMax.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle maximum" aria-valuenow="' + Math.round(dMax) + '" aria-valuemin="0" aria-valuemax="360"/>'
+    + '</svg>'
+    + '<div style="font-size:10.5px;color:var(--muted);line-height:1.6;">'
+    + '<div>🎯 Surligner houle : <b id="cmp-dir-live-lbl" style="color:' + (active ? '#fde068' : 'var(--muted)') + ';">' + (active ? (Math.round(dMin) + '°–' + Math.round(dMax) + '°') : 'glisser un repère pour activer') + '</b></div>'
+    + '<div style="font-size:9.5px;color:var(--faint);">2 repères sur le cercle — glisser, ou flèches ←/→ au clavier'
+    + (active ? ' · <a href="javascript:void(0)" onclick="_cmpClearDirFilter()" style="color:var(--accent);">Effacer</a>' : '') + '</div>'
+    + '</div>'
     + '</div>';
+}
+// Met à jour UNIQUEMENT la molette (position des poignées, arc, libellé) sans
+// toucher au reste du tableau — appelé à chaque frame d'un drag, doit rester
+// bon marché (pas de reconstruction de wrap.innerHTML, qui casserait le drag
+// en cours en remplaçant les nœuds SVG sous le pointeur).
+function _cmpDirWheelUpdateLive(key, deg) {
+  _cmpDirWheelLive[key] = deg;
+  var svg = document.getElementById('cmp-dir-wheel');
+  if (!svg) return;
+  var R = _CMP_DIR_R;
+  var dMin = _cmpDirWheelLive.min != null ? _cmpDirWheelLive.min : (_cmpDirFilter.min != null ? _cmpDirFilter.min : 135);
+  var dMax = _cmpDirWheelLive.max != null ? _cmpDirWheelLive.max : (_cmpDirFilter.max != null ? _cmpDirFilter.max : 225);
+  var pMin = _cmpDirToXY(dMin, R), pMax = _cmpDirToXY(dMax, R);
+  var hMin = document.getElementById('cmp-dir-h-min'), hMax = document.getElementById('cmp-dir-h-max');
+  if (hMin) { hMin.setAttribute('cx', pMin.x.toFixed(2)); hMin.setAttribute('cy', pMin.y.toFixed(2)); hMin.setAttribute('aria-valuenow', Math.round(dMin)); hMin.setAttribute('fill', '#fde068'); }
+  if (hMax) { hMax.setAttribute('cx', pMax.x.toFixed(2)); hMax.setAttribute('cy', pMax.y.toFixed(2)); hMax.setAttribute('aria-valuenow', Math.round(dMax)); hMax.setAttribute('fill', '#fde068'); }
+  var span = ((dMax - dMin) % 360 + 360) % 360, largeArc = span > 180 ? 1 : 0;
+  var arcEl = document.getElementById('cmp-dir-arc');
+  if (arcEl) { arcEl.setAttribute('d', 'M ' + pMin.x.toFixed(2) + ' ' + pMin.y.toFixed(2) + ' A ' + R + ' ' + R + ' 0 ' + largeArc + ' 1 ' + pMax.x.toFixed(2) + ' ' + pMax.y.toFixed(2)); arcEl.setAttribute('stroke', '#fde068'); }
+  var lbl = document.getElementById('cmp-dir-live-lbl');
+  if (lbl) { lbl.textContent = Math.round(dMin) + '°–' + Math.round(dMax) + '°'; lbl.style.color = '#fde068'; }
+}
+// Valide le drag en cours (ou l'ajustement clavier) : fixe _cmpDirFilter et
+// redessine tout le tableau (c'est ICI, pas pendant le drag, que le
+// surlignage des cases houle se met à jour).
+function _cmpDirWheelCommit() {
+  if (_cmpDirWheelLive.min == null && _cmpDirWheelLive.max == null) return;
+  var dMin = _cmpDirWheelLive.min != null ? _cmpDirWheelLive.min : (_cmpDirFilter.min != null ? _cmpDirFilter.min : 135);
+  var dMax = _cmpDirWheelLive.max != null ? _cmpDirWheelLive.max : (_cmpDirFilter.max != null ? _cmpDirFilter.max : 225);
+  _cmpDirFilter = { min: dMin, max: dMax };
+  _cmpDirWheelLive = { min: null, max: null };
+  _renderCmpTable();
+}
+// Attache les gestionnaires souris/tactile/clavier sur les 2 poignées — appelé
+// après CHAQUE `wrap.innerHTML = html` (les nœuds SVG sont neufs à chaque
+// redessin, donc les écouteurs précédents ont disparu avec eux).
+function _cmpAttachDirWheel() {
+  var svg = document.getElementById('cmp-dir-wheel');
+  if (!svg) return;
+  function svgPoint(evt) {
+    var t = (evt.touches && evt.touches[0]) ? evt.touches[0] : evt;
+    var pt = svg.createSVGPoint();
+    pt.x = t.clientX; pt.y = t.clientY;
+    var ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 50, y: 50 };
+    var loc = pt.matrixTransform(ctm.inverse());
+    return { x: loc.x, y: loc.y };
+  }
+  function startDrag(key) {
+    return function(evt) {
+      evt.preventDefault();
+      function move(mv) {
+        var p = svgPoint(mv);
+        var deg = Math.round(_cmpDirFromXY(p.x, p.y) / 5) * 5; // pas de 5° : plus facile à attraper une valeur ronde
+        _cmpDirWheelUpdateLive(key, deg % 360);
+      }
+      function end() {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('touchmove', move);
+        document.removeEventListener('mouseup', end);
+        document.removeEventListener('touchend', end);
+        _cmpDirWheelCommit();
+      }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('touchmove', move, { passive: false });
+      document.addEventListener('mouseup', end);
+      document.addEventListener('touchend', end);
+    };
+  }
+  ['min', 'max'].forEach(function(key) {
+    var h = document.getElementById('cmp-dir-h-' + key);
+    if (!h) return;
+    h.addEventListener('mousedown', startDrag(key));
+    h.addEventListener('touchstart', startDrag(key), { passive: false });
+    // Clavier (accessibilité, cf. convention a11y déjà posée sur les cartes créneaux) :
+    // flèches = pas de 5°, valeur de départ = la plage active ou le défaut d'affichage.
+    h.addEventListener('keydown', function(e) {
+      var cur = _cmpDirWheelLive[key] != null ? _cmpDirWheelLive[key]
+        : (_cmpDirFilter[key] != null ? _cmpDirFilter[key] : (key === 'min' ? 135 : 225));
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') cur = ((cur - 5) % 360 + 360) % 360;
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') cur = (cur + 5) % 360;
+      else return;
+      e.preventDefault();
+      _cmpDirWheelUpdateLive(key, cur);
+      _cmpDirWheelCommit();
+    });
+  });
 }
 
 function _renderCmpTable() {
@@ -4936,7 +5051,18 @@ function _renderCmpTable() {
   // Modèles portés par leur CLÉ (pas juste un libellé) pour récupérer couleur
   // d'identité + résolution depuis MODEL_STYLE — demandé par l'utilisateur : voir
   // les résolutions en clair, pas seulement au survol.
-  var windDefs = [];
+  // hiddenWindCount/hiddenSwellCount : modèles qui ONT des données mais sont
+  // masqués par un clic passé sur la légende (_windCmpHidden/_swellHidden,
+  // persistés en localStorage — survivent à un rechargement, MÊME un
+  // ctrl+shift+r qui ne vide que le cache HTTP/service worker, pas
+  // localStorage). Signalé par l'utilisateur : « je ne vois plus que
+  // meteo.nc » alors que les autres modèles chargent bien (vérifié : aucune
+  // erreur JS, _swellCache se peuple normalement) — la cause la plus probable
+  // est ce filtre oublié activé, pas une régression de chargement. Un lien de
+  // réinitialisation directement ICI (pas seulement dans la légende du graphe
+  // au-dessus, facile à ne pas remarquer) pour que ce soit visible exactement
+  // là où le symptôme est constaté.
+  var windDefs = [], hiddenWindCount = 0;
   if (_aromeCmpCache) {
     var wc = _aromeCmpCache;
     var atSt = _windCmpAtStation && wc.station;
@@ -4944,19 +5070,21 @@ function _renderCmpTable() {
       ? [['aro', wc.station.aro], ['nc', wc.station.nc], ['gfs', wc.station.gfs], ['bom', wc.station.bom], ['marc', wc.station.marc]]
       : [['aro', wc.aro], ['nc', wc.pageNc], ['gfs', wc.pageGfs], ['bom', wc.bomWind], ['ecmwf', wc.ecmwfWind], ['marc', wc.marcWind]];
     wdefs.forEach(function(d) {
-      if (_windCmpHidden[d[0]]) return;
-      if (d[1] && d[1].length) windDefs.push({ key: d[0], pts: d[1] });
+      if (!d[1] || !d[1].length) return;
+      if (_windCmpHidden[d[0]]) { hiddenWindCount++; return; }
+      windDefs.push({ key: d[0], pts: d[1] });
     });
   }
-  var swellDefs = [];
+  var swellDefs = [], hiddenSwellCount = 0;
   if (_swellCache) {
     SWELL_MODELS.forEach(function(m) {
-      if (_swellHidden[m.key]) return;
       var arr = _swellCache[m.key] && _swellCache[m.key].primary;
-      if (arr && arr.length) swellDefs.push({ key: m.key, pts: arr });
+      if (!arr || !arr.length) return;
+      if (_swellHidden[m.key]) { hiddenSwellCount++; return; }
+      swellDefs.push({ key: m.key, pts: arr });
     });
   }
-  if (!windDefs.length && !swellDefs.length) { wrap.innerHTML = ''; return; }
+  if (!windDefs.length && !swellDefs.length && !hiddenWindCount && !hiddenSwellCount) { wrap.innerHTML = ''; return; }
 
   var LBLW = 92; // largeur de la colonne modèle (sticky) — assez pour "MARC WW3 5,5 km"
   function nightBg(s, base) { return s.night ? 'linear-gradient(rgba(0,0,0,.16),rgba(0,0,0,.16)),' + base : base; }
@@ -5031,14 +5159,23 @@ function _renderCmpTable() {
   function sectionHdr(txt) {
     return '<tr><td colspan="' + (NSLOT + 1) + '" style="padding:9px 8px 3px;font-size:11px;color:var(--text);font-weight:700;letter-spacing:.02em;position:sticky;left:0;background:var(--deep);">' + txt + '</td></tr>';
   }
-  var dirFilterHtml = swellDefs.length ? _cmpDirFilterHtml() : '';
-  var html = dirFilterHtml + '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
+  var hiddenBanner = '';
+  if (hiddenWindCount || hiddenSwellCount) {
+    var bits = [];
+    if (hiddenSwellCount) bits.push(hiddenSwellCount + ' modèle(s) houle masqué(s) <a href="javascript:void(0)" onclick="_resetSwellHidden()" style="color:var(--accent);">↺ réafficher</a>');
+    if (hiddenWindCount) bits.push(hiddenWindCount + ' modèle(s) vent masqué(s) <a href="javascript:void(0)" onclick="_resetWindCmpHidden()" style="color:var(--accent);">↺ réafficher</a>');
+    hiddenBanner = '<div style="font-size:10.5px;color:var(--warn,#e8a057);background:rgba(232,160,87,.08);border:1px solid rgba(232,160,87,.25);border-radius:6px;padding:5px 8px;margin-bottom:8px;">⚠ ' + bits.join(' · ') + '</div>';
+  }
+  if (!windDefs.length && !swellDefs.length) { wrap.innerHTML = hiddenBanner; return; }
+  var dirFilterHtml = swellDefs.length ? _cmpDirWheelHtml() : '';
+  var html = hiddenBanner + dirFilterHtml + '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
     + '<thead><tr>' + dayRow + '</tr><tr>' + hourRow + '</tr></thead><tbody>';
   if (windDefs.length) html += sectionHdr('💨 Vent — nds · ↑ direction · <span style="font-weight:400;color:var(--muted);">g = rafales</span>') + rowsFor(windDefs, 'wind');
   if (swellDefs.length) html += sectionHdr('🌊 Houle — m · ↑ direction · <span style="font-weight:400;color:var(--muted);">période en s</span>') + rowsFor(swellDefs, 'swell');
   html += '</tbody></table>';
   html += '<div style="font-size:9.5px;color:var(--faint);margin-top:5px;line-height:1.4;">Pastille colorée = résolution du modèle (plus le chiffre est petit, plus le modèle est fin/local). Fond des cases coloré selon l\'intensité. Nuit grisée.</div>';
   wrap.innerHTML = html;
+  if (swellDefs.length) _cmpAttachDirWheel();
 }
 
 function _swellToPts(d, comp) {

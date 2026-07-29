@@ -44,6 +44,18 @@ Lire d'abord `CLAUDE.md` (conventions, pièges, protocole de vérification).
 > (previsions.html `_renderCachedModelsBlock`). + 2 demandes : fourchette
 > inter-modèles portée à 7j (était 48h), et surlignage optionnel d'une plage de
 > direction houle sur ce tableau. `CACHE_NAME` → v39.
+>
+> **Suite immédiate (2)** : URGENT « je ne vois plus que meteo.nc » sur le
+> tableau comparatif — PAS une régression réseau/code (reproduit : les modèles
+> chargent bien), cause = `_swellHidden`/`_windCmpHidden` en localStorage
+> (survit à ctrl+shift+r) peut finir "tout masqué sauf un modèle" ; ajouté un
+> bandeau ⚠ + lien de réinitialisation DIRECTEMENT sur ce tableau (avant, le
+> seul bouton reset vivait dans la légende du graphe au-dessus, facile à
+> manquer). Lenteur AROME persistante : piste identifiée mais PAS corrigée
+> (`caches.default` du Worker est local par colo, pas global — à discuter
+> avant de migrer vers un stockage Supabase comme MARC). Molette SVG (2
+> poignées glissables) à la place des 2 champs numériques pour la plage de
+> direction. `CACHE_NAME` → v40.
 
 ---
 

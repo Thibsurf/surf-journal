@@ -1518,3 +1518,52 @@ Vérifié en direct (harnais `__test.html`) : tableau à 57 colonnes (7j), filtr
 plein cercle → 237 cases surlignées, filtre étroit (359°-359,5°) → 0, valeurs
 des champs conservées après redessin, 0 erreur JS sur les deux pages.
 `CACHE_NAME` → v39.
+
+### Suite immédiate (2) — URGENT « je ne vois plus que meteo.nc » + molette
+
+Retour utilisateur, deux points :
+
+1. **URGENT** : sur le tableau comparatif inter-modèles, plus que meteo.nc
+   visible, « il n'y a plus le reste ». Aussi : AROME/Ténia toujours long à
+   charger malgré ctrl+shift+r, pareil pour les comparatifs vent.
+2. Molette (cercle à 2 poignées) pour la plage de direction plutôt que 2
+   champs numériques, « sinon tant pis mais quelque chose de propre ».
+
+**Diagnostic de l'URGENT** : reproduit en direct (réseau réel, 40 s d'attente)
+→ `_swellCache` se peuple normalement pour 5-6 modèles sur 6 (seul ECMWF/
+Windguru échoue parfois, connu/flaky), 0 erreur JS. Donc PAS un problème de
+chargement réseau ni une régression du code de cette session. Cause réelle
+trouvée : `_swellHidden`/`_windCmpHidden` (persistés en `localStorage`,
+survivent à un ctrl+shift+r qui ne vide que le cache HTTP/SW, jamais
+localStorage) peuvent finir avec « tout masqué sauf un modèle » suite à des
+clics passés sur la légende — un bouton "↺ Réinitialiser" existe déjà mais
+vit dans la légende du GRAPHE principal au-dessus, facile à ne pas remarquer
+en regardant seulement le tableau. Reproduit exactement le symptôme rapporté
+en simulant l'état (`_swellHidden` = tout sauf nc) : `_renderCmpTable` montrait
+alors 8 lignes (nc + vent) au lieu de 12. Corrigé en ajoutant un bandeau ⚠
+directement DANS `_renderCmpTable`, avec lien de réinitialisation immédiat
+(`_resetSwellHidden()`/`_resetWindCmpHidden()`), visible exactement là où le
+symptôme est constaté — vérifié : clic → 12 lignes, `_swellHidden` vidé.
+
+Piste identifiée (non corrigée, à discuter) pour la lenteur AROME persistante :
+le pré-chauffage cron (`prewarmArome`, commit `d3525292`) écrit dans
+`caches.default` du Worker Cloudflare — ce cache est **local à chaque
+datacenter/colo**, pas partagé globalement. Si la requête utilisateur atterrit
+sur un edge différent de celui qui a tourné le cron, le cache y est froid et
+Windguru est interrogé en direct (lent). Piste de fix propre : stocker le
+snapshot AROME dans Supabase (comme MARC/AROME wind, cf. `ingestion/`) plutôt
+que le cache éphémère par-colo — pas fait cette session (changement
+d'architecture plus lourd, à valider avec l'utilisateur avant de s'y lancer).
+
+**Molette** : remplacé les 2 champs numériques par un cadran SVG (cercle,
+répères N/E/S/O, 2 poignées glissables à la souris/tactile + flèches clavier,
+pas de 5°). Convention degrés = provenance météo, 0°=N, sens horaire (comme
+`arrowSpan`/`svgArrow` partout ailleurs). Mise à jour de la poignée pendant le
+drag = manipulation DOM directe (pas de redessin de tout le tableau à chaque
+frame, qui casserait le geste en remplaçant les nœuds SVG sous le pointeur) ;
+le tableau ne se redessine qu'au relâchement. Vérifié en direct (simulation de
+drag par événements souris réels) : glisser la poignée min vers l'est →
+`_cmpDirFilter={min:90,max:225}`, 235 cases surlignées ; clavier (flèches sur
+poignée focus) → pas de 5° ; 0 erreur JS.
+
+`CACHE_NAME` → v40.
