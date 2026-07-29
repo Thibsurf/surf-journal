@@ -20,6 +20,27 @@
 // ════════════════════════════════════════════════════════════════════════
 var _gwDayIdx = 0;
 
+// ─── Thème clair/sombre — canvas du widget ───────────────────────────────────
+// Le graphe d'ensemble (_gwDrawOverview) dessine sur un canvas TRANSPARENT posé
+// sur la carte .card (previsions.html) : contrairement aux vues satellite/marée/
+// nuages plus bas (qui peignent leur propre fond, indépendant du thème), ses
+// couleurs supposaient un fond sombre (blancs translucides pour les grilles,
+// teintes d'accent claires pour les courbes) — quasi invisibles sur fond clair.
+// _panelLight()/_panelGridRGB()/_panelLabelRGB() sont définis dans charts-core.js
+// (chargé AVANT ce fichier, sans defer — cf. previsions.html), réutilisés ici
+// plutôt que dupliqués. _gwCssVar lit une variable CSS déjà themée (--sun) pour
+// les couleurs que le canvas ne peut pas exprimer via var() directement.
+function _gwCssVar(name, fallback) {
+  try {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name);
+    v = v && v.trim();
+    return v || fallback;
+  } catch (e) { return fallback; }
+}
+var _GW_SEM_DARK  = { ok: '61,186,138', accent: '79,163,199', bad: '224,92,92', warm: '232,160,87' };
+var _GW_SEM_LIGHT = { ok: '18,122,78',  accent: '26,114,155', bad: '199,62,62', warm: '168,99,31' };
+function _gwSemRGB(name) { return (typeof _panelLight === 'function' && _panelLight() ? _GW_SEM_LIGHT : _GW_SEM_DARK)[name]; }
+
 // ─── Sources supplémentaires pour le widget (BOM/MFWAM) ─────────────────────
 // Le reste de la page (graphe principal, tableau détaillé, ~15 autres endroits)
 // ne bascule qu'entre meteo.nc/GFS via _currentHsSrc, partagé partout. BOM/MFWAM
@@ -551,7 +572,7 @@ function _gwDrawOverview() {
         }
         if (kFirst >= 0) {
           var vx0 = padL + kFirst*span, vx1 = padL + (kLast+1)*span;
-          ctx.fillStyle = 'rgba(6,16,30,.55)';
+          ctx.fillStyle = _panelLight() ? 'rgba(210,218,228,.75)' : 'rgba(6,16,30,.55)';
           if (vx0 > padL) ctx.fillRect(padL, headH, vx0-padL, H-headH);
           if (vx1 < W-padR) ctx.fillRect(vx1, headH, (W-padR)-vx1, H-headH);
           // Liseré d'accent JUSTE SOUS l'en-tête des jours, pas en bas du canvas :
@@ -582,14 +603,14 @@ function _gwDrawOverview() {
       : DAY_FR_W[dd.getUTCDay()]+' '+dd.getUTCDate()+'/'+(dd.getUTCMonth()+1);
     ctx.fillText(dayLbl, (x0+x1)/2, headH/2-1);
     if (di > 0) {
-      ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',.10)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x0, headH); ctx.lineTo(x0, H-2); ctx.stroke();
     }
   });
 
   // Micro-heures sous les barres (06h / 12h / 18h de chaque jour)
   ctx.font = '6.5px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.75)';
   gis.forEach(function(fi, k){
     var hh2 = d.dates[fi].getUTCHours();
     if (hh2===6 || hh2===12 || hh2===18) ctx.fillText(hh2+'h', xOf(k), H-1);
@@ -599,19 +620,19 @@ function _gwDrawOverview() {
   ctx.font = '8px DM Sans,sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
   var ktStep = maxKt > 40 ? 20 : 10;
   for (var v = 0; v <= maxKt; v += ktStep) {
-    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',.05)';
     ctx.beginPath(); ctx.moveTo(padL, yW(v)); ctx.lineTo(W-padR, yW(v)); ctx.stroke();
-    ctx.fillStyle = 'rgba(122,148,170,.8)'; ctx.fillText(String(v), padL-4, yW(v));
+    ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.8)'; ctx.fillText(String(v), padL-4, yW(v));
   }
   var hsStep = maxHs > 2.5 ? 1 : 0.5;
   for (var hv = 0; hv <= maxHs; hv += hsStep) {
-    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',.05)';
     ctx.beginPath(); ctx.moveTo(padL, yH(hv)); ctx.lineTo(W-padR, yH(hv)); ctx.stroke();
-    ctx.fillStyle = 'rgba(122,148,170,.8)'; ctx.fillText(hsStep < 1 ? hv.toFixed(1) : String(hv), padL-4, yH(hv));
+    ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.8)'; ctx.fillText(hsStep < 1 ? hv.toFixed(1) : String(hv), padL-4, yH(hv));
   }
   ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(61,186,138,.9)';  ctx.fillText('Vent (nds)',  padL+2, windTop-6);
-  ctx.fillStyle = 'rgba(79,163,199,.95)'; ctx.fillText('Houle (m)', padL+2, hsTop-6);
+  ctx.fillStyle = 'rgba(' + _gwSemRGB('ok') + ',.9)';      ctx.fillText('Vent (nds)',  padL+2, windTop-6);
+  ctx.fillStyle = 'rgba(' + _gwSemRGB('accent') + ',.95)'; ctx.fillText('Houle (m)', padL+2, hsTop-6);
 
   // Barres houle : totale (bleu accent) derrière, primaire (bleu clair) devant — sommets arrondis
   var bw = Math.min(span*0.55, 14);
@@ -623,8 +644,8 @@ function _gwDrawOverview() {
   }
   gis.forEach(function(fi, k){
     var x = xOf(k), tot = d.totH[fi], p1 = d.sw1h[fi];
-    if (tot!=null) bar(x, yH(tot), bw, 'rgba(79,163,199,.85)');
-    if (p1!=null)  bar(x, yH(p1), bw*0.56, 'rgba(185,208,235,.85)');
+    if (tot!=null) bar(x, yH(tot), bw, 'rgba(' + _gwSemRGB('accent') + ',.85)');
+    if (p1!=null)  bar(x, yH(p1), bw*0.56, _gwCssVar('--accent2', '#b9d0eb'));
   });
 
   // Remplissage doux sous la courbe de vent (lisibilité de la zone vent)
@@ -668,8 +689,8 @@ function _gwDrawOverview() {
 
   // Courbe vent moyen (verte, halo léger)
   ctx.save();
-  ctx.shadowColor = 'rgba(61,186,138,.5)'; ctx.shadowBlur = 4;
-  ctx.strokeStyle = '#3dba8a'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round'; ctx.beginPath();
+  ctx.shadowColor = 'rgba(' + _gwSemRGB('ok') + ',.5)'; ctx.shadowBlur = 4;
+  ctx.strokeStyle = 'rgb(' + _gwSemRGB('ok') + ')'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round'; ctx.beginPath();
   var started = false;
   gis.forEach(function(fi, k){
     var v2 = d.wSpd[fi]; if (v2==null) { started = false; return; }
@@ -685,7 +706,7 @@ function _gwDrawOverview() {
     var t0 = d.dates[gis[kn]].getTime(), t1 = d.dates[gis[kn+1]].getTime();
     if (nowFake >= t0 && nowFake <= t1) {
       var xn = xOf(kn + (nowFake-t0)/((t1-t0)||1));
-      ctx.strokeStyle = 'rgba(255,255,100,0.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+      ctx.strokeStyle = _panelLight() ? 'rgba(194,121,13,.5)' : 'rgba(255,255,100,0.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
       ctx.beginPath(); ctx.moveTo(xn, headH); ctx.lineTo(xn, H-2); ctx.stroke(); ctx.setLineDash([]);
       break;
     }
@@ -695,12 +716,12 @@ function _gwDrawOverview() {
   var kh = gis.indexOf(_gwHoverGi);
   if (kh >= 0) {
     var xh = xOf(kh);
-    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.2; ctx.setLineDash([4,3]);
+    ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',.5)'; ctx.lineWidth = 1.2; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.moveTo(xh, headH); ctx.lineTo(xh, H-2); ctx.stroke(); ctx.setLineDash([]);
     var vw = d.wSpd[_gwHoverGi];
     if (vw!=null) {
-      ctx.fillStyle = '#3dba8a'; ctx.beginPath(); ctx.arc(xh, yW(vw), 3.5, 0, 2*Math.PI); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = 'rgb(' + _gwSemRGB('ok') + ')'; ctx.beginPath(); ctx.arc(xh, yW(vw), 3.5, 0, 2*Math.PI); ctx.fill();
+      ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',.9)'; ctx.lineWidth = 1.2; ctx.stroke();
     }
   }
 
@@ -1192,15 +1213,18 @@ function _gwRenderClouds(d, day) {
 
   // Zone nuages en haut, voie pluie en bas (bande météo unifiée façon Windy)
   var rainTop = H-13, cloudBot = H-16;
-  // 3 étages : haut = voiles clairs, bas = nappes denses sombres
+  // 3 étages : haut = voiles clairs, bas = nappes denses sombres. Nappes claires
+  // pensées pour un ciel sombre (§CLAUDE.md) : sur carte claire ce blanc translucide
+  // devient quasi invisible, d'où un jeu de gris nettement plus sombre en thème clair.
   var zH = cloudBot - 2;
+  var _cloudLight = _panelLight();
   var LAYERS = [
-    { arr: d.cldH, y0: 2,                       y1: 2+Math.round(zH*0.33)-1, col: '226,232,240', aMax: 0.42 },
-    { arr: d.cldM, y0: 2+Math.round(zH*0.33)+1, y1: 2+Math.round(zH*0.66)-1, col: '203,213,224', aMax: 0.52 },
-    { arr: d.cldL, y0: 2+Math.round(zH*0.66)+1, y1: cloudBot,                col: '154,168,182', aMax: 0.62 }
+    { arr: d.cldH, y0: 2,                       y1: 2+Math.round(zH*0.33)-1, col: _cloudLight ? '150,160,175' : '226,232,240', aMax: 0.42 },
+    { arr: d.cldM, y0: 2+Math.round(zH*0.33)+1, y1: 2+Math.round(zH*0.66)-1, col: _cloudLight ? '110,122,138' : '203,213,224', aMax: 0.52 },
+    { arr: d.cldL, y0: 2+Math.round(zH*0.66)+1, y1: cloudBot,                col: _cloudLight ? '75,88,104'  : '154,168,182', aMax: 0.62 }
   ];
   // Fallback : pas de couches détaillées → une seule nappe médiane avec le total
-  if (!hasLayers) LAYERS = [ { arr: d.cld, y0: 4, y1: cloudBot, col: '203,213,224', aMax: 0.55 } ];
+  if (!hasLayers) LAYERS = [ { arr: d.cld, y0: 4, y1: cloudBot, col: _cloudLight ? '110,122,138' : '203,213,224', aMax: 0.55 } ];
 
   LAYERS.forEach(function(L){
     if (!L.arr) return;
@@ -1233,7 +1257,7 @@ function _gwRenderClouds(d, day) {
   // ── Voie pluie : filet séparateur + barres bleues arrondies + valeur en mm ──
   // Une barre par colonne de grille (résolution bulletin), positionnée en temps
   // réel — largeur = étendue temporelle de la colonne (cohérent avec la grille).
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',' + (_cloudLight ? '.14' : '.07') + ')'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, rainTop-1.5); ctx.lineTo(W, rainTop-1.5); ctx.stroke();
   var laneH = H-2 - rainTop;
   var rainCols = _gwGridIdxs(d, day);
@@ -1259,9 +1283,9 @@ function _gwRenderClouds(d, day) {
 
   // Repères d'étages discrets à gauche
   ctx.font = '6.5px DM Sans,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(122,148,170,.55)';
+  ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.75)';
   if (hasLayers) { ctx.fillText('haut', 2, 2+zH*0.17); ctx.fillText('moy', 2, 2+zH*0.5); ctx.fillText('bas', 2, 2+zH*0.83); }
-  ctx.fillStyle = 'rgba(79,195,232,.6)';
+  ctx.fillStyle = _cloudLight ? 'rgba(20,110,150,.8)' : 'rgba(79,195,232,.6)';
   ctx.fillText('mm', 2, rainTop+laneH/2-1);
 }
 
@@ -1277,7 +1301,10 @@ function _gwRenderLevels(day) {
     var hStr = (e.estimated ? '~' : '')
       + String(t.getUTCHours()).padStart(2,'0')+'h'+String(t.getUTCMinutes()).padStart(2,'0');
     var isPM = e.type==='pm';
-    var col = isPM ? '#4fa3c7' : '#e05c5c';
+    // _gwAlpha() n'accepte qu'un #rrggbb littéral (pas var()) : couleurs résolues
+    // à la main par thème plutôt qu'une variable CSS, sinon bordure/fond du chip
+    // retombent silencieusement en transparent (cf. _gwAlpha, garde hex[0]==='#').
+    var col = _panelLight() ? (isPM ? '#1a729b' : '#c73e3e') : (isPM ? '#4fa3c7' : '#e05c5c');
     var op = e.estimated ? 'opacity:.7;border-style:dashed;' : '';
     return '<span style="font-size:11px;font-weight:700;color:'+col+';border:1px solid '+_gwAlpha(col,.35)
       + ';background:'+_gwAlpha(col,.08)+';border-radius:9px;padding:2px 8px;white-space:nowrap;'+op+'" title="'
@@ -1448,17 +1475,17 @@ function _gwRenderTideRow(d, day) {
 
   // Courbe principale — halo doux puis trait net
   ctx.save();
-  ctx.shadowColor = 'rgba(79,163,199,0.55)'; ctx.shadowBlur = 6;
+  ctx.shadowColor = 'rgba(' + _gwSemRGB('accent') + ',0.55)'; ctx.shadowBlur = 6;
   ctx.beginPath();
   ctx.moveTo(samples[0].x, yOf(samples[0].h));
   samples.forEach(function(p){ ctx.lineTo(p.x, yOf(p.h)); });
-  ctx.strokeStyle = '#4fa3c7'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.strokeStyle = 'rgb(' + _gwSemRGB('accent') + ')'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
   ctx.restore();
   // Liseré clair sur la crête de la courbe (relief subtil)
   ctx.beginPath();
   ctx.moveTo(samples[0].x, yOf(samples[0].h)-0.8);
   samples.forEach(function(p){ ctx.lineTo(p.x, yOf(p.h)-0.8); });
-  ctx.strokeStyle = 'rgba(220,240,255,0.25)'; ctx.lineWidth = 0.8; ctx.stroke();
+  ctx.strokeStyle = 'rgba(' + _panelFadeRGB() + ',0.25)'; ctx.lineWidth = 0.8; ctx.stroke();
 
   // Marqueur « maintenant » (jaune pointillé + point + hauteur actuelle)
   var nowMs = Date.now();
@@ -1466,18 +1493,18 @@ function _gwRenderTideRow(d, day) {
     var nx = msToX(nowMs);
     if (nx >= 0 && nx <= W) {
       ctx.beginPath(); ctx.moveTo(nx, 2); ctx.lineTo(nx, H-2);
-      ctx.strokeStyle = 'rgba(255,255,100,0.35)'; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = _panelLight() ? 'rgba(194,121,13,.45)' : 'rgba(255,255,100,0.35)'; ctx.lineWidth = 1.5;
       ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
       var nh = _gwTideHeightAt(nowMs, evExt);
       if (nh!=null) {
         var nyy = yOf(nh);
-        ctx.beginPath(); ctx.arc(nx, nyy, 4, 0, 2*Math.PI); ctx.fillStyle = '#fde068'; ctx.fill();
+        ctx.beginPath(); ctx.arc(nx, nyy, 4, 0, 2*Math.PI); ctx.fillStyle = _gwCssVar('--sun', '#fde068'); ctx.fill();
         ctx.strokeStyle = 'rgba(6,16,30,.7)'; ctx.lineWidth = 1.2; ctx.stroke();
         var nhLbl = nh.toFixed(2)+'m';
         var nlx = nx + 26 > W-6 ? nx-26 : nx+26; // bascule à gauche près du bord droit
         ctx.font = '700 8.5px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.strokeStyle = 'rgba(6,16,30,0.8)'; ctx.lineWidth = 3; ctx.strokeText(nhLbl, nlx, nyy);
-        ctx.fillStyle = '#fde068'; ctx.fillText(nhLbl, nlx, nyy);
+        ctx.fillStyle = _gwCssVar('--sun', '#fde068'); ctx.fillText(nhLbl, nlx, nyy);
       }
     }
   }
@@ -1486,7 +1513,7 @@ function _gwRenderTideRow(d, day) {
   // et les labels d'axe se superposaient aux heures des BM)
   for (var th = 0; th <= 24; th += 6) {
     var txx = Math.max(0.5, Math.min(W-0.5, msToX(dayStartUTC + th*3600000)));
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',0.12)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(txx, H-6); ctx.lineTo(txx, H-2); ctx.stroke();
   }
 
@@ -1503,7 +1530,7 @@ function _gwRenderTideRow(d, day) {
       ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke();
     } else {
       ctx.fillStyle = col; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
     }
     var localT = new Date(e.ms + 11*3600000);
     var hLbl = (e.estimated ? '~' : '')
@@ -1561,12 +1588,12 @@ function _gwRenderSunRow(d, day) {
 
   // Ligne du bas : heure de lever (ancrée gauche), durée du jour (centre), coucher (ancrée droite)
   html += '<div style="position:absolute;left:0;right:0;top:20px;height:11px;font-size:11px;font-weight:700;line-height:11px;">'
-    + '<span style="position:absolute;left:'+rx.toFixed(1)+'%;transform:translateX(-35%);color:#fde068;">↑ '+sun.sunrise+'</span>'
+    + '<span style="position:absolute;left:'+rx.toFixed(1)+'%;transform:translateX(-35%);color:var(--sun);">↑ '+sun.sunrise+'</span>'
     + (sun.dayLenMin
       ? '<span style="position:absolute;left:50%;transform:translateX(-50%);color:var(--muted);font-weight:600;">☀ '
         + Math.floor(sun.dayLenMin/60)+'h'+String(sun.dayLenMin%60).padStart(2,'0')+' de jour</span>'
       : '')
-    + '<span style="position:absolute;left:'+sx.toFixed(1)+'%;transform:translateX(-65%);color:#fde068;">↓ '+sun.sunset+'</span>'
+    + '<span style="position:absolute;left:'+sx.toFixed(1)+'%;transform:translateX(-65%);color:var(--sun);">↓ '+sun.sunset+'</span>'
     + '</div>';
   wrap.innerHTML = html;
 }

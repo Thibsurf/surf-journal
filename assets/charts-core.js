@@ -11,6 +11,18 @@
 // ES5 volontaire (cf. §A de l'audit : la page cible d'anciens iOS) — pas de
 // let/const/arrow ici non plus, et des globals plutôt que des modules.
 
+// Couleurs structurelles (grille, curseur, libellés) des panneaux, calées sur
+// le thème actif. Ces panneaux dessinent en canvas — ils ne suivent PAS les
+// variables CSS --muted/--border du thème clair/sombre (previsions.html), il
+// faut donc relire l'attribut data-theme à chaque tracé. Un blanc translucide
+// (pensé pour --ocean sombre) devient quasi invisible sur le fond clair, d'où
+// des jeux de teintes distincts plutôt qu'un simple alpha commun.
+function _panelLight() { return document.documentElement.getAttribute('data-theme') === 'light'; }
+function _panelGridRGB() { return _panelLight() ? '15,35,55' : '255,255,255'; }
+function _panelLabelRGB() { return _panelLight() ? '60,80,95' : '122,148,170'; }
+function _panelFadeRGB() { return _panelLight() ? '40,70,100' : '200,220,240'; }
+function _panelNowColor() { return _panelLight() ? 'rgba(194,121,13,.85)' : 'rgba(253,224,104,.75)'; }
+
 // Marges horizontales imposées à TOUT panneau à axe temporel. `l` doit tenir
 // l'étiquette d'axe la plus large des panneaux empilés ("18s", "1,5", "25") à
 // 11 px de police : 40 px suffisent avec la marge de sécurité du texte.
@@ -131,7 +143,7 @@ function panelYDomain(vals, opts) {
 function panelDayBands(ctx, X, t0, t1, W, H, padT, padB) {
   var mid0 = Math.ceil((t0 + 11 * 36e5) / 864e5) * 864e5 - 11 * 36e5;
   for (var ms = mid0; ms < t1; ms += 864e5) {
-    ctx.strokeStyle = 'rgba(255,255,255,.09)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',.09)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
   }
   return mid0;
@@ -191,9 +203,10 @@ function panelConfidenceFade(ctx, X, fromMs, t0, t1, W, H, padT, padB, label, fo
   var xFrom = Math.max(PANEL_GEOM.l, X(Math.max(fromMs, t0)));
   var xEnd = W - PANEL_GEOM.r;
   if (xEnd <= xFrom) return;
+  var fadeRGB = _panelFadeRGB();
   var g = ctx.createLinearGradient(xFrom, 0, xEnd, 0);
-  g.addColorStop(0, 'rgba(200,220,240,0)');
-  g.addColorStop(1, 'rgba(200,220,240,.075)');
+  g.addColorStop(0, 'rgba(' + fadeRGB + ',0)');
+  g.addColorStop(1, 'rgba(' + fadeRGB + ',.075)');
   ctx.save();
   ctx.beginPath();
   ctx.rect(PANEL_GEOM.l, padT, W - PANEL_GEOM.l - PANEL_GEOM.r, H - padT - padB);
@@ -203,14 +216,14 @@ function panelConfidenceFade(ctx, X, fromMs, t0, t1, W, H, padT, padB, label, fo
   // Repère seulement si l'échéance tombe DANS la fenêtre (sinon le trait se
   // collerait au bord gauche et se lirait comme un axe).
   if (fromMs > t0) {
-    ctx.strokeStyle = 'rgba(200,220,240,.28)';
+    ctx.strokeStyle = 'rgba(' + fadeRGB + ',.28)';
     ctx.setLineDash([2, 4]); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(xFrom, padT); ctx.lineTo(xFrom, H - padB); ctx.stroke();
     ctx.setLineDash([]);
     if (label) {
       ctx.font = font || '9px DM Sans,sans-serif';
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(200,220,240,.5)';
+      ctx.fillStyle = 'rgba(' + fadeRGB + ',.5)';
       ctx.fillText(label, xFrom + 3, padT + 1);
     }
   }
@@ -222,7 +235,7 @@ function panelConfidenceFade(ctx, X, fromMs, t0, t1, W, H, padT, padB, label, fo
 function panelNowLine(ctx, X, t0, t1, H, padT, padB) {
   var nowMs = Date.now();
   if (nowMs < t0 || nowMs > t1) return;
-  ctx.strokeStyle = 'rgba(253,224,104,.75)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.4;
+  ctx.strokeStyle = _panelNowColor(); ctx.setLineDash([4, 3]); ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(X(nowMs), padT); ctx.lineTo(X(nowMs), H - padB); ctx.stroke();
   ctx.setLineDash([]);
 }
@@ -231,7 +244,7 @@ function panelNowLine(ctx, X, t0, t1, H, padT, padB) {
 // deux panneaux empilés se lisent comme un seul graphe.
 function panelCursor(ctx, X, ms, H, padT, padB) {
   if (ms == null) return;
-  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(' + _panelGridRGB() + ',.35)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(X(ms), padT); ctx.lineTo(X(ms), H - padB); ctx.stroke();
 }
 
@@ -246,7 +259,7 @@ function panelDayLabels(ctx, X, mid0, t1, W, H, font) {
   for (var ms = mid0; ms < t1; ms += 864e5, dayIdx++) {
     if (dayIdx % dayStep !== 0) continue;
     var dd = new Date(ms + 11 * 36e5 + 36e5); // +1 h : évite de retomber sur la veille
-    ctx.fillStyle = 'rgba(122,148,170,.9)';
+    ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.9)';
     ctx.fillText(dd.getUTCDate() + '/' + (dd.getUTCMonth() + 1), Math.min(X(ms + 432e5), W - 20), H - 6);
   }
 }
@@ -297,6 +310,6 @@ function rafThrottle(fn) {
 // Étiquette de grandeur, écrite verticalement dans la marge gauche.
 function panelAxisLabel(ctx, text, H, font) {
   ctx.save(); ctx.translate(11, H / 2); ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = 'center'; ctx.font = font; ctx.fillStyle = 'rgba(122,148,170,.7)';
+  ctx.textAlign = 'center'; ctx.font = font; ctx.fillStyle = 'rgba(' + _panelLabelRGB() + ',.7)';
   ctx.fillText(text, 0, 0); ctx.restore();
 }

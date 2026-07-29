@@ -30,7 +30,11 @@ function showScoreSettings() {
       // Compas SVG cliquable
       +'<div style="position:relative;flex-shrink:0;">'
       +'<svg id="cmp-'+idPrefix+'" width="80" height="80" viewBox="0 0 80 80" style="cursor:crosshair;border-radius:50%;border:1px solid var(--border);">'
-      +'<circle cx="40" cy="40" r="39" fill="rgba(13,31,60,0.8)"/>'
+      // Disque OPAQUE (était 0.8) : la rose peint son propre fond sombre et garde
+      // ses repères blancs dans les deux thèmes — à 0.8 le blanc de la carte
+      // remontait au travers en thème clair et les cardinaux tombaient à 2,8:1
+      // (contre 3,7:1 en sombre). Opaque = même rendu qu'avant en sombre.
+      +'<circle cx="40" cy="40" r="39" fill="#0d1f3c"/>'
       // Graduations cardinales
       +'<text x="40" y="11" text-anchor="middle" font-size="8" fill="rgba(255,255,255,.4)" font-family="DM Sans">N</text>'
       +'<text x="70" y="44" text-anchor="middle" font-size="8" fill="rgba(255,255,255,.4)" font-family="DM Sans">E</text>'
@@ -263,12 +267,25 @@ function svgArrow(deg,col){
     +'<polygon points="'+x2+','+y2+' '+(x2-4*Math.cos(r-0.4))+','+(y2-4*Math.sin(r-0.4))+' '+(x2-4*Math.cos(r+0.4))+','+(y2-4*Math.sin(r+0.4))+'" fill="'+col+'"/>'
     +'</svg>';
 }
-function hsCol(v){return !v?'#3d5468':v<0.5?'#5a7080':v<1?'#7a94aa':v<1.5?'#4fa3c7':v<2?'#3dba8a':v<2.5?'#e8a057':'#e05c5c';}
+// Échelles de couleur houle/vent/puissance. Utilisées comme couleur de TEXTE dans
+// les tableaux (cf. renderTable, _renderCmpTable) : les teintes d'origine, calées
+// sur --ocean sombre, tombent entre 1,5:1 et 2,8:1 sur la carte blanche du thème
+// clair — donc un second jeu, assombri, plutôt qu'une seule palette de compromis
+// qui dégraderait le thème sombre (le défaut, et celui que l'auteur utilise).
+// _panelLight() vient de charts-core.js, chargé AVANT ce fichier.
+function _suLight(){ return typeof _panelLight === 'function' && _panelLight(); }
+function hsCol(v){return _suLight()
+  ? (!v?'#5c7080':v<0.5?'#556a7d':v<1?'#4f6373':v<1.5?'#1a729b':v<2?'#127a4e':v<2.5?'#a8631f':'#c73e3e')
+  : (!v?'#3d5468':v<0.5?'#5a7080':v<1?'#7a94aa':v<1.5?'#4fa3c7':v<2?'#3dba8a':v<2.5?'#e8a057':'#e05c5c');}
 // Seuils vent (nds) partagés par windCol() (texte) et windBgCol() (fond de cellule,
 // cf. _renderAromeCardData) — un seul jeu de seuils pour que la couleur d'un même vent
 // ne dépende plus de l'endroit où il est affiché. Avant ce correctif, deux fonctions
 // windCol() distinctes avaient des seuils différents (7/12/17/23 vs 5/12/20) : un vent
 // de 21 nds était orange dans un tableau, rouge dans l'autre (AUDIT-previsions.md §3.1).
 var WIND_COL_THRESHOLDS = [7, 12, 17, 23]; // calme·léger·modéré·frais·fort, ~seuils Beaufort 3/4/5/6
-function windCol(v){var t=WIND_COL_THRESHOLDS;return !v?'#3d5468':v<t[0]?'#3dba8a':v<t[1]?'#4fa3c7':v<t[2]?'#e8a057':v<t[3]?'#e8874a':'#e05c5c';}
-function pwrCol(v){return !v?'#3d5468':v<1?'#7a94aa':v<5?'#4fa3c7':v<15?'#3dba8a':v<30?'#e8a057':'#7b6cf6';}
+function windCol(v){var t=WIND_COL_THRESHOLDS;return _suLight()
+  ? (!v?'#5c7080':v<t[0]?'#127a4e':v<t[1]?'#1a729b':v<t[2]?'#a8631f':v<t[3]?'#b45309':'#c73e3e')
+  : (!v?'#3d5468':v<t[0]?'#3dba8a':v<t[1]?'#4fa3c7':v<t[2]?'#e8a057':v<t[3]?'#e8874a':'#e05c5c');}
+function pwrCol(v){return _suLight()
+  ? (!v?'#5c7080':v<1?'#4f6373':v<5?'#1a729b':v<15?'#127a4e':v<30?'#a8631f':'#5b3fc4')
+  : (!v?'#3d5468':v<1?'#7a94aa':v<5?'#4fa3c7':v<15?'#3dba8a':v<30?'#e8a057':'#7b6cf6');}

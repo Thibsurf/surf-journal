@@ -23,7 +23,7 @@ function ensoSetSeason(s, btn) {
   document.querySelectorAll('[id^="enso-season-"]').forEach(function(b) {
     b.style.background = 'none'; b.style.color = 'var(--muted)'; b.style.fontWeight = '400';
   });
-  btn.style.background = 'rgba(79,163,199,.2)'; btn.style.color = '#4fa3c7'; btn.style.fontWeight = '600';
+  btn.style.background = 'rgba(79,163,199,.2)'; btn.style.color = 'var(--accent)'; btn.style.fontWeight = '600';
   if (_ensoData) ensoRender();
 }
 
@@ -1047,12 +1047,21 @@ function ensoRender() {
   var filtered = ensoFilterSeason(_ensoData);
   if (!filtered.length) return;
 
+  // Thème calculé UNE FOIS ici, hors du `if (badge)` : réutilisé plus bas par
+  // LAYOUT (grilles/axes Plotly) même quand le badge est absent du DOM — un
+  // premier jet le déclarait DANS le bloc `if (badge)` (var hoistée mais jamais
+  // assignée si badge est absent), ce qui aurait fait retomber silencieusement
+  // les graphes sur la palette sombre en thème clair.
+  var _ensoLight = typeof _panelLight === 'function' && _panelLight();
+
   // Badge phase actuelle (dernier point)
   var last = _ensoData[_ensoData.length - 1];
   var badge = document.getElementById('enso-current-badge');
   if (badge) {
     var pLabel = last.phase === 'nino' ? 'El Niño' : last.phase === 'nina' ? 'La Niña' : 'Phase Neutre';
-    var pCol   = last.phase === 'nino' ? '#e05c5c' : last.phase === 'nina' ? '#4fa3c7' : '#b0b0b0';
+    var pCol   = last.phase === 'nino' ? (_ensoLight ? '#c73e3e' : '#e05c5c')
+      : last.phase === 'nina' ? (_ensoLight ? '#1a729b' : '#4fa3c7')
+      : (_ensoLight ? '#5c7080' : '#b0b0b0');
     badge.style.display = 'inline-block';
     badge.innerHTML = '<span style="background:rgba(79,163,199,.1);border:1px solid rgba(79,163,199,.3);border-radius:20px;padding:3px 10px;font-size:11px;">'
       + 'Phase actuelle (<b>' + last.year + '/' + String(last.month).padStart(2,'0') + '</b>) : '
@@ -1061,13 +1070,18 @@ function ensoRender() {
       + '</span>';
   }
 
+  // Grilles/axes pensés pour fond sombre (blancs translucides) : quasi invisibles
+  // sur la carte claire du thème clair, d'où la bascule vers un gris-bleu foncé.
+  // hoverlabel reste volontairement fixe (petite bulle sombre autonome, lisible
+  // sur les deux thèmes, comme les visualisations jour/nuit de widget-global.js).
+  var _ensoGridRGB = _ensoLight ? '30,55,75' : '255,255,255';
   var LAYOUT = {
     paper_bgcolor: 'transparent', plot_bgcolor: 'rgba(255,255,255,0.02)',
-    font: { family: 'DM Sans, sans-serif', color: '#7a94aa', size: 10 },
+    font: { family: 'DM Sans, sans-serif', color: _ensoLight ? '#3c505f' : '#7a94aa', size: 10 },
     margin: { l: 44, r: 16, t: 10, b: 40 },
     legend: { orientation: 'h', y: -0.18, font: { size: 9 } },
-    xaxis: { gridcolor: 'rgba(255,255,255,0.04)', linecolor: 'rgba(255,255,255,0.08)' },
-    yaxis: { gridcolor: 'rgba(255,255,255,0.04)', linecolor: 'rgba(255,255,255,0.08)' },
+    xaxis: { gridcolor: 'rgba(' + _ensoGridRGB + ',0.08)', linecolor: 'rgba(' + _ensoGridRGB + ',0.16)' },
+    yaxis: { gridcolor: 'rgba(' + _ensoGridRGB + ',0.08)', linecolor: 'rgba(' + _ensoGridRGB + ',0.16)' },
     hoverlabel: { bgcolor: '#0d1f3c', bordercolor: '#2a4060', font: { family: 'DM Sans', size: 11 } },
   };
   var CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d','lasso2d'] };
@@ -1089,10 +1103,10 @@ function ensoRender() {
       line: { color: 'rgba(79,163,199,0.4)', dash: 'dot', width: 1 }, hoverinfo: 'skip', showlegend: false },
   ], Object.assign({}, LAYOUT, {
     height: 300,
-    yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'Anomalie °C', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)' }),
+    yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'Anomalie °C', zeroline: true, zerolinecolor: 'rgba(' + _ensoGridRGB + ',0.25)' }),
     annotations: [
-      { x: dates[dates.length-1], y: 0.5,  yanchor: 'bottom', text: 'El Niño', showarrow: false, font: { size: 8, color: 'rgba(224,92,92,0.7)' }, xanchor: 'right' },
-      { x: dates[dates.length-1], y: -0.5, yanchor: 'top',    text: 'La Niña', showarrow: false, font: { size: 8, color: 'rgba(79,163,199,0.7)' }, xanchor: 'right' },
+      { x: dates[dates.length-1], y: 0.5,  yanchor: 'bottom', text: 'El Niño', showarrow: false, font: { size: 8, color: _ensoLight ? '#c73e3e' : 'rgba(224,92,92,0.7)' }, xanchor: 'right' },
+      { x: dates[dates.length-1], y: -0.5, yanchor: 'top',    text: 'La Niña', showarrow: false, font: { size: 8, color: _ensoLight ? '#1a729b' : 'rgba(79,163,199,0.7)' }, xanchor: 'right' },
     ],
   }), CFG);
 
@@ -1102,7 +1116,7 @@ function ensoRender() {
 
   Plotly.react('enso-sst', [
     { x: dates, y: totals, type: 'scatter', mode: 'lines', name: 'SST observée',
-      line: { color: '#e8a057', width: 1.5 },
+      line: { color: _ensoLight ? '#a8631f' : '#e8a057', width: 1.5 },
       hovertemplate: '%{x|%b %Y} SST: <b>%{y:.2f}°C</b><extra></extra>' },
     { x: dates, y: clims, type: 'scatter', mode: 'lines', name: 'Climatologie',
       line: { color: 'rgba(79,163,199,0.6)', width: 1, dash: 'dot' },

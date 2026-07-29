@@ -1728,4 +1728,131 @@ programmatique de coordonnées SVG hors `[0,100]` sur les 2 instances → 0
 70% de la largeur du tableau → la molette reste au même offset visuel dans le
 viewport (`wheelStillVisible: true`). 3/3 runs sans erreur JS.
 
+## Thème clair (previsions.html uniquement) — FAIT (2026-07-29)
+
+Demande utilisateur : des amis trouvent la page trop sombre à leur goût ; le
+thème sombre reste le défaut préféré du propriétaire, donc bouton toggle plutôt
+que bascule automatique. Scope confirmé par l'utilisateur : previsions.html
+seulement (pas index/sorties/marine_fuel_pro), graphiques inclus (pas juste le
+chrome CSS).
+
+**Palette** : les couleurs de `:root` étaient déjà presque entièrement en
+variables CSS (924 usages de `var(--...)`) — bon terrain. Ajout d'un bloc
+`:root[data-theme="light"]` qui redéfinit `--ocean/--deep/--mid/--surface/
+--glass/--border/--border-h/--text/--muted/--faint/--accent/--warm/--tube/
+--ok/--bad` + 3 nouvelles variables (`--nav-bg`, `--sun`, `--accent2`) pour des
+usages qui étaient en dur. Contrastes recalculés au ratio WCAG AA (≥4,5:1 texte,
+≥3:1 graphique) plutôt qu'un simple négatif — `--accent`/`--warm`/`--ok`/`--bad`
+sont sensiblement assombris en clair (ex. accent #4fa3c7→#1a729b), sinon
+illisibles sur fond blanc (mesuré : #4fa3c7 sur blanc ne fait que 2,84:1).
+
+**Toggle** : bouton 🌙/🌞 dans la nav (`toggleTheme()`), persistance
+`localStorage['sn-theme']`, script anti-FOUC en tout début de `<head>` (pose
+`data-theme` avant le `<style>`, même pattern que le tag `widget-mode`
+existant). Pas de suivi `prefers-color-scheme` après un premier choix explicite
+— seulement comme repli initial.
+
+**Graphiques canvas** — ne suivent PAS les variables CSS, redessinés
+explicitement au toggle (`_snRedrawThemedCharts()` → `renderGlobalWidget()` +
+`_redrawBothCmp()` + `ensoRender()` si l'onglet ENSO a des données) :
+- `charts-core.js` (socle partagé houle/vent/période) : nouvelles fonctions
+  `_panelLight()/_panelGridRGB()/_panelLabelRGB()/_panelFadeRGB()/
+  _panelNowColor()`, réutilisées telles quelles par `widget-global.js` et
+  `enso.js` (chargé sans `defer`, donc déjà global avant eux) plutôt que
+  dupliquées.
+- `widget-global.js` : seul `_gwDrawOverview` (météogramme vent/houle) est un
+  canvas TRANSPARENT posé sur la carte — vérifié en lisant le CSS de
+  `#gw-overview` (pas de background). Les visualisations marée/soleil
+  (`_gwRenderTideRow`/`_gwRenderSunRow`) peignent leur PROPRE dégradé nuit/jour
+  et restent volontairement fixes (comme une petite illustration jour/nuit,
+  indépendante du thème de la page) — seules leurs lignes UI blanches
+  (grille, curseur, crête) sont themées. `_gwRenderClouds` : nappes claires
+  (pensées pour ciel sombre) foncées en thème clair, sinon quasi invisibles
+  sur carte blanche (vérifié par calcul de contraste, pas supposé).
+  `_gwDrawVectors` (vue satellite) intentionnellement NON touché : posé sur une
+  vraie photo, indépendant du thème de page.
+- `enso.js` : `LAYOUT` Plotly (grilles/axes/police) + badge de phase + libellés
+  de saison themés. `hoverlabel` volontairement laissé fixe (petite bulle
+  sombre autonome, lisible sur les deux thèmes).
+
+**Bug trouvé et corrigé en vérifiant** : dans `enso.js`, `var _ensoLight = …`
+était déclaré À L'INTÉRIEUR de `if (badge) {…}` — `var` hoiste la déclaration
+mais pas l'affectation, donc si `#enso-current-badge` était un jour absent du
+DOM, `_ensoLight` restait `undefined` et `LAYOUT` retombait silencieusement sur
+la palette sombre même en thème clair. Remonté avant le `if`, avec commentaire
+expliquant pourquoi (sinon un futur refactor le redescend par « simplification »).
+
+**Vérification** : `node --check` sur les 3 fichiers JS modifiés ; contrastes
+calculés programmatiquement (luminance relative WCAG) pour choisir chaque
+teinte claire plutôt qu'à l'œil ; capture headless dark+light (chrome/nav/
+tableau AROME/cartes) ; injection diagnostique (`window.onerror` + appel direct
+de `toggleTheme()` ×2 et `_gwDrawOverview()`/`renderGlobalWidget()`) → 0 erreur
+JS captée sur le cycle complet chargement+bascule ; les fetches réseau réels du
+sandbox n'aboutissant pas de façon fiable pour le widget météogramme (délais
+observés très variables), données synthétiques injectées via
+`window._gwActiveData` pour forcer un rendu réel du canvas — bandes/courbes/
+grille bien lisibles en clair, thème sombre visuellement inchangé par rapport
+à avant le chantier (pas de régression).
+
+`CACHE_NAME` → v44.
+
+### Seconde passe — le reste de la page (même jour)
+
+La première passe n'avait traité que le widget + les comparatifs. Revue
+systématique du reste : `grep` des ~750 couleurs en dur, regroupées par fonction,
+puis contraste calculé (luminance WCAG) sur le fond réel de chaque élément.
+Trouvé et corrigé :
+
+**Texte invisible (bugs durs, pas cosmétiques)** — fond sombre FIGÉ + texte en
+variable thémée, donc noir sur bleu nuit en thème clair :
+`.surf-popup` (popup de spot sur la carte : `color:var(--text)` en `!important`),
+`#tide-tooltip`, `#quick-nav-fab`, et le bouton de zoom créé par
+`_attachCmpZoom`. Tous repassés en `var(--deep)`.
+
+**Échelles de couleur** (`hsCol`/`windCol`/`pwrCol`, settings-utils.js) : ce sont
+des couleurs de TEXTE dans les tableaux (17 appels) et les teintes d'origine font
+1,5 à 2,8:1 sur la carte blanche. Second jeu assombri, sélectionné par
+`_suLight()` — le thème sombre garde exactement ses valeurs.
+
+**Chart.js** (`mkChart`, `_buildSecondaryCharts`, `mkStackedHs`,
+`makeCrosshairPlugin`) : ticks `#7a94aa` et grilles blanches translucides.
+Chart.js ne lit pas les variables CSS, thémé à la main comme les canvas maison.
+Alpha de grille relevé en clair uniquement (.03→.07) : un bleu-nuit à faible
+alpha sur blanc est plus discret que du blanc à faible alpha sur `--ocean`, la
+parité d'alpha ne suffit pas.
+
+**Canvas de l'onglet Marée** : `renderTideCurve`, `drawOrbit`, `drawSolunarTimeline`,
+`renderRose`. `drawMoon` et `drawSunArc` NON touchés : ils peignent leur propre
+fond (ciel étoilé, bandes nuit/jour) — illustrations autonomes, comme la vue
+satellite du widget.
+
+**Indicateurs de sécurité** : catégories cyclone (7 teintes, jusqu'à 1,55:1 sur
+blanc) et turbidité/requin, plus le bandeau BMS. Assombris — pas de tolérance
+sur un indicateur d'alerte.
+
+**Légende Isofronts** : 43 libellés portent chacun la teinte pâle de leur symbole
+en style inline (1,1 à 3:1 sur blanc). Un `filter:brightness(.5)` sur
+`.leg-txt b` en thème clair les assombrit tous en gardant la distinction de
+teinte — vérifié que les 20 teintes distinctes repassent au-dessus de 4,5:1.
+Préféré à la réécriture de 43 styles inline, et ça garde symbole et libellé
+cohérents. Les 6 titres `.anim-title` (pastels inline) passent par des classes
+`.at-*` avec surcharge en thème clair.
+
+**Fonds « en creux »** : les `rgba(0,0,0,.15→.4)` viraient au gris sale sur
+blanc → variables `--sunken` / `--night-row`.
+
+**Bug PRÉ-EXISTANT trouvé au passage** (présent à HEAD, sans rapport avec le
+thème) : dans `renderTideCurve`, la branche de repli harmonique appelait
+`tx()`/`ty2()` — qui n'ont jamais existé. `ReferenceError` au tracé des extremes,
+donc précisément quand le cache marée meteo.nc est vide (token expiré), le seul
+cas où cette branche sert. Corrigé en `txM()`/`tyH()` (les projections réelles,
+utilisées par la branche NC juste au-dessus).
+
+**Vérification** : `node --check` sur les 4 JS ; harnais d'injection appelant 17
+fonctions de dessin × 2 thèmes + les 6 onglets, **0 échec / 0 erreur JS** ;
+`_buildSecondaryCharts`/`mkStackedHs`/`mkChart` rejoués avec des données
+synthétiques complètes (Chart.js réellement chargé, confirmé) ; captures
+headless clair+sombre des onglets Marée et Isofronts — thème sombre visuellement
+identique à avant le chantier.
+
 `CACHE_NAME` → v43.

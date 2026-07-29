@@ -12,6 +12,15 @@
 if (location.search.indexOf('widget=1') >= 0) {
   document.documentElement.classList.add('widget-mode');
 }
+// Thème clair/sombre : posé au plus tôt (avant le <style>) pour éviter un flash
+// du thème par défaut au chargement. Pas de préférence système par défaut — le
+// thème sombre reste le choix assumé du site, la préférence système ne sert que
+// si l'utilisateur n'a jamais touché au bouton.
+try {
+  var _snTheme = localStorage.getItem('sn-theme');
+  if (!_snTheme) _snTheme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  if (_snTheme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+} catch (e) {}
 </script>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#4fa3c7">
@@ -52,13 +61,32 @@ if (location.search.indexOf('widget=1') >= 0) {
   --accent:#4fa3c7;--warm:#e8a057;--tube:#7b6cf6;--ok:#3dba8a;--bad:#e05c5c;
   --font-d:'Playfair Display',Georgia,serif;--font-b:'DM Sans',system-ui,sans-serif;
   --r:12px;--rs:8px;
+  --nav-bg:rgba(10,22,40,.92);--nav-bg-mobile:rgba(10,22,40,.98);
+  --sun:#fde068;--accent2:#b9d0eb;
+  /* Fonds « en creux » (plus sombres que la carte en thème sombre) : posés en
+     noir translucide, ils viraient au gris sale sur la carte blanche du thème
+     clair — d'où une variable plutôt qu'un rgba(0,0,0,…) figé. */
+  --sunken:rgba(0,0,0,.25);--night-row:rgba(0,0,0,.15);
+}
+/* Thème clair — mêmes rôles de variable, contrastes WCAG AA recalculés sur les
+   nouveaux fonds (voir AUDIT.md du 29/07) plutôt qu'un simple négatif : --accent,
+   --warm, --ok et --bad sont assombris pour retomber ≥4.5:1 sur --ocean, sinon le
+   texte badge/lien devient illisible sur fond clair. */
+:root[data-theme="light"] {
+  --ocean:#eef2f6;--deep:#ffffff;--mid:#dde6ee;--surface:#e4eaf0;
+  --glass:rgba(15,35,55,.035);--border:rgba(15,35,55,.10);--border-h:rgba(15,35,55,.18);
+  --text:#17232f;--muted:#4f6373;--faint:#5c7080;
+  --accent:#1a729b;--warm:#a8631f;--tube:#5b3fc4;--ok:#127a4e;--bad:#c73e3e;
+  --nav-bg:rgba(238,242,246,.92);--nav-bg-mobile:rgba(238,242,246,.98);
+  --sun:#8a5c0f;--accent2:#4a7aa0;
+  --sunken:rgba(15,35,55,.055);--night-row:rgba(15,35,55,.05);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font-b);background:var(--ocean);color:var(--text);min-height:100vh;font-size:14px;}
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 50% -10%,rgba(79,163,199,.07) 0%,transparent 70%);pointer-events:none;z-index:0;}
 
 /* NAV */
-nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-filter:blur(12px);
+nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:blur(12px);
   border-bottom:1px solid var(--border);padding:0 1.5rem;height:52px;display:flex;align-items:center;gap:1rem;}
 .logo{font-family:var(--font-d);font-size:1.05rem;color:var(--text);margin-right:auto;}
 .logo span{color:var(--accent);}
@@ -77,7 +105,7 @@ nav{position:sticky;top:0;z-index:1000;background:rgba(10,22,40,.92);backdrop-fi
   .nav-hamburger{display:flex;}
   .nav-tabs-group{
     display:none;flex-direction:column;position:fixed;top:52px;left:0;right:0;
-    background:rgba(10,22,40,.98);border-bottom:1px solid var(--border);
+    background:var(--nav-bg-mobile);border-bottom:1px solid var(--border);
     padding:8px 1rem;gap:4px;z-index:999;
   }
   .nav-tabs-group.open{display:flex;}
@@ -142,7 +170,7 @@ table.ft th{background:var(--mid);color:var(--muted);font-weight:500;font-size:1
 table.ft td{padding:6px 9px;text-align:center;border-bottom:1px solid rgba(255,255,255,.025);vertical-align:middle;}
 table.ft tr:hover td{background:rgba(255,255,255,.025);}
 table.ft .daysep td{background:rgba(79,163,199,.07);font-weight:500;font-size:11px;color:var(--accent);text-align:left;padding-left:12px;}
-table.ft .night td{background:rgba(0,0,0,.15);}
+table.ft .night td{background:var(--night-row);}
 
 /* ═══ WIDGET PRÉVISIONS GLOBAL (EPIC 1) — vue synthétique sans scroll ═══ */
 #gw-widget{margin-bottom:14px;overflow:hidden;}
@@ -263,8 +291,11 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .leaflet-popup-content{color:var(--text)!important;font-family:var(--font-b)!important;font-size:12px!important;margin:10px 14px!important;}
 .leaflet-popup-tip{background:var(--deep)!important;}
 .leaflet-popup-close-button{color:var(--muted)!important;}
+/* var(--deep) et non un navy figé : .leaflet-popup-content force color:var(--text)
+   et .popup-title var(--accent) — sur un fond resté sombre, le texte du popup de
+   spot devenait noir sur bleu nuit (invisible) en thème clair. */
 .surf-popup .leaflet-popup-content-wrapper{
-  background:rgba(8,22,38,0.97)!important;
+  background:var(--deep)!important;
   border:1px solid rgba(79,163,199,.3)!important;
   border-radius:10px!important;
   box-shadow:0 8px 32px rgba(0,0,0,.6)!important;
@@ -275,7 +306,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
   min-width:200px!important;
 }
 .surf-popup .leaflet-popup-tip-container .leaflet-popup-tip{
-  background:rgba(8,22,38,0.97)!important;
+  background:var(--deep)!important;
 }
 .leaflet-obs-tooltip{background:rgba(8,20,35,0.92)!important;border:1px solid rgba(79,163,199,.35)!important;border-radius:7px!important;color:#aac8e0!important;font-family:var(--font-b)!important;font-size:11px!important;padding:5px 9px!important;box-shadow:0 4px 16px rgba(0,0,0,.5)!important;}
 .leaflet-obs-tooltip.leaflet-tooltip-top::before{border-top-color:rgba(79,163,199,.35)!important;}
@@ -328,7 +359,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 @keyframes slideLeft{from{transform:translateX(6px);opacity:0}to{transform:translateX(0);opacity:1}}
 @keyframes occlusAnim{0%,100%{opacity:1}50%{opacity:0.5}}
 @keyframes stationAnim{0%,100%{transform:scaleX(1)}50%{transform:scaleX(1.04)}}
-.scene{background:rgba(0,0,0,.4);border-radius:10px;padding:16px;margin-bottom:6px;position:relative;overflow:hidden;height:120px;}
+.scene{background:var(--sunken);border-radius:10px;padding:16px;margin-bottom:6px;position:relative;overflow:hidden;height:120px;}
 .scene-label{position:absolute;top:8px;left:10px;font-size:11px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.08em;}
 .air-mass{position:absolute;bottom:0;height:55px;border-radius:4px 4px 0 0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:.08em;}
 .air-warm{background:linear-gradient(to top,rgba(239,68,68,.22),rgba(239,68,68,.06));border-top:2px solid rgba(239,68,68,.6);color:#f87171;width:44%;left:0;animation:warmAdvance 2.8s ease-in-out infinite alternate;}
@@ -350,7 +381,7 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .cell-desc{font-size:11px;color:var(--muted);text-align:center;max-width:90px;}
 .front-card{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:flex-start;gap:14px;margin-bottom:8px;transition:background .2s;}
 .front-card:hover{background:rgba(255,255,255,.06);}
-.symbol-box{flex-shrink:0;width:76px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(0,0,0,.3);}
+.symbol-box{flex-shrink:0;width:76px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--sunken);}
 .sym-warm svg line,.sym-warm .semicircle{stroke:#ef4444;stroke-width:2.5;fill:#ef4444;}
 .sym-cold .triangle{fill:#3b82f6;}
 /* Légende enrichie */
@@ -359,8 +390,15 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 .leg-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;}
 .leg-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03);}
 .leg-row:last-child{border-bottom:none;}
-.leg-sym{flex-shrink:0;width:70px;height:20px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);border-radius:4px;}
+.leg-sym{flex-shrink:0;width:70px;height:20px;display:flex;align-items:center;justify-content:center;background:var(--sunken);border-radius:4px;}
 .leg-txt b{font-size:11px;font-weight:600;display:block;line-height:1.3;}
+/* Les ~43 libellés de la légende portent chacun la teinte pâle de leur symbole
+   en style inline (palette pensée pour fond sombre) : de 1,1 à 3:1 sur blanc.
+   Un filtre unique les assombrit tous en conservant la distinction de teinte —
+   préférable à réécrire 43 styles inline, et ça garde symbole et libellé de la
+   même couleur. brightness(.5) : vérifié, remonte les 20 teintes distinctes
+   au-dessus de 4,5:1 (la plus pâle, #fde68a, passe de 1,2 à 5,2:1). */
+:root[data-theme="light"] .leg-txt b{filter:brightness(.5);}
 .leg-txt i{font-size:11px;color:var(--muted);font-style:italic;}
 /* HS : les cyclones tournent en sens HORAIRE (rotate positif) — l'ancien -360deg
    faisait tourner le symbole en sens antihoraire, convention hémisphère Nord */
@@ -368,8 +406,19 @@ table.ft .night td{background:rgba(0,0,0,.15);}
 
 /* ── Onglet Animations : coupes SVG animées ─────────────────────────────── */
 .arome-hl{background:rgba(79,163,199,.18)!important;box-shadow:inset 0 0 0 1px rgba(79,163,199,.45);}
-.anim-card{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;}
+.anim-card{background:var(--sunken);border:1px solid var(--border);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;}
 .anim-title{font-size:11px;font-weight:700;margin-bottom:7px;}
+/* Titres des schémas météo : pastels calés sur le fond sombre (1,1 à 2,5:1 sur
+   la carte claire, illisibles) — versions saturées pour le thème clair. Classes
+   plutôt que style inline, pour que la bascule de thème soit purement CSS. */
+.at-cold{color:#93c5fd;}.at-warm{color:#fca5a5;}.at-circ{color:#e2e8f0;}
+.at-occl{color:#f0abfc;}.at-cyc{color:#f87171;}.at-zcps{color:#4ade80;}
+:root[data-theme="light"] .at-cold{color:#1d4ed8;}
+:root[data-theme="light"] .at-warm{color:#b91c1c;}
+:root[data-theme="light"] .at-circ{color:#334155;}
+:root[data-theme="light"] .at-occl{color:#a21caf;}
+:root[data-theme="light"] .at-cyc{color:#c73e3e;}
+:root[data-theme="light"] .at-zcps{color:#15803d;}
 .anim-title span{font-weight:400;color:var(--muted);font-size:11px;margin-left:6px;}
 .anim-svg{width:100%;height:auto;display:block;border-radius:7px;}
 .anim-p{font-size:11px;color:var(--muted);line-height:1.65;padding:6px 8px;margin:8px 0 6px;border-left:2px solid;border-radius:0 5px 5px 0;background:rgba(255,255,255,.02);}
@@ -428,8 +477,8 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 <body>
 
 <nav>
-  <a href="https://thibsurf.github.io/surf-journal/" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Retour au journal">←<span class="nav-link-txt"> Journal</span></a>
-  <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:#7a94aa;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Sorties">🏄<span class="nav-link-txt"> Sorties</span></a>
+  <a href="https://thibsurf.github.io/surf-journal/" style="color:var(--muted);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Retour au journal">←<span class="nav-link-txt"> Journal</span></a>
+  <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:var(--muted);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Sorties">🏄<span class="nav-link-txt"> Sorties</span></a>
   <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" style="color:#e8c44a;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;padding:3px 8px;border:1px solid rgba(232,196,74,.35);border-radius:12px;background:rgba(232,196,74,.08);flex-shrink:0;" title="Gestion carburant bateau">⛽<span class="nav-link-txt"> Fuel</span></a>
   <h1 class="logo" style="margin:0;">Surf <span>NC</span><span class="logo-suffix"> — Prévisions</span></h1>
   <div class="nav-tabs-group" id="nav-tabs-group">
@@ -453,6 +502,12 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:11px;
     white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
     🔑 <span id="token-btn-label" style="font-size:11px;"></span></button>
+  <button onclick="toggleTheme()" id="theme-toggle-btn"
+    title="Basculer thème clair / sombre"
+    style="background:none;border:1px solid var(--border);color:var(--faint);
+    padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:13px;line-height:1;
+    white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;">
+    <span id="theme-toggle-icon">🌙</span></button>
   <button class="nav-hamburger" id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
 </nav>
 
@@ -524,7 +579,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <span><span style="color:#3dba8a;font-weight:700;">━</span> vent moyen</span>
           <span><span style="color:#e05c5c;font-weight:700;">◆</span> rafales</span>
           <span><span style="color:rgba(79,163,199,.9);font-weight:700;">▮</span> houle totale</span>
-          <span><span style="color:rgba(185,208,235,.95);font-weight:700;">▮</span> houle primaire</span>
+          <span><span style="color:var(--accent2);font-weight:700;">▮</span> houle primaire</span>
         </div>
       </div>
       <div class="gw-sat-panel" id="gw-sat-panel"
@@ -1402,7 +1457,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 
       <!-- ═══ FRONT FROID — coupe verticale ═══ -->
       <div class="anim-card">
-        <div class="anim-title" style="color:#93c5fd;">Front froid <span>l'air froid dense soulève brutalement l'air chaud</span></div>
+        <div class="anim-title at-cold">Front froid <span>l'air froid dense soulève brutalement l'air chaud</span></div>
         <svg viewBox="0 0 320 96" class="anim-svg">
           <defs>
             <linearGradient id="agSky" x1="0" y1="0" x2="0" y2="1">
@@ -1439,7 +1494,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 
       <!-- ═══ FRONT CHAUD — coupe verticale ═══ -->
       <div class="anim-card">
-        <div class="anim-title" style="color:#fca5a5;">Front chaud <span>l'air chaud glisse en douceur PAR-DESSUS l'air froid</span></div>
+        <div class="anim-title at-warm">Front chaud <span>l'air chaud glisse en douceur PAR-DESSUS l'air froid</span></div>
         <svg viewBox="0 0 320 96" class="anim-svg">
           <rect x="0" y="0" width="320" height="96" fill="url(#agSky)"/>
           <path d="M0,88 L320,88 L320,84 Q210,74 120,52 Q60,36 20,30 L0,28 Z" fill="rgba(59,130,246,.16)" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,3"/>
@@ -1466,7 +1521,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 
       <!-- ═══ CIRCULATIONS A / D (HS) ═══ -->
       <div class="anim-card">
-        <div class="anim-title" style="color:#e2e8f0;">Circulations — hémisphère SUD <span>le sens de rotation est l'inverse de l'hémisphère Nord</span></div>
+        <div class="anim-title at-circ">Circulations — hémisphère SUD <span>le sens de rotation est l'inverse de l'hémisphère Nord</span></div>
         <svg viewBox="0 0 320 100" class="anim-svg">
           <rect x="0" y="0" width="320" height="100" fill="url(#agSky)"/>
           <g class="rot-anti" style="transform-origin:85px 50px;">
@@ -1495,7 +1550,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 
       <!-- ═══ OCCLUSION ═══ -->
       <div class="anim-card">
-        <div class="anim-title" style="color:#f0abfc;">Occlusion <span>le front froid rattrape le front chaud</span></div>
+        <div class="anim-title at-occl">Occlusion <span>le front froid rattrape le front chaud</span></div>
         <svg viewBox="0 0 320 96" class="anim-svg">
           <rect x="0" y="0" width="320" height="96" fill="url(#agSky)"/>
           <g class="occl-cold">
@@ -1525,7 +1580,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 
       <!-- ═══ CYCLONE TROPICAL (structure) ═══ -->
       <div class="anim-card">
-        <div class="anim-title" style="color:#f87171;">Cyclone tropical <span>structure — rotation horaire (HS)</span></div>
+        <div class="anim-title at-cyc">Cyclone tropical <span>structure — rotation horaire (HS)</span></div>
         <svg viewBox="0 0 320 110" class="anim-svg">
           <rect x="0" y="0" width="320" height="110" fill="url(#agSky)"/>
           <g class="cyc-spin" style="transform-origin:160px 55px;">
@@ -1549,7 +1604,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 
       <!-- ═══ ZCPS / SPCZ ═══ -->
       <div class="anim-card" style="margin-bottom:2px;">
-        <div class="anim-title" style="color:#4ade80;">ZCPS (SPCZ) <span>la machine à pluie n°1 de la NC en été</span></div>
+        <div class="anim-title at-zcps">ZCPS (SPCZ) <span>la machine à pluie n°1 de la NC en été</span></div>
         <svg viewBox="0 0 320 96" class="anim-svg">
           <defs><marker id="agArrG" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ade80"/></marker></defs>
           <rect x="0" y="0" width="320" height="96" fill="url(#agSky)"/>
@@ -1615,7 +1670,10 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     </div>
     <div style="position:relative;height:220px;">
       <canvas id="tide-curve-chart" style="cursor:crosshair;width:100%;height:200px;display:block;"></canvas>
-      <div id="tide-tooltip" style="display:none;position:absolute;background:rgba(13,31,60,0.95);border:1px solid rgba(79,163,199,.4);border-radius:8px;padding:8px 12px;font-size:11px;pointer-events:none;white-space:nowrap;z-index:10;"></div>
+      <!-- Fond en var(--deep) et non un navy figé : le contenu est écrit en
+           var(--accent)/var(--text), qui s'assombrissent en thème clair — sur un
+           fond resté sombre ça donnait du bleu foncé sur bleu nuit. -->
+      <div id="tide-tooltip" style="display:none;position:absolute;background:var(--deep);border:1px solid rgba(79,163,199,.4);border-radius:8px;padding:8px 12px;font-size:11px;pointer-events:none;white-space:nowrap;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.28);"></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center;" id="tide-events-row"></div>
   </div>
@@ -1756,7 +1814,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span>🎣 Activité de pêche</span><span id="fishing-day" style="font-size:11px;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500;"></span></div>
         <div id="fishing-score"></div>
         <!-- Timeline solunaire du jour (2.2) -->
-        <canvas id="solunar-timeline" style="width:100%;height:46px;display:block;margin-top:8px;border-radius:6px;background:rgba(0,0,0,.15);"></canvas>
+        <canvas id="solunar-timeline" style="width:100%;height:46px;display:block;margin-top:8px;border-radius:6px;background:var(--night-row);"></canvas>
         <div id="solunar-legend" style="font-size:11px;color:var(--faint);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;"></div>
         <div id="solunar-best" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6;"></div>
       </div>
@@ -2132,6 +2190,36 @@ function rebuildAll() {
   buildSpotTabs();
   if (leafletMap) { mapInited=false; initMap(); mapInited=true; }
 }
+
+// ---
+// THÈME CLAIR / SOMBRE
+// ---
+// L'attribut data-theme est déjà posé avant le <style> (script en tête de
+// <head>, cf. anti-FOUC) — ici on ne fait que synchroniser l'icône/meta au
+// chargement et gérer le clic. Les graphes canvas (météogramme, comparatif)
+// et Plotly (ENSO) ne suivent PAS les variables CSS : il faut les redessiner
+// explicitement après bascule, sinon ils gardent la palette du thème précédent.
+function _snApplyThemeChrome(t) {
+  var mc = document.querySelector('meta[name="theme-color"]');
+  if (mc) mc.content = (t === 'light') ? '#e9eff5' : '#0a1628';
+  var ic = document.getElementById('theme-toggle-icon');
+  if (ic) ic.textContent = (t === 'light') ? '🌞' : '🌙';
+}
+function _snRedrawThemedCharts() {
+  if (typeof renderGlobalWidget === 'function') { try { renderGlobalWidget(); } catch (e) {} }
+  if (typeof _redrawBothCmp === 'function') { try { _redrawBothCmp(); } catch (e) {} }
+  if (typeof ensoRender === 'function' && typeof _ensoData !== 'undefined' && _ensoData) { try { ensoRender(); } catch (e) {} }
+}
+function toggleTheme() {
+  var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  var next = cur === 'light' ? 'dark' : 'light';
+  if (next === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('sn-theme', next); } catch (e) {}
+  _snApplyThemeChrome(next);
+  _snRedrawThemedCharts();
+}
+_snApplyThemeChrome(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 
 // ---
 // TABS NAV
@@ -2611,7 +2699,7 @@ function showNcTokenPrompt() {
     + '<details style="font-size:11px;">'
     + '<summary style="color:var(--faint);cursor:pointer;user-select:none;margin-bottom:6px;">▸ Coller manuellement (dépannage)</summary>'
     + '<textarea id="nc-tok-input" rows="2" placeholder="eyJ…" '
-    + 'style="width:100%;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:7px;'
+    + 'style="width:100%;background:var(--sunken);border:1px solid var(--border);border-radius:7px;'
     + 'padding:6px 8px;color:var(--text);font-size:11px;resize:none;box-sizing:border-box;font-family:monospace;margin-bottom:4px;"></textarea>'
     + '<div style="font-size:11px;color:var(--faint);line-height:1.4;margin-bottom:6px;">'
     + '<a href="https://meteo.nc" target="_blank" style="color:var(--accent);">meteo.nc</a>'
@@ -2943,6 +3031,11 @@ function _ensureTooltipEl(id, parentEl) {
 }
 
 function _buildSecondaryCharts(d) {
+  // Couleurs Chart.js themées à la main (cf. mkChart) : Chart.js ne suit pas
+  // les variables CSS tout seul.
+  var _secLight = _panelLight();
+  var _secLabelCol = _secLight ? '#3c505f' : '#7a94aa';
+  var _secGridRGB = _panelGridRGB();
   // Callback ticks partagé : n'afficher que 00h/06h/12h/18h
   function tickCb(val, idx) {
     var label = (d.lbl && d.lbl[idx]) || '';
@@ -2956,11 +3049,11 @@ function _buildSecondaryCharts(d) {
     return null;
   }
   var xOpts = {
-    ticks:{ color:'#5a7890', font:{size:8}, maxRotation:0, autoSkip:false, callback:tickCb, padding:3 },
+    ticks:{ color:_secLight ? '#3c505f' : '#5a7890', font:{size:8}, maxRotation:0, autoSkip:false, callback:tickCb, padding:3 },
     grid:{ color: function(ctx3) {
       var label = (d.lbl && d.lbl[ctx3.index]) || '';
       if(/^.*00h$/.test(label)) return 'rgba(79,163,199,0.12)';
-      return 'rgba(255,255,255,.02)';
+      return 'rgba('+_secGridRGB+','+(_secLight?'.06':'.02')+')';
     }}
   };
 
@@ -2992,7 +3085,7 @@ function _buildSecondaryCharts(d) {
           var x0=xs.getPixelForValue(band.startIdx);
           var x1=xs.getPixelForValue(band.endIdx);
           if(bi%2===1){
-            ctx2.fillStyle='rgba(255,255,255,0.022)';
+            ctx2.fillStyle='rgba('+_secGridRGB+','+(_secLight?'.05':'.022')+')';
             ctx2.fillRect(x0, ca.top, x1-x0, ca.bottom-ca.top);
           }
           if(bi>0){
@@ -3044,9 +3137,9 @@ function _buildSecondaryCharts(d) {
       {label:'Période H1 (s)',data:d.sw1t||[],borderColor:'#3dba8a',backgroundColor:'rgba(61,186,138,.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'yT'},
       {label:'Direction H1 (°)',data:d.sw1d||[],borderColor:'rgba(123,108,246,.8)',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:0.1,yAxisID:'yD',borderDash:[3,2]},
     ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{bottom:22,top:4}},
-      plugins:{legend:{display:true,position:'top',labels:{color:'#7a94aa',font:{size:9},boxWidth:10,padding:6}},tooltip:{enabled:false}},
+      plugins:{legend:{display:true,position:'top',labels:{color:_secLabelCol,font:{size:9},boxWidth:10,padding:6}},tooltip:{enabled:false}},
       scales:{x:xOpts,
-        yT:{position:'left',min:0,max:20,ticks:{color:'#3dba8a',callback:function(v){return v+'s';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},
+        yT:{position:'left',min:0,max:20,ticks:{color:_secLight?'#127a4e':'#3dba8a',callback:function(v){return v+'s';},font:{size:9}},grid:{color:'rgba('+_secGridRGB+','+(_secLight?'.07':'.04')+')'}},
         yD:{position:'right',min:0,max:360,ticks:{color:'rgba(123,108,246,.7)',callback:function(v){return v+'°';},font:{size:8},maxTicksLimit:5},grid:{drawOnChartArea:false}}}}});
     cvP._hoverBound = false;
     _ensureTooltipEl('c-period', cvP.closest('.card'));
@@ -3080,8 +3173,8 @@ function _buildSecondaryCharts(d) {
       gustDataset,
     ]},options:{responsive:true,maintainAspectRatio:false,
       layout:{padding:{bottom:22,top:18}}, // top:18 pour que les rafales ne débordent pas
-      plugins:{legend:{display:true,labels:{color:'#7a94aa',font:{size:9},boxWidth:10}},tooltip:{enabled:false}},
-      scales:{x:xOpts,y:{min:0,suggestedMax:Math.ceil(maxGst*1.25),ticks:{color:'#7a94aa',callback:function(v){return v+'nds';},font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+      plugins:{legend:{display:true,labels:{color:_secLabelCol,font:{size:9},boxWidth:10}},tooltip:{enabled:false}},
+      scales:{x:xOpts,y:{min:0,suggestedMax:Math.ceil(maxGst*1.25),ticks:{color:_secLabelCol,callback:function(v){return v+'nds';},font:{size:9}},grid:{color:'rgba('+_secGridRGB+','+(_secLight?'.07':'.04')+')'}}}}});
     cvW._hoverBound = false;
     _ensureTooltipEl('c-wind', cvW.closest('.card'));
     _addChartHover(cvW, 'c-wind', d.lbl.length);
@@ -3137,7 +3230,7 @@ function _buildSecondaryCharts(d) {
         plugins:{legend:{display:false},tooltip:{enabled:false}},
         scales:{
           x:Object.assign({},xOpts,{ticks:Object.assign({},xOpts.ticks,{maxTicksLimit:8,autoSkip:true,maxRotation:0})}),
-          y:{min:0,ticks:{color:'#7a94aa',callback:function(v){return v+' kW/m';},font:{size:9},maxTicksLimit:5},grid:{color:'rgba(255,255,255,.04)'}}}}});
+          y:{min:0,ticks:{color:_secLabelCol,callback:function(v){return v+' kW/m';},font:{size:9},maxTicksLimit:5},grid:{color:'rgba('+_secGridRGB+','+(_secLight?'.07':'.04')+')'}}}}});
     cvPow._hoverBound=false;
     _ensureTooltipEl('c-power',cvPow.closest('.card'));
     _addChartHover(cvPow,'c-power',d.lbl.length);
@@ -4691,7 +4784,9 @@ function _attachCmpZoom(cv, zoomState, redraw, noBtn) {
   if (!noBtn) {
     btn = document.createElement('button');
     btn.type = 'button';
-    btn.style.cssText = 'position:absolute;top:2px;right:2px;z-index:2;background:rgba(6,16,30,.75);'
+    // Fond var(--deep) : le libellé est en var(--muted), qui s'assombrit en
+    // thème clair — sur un navy figé il devenait gris foncé sur bleu nuit.
+    btn.style.cssText = 'position:absolute;top:2px;right:2px;z-index:2;background:var(--deep);'
       + 'border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:2px 8px;'
       + 'font-size:11px;font-family:var(--font-b);cursor:pointer;line-height:1.5;';
     (cv.parentElement || cv).appendChild(btn);
@@ -4966,22 +5061,23 @@ function _cmpDirWheelHtml(suffix) {
   var arcPath = 'M ' + pMin.x.toFixed(2) + ' ' + pMin.y.toFixed(2) + ' A ' + R + ' ' + R + ' 0 ' + largeArc + ' 1 ' + pMax.x.toFixed(2) + ' ' + pMax.y.toFixed(2);
   var ticks = [0, 90, 180, 270].map(function(d) {
     var po = _cmpDirToXY(d, R + 6), pi = _cmpDirToXY(d, R - 2);
-    return '<line x1="' + pi.x.toFixed(1) + '" y1="' + pi.y.toFixed(1) + '" x2="' + po.x.toFixed(1) + '" y2="' + po.y.toFixed(1) + '" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>';
+    return '<line x1="' + pi.x.toFixed(1) + '" y1="' + pi.y.toFixed(1) + '" x2="' + po.x.toFixed(1) + '" y2="' + po.y.toFixed(1) + '" stroke="rgba(' + _panelGridRGB() + ',.25)" stroke-width="1.5"/>';
   }).join('');
   var lbls = [['N', 0], ['E', 90], ['S', 180], ['O', 270]].map(function(t) {
     var p = _cmpDirToXY(t[1], R + 13);
-    return '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3).toFixed(1) + '" text-anchor="middle" font-size="8" fill="rgba(255,255,255,.4)">' + t[0] + '</text>';
+    return '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3).toFixed(1) + '" text-anchor="middle" font-size="8" fill="rgba(' + _panelLabelRGB() + ',.6)">' + t[0] + '</text>';
   }).join('');
+  var _wheelSun = _panelLight() ? '#8a5c0f' : '#fde068';
   return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px;">'
     + '<svg id="cmp-dir-wheel-' + suffix + '" viewBox="0 0 100 100" width="86" height="86" style="touch-action:none;flex:none;overflow:visible;">'
-    + '<circle cx="50" cy="50" r="' + R + '" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="6"/>'
-    + '<path id="cmp-dir-arc-' + suffix + '" d="' + arcPath + '" fill="none" stroke="' + (active ? '#fde068' : 'rgba(255,255,255,.15)') + '" stroke-width="6" stroke-linecap="round"/>'
+    + '<circle cx="50" cy="50" r="' + R + '" fill="none" stroke="rgba(' + _panelGridRGB() + ',.08)" stroke-width="6"/>'
+    + '<path id="cmp-dir-arc-' + suffix + '" d="' + arcPath + '" fill="none" stroke="' + (active ? _wheelSun : 'rgba(' + _panelGridRGB() + ',.15)') + '" stroke-width="6" stroke-linecap="round"/>'
     + ticks + lbls
-    + '<circle id="cmp-dir-h-min-' + suffix + '" cx="' + pMin.x.toFixed(2) + '" cy="' + pMin.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle minimum" aria-valuenow="' + Math.round(dMin) + '" aria-valuemin="0" aria-valuemax="360"/>'
-    + '<circle id="cmp-dir-h-max-' + suffix + '" cx="' + pMax.x.toFixed(2) + '" cy="' + pMax.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? '#fde068' : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle maximum" aria-valuenow="' + Math.round(dMax) + '" aria-valuemin="0" aria-valuemax="360"/>'
+    + '<circle id="cmp-dir-h-min-' + suffix + '" cx="' + pMin.x.toFixed(2) + '" cy="' + pMin.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? _wheelSun : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle minimum" aria-valuenow="' + Math.round(dMin) + '" aria-valuemin="0" aria-valuemax="360"/>'
+    + '<circle id="cmp-dir-h-max-' + suffix + '" cx="' + pMax.x.toFixed(2) + '" cy="' + pMax.y.toFixed(2) + '" r="' + HR + '" fill="' + (active ? _wheelSun : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="Direction houle maximum" aria-valuenow="' + Math.round(dMax) + '" aria-valuemin="0" aria-valuemax="360"/>'
     + '</svg>'
     + '<div style="font-size:10.5px;color:var(--muted);line-height:1.6;">'
-    + '<div>🎯 Surligner houle : <b id="cmp-dir-live-lbl-' + suffix + '" style="color:' + (active ? '#fde068' : 'var(--muted)') + ';">' + (active ? (Math.round(dMin) + '°–' + Math.round(dMax) + '°') : 'glisser un repère pour activer') + '</b></div>'
+    + '<div>🎯 Surligner houle : <b id="cmp-dir-live-lbl-' + suffix + '" style="color:' + (active ? _wheelSun : 'var(--muted)') + ';">' + (active ? (Math.round(dMin) + '°–' + Math.round(dMax) + '°') : 'glisser un repère pour activer') + '</b></div>'
     + '<div style="font-size:9.5px;color:var(--faint);">2 repères sur le cercle — glisser, ou flèches ←/→ au clavier'
     + (active ? ' · <a href="javascript:void(0)" onclick="_cmpClearDirFilter()" style="color:var(--accent);">Effacer</a>' : '') + '</div>'
     + '</div>'
@@ -5000,14 +5096,15 @@ function _cmpDirWheelUpdateLive(key, deg) {
   var span = ((dMax - dMin) % 360 + 360) % 360, largeArc = span > 180 ? 1 : 0;
   var d = 'M ' + pMin.x.toFixed(2) + ' ' + pMin.y.toFixed(2) + ' A ' + R + ' ' + R + ' 0 ' + largeArc + ' 1 ' + pMax.x.toFixed(2) + ' ' + pMax.y.toFixed(2);
   var lblTxt = Math.round(dMin) + '°–' + Math.round(dMax) + '°';
+  var _wheelSunLive = _panelLight() ? '#8a5c0f' : '#fde068';
   _CMP_FILTER_SUFFIXES.forEach(function(suffix) {
     var hMin = document.getElementById('cmp-dir-h-min-' + suffix), hMax = document.getElementById('cmp-dir-h-max-' + suffix);
-    if (hMin) { hMin.setAttribute('cx', pMin.x.toFixed(2)); hMin.setAttribute('cy', pMin.y.toFixed(2)); hMin.setAttribute('aria-valuenow', Math.round(dMin)); hMin.setAttribute('fill', '#fde068'); }
-    if (hMax) { hMax.setAttribute('cx', pMax.x.toFixed(2)); hMax.setAttribute('cy', pMax.y.toFixed(2)); hMax.setAttribute('aria-valuenow', Math.round(dMax)); hMax.setAttribute('fill', '#fde068'); }
+    if (hMin) { hMin.setAttribute('cx', pMin.x.toFixed(2)); hMin.setAttribute('cy', pMin.y.toFixed(2)); hMin.setAttribute('aria-valuenow', Math.round(dMin)); hMin.setAttribute('fill', _wheelSunLive); }
+    if (hMax) { hMax.setAttribute('cx', pMax.x.toFixed(2)); hMax.setAttribute('cy', pMax.y.toFixed(2)); hMax.setAttribute('aria-valuenow', Math.round(dMax)); hMax.setAttribute('fill', _wheelSunLive); }
     var arcEl = document.getElementById('cmp-dir-arc-' + suffix);
-    if (arcEl) { arcEl.setAttribute('d', d); arcEl.setAttribute('stroke', '#fde068'); }
+    if (arcEl) { arcEl.setAttribute('d', d); arcEl.setAttribute('stroke', _wheelSunLive); }
     var lbl = document.getElementById('cmp-dir-live-lbl-' + suffix);
-    if (lbl) { lbl.textContent = lblTxt; lbl.style.color = '#fde068'; }
+    if (lbl) { lbl.textContent = lblTxt; lbl.style.color = _wheelSunLive; }
   });
 }
 // Valide le drag en cours (ou l'ajustement clavier) : fixe _cmpDirFilter et
@@ -5086,9 +5183,12 @@ function _cmpAttachDirWheel(suffix) {
 var _cmpMinPeriod = null; // s, null = pas de filtre
 var _cmpMinHeight = null; // m, null = pas de filtre
 var _cmpSliderLive = { period: null, height: null }; // valeur pendant un drag, avant validation (même raison que _cmpDirWheelLive)
+// col : cyan clair d'origine à 1,67:1 sur blanc (quasi invisible) — assombri en
+// thème clair, cf. _panelLight() dans _cmpSliderHtml (le POC ci-dessous reste
+// la valeur sombre par défaut, remplacée à l'usage).
 var _CMP_SLIDER_DEFS = {
-  period: { min: 0, max: 20, step: 1,   defaultVal: 12,  unit: 's', label: 'Période min.', col: '#7dd3fc' },
-  height: { min: 0, max: 4,  step: 0.1, defaultVal: 1.2, unit: 'm', label: 'Houle min.',   col: '#3dba8a' }
+  period: { min: 0, max: 20, step: 1,   defaultVal: 12,  unit: 's', label: 'Période min.', col: '#7dd3fc', colLight: '#0e7fb0' },
+  height: { min: 0, max: 4,  step: 0.1, defaultVal: 1.2, unit: 'm', label: 'Houle min.',   col: '#3dba8a', colLight: '#127a4e' }
 };
 var _CMP_SLIDER_W = 74, _CMP_SLIDER_PAD = 7; // piste utile = W − 2×PAD
 
@@ -5116,14 +5216,15 @@ function _cmpSliderHtml(key, suffix) {
   var active = current != null;
   var val = active ? current : def.defaultVal;
   var x = _cmpSliderX(key, val);
+  var defCol = _panelLight() ? def.colLight : def.col;
   return '<div style="display:flex;flex-direction:column;gap:2px;">'
     + '<span style="font-size:9.5px;color:var(--muted);">' + def.label + '</span>'
     + '<svg id="cmp-slider-' + key + '-' + suffix + '" viewBox="0 0 ' + _CMP_SLIDER_W + ' 26" width="' + _CMP_SLIDER_W + '" height="26" style="touch-action:none;overflow:visible;">'
-    + '<line x1="' + _CMP_SLIDER_PAD + '" y1="13" x2="' + (_CMP_SLIDER_W - _CMP_SLIDER_PAD) + '" y2="13" stroke="rgba(255,255,255,.12)" stroke-width="4" stroke-linecap="round"/>'
-    + '<line id="cmp-slider-' + key + '-' + suffix + '-fill" x1="' + _CMP_SLIDER_PAD + '" y1="13" x2="' + x.toFixed(1) + '" y2="13" stroke="' + (active ? def.col : 'rgba(255,255,255,.2)') + '" stroke-width="4" stroke-linecap="round"/>'
-    + '<circle id="cmp-slider-' + key + '-' + suffix + '-h" cx="' + x.toFixed(1) + '" cy="13" r="7" fill="' + (active ? def.col : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="' + def.label + '" aria-valuemin="' + def.min + '" aria-valuemax="' + def.max + '" aria-valuenow="' + val + '"/>'
+    + '<line x1="' + _CMP_SLIDER_PAD + '" y1="13" x2="' + (_CMP_SLIDER_W - _CMP_SLIDER_PAD) + '" y2="13" stroke="rgba(' + _panelGridRGB() + ',.12)" stroke-width="4" stroke-linecap="round"/>'
+    + '<line id="cmp-slider-' + key + '-' + suffix + '-fill" x1="' + _CMP_SLIDER_PAD + '" y1="13" x2="' + x.toFixed(1) + '" y2="13" stroke="' + (active ? defCol : 'rgba(' + _panelGridRGB() + ',.2)') + '" stroke-width="4" stroke-linecap="round"/>'
+    + '<circle id="cmp-slider-' + key + '-' + suffix + '-h" cx="' + x.toFixed(1) + '" cy="13" r="7" fill="' + (active ? defCol : '#7a94aa') + '" stroke="#0b1a24" stroke-width="2" style="cursor:grab;" tabindex="0" role="slider" aria-label="' + def.label + '" aria-valuemin="' + def.min + '" aria-valuemax="' + def.max + '" aria-valuenow="' + val + '"/>'
     + '</svg>'
-    + '<span id="cmp-slider-' + key + '-' + suffix + '-lbl" style="font-size:9.5px;color:' + (active ? def.col : 'var(--faint)') + ';">' + (active ? ('≥ ' + _cmpSliderFmt(key, val)) : 'inactif')
+    + '<span id="cmp-slider-' + key + '-' + suffix + '-lbl" style="font-size:9.5px;color:' + (active ? defCol : 'var(--faint)') + ';">' + (active ? ('≥ ' + _cmpSliderFmt(key, val)) : 'inactif')
     + (active ? ' · <a href="javascript:void(0)" onclick="_cmpClearSlider(\'' + key + '\')" style="color:var(--accent);">Effacer</a>' : '') + '</span>'
     + '</div>';
 }
@@ -5133,15 +5234,16 @@ function _cmpSliderHtml(key, suffix) {
 function _cmpSliderUpdateLive(key, val) {
   _cmpSliderLive[key] = val;
   var def = _CMP_SLIDER_DEFS[key];
+  var defCol = _panelLight() ? def.colLight : def.col;
   var x = _cmpSliderX(key, val);
   var lblTxt = '≥ ' + _cmpSliderFmt(key, val);
   _CMP_FILTER_SUFFIXES.forEach(function(suffix) {
     var h = document.getElementById('cmp-slider-' + key + '-' + suffix + '-h');
     var fill = document.getElementById('cmp-slider-' + key + '-' + suffix + '-fill');
     var lbl = document.getElementById('cmp-slider-' + key + '-' + suffix + '-lbl');
-    if (h) { h.setAttribute('cx', x.toFixed(1)); h.setAttribute('fill', def.col); h.setAttribute('aria-valuenow', val); }
-    if (fill) { fill.setAttribute('x2', x.toFixed(1)); fill.setAttribute('stroke', def.col); }
-    if (lbl) { lbl.textContent = lblTxt; lbl.style.color = def.col; }
+    if (h) { h.setAttribute('cx', x.toFixed(1)); h.setAttribute('fill', defCol); h.setAttribute('aria-valuenow', val); }
+    if (fill) { fill.setAttribute('x2', x.toFixed(1)); fill.setAttribute('stroke', defCol); }
+    if (lbl) { lbl.textContent = lblTxt; lbl.style.color = defCol; }
   });
 }
 function _cmpSliderCommit(key) {
@@ -7140,6 +7242,9 @@ async function triggerBSF() {
 function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
   if(charts[id]){try{charts[id].destroy();}catch(e){}}
   var cv=document.getElementById(id); if(!cv) return;
+  var _stkLight = _panelLight();
+  var _stkLabelCol = _stkLight ? '#3c505f' : '#7a94aa';
+  var _stkGridRGB = _panelGridRGB();
 
   var activeD = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
   var dates = (activeD && activeD.dates) || [];
@@ -7184,7 +7289,7 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
         var x1 = xAxis.getPixelForValue(band.endIdx);
         // Bande fond alternée très subtile
         if(bi % 2 === 1) {
-          ctx2.fillStyle = 'rgba(255,255,255,0.018)';
+          ctx2.fillStyle = 'rgba('+_stkGridRGB+','+(_stkLight?'.045':'.018')+')';
           ctx2.fillRect(x0, ca.top, x1-x0, ca.bottom-ca.top);
         }
         // Ligne de séparation au début du jour (sauf le premier)
@@ -7192,7 +7297,7 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
           ctx2.beginPath();
           ctx2.moveTo(x0, ca.top);
           ctx2.lineTo(x0, ca.bottom);
-          ctx2.strokeStyle = 'rgba(255,255,255,0.12)';
+          ctx2.strokeStyle = 'rgba('+_stkGridRGB+',0.12)';
           ctx2.lineWidth = 1;
           ctx2.setLineDash([3,3]);
           ctx2.stroke();
@@ -7238,12 +7343,12 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
     options:{responsive:true,maintainAspectRatio:false,
       layout:{padding:{bottom:22}}, // espace pour les labels jours
       plugins:{
-        legend:{display:true,position:'top',align:'start',labels:{color:'#7a94aa',font:{size:9},boxWidth:10,padding:8}},
+        legend:{display:true,position:'top',align:'start',labels:{color:_stkLabelCol,font:{size:9},boxWidth:10,padding:8}},
         tooltip:{enabled:false}
       },
       scales:{
         x:{stacked:true,
-          ticks:{color:'#5a7890',font:{size:8},maxRotation:0,autoSkip:false,
+          ticks:{color:_stkLight?'#3c505f':'#5a7890',font:{size:8},maxRotation:0,autoSkip:false,
             callback:function(val,idx){
               var label = lbl[idx] || '';
               // Extraire l'heure : accepte "D/M HHh" ou "HHh"
@@ -7258,7 +7363,7 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
               return null; // cacher les autres
             }
           },
-          grid:{color:'rgba(255,255,255,.025)',
+          grid:{color:'rgba('+_stkGridRGB+','+(_stkLight?'.06':'.025')+')',
             // Lignes verticales plus visibles aux heures clés
             lineWidth:function(ctx3){
               var label = lbl[ctx3.tick && ctx3.tick.value] || '';
@@ -7267,8 +7372,8 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
           }
         },
         y:{stacked:true,min:0,
-           ticks:{color:'#7a94aa',callback:function(v){return v+'m';},font:{size:9}},
-           grid:{color:'rgba(255,255,255,.04)'}},
+           ticks:{color:_stkLabelCol,callback:function(v){return v+'m';},font:{size:9}},
+           grid:{color:'rgba('+_stkGridRGB+','+(_stkLight?'.07':'.04')+')'}},
       }
     }
   });
@@ -8148,15 +8253,15 @@ function renderRose(idx) {
   // Fond cercles de référence
   [0.33,0.66,1].forEach(function(f){
     ctx.beginPath(); ctx.arc(cx,cy,R*f,0,2*Math.PI);
-    ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=0.8; ctx.stroke();
+    ctx.strokeStyle='rgba('+_panelGridRGB()+',0.06)'; ctx.lineWidth=0.8; ctx.stroke();
   });
   // Axes + labels cardinaux
   ['N','NE','E','SE','S','SO','O','NO'].forEach(function(dir,j){
     var a=j*Math.PI/4-Math.PI/2;
     ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+R*Math.cos(a),cy+R*Math.sin(a));
-    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.8; ctx.stroke();
+    ctx.strokeStyle='rgba('+_panelGridRGB()+',0.05)'; ctx.lineWidth=0.8; ctx.stroke();
     ctx.font=(j%2===0?'bold 10':'8')+'px DM Sans,sans-serif';
-    ctx.fillStyle=j%2===0?'rgba(255,255,255,.55)':'rgba(255,255,255,.25)';
+    ctx.fillStyle=j%2===0?'rgba('+_panelLabelRGB()+',.85)':'rgba('+_panelLabelRGB()+',.5)';
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(dir, cx+(R+14)*Math.cos(a), cy+(R+14)*Math.sin(a));
   });
@@ -8270,7 +8375,7 @@ function renderRose(idx) {
   grad.addColorStop(0,'rgba(30,50,80,0.95)');
   grad.addColorStop(1,'rgba(10,20,35,0.85)');
   ctx.fillStyle=grad; ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle='rgba('+_panelGridRGB()+',0.2)'; ctx.lineWidth=1; ctx.stroke();
 
   // PAS de texte au centre — on affiche l'heure dans la légende sous la rose
   // (évite les débordements et reste lisible)
@@ -8395,7 +8500,7 @@ function makeCrosshairPlugin(id) {
       ctx2.beginPath();
       ctx2.moveTo(x, ca.top);
       ctx2.lineTo(x, ca.bottom);
-      ctx2.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx2.strokeStyle = 'rgba('+_panelGridRGB()+',0.4)';
       ctx2.lineWidth = 1.5;
       ctx2.setLineDash([4,3]);
       ctx2.stroke();
@@ -8411,9 +8516,9 @@ function makeCrosshairPlugin(id) {
           var y = yScale.getPixelForValue(val);
           ctx2.beginPath();
           ctx2.arc(x, y, 4, 0, 2*Math.PI);
-          ctx2.fillStyle = ds.borderColor || '#fff';
+          ctx2.fillStyle = ds.borderColor || (_panelLight() ? '#17232f' : '#fff');
           ctx2.fill();
-          ctx2.strokeStyle = 'rgba(255,255,255,0.8)';
+          ctx2.strokeStyle = 'rgba('+_panelGridRGB()+',0.8)';
           ctx2.lineWidth = 1.5;
           ctx2.stroke();
         }
@@ -8453,16 +8558,28 @@ function mkChart(id,labels,datasets,unit,isBar){
     if(d.bd)o.borderDash=d.bd; return o;
   });
   var crossPlugin = makeCrosshairPlugin(id);
+  // Ticks/grille Chart.js : couleurs figées #7a94aa (2,81:1 sur blanc — sous le
+  // seuil AA) et grille blanche translucide pensée pour --ocean sombre. Chart.js
+  // ne suit pas les variables CSS tout seul, thémé à la main comme les canvas
+  // maison (_panelLight/_panelLabelRGB/_panelGridRGB, charts-core.js).
+  var _mkLight = _panelLight();
+  var _mkLabelCol = _mkLight ? '#3c505f' : '#7a94aa';
+  var _mkGridRGB = _panelGridRGB();
+  // Alpha grille relevée en clair seulement (.03/.04 → .07/.09) : le fond dark-navy
+  // à faible alpha sur une carte quasi-blanche est plus discret que le blanc à
+  // faible alpha sur --ocean sombre, la parité d'alpha ne suffit pas ici. Le
+  // thème sombre garde EXACTEMENT ses valeurs d'origine.
+  var _mkGridX = _mkLight ? '.07' : '.03', _mkGridY = _mkLight ? '.09' : '.04';
   charts[id]=new Chart(cv,{type:isBar?'bar':'line',plugins:[crossPlugin],data:{labels:labels,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{
-        legend:{display:ds.length>1,labels:{color:'#7a94aa',boxWidth:10,font:{size:9}}},
+        legend:{display:ds.length>1,labels:{color:_mkLabelCol,boxWidth:10,font:{size:9}}},
         tooltip:{enabled:false}
       },
-      scales:{x:{ticks:{color:'#7a94aa',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},
-        grid:{color:'rgba(255,255,255,.03)'}},
-        y:{ticks:{color:'#7a94aa',callback:function(v){return v+unit;}},
-        grid:{color:'rgba(255,255,255,.04)'}}}}});
+      scales:{x:{ticks:{color:_mkLabelCol,font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:10},
+        grid:{color:'rgba('+_mkGridRGB+','+_mkGridX+')'}},
+        y:{ticks:{color:_mkLabelCol,callback:function(v){return v+unit;}},
+        grid:{color:'rgba('+_mkGridRGB+','+_mkGridY+')'}}}}});
   // Ajouter le tooltip div si inexistant
   var wrap = cv.parentElement;
   if(wrap && !document.getElementById(id+'-tooltip')) {
@@ -11373,7 +11490,7 @@ function drawOrbit(sun, year, month, day) {
 
   // ── ORBITE ─────────────────────────────────────────────────────
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2*Math.PI);
-  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1;
+  ctx.strokeStyle='rgba('+_panelGridRGB()+',0.12)'; ctx.lineWidth=1;
   ctx.setLineDash([4,5]); ctx.stroke(); ctx.setLineDash([]);
 
   // ── FLÈCHE SENS DE RÉVOLUTION (antihoraire) ────────────────────
@@ -11388,7 +11505,7 @@ function drawOrbit(sun, year, month, day) {
   ctx.beginPath();
   ctx.moveTo(ax, ay);
   ctx.lineTo(ax + arrowLen*Math.cos(tangAngle), ay + arrowLen*Math.sin(tangAngle));
-  ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=1.2;
+  ctx.strokeStyle='rgba('+_panelGridRGB()+',0.35)'; ctx.lineWidth=1.2;
   ctx.stroke();
   // Pointe de flèche
   var ta = tangAngle;
@@ -11398,15 +11515,18 @@ function drawOrbit(sun, year, month, day) {
   ctx.moveTo(bx, by);
   ctx.lineTo(bx - hL*Math.cos(ta-hA), by - hL*Math.sin(ta-hA));
   ctx.lineTo(bx - hL*Math.cos(ta+hA), by - hL*Math.sin(ta+hA));
-  ctx.closePath(); ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fill();
+  ctx.closePath(); ctx.fillStyle='rgba('+_panelGridRGB()+',0.35)'; ctx.fill();
 
   // ── POSITIONS SAISONNIÈRES ─────────────────────────────────────
-  // Angles exacts calculés depuis le doy
+  // Angles exacts calculés depuis le doy. Équinoxes en gris quasi-blanc pensé
+  // pour fond sombre : assombri en thème clair (_panelLight), sinon illisible
+  // sur la carte blanche (même piège que les traits d'orbite ci-dessus).
+  var _orbitLight = _panelLight();
   var seasonAngles = [
-    {a:0,                                  lbl:'Éq. Mars',  sub:'Automne NC',  col:'rgba(200,210,220,0.75)'},
-    {a:-((172-79)/365.25)*2*Math.PI,       lbl:'Sol. Juin', sub:'Hiver NC',    col:'rgba(120,190,255,0.80)'},
-    {a:-((266-79)/365.25)*2*Math.PI,       lbl:'Éq. Sept', sub:'Printemps NC', col:'rgba(200,210,220,0.75)'},
-    {a:-((355-79)/365.25)*2*Math.PI,       lbl:'Sol. Déc',  sub:'Été NC',      col:'rgba(255,210,60,0.85)'},
+    {a:0,                                  lbl:'Éq. Mars',  sub:'Automne NC',  col: _orbitLight ? 'rgba(90,100,112,0.85)' : 'rgba(200,210,220,0.75)'},
+    {a:-((172-79)/365.25)*2*Math.PI,       lbl:'Sol. Juin', sub:'Hiver NC',    col: _orbitLight ? 'rgba(30,110,170,0.9)'  : 'rgba(120,190,255,0.80)'},
+    {a:-((266-79)/365.25)*2*Math.PI,       lbl:'Éq. Sept', sub:'Printemps NC', col: _orbitLight ? 'rgba(90,100,112,0.85)' : 'rgba(200,210,220,0.75)'},
+    {a:-((355-79)/365.25)*2*Math.PI,       lbl:'Sol. Déc',  sub:'Été NC',      col: _orbitLight ? 'rgba(168,99,31,0.9)'   : 'rgba(255,210,60,0.85)'},
   ];
 
   seasonAngles.forEach(function(s){
@@ -11422,7 +11542,7 @@ function drawOrbit(sun, year, month, day) {
     ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle=s.col; ctx.textAlign=align;
     var lblX = lx + (align==='left'?3:align==='right'?-3:0);
     ctx.fillText(s.lbl, lblX, ly-1);
-    ctx.font='7px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.3)';
+    ctx.font='7px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',0.75)';
     ctx.fillText(s.sub, lblX, ly+8);
   });
 
@@ -11437,7 +11557,7 @@ function drawOrbit(sun, year, month, day) {
     var rx1 = sunX + 14*Math.cos(ang), ry1 = sunY + 14*Math.sin(ang);
     var rx2 = sunX + 26*Math.cos(ang), ry2 = sunY + 26*Math.sin(ang);
     ctx.beginPath(); ctx.moveTo(rx1,ry1); ctx.lineTo(rx2,ry2);
-    ctx.strokeStyle='#fde068'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.strokeStyle=_orbitLight ? '#8a5c0f' : '#fde068'; ctx.lineWidth=1.5; ctx.stroke();
   });
   ctx.restore();
 
@@ -11448,8 +11568,8 @@ function drawOrbit(sun, year, month, day) {
   sg.addColorStop(1,'rgba(255,100,0,0)');
   ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sunX,sunY,18,0,2*Math.PI); ctx.fill();
   // Disque solaire
-  ctx.fillStyle='#fde068'; ctx.beginPath(); ctx.arc(sunX,sunY,7,0,2*Math.PI); ctx.fill();
-  ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle='rgba(253,224,104,0.9)'; ctx.textAlign='center';
+  ctx.fillStyle=_orbitLight ? '#8a5c0f' : '#fde068'; ctx.beginPath(); ctx.arc(sunX,sunY,7,0,2*Math.PI); ctx.fill();
+  ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle=_orbitLight ? 'rgba(138,92,15,0.95)' : 'rgba(253,224,104,0.9)'; ctx.textAlign='center';
   ctx.fillText('Soleil', sunX, sunY+20);
 
   // ── RAYONS SOLAIRES PARALLÈLES vers la Terre ──────────────────
@@ -11469,7 +11589,7 @@ function drawOrbit(sun, year, month, day) {
     var sx1 = ex   - 10*ux + offset*px;
     var sy1 = ey   - 10*uy + offset*py;
     ctx.beginPath(); ctx.moveTo(sx0,sy0); ctx.lineTo(sx1,sy1);
-    ctx.strokeStyle='#fde068'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke();
+    ctx.strokeStyle=_orbitLight ? '#8a5c0f' : '#fde068'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke();
     ctx.setLineDash([]);
   });
   ctx.restore();
@@ -11503,21 +11623,21 @@ function drawOrbit(sun, year, month, day) {
   var axSx = ex - axLen * Math.sin(tilt);
   var axSy = ey + axLen * Math.cos(tilt);
   ctx.beginPath(); ctx.moveTo(axSx,axSy); ctx.lineTo(axNx,axNy);
-  ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.strokeStyle='rgba('+_panelGridRGB()+',0.6)'; ctx.lineWidth=1.5; ctx.stroke();
   // Pôle Nord
-  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillStyle='rgba('+_panelGridRGB()+',0.9)';
   ctx.beginPath(); ctx.arc(axNx,axNy,2,0,2*Math.PI); ctx.fill();
   // Pôle Sud
   ctx.fillStyle='rgba(79,163,199,0.5)';
   ctx.beginPath(); ctx.arc(axSx,axSy,1.5,0,2*Math.PI); ctx.fill();
   // Label N discret
-  ctx.font='bold 7px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.textAlign='center';
+  ctx.font='bold 7px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',0.9)'; ctx.textAlign='center';
   ctx.fillText('N', axNx, axNy-4);
   ctx.fillText('23.5°', ex+10, ey-4);
 
   // Label Terre
   var lblSide = ex > cx ? 1 : -1;
-  ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle='rgba(79,163,199,0.9)'; ctx.textAlign=lblSide>0?'left':'right';
+  ctx.font='bold 8px DM Sans,sans-serif'; ctx.fillStyle=_orbitLight ? 'rgba(26,114,155,0.95)' : 'rgba(79,163,199,0.9)'; ctx.textAlign=lblSide>0?'left':'right';
   ctx.fillText('Terre', ex+lblSide*11, ey+3);
 
   // ── LUNE (discrète) ────────────────────────────────────────────
@@ -11537,7 +11657,7 @@ function drawOrbit(sun, year, month, day) {
 
   // Disque lunaire simple
   ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, 2*Math.PI);
-  ctx.fillStyle='rgba(180,190,200,0.45)'; ctx.fill();
+  ctx.fillStyle=_orbitLight ? 'rgba(90,100,112,0.65)' : 'rgba(180,190,200,0.45)'; ctx.fill();
 }
 
 
@@ -11553,16 +11673,20 @@ function renderTwilightAndOrbit(year, month, day) {
       +'<span style="color:var(--faint);font-size:11px;flex:1;">'+label+'</span>'
       +'<strong style="color:'+(col||'var(--text)')+';font-size:13px;font-variant-numeric:tabular-nums;">'+time+'</strong></div>';
   }
+  // Couleurs en var() plutôt qu'en rgba() figé : ces libellés sont du texte
+  // direct sur la carte (pas de halo protecteur comme les canvas plus bas),
+  // donc les teintes pâles pensées pour fond sombre (ex. #fde068 ~1,2:1 sur
+  // blanc) doivent suivre le thème comme --tube/--accent/--warm/--sun.
   el.innerHTML=
-    row('🌑','Aube astronomique',s.astroTwilightDawn,'rgba(123,108,246,0.7)')+
-    row('🌒','Aube nautique',s.nautDawn,'rgba(79,163,199,0.8)')+
-    row('🌓','Aube civile',s.civilDawn,'rgba(232,160,87,0.8)')+
-    row('🌅','Lever du soleil',s.sunrise,'#fde068')+
-    row('☀','Midi solaire',s.solarNoon,'rgba(253,224,104,0.9)')+
-    row('🌇','Coucher du soleil',s.sunset,'#fde068')+
-    row('🌆','Crépuscule civil',s.civilDusk,'rgba(232,160,87,0.8)')+
-    row('🌃','Crépuscule nautique',s.nautDusk,'rgba(79,163,199,0.8)')+
-    row('🌌','Crépuscule astro.',s.astroTwilightDusk,'rgba(123,108,246,0.7)');
+    row('🌑','Aube astronomique',s.astroTwilightDawn,'var(--tube)')+
+    row('🌒','Aube nautique',s.nautDawn,'var(--accent)')+
+    row('🌓','Aube civile',s.civilDawn,'var(--warm)')+
+    row('🌅','Lever du soleil',s.sunrise,'var(--sun)')+
+    row('☀','Midi solaire',s.solarNoon,'var(--sun)')+
+    row('🌇','Coucher du soleil',s.sunset,'var(--sun)')+
+    row('🌆','Crépuscule civil',s.civilDusk,'var(--warm)')+
+    row('🌃','Crépuscule nautique',s.nautDusk,'var(--accent)')+
+    row('🌌','Crépuscule astro.',s.astroTwilightDusk,'var(--tube)');
   drawOrbit(s, year, month, day);
   // Arc solaire du jour + heures dorées/bleues
   drawSunArc(s, year, month, day);
@@ -12184,7 +12308,7 @@ function renderTideCurve(offset) {
   if(evRow) {
     var eh='';
     extr.forEach(function(e){
-      var col=e.type==='pm'?'#4fa3c7':'#e05c5c';
+      var col=e.type==='pm'?'var(--accent)':'var(--bad)';
       var ic=e.type==='pm'?'&#9650;':'&#9660;';
       eh+='<div style="display:flex;align-items:center;gap:4px;font-size:12px;">'
         +'<span style="color:'+col+';">'+ic+'</span>'
@@ -12192,10 +12316,10 @@ function renderTideCurve(offset) {
         +'<span style="color:var(--muted);">'+('0'+(e.min/60|0)).slice(-2)+'h'+('0'+(e.min%60)).slice(-2)+'</span>'
         +'</div><span style="color:var(--faint);font-size:11px;">&#183;</span>';
     });
-    if(sun.nautDawn) eh+='<span style="font-size:11px;color:#7b6cf6;">&#9790;'+sun.nautDawn+'</span>';
-    if(sun.sunrise) eh+='<span style="font-size:11px;color:#fde068;">&#9728;'+sun.sunrise+'</span>';
-    if(sun.sunset)  eh+='<span style="font-size:11px;color:#fde068;">&#9660;'+sun.sunset+'</span>';
-    if(sun.nautDusk)eh+='<span style="font-size:11px;color:#7b6cf6;">&#9790;'+sun.nautDusk+'</span>';
+    if(sun.nautDawn) eh+='<span style="font-size:11px;color:var(--tube);">&#9790;'+sun.nautDawn+'</span>';
+    if(sun.sunrise) eh+='<span style="font-size:11px;color:var(--sun);">&#9728;'+sun.sunrise+'</span>';
+    if(sun.sunset)  eh+='<span style="font-size:11px;color:var(--sun);">&#9660;'+sun.sunset+'</span>';
+    if(sun.nautDusk)eh+='<span style="font-size:11px;color:var(--tube);">&#9790;'+sun.nautDusk+'</span>';
     evRow.innerHTML=eh;
   }
 
@@ -12273,7 +12397,7 @@ function renderTideCurve(offset) {
   // au-delà de 3j — §8.4) : un jour sur deux légèrement teinté, le trait plein
   // reste disponible pour la ligne « maintenant ».
   for(var djb=1; djb<nDays; djb+=2){
-    ctx.fillStyle='rgba(255,255,255,.015)';
+    ctx.fillStyle='rgba('+_panelGridRGB()+',.015)';
     ctx.fillRect(txM(djb*1440), pad.t, txM((djb+1)*1440)-txM(djb*1440), ch);
   }
 
@@ -12298,7 +12422,7 @@ function renderTideCurve(offset) {
   for(var djl=0; djl<nDays; djl++){
     var djDate=new Date(tgt.getTime()+djl*864e5);
     var djLbl = (djl===0 && offset===0) ? "Auj." : DAY_FR[djDate.getUTCDay()]+' '+djDate.getUTCDate()+'/'+(djDate.getUTCMonth()+1);
-    ctx.font='bold 11px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)';
+    ctx.font='bold 11px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',.85)';
     if(nDays===1){
       ctx.textAlign='left';
       ctx.fillText(djLbl, pad.l+2, pad.t+10);
@@ -12307,7 +12431,7 @@ function renderTideCurve(offset) {
       ctx.fillText(djLbl, (txM(djl*1440)+txM((djl+1)*1440))/2, pad.t+10);
       if(djl>0){
         ctx.beginPath(); ctx.moveTo(txM(djl*1440),pad.t); ctx.lineTo(txM(djl*1440),H-pad.b);
-        ctx.strokeStyle='rgba(255,255,255,.10)'; ctx.lineWidth=1; ctx.stroke();
+        ctx.strokeStyle='rgba('+_panelGridRGB()+',.10)'; ctx.lineWidth=1; ctx.stroke();
       }
     }
   }
@@ -12317,8 +12441,8 @@ function renderTideCurve(offset) {
     if(gh>maxH2) return;
     var gy=tyH(gh);
     ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(W-pad.r,gy);
-    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.stroke();
-    ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)';
+    ctx.strokeStyle='rgba('+_panelGridRGB()+',0.05)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',.85)';
     ctx.textAlign='right'; ctx.fillText(gh.toFixed(1)+'m',pad.l-3,gy+3);
   });
 
@@ -12331,10 +12455,10 @@ function renderTideCurve(offset) {
       var hx2=txM(tm2);
       var hh2=(tm2/60)%24|0;
       ctx.beginPath(); ctx.moveTo(hx2,H-pad.b); ctx.lineTo(hx2,H-pad.b+3);
-      ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.stroke();
+      ctx.strokeStyle='rgba('+_panelGridRGB()+',0.12)'; ctx.lineWidth=1; ctx.stroke();
       if(nDays>1 && hh2!==12) continue;
       var hLabel=String(hh2).padStart(2,'0')+'h';
-      ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)'; ctx.textAlign='center';
+      ctx.font='11px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',.85)'; ctx.textAlign='center';
       ctx.fillText(hLabel, hx2, H-8);
     }
   }
@@ -12352,7 +12476,7 @@ function renderTideCurve(offset) {
   // Courbe principale
   ctx.beginPath(); ctx.moveTo(txM(allPts[0].min),tyH(allPts[0].h));
   allPts.forEach(function(p){ctx.lineTo(txM(p.min),tyH(p.h));});
-  ctx.strokeStyle='#4fa3c7'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+  ctx.strokeStyle=_panelLight()?'#1a729b':'#4fa3c7'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
 
   // Marqueur maintenant
   var nowMinTotal = offset*1440 + nowMin;
@@ -12362,9 +12486,9 @@ function renderTideCurve(offset) {
     if(niT<allPts.length){
       var nyT=tyH(allPts[niT].h);
       ctx.beginPath(); ctx.moveTo(nxT,pad.t); ctx.lineTo(nxT,H-pad.b);
-      ctx.strokeStyle='rgba(255,255,100,0.35)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle=_panelNowColor(); ctx.lineWidth=1.5; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
       ctx.beginPath(); ctx.arc(nxT,nyT,5,0,2*Math.PI);
-      ctx.fillStyle='#fde068'; ctx.fill();
+      ctx.fillStyle=_panelLight()?'#8a5c0f':'#fde068'; ctx.fill();
     }
   }
 
@@ -12383,17 +12507,17 @@ function renderTideCurve(offset) {
           var px3=txM(dpe*1440+Math.max(0,mn2)), py3=tyH(ev.tidal_height);
           ctx.beginPath(); ctx.arc(px3,py3,5,0,2*Math.PI);
           ctx.fillStyle=col; ctx.fill();
-          ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+          ctx.strokeStyle='rgba('+_panelGridRGB()+',0.5)'; ctx.lineWidth=1.5; ctx.stroke();
           ctx.font='bold 9px DM Sans,sans-serif'; ctx.fillStyle=col; ctx.textAlign='center';
           ctx.fillText(ev.tidal_height.toFixed(2)+'m',px3,dir2==='up'?py3-9:py3+15);
           var hNC=Math.floor((ms2+11*3600000)%(86400000)/3600000);
           var minNC2=Math.floor(((ms2+11*3600000)%3600000)/60000);
-          ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.4)';
+          ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle='rgba('+_panelLabelRGB()+',0.75)';
           ctx.fillText(String(hNC).padStart(2,'0')+'h'+String(minNC2).padStart(2,'0'),px3,dir2==='up'?py3-19:py3+25);
         });
       }
-      drawDot(ncTd.high_tide,'#4fa3c7','up');
-      drawDot(ncTd.low_tide,'#e05c5c','down');
+      drawDot(ncTd.high_tide,_panelLight()?'#1a729b':'#4fa3c7','up');
+      drawDot(ncTd.low_tide,_panelLight()?'#c73e3e':'#e05c5c','down');
     }
   }
 
@@ -12487,20 +12611,24 @@ function renderTideCurve(offset) {
         ctx.beginPath(); ctx.arc(px2,py2,5,0,2*Math.PI);
         ctx.fillStyle=col; ctx.fill();
         ctx.beginPath(); ctx.arc(px2,py2,5,0,2*Math.PI);
-        ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.strokeStyle='rgba('+_panelGridRGB()+',0.6)'; ctx.lineWidth=1.5; ctx.stroke();
         ctx.font='bold 9px DM Sans,sans-serif'; ctx.fillStyle=col; ctx.textAlign='center';
         ctx.fillText(ev.tidal_height.toFixed(2)+'m',px2,dir==="up"?py2-10:py2+16);
       });
     }
     var ncT2=_ncTideCache.properties.tide;
-    drawNcDot(ncT2.high_tide,'#4fa3c7','up');
-    drawNcDot(ncT2.low_tide,'#e05c5c','down');
+    drawNcDot(ncT2.high_tide,_panelLight()?'#1a729b':'#4fa3c7','up');
+    drawNcDot(ncT2.low_tide,_panelLight()?'#c73e3e':'#e05c5c','down');
   } else {
     extr.forEach(function(e){
-      var px2=tx(e.min), py2=ty2(e.h);
+      // tx()/ty2() n'ont jamais existé (ReferenceError) : la branche de repli
+      // harmonique — celle qui sert justement quand le cache marée meteo.nc est
+      // vide (token expiré) — plantait donc au tracé des extremes. Les
+      // projections réelles sont txM()/tyH(), comme la branche NC juste au-dessus.
+      var px2=txM(e.min), py2=tyH(e.h);
       ctx.beginPath(); ctx.arc(px2,py2,5,0,2*Math.PI);
-      ctx.fillStyle=e.type==='pm'?'#4fa3c7':'#e05c5c'; ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.fillStyle=e.type==='pm'?(_panelLight()?'#1a729b':'#4fa3c7'):(_panelLight()?'#c73e3e':'#e05c5c'); ctx.fill();
+      ctx.strokeStyle='rgba('+_panelGridRGB()+',0.5)'; ctx.lineWidth=1.5; ctx.stroke();
     });
   }
 }
@@ -12612,7 +12740,7 @@ function drawSolunarTimeline(y,m,d,solun){
   var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
   var W=cssW,H=cssH; g.clearRect(0,0,W,H);
   var X=function(min){ return min/1440*W; };
-  g.fillStyle='rgba(255,255,255,0.03)'; g.fillRect(0,0,W,H);
+  g.fillStyle='rgba('+_panelGridRGB()+',0.03)'; g.fillRect(0,0,W,H);
   // nuit (avant lever / après coucher soleil) + bandes aube/crépuscule
   if(solun.sunrise!=null&&solun.sunset!=null){
     g.fillStyle='rgba(20,40,80,0.30)';
@@ -12628,18 +12756,18 @@ function drawSolunarTimeline(y,m,d,solun){
   solun.major.forEach(function(p){ g.fillRect(X(p[0]),0,Math.max(2,X(p[1])-X(p[0])),H); });
   // graduations heures
   [0,6,12,18,24].forEach(function(h){ var xx=X(h*60);
-    if(h>0&&h<24){ g.strokeStyle='rgba(255,255,255,0.08)'; g.lineWidth=1; g.beginPath(); g.moveTo(xx,10); g.lineTo(xx,H); g.stroke(); }
-    g.fillStyle='rgba(255,255,255,0.40)'; g.font='8px DM Mono,monospace'; g.textAlign='center';
+    if(h>0&&h<24){ g.strokeStyle='rgba('+_panelGridRGB()+',0.08)'; g.lineWidth=1; g.beginPath(); g.moveTo(xx,10); g.lineTo(xx,H); g.stroke(); }
+    g.fillStyle='rgba('+_panelLabelRGB()+',0.65)'; g.font='8px DM Mono,monospace'; g.textAlign='center';
     g.fillText(h+'h', Math.min(W-7,Math.max(7,xx)), 8);
   });
   // PM/BM
-  solun.tides.forEach(function(t){ var c=t.type==='pm'?'#4fa3c7':'#e05c5c';
+  solun.tides.forEach(function(t){ var c=t.type==='pm'?(_panelLight()?'#1a729b':'#4fa3c7'):(_panelLight()?'#c73e3e':'#e05c5c');
     g.strokeStyle=c; g.lineWidth=1.5; g.beginPath(); g.moveTo(X(t.min),11); g.lineTo(X(t.min),H); g.stroke();
     g.fillStyle=c; g.font='8px DM Mono,monospace'; g.textAlign='center'; g.fillText(t.type==='pm'?'▲':'▼', X(t.min), H-2);
   });
   // maintenant
   if(solun.isToday){ var _nmNC=new Date(Date.now()+11*3600000); var nm=_nmNC.getUTCHours()*60+_nmNC.getUTCMinutes();
-    g.strokeStyle='#fde068'; g.lineWidth=1.5; g.beginPath(); g.moveTo(X(nm),0); g.lineTo(X(nm),H); g.stroke(); }
+    g.strokeStyle=_panelLight()?'#8a5c0f':'#fde068'; g.lineWidth=1.5; g.beginPath(); g.moveTo(X(nm),0); g.lineTo(X(nm),H); g.stroke(); }
 }
 
 function drawFishingScore(year,month,day){
@@ -12972,7 +13100,16 @@ function _renderSharkRisk(precipDays) {
   var d = [precipDays[0]||0, precipDays[1]||0, precipDays[2]||0, precipDays[3]||0];
   var weighted = d[0]*1.5 + d[1]*1.2 + d[2]*0.8 + d[3]*0.5;
 
-  var LEVELS = [
+  // Turquoise/olive assombris en thème clair (2,44:1 et 3,74:1 sur blanc — sous
+  // le seuil AA texte) : ces couleurs SONT le libellé de risque, pas une nuance
+  // décorative, donc pas de tolérance possible ici contrairement aux aplats de
+  // barres.
+  var LEVELS = _panelLight() ? [
+    {label:'Faible',  col:'#0f7d8c', advice:'Eau claire, visibilité optimale.'},
+    {label:'Légère',  col:'#1e7ea1', advice:'Légères pluies. Vigilance standard.'},
+    {label:'Modérée', col:'#5f6e22', advice:'Eaux troubles. Évitez passes et embouchures.'},
+    {label:'Élevée',  col:'#b54a2a', advice:'Eau très trouble. Évitez spots côtiers.'},
+  ] : [
     {label:'Faible',  col:'#29b6c8', advice:'Eau claire, visibilité optimale.'},
     {label:'Légère',  col:'#1e7ea1', advice:'Légères pluies. Vigilance standard.'},
     {label:'Modérée', col:'#7a8c2e', advice:'Eaux troubles. Évitez passes et embouchures.'},
@@ -13001,14 +13138,16 @@ function _renderSharkRisk(precipDays) {
 
   var gridSVG='', barsSVG='', cloudSVG='', xlabSVG='', ylabSVG='';
   var JLBL=['Auj.','J+1','J+2','J+3'];
+  var _srLight = _panelLight();
+  var _srLabelRGBA = _srLight ? '60,80,95' : '160,195,220';
 
   // Grille Y (2 lignes)
   [0, maxP*0.5, maxP].forEach(function(gv) {
     var gy=toY(gv);
-    gridSVG+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="rgba(255,255,255,.05)" stroke-width="0.6"/>';
-    if(gv>0) ylabSVG+='<text x="'+(padL-3)+'" y="'+(gy+3)+'" text-anchor="end" font-size="7" fill="rgba(160,195,220,.45)">'+gv.toFixed(gv<10?1:0)+'</text>';
+    gridSVG+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="rgba('+_panelGridRGB()+',.05)" stroke-width="0.6"/>';
+    if(gv>0) ylabSVG+='<text x="'+(padL-3)+'" y="'+(gy+3)+'" text-anchor="end" font-size="7" fill="rgba('+_srLabelRGBA+',.75)">'+gv.toFixed(gv<10?1:0)+'</text>';
   });
-  ylabSVG+='<text x="'+(padL-3)+'" y="'+(padT-5)+'" text-anchor="end" font-size="6.5" fill="rgba(160,195,220,.35)">mm</text>';
+  ylabSVG+='<text x="'+(padL-3)+'" y="'+(padT-5)+'" text-anchor="end" font-size="6.5" fill="rgba('+_srLabelRGBA+',.6)">mm</text>';
 
   d.forEach(function(v,i) {
     var x=toX(i), bh=Math.max(2,(v/maxP)*cH), by=toY(v);
@@ -13028,19 +13167,19 @@ function _renderSharkRisk(precipDays) {
       }
     }
     // Label jour
-    xlabSVG+='<text x="'+x+'" y="'+(H-5)+'" text-anchor="middle" font-size="8" fill="rgba(160,195,220,.6)">'+JLBL[i]+'</text>';
+    xlabSVG+='<text x="'+x+'" y="'+(H-5)+'" text-anchor="middle" font-size="8" fill="rgba('+_srLabelRGBA+',.85)">'+JLBL[i]+'</text>';
   });
 
   // Barre de turbidité compacte
   var turbHtml='<div style="display:flex;gap:2px;height:5px;border-radius:3px;overflow:hidden;margin-bottom:3px;">';
   LEVELS.forEach(function(lv,i){
-    turbHtml+='<div style="flex:1;background:'+(i<=level?lv.col:'rgba(255,255,255,.07)')+';'
+    turbHtml+='<div style="flex:1;background:'+(i<=level?lv.col:'rgba('+_panelGridRGB()+',.14)')+';'
       +(i===level?'box-shadow:0 0 6px '+lv.col+'88;':'')+'transition:all .4s;"></div>';
   });
   turbHtml+='</div>'
     +'<div style="display:flex;justify-content:space-between;margin-bottom:8px;">';
   LEVELS.forEach(function(lv,i){
-    turbHtml+='<span style="font-size:11px;color:'+(i===level?lv.col:'rgba(255,255,255,.2)')+';font-weight:'+(i===level?'700':'400')+';">'+lv.label+'</span>';
+    turbHtml+='<span style="font-size:11px;color:'+(i===level?lv.col:'rgba('+_srLabelRGBA+',.4)')+';font-weight:'+(i===level?'700':'400')+';">'+lv.label+'</span>';
   });
   turbHtml+='</div>';
 
@@ -13072,8 +13211,20 @@ async function _renderCycloneIndicator(windDays, precipDays) {
   var peakDate = new Date(now.getTime() + peakDay * 864e5);
   var peakStr = peakDay===0?'Auj.':peakDay===1?'Dem.':['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][peakDate.getUTCDay()]+' '+peakDate.getUTCDate()+'/'+((peakDate.getUTCMonth()+1));
 
-  // Catégories australiennes avec critères visuels
-  var cats = [
+  // Catégories australiennes avec critères visuels. Contrastes vérifiés : les 7
+  // teintes d'origine (pensées pour --ocean sombre) tombent toutes sous 4:1 sur
+  // fond blanc (jusqu'à 1,55:1 pour le jaune Cat.2) — indicateur de sécurité,
+  // pas de tolérance possible en thème clair.
+  var _cycLight = _panelLight();
+  var cats = _cycLight ? [
+    {max:40,  label:'Stable',       col:'#127a4e', cat:'—',     criteria:'< 40 km/h · mer peu agitée',      icon:'✅'},
+    {max:63,  label:'Dépression',   col:'#1a729b', cat:'Dép.',  criteria:'40–63 km/h · mer agitée',         icon:'💨'},
+    {max:88,  label:'Cat. 1',       col:'#5a7a1e', cat:'Cat.1', criteria:'63–88 km/h · forte · dommages légers', icon:'🌀'},
+    {max:117, label:'Cat. 2',       col:'#8a6f0f', cat:'Cat.2', criteria:'89–117 km/h · très forte · dommages modérés', icon:'🌀'},
+    {max:159, label:'Cat. 3',       col:'#a8631f', cat:'Cat.3', criteria:'118–159 km/h · énorme · dommages importants', icon:'🌀'},
+    {max:199, label:'Cat. 4 Sév.', col:'#c73e3e', cat:'Cat.4', criteria:'160–199 km/h · démontée · destruction', icon:'🌀'},
+    {max:999, label:'Cat. 5 Extr.', col:'#7c3aed', cat:'Cat.5', criteria:'≥ 200 km/h · cataclysmique',      icon:'🌀'},
+  ] : [
     {max:40,  label:'Stable',       col:'#3dba8a', cat:'—',     criteria:'< 40 km/h · mer peu agitée',      icon:'✅'},
     {max:63,  label:'Dépression',   col:'#4fa3c7', cat:'Dép.',  criteria:'40–63 km/h · mer agitée',         icon:'💨'},
     {max:88,  label:'Cat. 1',       col:'#90c040', cat:'Cat.1', criteria:'63–88 km/h · forte · dommages légers', icon:'🌀'},
@@ -14715,7 +14866,10 @@ async function updateNavBMSBanner() {
   if (!bms || !bms.active) { box.style.display = 'none'; box.innerHTML = ''; return; }
 
   var red = bms.severity === 'red';
-  var col = red ? '#e05c5c' : '#e8a057';
+  // Bandeau d'alerte marine : couleurs assombries en thème clair (2,19:1 pour
+  // l'orange sur blanc — illisible), une alerte cyclone/coup de vent doit rester
+  // lisible dans les deux thèmes.
+  var col = _panelLight() ? (red ? '#c73e3e' : '#a8631f') : (red ? '#e05c5c' : '#e8a057');
   var bg  = red ? 'rgba(224,92,92,0.10)' : 'rgba(232,160,87,0.10)';
   var bd  = red ? 'rgba(224,92,92,.45)'  : 'rgba(232,160,87,.45)';
   var zone = bms.niveau === 'both' ? 'Lagon & Large'
@@ -15043,8 +15197,10 @@ function openNavBMSDetail() {
 <!-- Menu flottant de navigation rapide — page « Prévisions » uniquement (longue
      page, plusieurs sections) ; masqué sur les autres onglets via showTab(). -->
 <style>
+  /* Fond en var(--deep) : la pastille écrit son icône en var(--accent), qui
+     s'assombrit en thème clair — sur un navy figé elle devenait illisible. */
   #quick-nav-fab{position:fixed;right:16px;bottom:20px;width:46px;height:46px;border-radius:50%;
-    background:rgba(13,31,60,.92);border:1px solid rgba(79,163,199,.4);color:var(--accent);
+    background:var(--deep);border:1px solid rgba(79,163,199,.4);color:var(--accent);
     font-size:20px;cursor:pointer;z-index:900;box-shadow:0 4px 16px rgba(0,0,0,.4);
     display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
   #quick-nav-fab.show{display:flex;}
