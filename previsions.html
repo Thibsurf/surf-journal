@@ -909,8 +909,8 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <button id="tbl-btn-om" onclick="switchTable('om')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">🌐 GFS</button>
           <button id="tbl-btn-bom" onclick="switchTable('bom')" title="Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">BOM</button>
           <button id="tbl-btn-mf" onclick="switchTable('mf')" title="Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine — grille 0,083° (~9 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
-          <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km) — pas de vent disponible pour cette source" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
-          <button id="tbl-btn-aifs" onclick="switchTable('aifs')" title="ECMWF AIFS-single (modèle IA) — grille 0,25° (~28 km) — pas de vent disponible pour cette source" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">AIFS</button>
+          <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
+          <button id="tbl-btn-aifs" onclick="switchTable('aifs')" title="ECMWF AIFS-single (modèle IA) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">AIFS</button>
           <button id="tbl-btn-marc" onclick="switchTable('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
         </div>
       </div>
@@ -8931,10 +8931,18 @@ var TABLE_SRC_DEFS = {
 // le format attendu par renderTable. Mêmes conventions que _fcastData/_omFcastData
 // (dates[] décalées +11h — cf. CLAUDE.md/[[timestamps-utc11-vs-brut]]). Le vent
 // (wSpd/wGst/wDir) est celui du MODÈLE HOULE lui-même au point de grille, pas un
-// emprunt à meteo.nc : BOM/MF/MARC le fournissent réellement (vérifié dans leurs
-// fetch respectifs), seul ECMWF (Windguru) n'en a aucun ici → colonnes à '—',
-// jamais une valeur inventée. sst : aucun de ces flux houle ne mesure la
-// température de mer → toujours null (fmt() l'affiche déjà comme '—').
+// emprunt à meteo.nc : BOM/MF/MARC le fournissent réellement dans le MÊME flux
+// que la houle (vérifié dans leurs fetch respectifs). ECMWF/AIFS (Open Data) sont
+// un cas à part : leur flux HOULE (_fetchOpenDataArchive) n'a pas de vent, mais un
+// vent existe bien pour ces deux modèles — fetché séparément pour le comparatif
+// vent (_fetchEcmwfWind/_fetchAifsWind, cache `..._wind` distinct de `..._wave`),
+// déjà en mémoire dans _aromeCmpCache au moment où cette table est affichée (les
+// deux comparatifs se chargent ensemble). Repris ici par recherche au plus proche
+// (demande utilisateur : "le tableau devrait pouvoir intégrer les données ECMWF
+// de l'api puisqu'on en dispose") — pas de rafale dans ce flux Open Data (10m u/v
+// seulement, cf. build_wind_rows/fetch_ecmwf.py), colonne rafale reste à '—' pour
+// ces deux sources, jamais une valeur inventée. sst : aucun de ces flux ne mesure
+// la température de mer → toujours null (fmt() l'affiche déjà comme '—').
 function _swellCacheToTableData(key) {
   var c = _swellCache && _swellCache[key];
   if (!c || !c.primary || !c.primary.length) return null;
@@ -8943,6 +8951,18 @@ function _swellCacheToTableData(key) {
   function nearestSec(ms) {
     var best = null, bd = 2 * 3600000;
     secondary.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
+    return best;
+  }
+  // windSrc/nearestWind : ECMWF/AIFS seulement (cf. commentaire ci-dessus) — les
+  // deux tableaux .ms sont déjà de vrais epoch UTC (même convention, Date.UTC(...)
+  // - 11h dans les deux fetch), comparables directement sans réconciliation.
+  var windSrc = (key === 'ecmwf' && _aromeCmpCache) ? _aromeCmpCache.ecmwfWind
+              : (key === 'aifs' && _aromeCmpCache) ? _aromeCmpCache.aifsWind
+              : null;
+  function nearestWind(ms) {
+    if (!windSrc) return null;
+    var best = null, bd = 2 * 3600000;
+    windSrc.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
     return best;
   }
   var dates=[],sw1h=[],sw1t=[],sw1d=[],sw2h=[],sw2d=[],wSpd=[],wGst=[],wDir=[],pwr=[],sst=[],totH=[],wndH=[];
@@ -8960,9 +8980,10 @@ function _swellCacheToTableData(key) {
     var sec = nearestSec(p.ms);
     sw2h.push(sec ? r1(sec.h) : null);
     sw2d.push(sec ? sec.dir : null);
-    wSpd.push(p.windKt != null ? p.windKt : null);
+    var wnd = nearestWind(p.ms);
+    wSpd.push(wnd ? wnd.kt : (p.windKt != null ? p.windKt : null));
     wGst.push(p.windGustKt != null ? p.windGustKt : null);
-    wDir.push(p.windDir != null ? p.windDir : null);
+    wDir.push(wnd ? wnd.dir : (p.windDir != null ? p.windDir : null));
     pwr.push((p.h != null && p.t != null) ? +(0.5*p.h*p.h*p.t).toFixed(1) : null);
     sst.push(null);
     totH.push(r1(p.totH != null ? p.totH : p.h));
