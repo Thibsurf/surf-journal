@@ -2122,3 +2122,120 @@ prise en autonomie (utilisateur indispo) après lui avoir fait choisir la cible 
   Ancienne rangee d'onglets + liens inline SUPPRIMÉS de la barre.
 
 thib c'est ok ma biche 💚
+
+---
+
+## Session du 30/07/2026 — courbe vent obs invisible en clair + réorg page + tableau multi-modèles (à committer)
+
+**Demandes utilisateur** (vérification visuelle de `previsions.html`, thème clair) :
+1. la courbe « mesures » du comparatif vent (AROME) était blanche, invisible sur
+   fond clair ;
+2. réorganiser l'onglet Prévisions : Navigation + Hs + ses « frères » (Houles &
+   Vent, Dir./Période houle, Vent & Rafales) descendus tout en bas ; Météo (visible)
+   séparée du Tableau (déroulable), remontés juste après Vent obs./Marées ;
+3. le tableau horaire du bas devrait aussi présenter les autres modèles de houle ;
+4. y mettre en évidence les créneaux qui correspondent au filtre houle molette
+   (direction + curseurs période/hauteur), comme le fait déjà le tableau
+   « Fourchette inter-modèles ».
+
+### 1. Bug couleur (`MODEL_STYLE.obs`)
+
+`obs.col = '#e8eef4'` = **exactement** `--text` du thème sombre (quasi blanc) —
+codé en dur, jamais théré. En clair, `--ocean` (`#eef2f6`) est presque la même
+teinte → courbe, points, pastille de légende et vecteur de la rose « mesures »
+tous invisibles. Corrigé par le même pattern `col`/`colLight` que
+`_CMP_SLIDER_DEFS` : `colLight:'#17232f'` (= `--text` clair), lu via un nouvel
+helper `_msObsCol()`. La légende (`#wcmp-leg-obs`) est un gabarit figé
+(`_aromeCmpShellHtml`, construit une seule fois) : sa pastille est donc
+re-couleurée à chaque redessin dans `_updateWindCmpControls` (déjà appelée par
+`_drawAromeCompareFromCache`), pas seulement à la construction — sinon elle
+restait figée sur l'ancien thème après une bascule sans rechargement de carte
+(piège déjà documenté dans ce fichier). Vérifié headless, profils Chrome isolés
+(le profil par défaut faisait défaut : `prefers-color-scheme` y répond
+« light », faux négatif sur un premier essai) : courbe/points/rose/légende
+noirs et lisibles en clair, thème sombre bit-à-bit inchangé.
+
+### 2. Réorganisation (previsions.html, markup seulement)
+
+Cache météo + Météo (carte permanente, plus dans le `<details>`) + Tableau (son
+propre `<details id="table-detail-wrap">`, replié par défaut sur mobile) remontent
+juste après Vent obs./Marées. Navigation (`#sec-nav`) + Hs (`#sec-hs`) + le `.g2`
+Houles&Vent/Dir.Période/Vent&Rafales descendent en bas de l'onglet. Aucun id
+changé (`switchTable`, `setHsSrc`, `togglePastConditions`, `_quickNavTo`… ciblent
+tous par id, jamais par ordre DOM) → coupé-collé de blocs, zéro JS à toucher pour
+ça. Menu de navigation rapide (`#quick-nav-menu`) réordonné pour suivre le nouvel
+ordre de page. Vérifié headless (injection `__diag`) : 0 erreur JS, tous les id
+présents, tableau rempli (51 lignes) dans le nouvel ordre.
+
+### 3. Tableau — 4 modèles houle supplémentaires (BOM/MF/ECMWF/MARC)
+
+`switchTable`/`renderTable` ne géraient que nc/GFS (`_fcastData`/`_omFcastData`,
+riches : rafales, sst, historique). Étendu à BOM WW3/MF global/ECMWF/MARC WW3 via
+un nouveau `_swellCacheToTableData(key)` qui convertit `_swellCache[key].primary`
+(déjà chargé par le comparatif houle juste au-dessus, aucun fetch réseau propre à
+ce tableau) vers le format attendu. **Vérifié dans le code de fetch, pas supposé** :
+BOM/MF/MARC portent réellement un vent AU POINT DE GRILLE HOULE (`windKt`/`windDir`,
++ `windGustKt` pour MF, + `totH`/`windSeaH` mer totale/mer du vent) — pas un
+emprunt à meteo.nc, un vrai champ de leur fetch respectif. Seul ECMWF (Windguru,
+`id_model=118`) n'a ni vent ni mer totale ici → colonnes Vent/Raf./Dir.vent à
+« — », jamais une valeur inventée (règle du projet). `sst` : aucun de ces flux
+houle ne mesure la température de mer → toujours `—`.
+
+Deux bugs trouvés en vérifiant après coup (pas supposés) :
+- `renderTable` lisait `_fcastData.totH`/`_fcastData.wndH` **directement sur la
+  globale**, jamais passés en paramètre — invisible tant que la seule source
+  possible était nc/GFS (qui alimentent justement cette globale), mais aurait
+  affiché la mer totale de meteo.nc sur une ligne BOM/MARC. `renderTable` prend
+  maintenant `totH`/`wndHarr` en paramètres optionnels (repli sur `_fcastData` si
+  omis → nc/GFS strictement inchangés, seuls les 4 nouvelles sources passent leurs
+  propres valeurs).
+- Écart similaire sur l'en-tête « H2 résid. » : condition basée sur
+  `_currentHsSrc` (toggle de l'histogramme Hs, un état DIFFÉRENT) au lieu de
+  `_tableSrc` (le toggle de CE tableau) → pouvait étiqueter la houle 2 d'un autre
+  modèle comme un « résidu » meteo.nc. Basé sur `_tableSrc` désormais.
+- `fmt()` (`assets/settings-utils.js`) n'arrondit jamais — nc/GFS arrivent déjà
+  propres de leur API. BOM (parsing OPeNDAP ASCII) et MARC (Int16 décompressé)
+  non : première vérification visuelle → `11.904127s` au lieu de `12s` (bruit de
+  parsing). Arrondi ajouté dans `_swellCacheToTableData` (houle : 1 décimale,
+  période : entier — même précision que partout ailleurs dans l'app).
+
+6 boutons de source (au lieu de 2), couleur active = `MODEL_STYLE[key].col` (même
+palette que le reste de l'app, non thémée comme les autres usages existants de
+`MODEL_STYLE.col` — cohérent avec l'existant, pas un nouveau cas comme `obs` qui,
+lui, était identique au fond). Repli explicite si `_swellCache[key]` pas encore
+peuplé (message + relance automatique dès que `_renderSwellCompare()` résout,
+même pattern que le widget global juste au-dessus dans le code).
+Vérifié headless avec **vrai réseau** (pas de données inventées) : BOM 85 lignes,
+MF global 227, MARC 54, tous avec vent/mer/score cohérents ; ECMWF vide à ce
+run (fetch Windguru sans `SWELL1` à cet instant — comportement déjà connu de
+cette source ailleurs dans l'app, pas une régression) → message de repli affiché
+sans erreur JS.
+
+### 4. Surlignage molette dans le tableau principal
+
+Répliqué `_cmpSwellCellMatches` (déjà utilisé par `_renderCmpTable`, la
+« Fourchette inter-modèles ») sur les cellules Houle 1/T1(s)/Dir. de
+`renderTable` : `outline:2px solid var(--sun)` (thémé, même variable que le
+correctif molette du 30/07 précédent) quand le créneau satisfait TOUS les filtres
+actifs (direction molette + curseurs période/hauteur). `_cmpRefreshFilteredViews`
+(seul point d'entrée de tout changement de filtre) rappelle maintenant
+`switchTable(_tableSrc)` pour que le tableau suive un réglage fait APRÈS son
+premier rendu. Vérifié headless : 87 cellules surlignées sur un filtre hauteur
+≥1 m (51 lignes × jusqu'à 3 cellules), visuel clair + sombre conforme.
+
+### 5. Re-vérification (demandée par l'utilisateur avant commit)
+
+Un bug trouvé en rejouant le chemin `loadForecast()` : `_tableSrc` (choix
+utilisateur, ex. « BOM ») **survit à un changement de spot** (pas de reset), mais
+`loadForecast()` repeignait le tableau via un appel direct
+`renderTable(dates,sw1h,…)` avec les données nc/GFS du NOUVEAU spot, sans
+repasser par `switchTable()` — le bouton restait affiché « BOM » actif pendant
+que le contenu affichait déjà meteo.nc, le temps que `_renderSwellCompare()`
+(plus bas, async) rattrape via le hook du §3. Corrigé : ce point d'entrée
+appelle maintenant `switchTable(_tableSrc)` quand `_tableSrc` n'est pas `'nc'`
+(comportement par défaut inchangé au premier chargement). Vérifié headless :
+changement de spot pendant que BOM est actif → bouton, libellé et lignes du
+tableau restent cohérents avec BOM sur le nouveau spot, 0 erreur JS.
+
+**Non touché** : ES5 strict (que des `var`), pas de nouvelle extraction vers
+`assets/`. `CACHE_NAME` → **v52** (previsions.html modifié).

@@ -803,7 +803,91 @@ html.widget-mode #gw-widget { margin-bottom:0; }
   </div>
 
 
-  <!-- ⚓ Encart Navigation -->
+  <!-- ── Réorganisation demandée par l'utilisateur (30/07) ────────────────────
+       Météo (toujours visible) + Tableau (déroulable, seul dans sa <details>)
+       remontent ici, juste après Vent obs./Marées — Navigation, Hs et ses
+       « frères » (Houles & Vent, Dir./Période houle, Vent & Rafales) descendent
+       tout en bas de l'onglet. Cache météo reste juste avant Météo/Tableau,
+       sa position d'origine (inchangée). Tous les id= sont conservés à
+       l'identique : aucun JS (switchTable, togglePastConditions, setHsSrc,
+       _quickNavTo...) n'a besoin d'être modifié, ces fonctions ciblent par id
+       et ne supposent jamais un ordre DOM. -->
+
+  <!-- Historique 7 jours — statistiques agrégées depuis meteo_cache -->
+  <!-- Cache météo (passé + aujourd'hui + à venir) -->
+  <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden;">
+    <button onclick="togglePastConditions()" id="past-toggle-btn"
+      style="width:100%;display:flex;align-items:center;justify-content:space-between;
+             padding:12px 16px;background:rgba(255,255,255,.02);border:none;cursor:pointer;
+             color:var(--muted);font-family:var(--font-b);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">
+      <span id="past-toggle-label">📦 Cache météo — passé &amp; multi-modèles</span>
+      <span id="past-toggle-arrow" style="transition:.2s;">▼</span>
+    </button>
+    <div id="past-conditions-panel" style="display:none;padding:14px 16px;border-top:1px solid var(--border);">
+      <!-- Historique 7 jours — statistiques agrégées depuis ce même cache -->
+      <div id="sec-weekly-stats" style="margin-bottom:14px;display:none;">
+        <div class="section-label" role="heading" aria-level="2" style="margin-bottom:8px;">📈 Historique 7 jours — <span id="weekly-stats-spot" style="color:var(--accent);"></span></div>
+        <div id="weekly-stats-body"><div style="color:var(--faint);font-size:11px;">Chargement…</div></div>
+      </div>
+      <div id="past-nc-unavail-note" style="display:none;margin-bottom:10px;padding:7px 10px;
+           background:rgba(232,160,87,.08);border-left:3px solid rgba(232,160,87,.4);border-radius:4px;
+           font-size:11px;color:rgba(232,160,87,.9);">
+        ⚠ meteo.nc indisponible — si les prévisions ont déjà été consultées aujourd'hui, les données NC sont peut-être en cache ci-dessous.
+      </div>
+      <!-- Raccourcis date -->
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+        <button onclick="_pastQuick(-1)" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">← Hier</button>
+        <button onclick="_pastQuick(0)"  style="background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.25);color:var(--accent);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;">Aujourd'hui</button>
+        <button onclick="_pastQuick(1)"  style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">Demain →</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <input type="date" id="past-date-picker"
+          style="background:var(--mid);border:1px solid var(--border);border-radius:8px;
+                 color:var(--text);padding:6px 10px;font-size:12px;font-family:var(--font-b);">
+        <button onclick="loadPastConditions()" id="past-load-btn"
+          style="background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.3);
+                 color:var(--accent);border-radius:8px;padding:6px 14px;cursor:pointer;
+                 font-size:12px;font-weight:600;">Charger</button>
+      </div>
+      <div id="past-result"></div>
+    </div>
+  </div>
+
+  <!-- 🌤 Météo — séparée du tableau et toujours visible (demande utilisateur :
+       la météo se lit d'un coup d'œil, seul le tableau doit se déplier). -->
+  <div class="card" style="margin-bottom:12px;padding:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;">🌤 Météo <a id="meteo-nc-link" href="https://meteo.nc/fr/meteo/noumea" target="_blank" style="font-weight:400;text-transform:none;color:var(--faint);font-size:11px;text-decoration:none;">↗ meteo.nc</a></div>
+      <div style="font-size:11px;color:var(--faint);">scroll →</div>
+    </div>
+    <div id="meteo-strip" style="overflow-x:auto;padding-bottom:4px;"></div>
+  </div>
+
+  <!-- 📋 Tableau — déroulable seul (ex-partagé avec Météo ci-dessus), replié
+       par défaut sur mobile (JS ci-dessous), ouvert par défaut ailleurs. -->
+  <details class="card" id="table-detail-wrap" open>
+  <summary style="cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:8px;">📋 Tableau détaillé</summary>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+      <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;">📋 Tableau <span id="tbl-source" style="font-weight:400;color:var(--faint);text-transform:none;">meteo.nc</span></div>
+      <div style="display:flex;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;margin-left:auto;flex-wrap:wrap;max-width:100%;">
+        <div style="display:flex;flex-wrap:wrap;background:rgba(255,255,255,.05);border-radius:20px;border:1px solid var(--border);padding:2px;gap:2px;">
+          <button id="tbl-btn-nc" onclick="switchTable('nc')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;white-space:nowrap;">🛰 meteo.nc</button>
+          <button id="tbl-btn-om" onclick="switchTable('om')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">🌐 GFS</button>
+          <button id="tbl-btn-bom" onclick="switchTable('bom')" title="Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">BOM</button>
+          <button id="tbl-btn-mf" onclick="switchTable('mf')" title="Météo-France — modèle vague global MFWAM" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
+          <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-WAM (via Windguru) — pas de vent disponible pour cette source" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
+          <button id="tbl-btn-marc" onclick="switchTable('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--faint);margin:-3px 0 8px;">🎯 Cases cerclées = créneau qui correspond au filtre houle réglé au-dessus (Houle — comparatif modèles). BOM/MF/MARC : vent au point de grille houle (pas de rafales/mer/°C — ECMWF n'a même pas de vent, source Windguru).</div>
+    <div class="tscroll" id="table-wrap">
+      <div class="loading"><div class="spin"></div> Chargement…</div>
+    </div>
+  </details>
+  <script>(function(){var d=document.getElementById('table-detail-wrap'); if(d && window.matchMedia('(max-width:680px)').matches) d.removeAttribute('open');})();</script>
+
+  <!-- ⚓ Encart Navigation — descendu en bas de l'onglet (demande utilisateur) -->
   <div class="card" id="sec-nav" style="margin-bottom:12px;padding:12px 14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
       <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;">⚓ Navigation — <span id="nav-spot-lbl" style="color:var(--accent);"></span></div>
@@ -873,7 +957,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     <span id="nav-seastate" style="display:none;"></span>
   </div>
 
-  <!-- HISTOGRAMME Hs EMPILÉ -->
+  <!-- HISTOGRAMME Hs EMPILÉ — descendu avec Navigation (demande utilisateur) -->
   <div class="card" id="sec-hs" style="margin-bottom:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -908,7 +992,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     </div>
   </div>
 
-  <!-- Autres graphiques — Rose en évidence, puis charts -->
+  <!-- Autres graphiques — Rose en évidence, puis charts — descendus avec Hs (demande utilisateur) -->
   <div class="g2" style="margin-bottom:12px;">
 
     <!-- Rose des houles et du vent -->
@@ -947,73 +1031,6 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     </div>
 
   </div>
-
-  <!-- Historique 7 jours — statistiques agrégées depuis meteo_cache -->
-  <!-- Cache météo (passé + aujourd'hui + à venir) -->
-  <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden;">
-    <button onclick="togglePastConditions()" id="past-toggle-btn"
-      style="width:100%;display:flex;align-items:center;justify-content:space-between;
-             padding:12px 16px;background:rgba(255,255,255,.02);border:none;cursor:pointer;
-             color:var(--muted);font-family:var(--font-b);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">
-      <span id="past-toggle-label">📦 Cache météo — passé &amp; multi-modèles</span>
-      <span id="past-toggle-arrow" style="transition:.2s;">▼</span>
-    </button>
-    <div id="past-conditions-panel" style="display:none;padding:14px 16px;border-top:1px solid var(--border);">
-      <!-- Historique 7 jours — statistiques agrégées depuis ce même cache -->
-      <div id="sec-weekly-stats" style="margin-bottom:14px;display:none;">
-        <div class="section-label" role="heading" aria-level="2" style="margin-bottom:8px;">📈 Historique 7 jours — <span id="weekly-stats-spot" style="color:var(--accent);"></span></div>
-        <div id="weekly-stats-body"><div style="color:var(--faint);font-size:11px;">Chargement…</div></div>
-      </div>
-      <div id="past-nc-unavail-note" style="display:none;margin-bottom:10px;padding:7px 10px;
-           background:rgba(232,160,87,.08);border-left:3px solid rgba(232,160,87,.4);border-radius:4px;
-           font-size:11px;color:rgba(232,160,87,.9);">
-        ⚠ meteo.nc indisponible — si les prévisions ont déjà été consultées aujourd'hui, les données NC sont peut-être en cache ci-dessous.
-      </div>
-      <!-- Raccourcis date -->
-      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
-        <button onclick="_pastQuick(-1)" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">← Hier</button>
-        <button onclick="_pastQuick(0)"  style="background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.25);color:var(--accent);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;">Aujourd'hui</button>
-        <button onclick="_pastQuick(1)"  style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">Demain →</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-        <input type="date" id="past-date-picker"
-          style="background:var(--mid);border:1px solid var(--border);border-radius:8px;
-                 color:var(--text);padding:6px 10px;font-size:12px;font-family:var(--font-b);">
-        <button onclick="loadPastConditions()" id="past-load-btn"
-          style="background:rgba(79,163,199,.15);border:1px solid rgba(79,163,199,.3);
-                 color:var(--accent);border-radius:8px;padding:6px 14px;cursor:pointer;
-                 font-size:12px;font-weight:600;">Charger</button>
-      </div>
-      <div id="past-result"></div>
-    </div>
-  </div>
-
-  <!-- Tableau détaillé — replié par défaut sur mobile (JS ci-dessous), ouvert par défaut ailleurs -->
-  <details class="card" id="table-detail-wrap" open>
-  <summary style="cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:8px;">📋 Détails horaires — météo &amp; tableau complet</summary>
-    <!-- Encart météo meteo.nc -->
-    <div class="card" style="margin-bottom:12px;padding:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;">🌤 Météo <a id="meteo-nc-link" href="https://meteo.nc/fr/meteo/noumea" target="_blank" style="font-weight:400;text-transform:none;color:var(--faint);font-size:11px;text-decoration:none;">↗ meteo.nc</a></div>
-        <div style="font-size:11px;color:var(--faint);">scroll →</div>
-      </div>
-      <div id="meteo-strip" style="overflow-x:auto;padding-bottom:4px;"></div>
-    </div>
-
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
-      <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;">📋 Tableau <span id="tbl-source" style="font-weight:400;color:var(--faint);text-transform:none;">meteo.nc</span></div>
-      <div style="display:flex;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;margin-left:auto;">
-        <div style="display:flex;background:rgba(255,255,255,.05);border-radius:20px;border:1px solid var(--border);padding:2px;gap:2px;">
-          <button id="tbl-btn-nc" onclick="switchTable('nc')" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;">🛰 meteo.nc</button>
-          <button id="tbl-btn-om" onclick="switchTable('om')" style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;">🌐 GFS</button>
-        </div>
-      </div>
-    </div>
-    <div class="tscroll" id="table-wrap">
-      <div class="loading"><div class="spin"></div> Chargement…</div>
-    </div>
-  </details>
-  <script>(function(){var d=document.getElementById('table-detail-wrap'); if(d && window.matchMedia('(max-width:680px)').matches) d.removeAttribute('open');})();</script>
 
 </div>
 </div>
@@ -4322,7 +4339,19 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   renderRose();
   // Météo meteo.nc
   renderMeteoStrip(ncForecast);
-  renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst);
+  // _tableSrc (choix utilisateur : nc/om/bom/mf/ecmwf/marc) survit à un
+  // changement de spot (pas de reset) — passer par switchTable() plutôt que par
+  // un appel direct à renderTable(dates,...) évite qu'un changement de spot
+  // pendant que "BOM" est actif affiche silencieusement meteo.nc sous un bouton
+  // resté sur "BOM" (bug trouvé en relisant ce chemin, pas supposé). Pour
+  // bom/mf/ecmwf/marc, _swellCache n'est pas encore repeuplé pour CE spot ici
+  // (il l'est plus bas, cf. _renderSwellCompare()) : switchTable affiche son
+  // message de repli, puis se corrige seule dès que ce fetch résout (même hook).
+  if (typeof switchTable === 'function' && _tableSrc && _tableSrc !== 'nc') {
+    switchTable(_tableSrc);
+  } else {
+    renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst);
+  }
 
   // Widget prévisions global (EPIC 1) — vue synthétique par jour
   _gwDayIdx = 0;
@@ -4801,7 +4830,11 @@ function _rgbaFromHex(hex, alpha) {
 // cachée dans un `title` (invisible sur mobile) alors que c'est l'information qui
 // hiérarchise la confiance entre modèles. null = non communiquée publiquement.
 var MODEL_STYLE = {
-  obs:   { label: 'mesuré',    col: '#e8eef4', res: null },
+  // obs.col = --text du thème sombre (quasi blanc) : invisible en thème clair
+  // où --ocean (#eef2f6) est presque la même teinte (signalé par l'utilisateur,
+  // « courbe de mesures de vent blanche en clair »). colLight = --text clair,
+  // même logique que _CMP_SLIDER_DEFS.colLight plus bas. Lu via _msObsCol().
+  obs:   { label: 'mesuré',    col: '#e8eef4', colLight: '#17232f', res: null },
   aro:   { label: 'AROME',     col: '#7b6cf6', res: '2,5 km' },
   marc:  { label: 'MARC WW3',  col: '#7dd3fc', res: '5,5 km' },
   ecmwf: { label: 'ECMWF',     col: '#a99ff8', res: '9 km' },
@@ -4810,6 +4843,9 @@ var MODEL_STYLE = {
   mf:    { label: 'MF global', col: '#7a94aa', res: null },
   nc:    { label: 'meteo.nc',  col: '#f0c674', res: null }
 };
+// Couleur de la courbe « mesures » (obs), thémée — seule entrée de MODEL_STYLE
+// à en avoir besoin (les autres teintes restent lisibles sur fond clair ET sombre).
+function _msObsCol() { return (typeof _panelLight === 'function' && _panelLight()) ? MODEL_STYLE.obs.colLight : MODEL_STYLE.obs.col; }
 // ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global / ECMWF / MARC) ──
 // _ncFcastData et _omFcastData sont TOUJOURS peuplés en parallèle (cf. commentaire
 // « Toujours peupler _omFcastData... même si useNC=true, on veut pouvoir comparer »
@@ -5089,6 +5125,12 @@ function _cmpClearDirFilter() {
 function _cmpRefreshFilteredViews() {
   _renderCmpTable();
   if (typeof _drawSwellCompare === 'function') _drawSwellCompare();
+  // Tableau principal (📋 Détails horaires) : même filtre houle, même surlignage
+  // (cf. _swMatch dans renderTable) — sans ce rappel, il resterait figé sur l'état
+  // au dernier switchTable() et ne suivrait pas un réglage molette/curseur fait
+  // après coup. switchTable() ne fait aucun réseau (relit _fcastData/_omFcastData
+  // déjà en mémoire) et se garde déjà si aucune donnée n'est encore chargée.
+  if (typeof switchTable === 'function') switchTable(_tableSrc);
 }
 // Rend la molette + les 2 curseurs dans #cmp-dir-controls-graph, juste sous
 // l'en-tête du comparatif houle (suffixe 'g', cf. _CMP_FILTER_SUFFIXES) —
@@ -5893,6 +5935,14 @@ async function _renderSwellCompare() {
   try {
     if (typeof _gwExtraSrc !== 'undefined' && _gwExtraSrc && typeof renderGlobalWidget === 'function') renderGlobalWidget();
     else if (typeof _gwHoverGi !== 'undefined' && _gwHoverGi >= 0 && typeof _gwDrawVectors === 'function') _gwDrawVectors(_gwHoverGi);
+  } catch(_){}
+  // Le tableau (📋 Détails horaires) lit aussi _swellCache dès que sa source
+  // active est bom/mf/ecmwf/marc (cf. switchTable/_swellCacheToTableData) — même
+  // raison que le widget ci-dessus : si l'utilisateur a cliqué ce bouton avant
+  // que ce fetch (plus lent, réseau externe) ne résolve, switchTable() affichait
+  // le message "pas encore chargées" et n'était jamais rappelée derrière.
+  try {
+    if (typeof _tableSrc !== 'undefined' && _tableSrc !== 'nc' && _tableSrc !== 'om' && typeof switchTable === 'function') switchTable(_tableSrc);
   } catch(_){}
   // Archivage best-effort (table optionnelle, no-op si absente) — ne bloque
   // jamais le rendu, lancé après coup sans attendre.
@@ -8512,28 +8562,108 @@ function renderRose(idx) {
   }
 }
 
-var _tableSrc = 'nc'; // 'nc' ou 'om'
+// Sources du tableau — nc/om restent alimentées par _fcastData/_omFcastData
+// (riches : sst, rafales, historique). bom/mf/ecmwf/marc sont converties à la
+// volée depuis _swellCache (cf. _swellCacheToTableData) — déjà chargé par le
+// comparatif houle juste au-dessus, aucun fetch réseau propre à ce tableau.
+// Demande utilisateur : "le tableau tout en bas pourrait également présenter
+// les données dispo des autres modèles de houle".
+var TABLE_SRC_DEFS = {
+  nc:    { btn:'tbl-btn-nc',    label:'meteo.nc',        bg:'rgba(61,186,138,.2)', col:'#3dba8a' },
+  om:    { btn:'tbl-btn-om',    label:'GFS Open-Meteo',  bg:'rgba(79,163,199,.2)', col:'#4fa3c7' },
+  bom:   { btn:'tbl-btn-bom',   label:'BOM WW3',         bg:_rgbaFromHex(MODEL_STYLE.bom.col,.2),   col:MODEL_STYLE.bom.col },
+  mf:    { btn:'tbl-btn-mf',    label:'MF global',       bg:_rgbaFromHex(MODEL_STYLE.mf.col,.2),    col:MODEL_STYLE.mf.col },
+  ecmwf: { btn:'tbl-btn-ecmwf', label:'ECMWF',           bg:_rgbaFromHex(MODEL_STYLE.ecmwf.col,.2), col:MODEL_STYLE.ecmwf.col },
+  marc:  { btn:'tbl-btn-marc',  label:'MARC WW3',        bg:_rgbaFromHex(MODEL_STYLE.marc.col,.2),  col:MODEL_STYLE.marc.col }
+};
+// Convertit _swellCache[key] (points {ms,h,t,dir,totH,windSeaH,windKt,windDir,
+// windGustKt,...} — cf. _fetchBomWw3/_fetchMeteoFranceWave/_fetchMarcWave) vers
+// le format attendu par renderTable. Mêmes conventions que _fcastData/_omFcastData
+// (dates[] décalées +11h — cf. CLAUDE.md/[[timestamps-utc11-vs-brut]]). Le vent
+// (wSpd/wGst/wDir) est celui du MODÈLE HOULE lui-même au point de grille, pas un
+// emprunt à meteo.nc : BOM/MF/MARC le fournissent réellement (vérifié dans leurs
+// fetch respectifs), seul ECMWF (Windguru) n'en a aucun ici → colonnes à '—',
+// jamais une valeur inventée. sst : aucun de ces flux houle ne mesure la
+// température de mer → toujours null (fmt() l'affiche déjà comme '—').
+function _swellCacheToTableData(key) {
+  var c = _swellCache && _swellCache[key];
+  if (!c || !c.primary || !c.primary.length) return null;
+  var primary = c.primary.slice().sort(function(a,b){ return a.ms - b.ms; });
+  var secondary = (c.secondary || []).slice().sort(function(a,b){ return a.ms - b.ms; });
+  function nearestSec(ms) {
+    var best = null, bd = 2 * 3600000;
+    secondary.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });
+    return best;
+  }
+  var dates=[],sw1h=[],sw1t=[],sw1d=[],sw2h=[],sw2d=[],wSpd=[],wGst=[],wDir=[],pwr=[],sst=[],totH=[],wndH=[];
+  // fmt() (assets/settings-utils.js) n'arrondit JAMAIS — nc/GFS arrivent déjà
+  // propres de leur API. BOM (OPeNDAP ASCII) et MARC (Int16 décompressé) non :
+  // sans ce round(), la table affichait des "11.904127s" au lieu de "12s"
+  // (bruit de parsing, pas une vraie précision supplémentaire).
+  function r1(v) { return v == null ? null : Math.round(v * 10) / 10; }
+  function r0(v) { return v == null ? null : Math.round(v); }
+  primary.forEach(function(p) {
+    dates.push(new Date(p.ms + 11 * 3600000));
+    sw1h.push(r1(p.h));
+    sw1t.push(r0(p.t));
+    sw1d.push(p.dir != null ? p.dir : null);
+    var sec = nearestSec(p.ms);
+    sw2h.push(sec ? r1(sec.h) : null);
+    sw2d.push(sec ? sec.dir : null);
+    wSpd.push(p.windKt != null ? p.windKt : null);
+    wGst.push(p.windGustKt != null ? p.windGustKt : null);
+    wDir.push(p.windDir != null ? p.windDir : null);
+    pwr.push((p.h != null && p.t != null) ? +(0.5*p.h*p.h*p.t).toFixed(1) : null);
+    sst.push(null);
+    totH.push(r1(p.totH != null ? p.totH : p.h));
+    wndH.push(r1(p.windSeaH));
+  });
+  return { dates:dates,sw1h:sw1h,sw1t:sw1t,sw1d:sw1d,sw2h:sw2h,sw2d:sw2d,wSpd:wSpd,wGst:wGst,wDir:wDir,pwr:pwr,sst:sst,totH:totH,wndH:wndH };
+}
+
+var _tableSrc = 'nc'; // 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf' | 'marc'
 function switchTable(src) {
   _tableSrc = src;
-  var bNc=document.getElementById('tbl-btn-nc'), bOm=document.getElementById('tbl-btn-om');
-  if(bNc&&bOm){
-    if(src==='nc'){bNc.style.background='rgba(61,186,138,.2)';bNc.style.color='#3dba8a';bOm.style.background='none';bOm.style.color='var(--muted)';}
-    else{bOm.style.background='rgba(79,163,199,.2)';bOm.style.color='#4fa3c7';bNc.style.background='none';bNc.style.color='var(--muted)';}
-  }
+  Object.keys(TABLE_SRC_DEFS).forEach(function(k) {
+    var b = document.getElementById(TABLE_SRC_DEFS[k].btn);
+    if (!b) return;
+    if (k === src) { b.style.background = TABLE_SRC_DEFS[k].bg; b.style.color = TABLE_SRC_DEFS[k].col; b.style.fontWeight = '600'; }
+    else { b.style.background = 'none'; b.style.color = 'var(--muted)'; b.style.fontWeight = '400'; }
+  });
   var srcEl=document.getElementById('tbl-source');
-  if(srcEl) srcEl.textContent = src==='nc' ? 'meteo.nc' : 'GFS Open-Meteo';
-  // Afficher les données de la source choisie
-  var d = (src==='om' && _omFcastData) ? _omFcastData : _fcastData;
-  if(d && d.dates && d.dates.length) {
-    renderTable(d.dates,d.sw1h,d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
+  if(srcEl) srcEl.textContent = TABLE_SRC_DEFS[src] ? TABLE_SRC_DEFS[src].label : src;
+  if (src === 'nc' || src === 'om') {
+    var d = (src==='om' && _omFcastData) ? _omFcastData : _fcastData;
+    if(d && d.dates && d.dates.length) {
+      renderTable(d.dates,d.sw1h,d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
+    }
+    return;
+  }
+  var conv = _swellCacheToTableData(src);
+  if (conv) {
+    renderTable(conv.dates,conv.sw1h,conv.sw1t,conv.sw1d,conv.sw2h,conv.sw2d,conv.wSpd,conv.wGst,conv.wDir,conv.pwr,conv.sst,conv.totH,conv.wndH);
+  } else {
+    var tw = document.getElementById('table-wrap');
+    if (tw) tw.innerHTML = '<div style="padding:12px;color:var(--faint);font-size:11px;">Données ' + (TABLE_SRC_DEFS[src]?TABLE_SRC_DEFS[src].label:src) + ' pas encore chargées — laisse le comparatif houle ci-dessus finir de charger, puis reviens sur cet onglet.</div>';
   }
 }
 
-function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
+function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst,totH,wndHarr){
   var days=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'],lastDay=null;
-  // Source active pour le tableau
-  var isNC = _currentHsSrc==='nc' && _ncFcastData;
-  var _raftHeader = (_fcastData && _fcastData.wGstFromGFS) ? '<th title="Rafales GFS Open-Meteo (NC n\'a pas ce champ)">Raf.⁽¹⁾</th>' : '<th>Raf.</th>';
+  // totH/wndHarr optionnels : nc/om ne les passent pas (comportement historique
+  // inchangé, cf. appel dans switchTable ci-dessus) et retombent sur _fcastData ;
+  // les nouvelles sources (bom/mf/ecmwf/marc) les passent explicitement — lire
+  // _fcastData pour elles aurait affiché la mer totale de meteo.nc à la place
+  // de celle du modèle réellement sélectionné.
+  totH = totH || (_fcastData && _fcastData.totH);
+  wndHarr = wndHarr || (_fcastData && _fcastData.wndH);
+  // Source active pour le tableau — _tableSrc (pas _currentHsSrc, le toggle de
+  // l'histogramme Hs juste au-dessus : un état différent, qui peut diverger de
+  // la source réellement affichée ici) : sinon le libellé « H2 résid. » (propre
+  // à la décomposition meteo.nc) pouvait s'afficher sur un Houle 2 d'un autre
+  // modèle qui n'a rien d'un résidu (ex. MF global).
+  var isNC = _tableSrc==='nc' && _ncFcastData;
+  var _raftHeader = (_tableSrc==='nc' && _fcastData && _fcastData.wGstFromGFS) ? '<th title="Rafales GFS Open-Meteo (NC n\'a pas ce champ)">Raf.⁽¹⁾</th>' : '<th>Raf.</th>';
   var html='<table class="ft"><thead><tr>'
     +'<th>Heure</th><th>Hs tot.</th><th>Houle 1</th><th>T1 (s)</th><th>Dir.</th>'
     +(isNC?'<th title="Hs-H1-Hvent (résidu)">H2 résid.</th>':'<th>Houle 2</th>')
@@ -8552,13 +8682,19 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst){
     var sc2=surfSc.score;
     var sdots='';
     for(var di2=0;di2<5;di2++) sdots+='<span style="color:'+(di2<sc2?surfSc.col:'rgba(255,255,255,.12)')+';">●</span>';
-    var wnd=_fcastData.wndH&&_fcastData.wndH[i];
+    var wnd=wndHarr&&wndHarr[i];
+    // Filtre houle molette + curseurs (direction/période/hauteur, réglés au-dessus
+    // du comparatif) : même détection que _renderCmpTable (_cmpSwellCellMatches),
+    // répliquée ici sur demande utilisateur — ce tableau n'avait aucun repère visuel
+    // pour retrouver les créneaux qui satisfont le filtre houle actif.
+    var _swMatch = (typeof _cmpSwellCellMatches === 'function') && _cmpSwellCellMatches({h:sw1h[i],t:sw1t[i],dir:sw1d[i]});
+    var _swOut = _swMatch ? 'outline:2px solid var(--sun);outline-offset:-2px;' : '';
     html+='<tr'+(isN?' class="night"':'')+'>'
       +'<td style="color:var(--muted)">'+String(h).padStart(2,'0')+'h</td>'
-      +'<td style="font-weight:500;color:'+hsCol(_fcastData.totH&&_fcastData.totH[i])+'">'+fmt(_fcastData.totH&&_fcastData.totH[i],'m')+'</td>'
-      +'<td style="color:'+hsCol(sw1h[i])+'">'+fmt(sw1h[i],'m')+'</td>'
-      +'<td>'+fmt(sw1t[i],'s')+'</td>'
-      +'<td>'+svgArrow(sw1d[i],'#4fa3c7')+' <span style="white-space:nowrap;">'+compass(sw1d[i])+'<span style="color:var(--faint);font-size:11px;margin-left:2px;">'+(sw1d[i]!==null&&sw1d[i]!==undefined?Math.round(sw1d[i])+'°':'')+'</span></span></td>'
+      +'<td style="font-weight:500;color:'+hsCol(totH&&totH[i])+'">'+fmt(totH&&totH[i],'m')+'</td>'
+      +'<td style="color:'+hsCol(sw1h[i])+';'+_swOut+'">'+fmt(sw1h[i],'m')+'</td>'
+      +'<td style="'+_swOut+'">'+fmt(sw1t[i],'s')+'</td>'
+      +'<td style="'+_swOut+'">'+svgArrow(sw1d[i],'#4fa3c7')+' <span style="white-space:nowrap;">'+compass(sw1d[i])+'<span style="color:var(--faint);font-size:11px;margin-left:2px;">'+(sw1d[i]!==null&&sw1d[i]!==undefined?Math.round(sw1d[i])+'°':'')+'</span></span></td>'
       +'<td style="color:'+hsCol(sw2h[i])+'">'+fmt(sw2h[i],'m')+'</td>'
       +'<td style="color:rgba(232,160,87,.8)">'+fmt(wnd,'m')+'</td>'
       +'<td style="color:'+windCol(wSpd[i])+'">'+fmt(wSpd[i]?Math.round(wSpd[i]):null,' nds')+'</td>'
@@ -9047,6 +9183,14 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
       sp.style.cursor = 'pointer';
       sp.title = (k === 'obs' ? 'Mesures de la station' : k.toUpperCase()) + (hidden ? ' — masqué, clic pour afficher' : ' — clic pour masquer');
     }
+    // Pastille « mesures » thémée (_msObsCol) : posée dans le gabarit figé
+    // (_aromeCmpShellHtml, construit une seule fois), donc à rafraîchir ici à
+    // chaque redessin — sinon elle garde la couleur du thème au chargement de
+    // la carte même après une bascule (§ « Gabarits rendus une seule fois »).
+    if (k === 'obs') {
+      var swatch = sp.firstElementChild;
+      if (swatch) swatch.style.color = _msObsCol();
+    }
   });
   var resetBtn = document.getElementById('wcmp-leg-reset');
   if (resetBtn) resetBtn.style.display = anyHidden ? '' : 'none';
@@ -9210,7 +9354,7 @@ function _aromeCmpShellHtml() {
     // sans refetch). État (opacité/barré/clic) posé par _updateWindCmpControls().
     // Rangée séparée plus bas : marqueurs de points archivés (cercle creux).
     + '<div style="display:flex;gap:10px;row-gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-bottom:5px;">'
-    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.obs.col+';font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
+    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+_msObsCol()+';font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
     + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.aro.col+';font-weight:700;">━</span> AROME<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.aro.res+'</span></span>'
     + '<span id="wcmp-leg-nc" onclick="_toggleWindCmpModel(\'nc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.nc.col+';font-weight:700;">╌</span> meteo.nc</span>'
     + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.gfs.col+';font-weight:700;">╌</span> GFS<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.gfs.res+'</span></span>'
@@ -10190,7 +10334,7 @@ function _drawAromeCompareFromCache() {
     var colNc = _rgbaFromHex(MODEL_STYLE.nc.col, .9), colGfs = _rgbaFromHex(MODEL_STYLE.gfs.col, .9),
         colBom = _rgbaFromHex(MODEL_STYLE.bom.col, .9), colEcmwf = _rgbaFromHex(MODEL_STYLE.ecmwf.col, .9),
         colMarc = _rgbaFromHex(MODEL_STYLE.marc.col, .9), colAro = _rgbaFromHex(MODEL_STYLE.aro.col, .95),
-        colObs = _rgbaFromHex(MODEL_STYLE.obs.col, .95);
+        colObs = _rgbaFromHex(_msObsCol(), .95);
     var lwMod = narrow ? 2.2 : 1.8;
     drawSmooth(pageNc, colNc, lwMod, [6, 4]);
     drawSmooth(pageGfs, colGfs, lwMod, [6, 4]);
@@ -10216,7 +10360,7 @@ function _drawAromeCompareFromCache() {
     ctx.strokeStyle = colAro; ctx.lineWidth = 1.4;
     aromeCachePts.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 2.6, 0, Math.PI * 2); ctx.stroke(); });
     // Points sur les mesures (réelles)
-    ctx.fillStyle = MODEL_STYLE.obs.col;
+    ctx.fillStyle = _msObsCol();
     obs.forEach(function(p) { ctx.beginPath(); ctx.arc(X(p.ms), Y(p.kt), 1.7, 0, Math.PI * 2); ctx.fill(); });
     // Voile de confiance au-delà de J+3 (§10.5), par-dessus les courbes. Pas de
     // repère textuel ici : le panneau houle le porte déjà pour la pile.
@@ -10252,7 +10396,7 @@ function _drawAromeCompareFromCache() {
     var pObs = nearest(obs, ms), pAro = nearest(aro, ms), pNc = nearest(pageNc, ms, 105 * 60000), pGfs = nearest(pageGfs, ms, 105 * 60000), pCache = nearest(cachePts, ms), pAroCache = nearest(aromeCachePts, ms);
     var pBom = nearest(bomWind, ms, 105 * 60000), pEcmwf = nearest(ecmwfWind, ms, 105 * 60000), pMarc = nearest(marcWind, ms, 105 * 60000);
     ro.innerHTML = '<b style="color:var(--text);">' + lbl + '</b>'
-      + (pObs ? ' · <span style="color:' + MODEL_STYLE.obs.col + ';">mesuré <b>' + Math.round(pObs.kt) + '</b> nds</span>' : '')
+      + (pObs ? ' · <span style="color:' + _msObsCol() + ';">mesuré <b>' + Math.round(pObs.kt) + '</b> nds</span>' : '')
       + (pAro ? ' · <span style="color:' + MODEL_STYLE.aro.col + ';">AROME <b>' + Math.round(pAro.kt) + '</b> nds</span>' : '')
       + (!pAro && pAroCache ? ' · <span style="color:' + MODEL_STYLE.aro.col + ';">AROME (cache) <b>' + Math.round(pAroCache.kt) + '</b> nds</span>' : '')
       + (pNc ? ' · <span style="color:' + MODEL_STYLE.nc.col + ';">meteo.nc <b>' + Math.round(pNc.kt) + '</b> nds</span>' : '')
@@ -10271,7 +10415,7 @@ function _drawAromeCompareFromCache() {
   // Rose vent : les modèles ne s'accordent pas toujours sur la direction (signalé
   // par l'utilisateur) — un vecteur par modèle, même convention que la rose houle.
   var WIND_MODELS_ROSE = [
-    { key: 'obs', label: MODEL_STYLE.obs.label, col: MODEL_STYLE.obs.col },
+    { key: 'obs', label: MODEL_STYLE.obs.label, col: _msObsCol() },
     { key: 'aro', label: MODEL_STYLE.aro.label, col: MODEL_STYLE.aro.col },
     { key: 'nc', label: MODEL_STYLE.nc.label, col: MODEL_STYLE.nc.col },
     { key: 'gfs', label: MODEL_STYLE.gfs.label, col: MODEL_STYLE.gfs.col },
@@ -15330,10 +15474,10 @@ function openNavBMSDetail() {
   <button onclick="_quickNavTo('gw-widget')">📊 Widget météo</button>
   <button onclick="_quickNavTo('swell-cmp-card')">🆚 Comparatif houle</button>
   <button onclick="_quickNavTo('wg-arome-card')">🌀 AROME / Puissance</button>
-  <button onclick="_quickNavTo('sec-nav')">⚓ Navigation</button>
-  <button onclick="_quickNavTo('sec-hs')">🌊 Houle détail</button>
   <button onclick="_quickNavTo('sec-weekly-stats')">📈 Historique 7 jours</button>
   <button onclick="_quickNavTo('table-detail-wrap')">📋 Tableau horaire</button>
+  <button onclick="_quickNavTo('sec-nav')">⚓ Navigation</button>
+  <button onclick="_quickNavTo('sec-hs')">🌊 Houle détail</button>
 </div>
 <script>
   function _toggleQuickNav() {
