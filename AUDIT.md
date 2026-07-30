@@ -2496,3 +2496,84 @@ chevauchement, titre non rogné.
 **Non touché** : ES5 strict, pas de nouvelle extraction vers `assets/` côté
 `previsions.html` (déjà en place) ; `CACHE_NAME` bumpé uniquement pour le
 chantier 1 (seul à toucher `assets/`).
+
+## Session du 30/07/2026 (suite 3) — retours sur le chantier précédent + AIFS vent
+
+Retours utilisateur sur la session précédente, quatre commits.
+
+### 1. Bugs trouvés dans les cônes/vecteurs de houle (`91aa6c2e`)
+
+- **Vecteurs MFWAM méconnaissables** ("ça ne ressemble plus à des vecteurs") :
+  le trait partait du CENTRE vers l'extérieur avec la pointe PILE au centre —
+  recouverte par le disque central (vue satellite, `_gwDrawVectors`) ou
+  mélangée aux autres pointes (rose, `_drawSpectrumRose`). Corrigé en reprenant
+  la géométrie provenance→centre déjà utilisée par les flèches houle/vent (la
+  pointe s'arrête PRÈS du centre, jamais dessus).
+- **Vue satellite, plusieurs houles** : période absente des chips (numéro+
+  hauteur seulement) et texte (jusqu'à 3 lignes) débordant sur la rose
+  (`INFO_ZONE_H` fixe à 58px). Le panneau d'info est maintenant écrit AVANT le
+  calcul de la géométrie du cercle, dont le rayon tient compte de la hauteur
+  RÉELLE mesurée (`offsetHeight`), pas d'une estimation — a nécessité de
+  réordonner toute la fonction `_gwDrawVectors` (données → mesure DOM →
+  géométrie → tracé, au lieu de géométrie → tracé → données).
+- Tableau vent/houle combiné : la section Vent avait presque toujours une
+  seule ligne (rafale rarement fournie) contre deux pour la Houle (période
+  quasi toujours présente) — moins "aéré". Ligne placeholder invisible
+  réservée quand la rafale manque.
+- Puissance houle 2 (secondaire) ajoutée à `#pwr-card` existant (2e dataset
+  Chart.js groupé, jamais calculée nulle part avant) plutôt qu'une nouvelle
+  figure séparée (demande explicite de l'utilisateur) — visible seulement
+  quand la source active fournit une vraie période houle 2 (GFS/Open-Meteo,
+  pas le résidu meteo.nc).
+
+Vérifié en réel : diagnostic injecté, `_gwSetSrc('marc')` + recherche du
+créneau à 5 partitions, capture d'écran montrant les 4 cônes numérotés + texte
+"Mer vent 0.7m 8s / H.1 0.7m 13s / H.2 0.6m 15s / ..." sans chevauchement.
+Bascule `setHsSrc('om')` pour confirmer que la puissance houle 2 apparaît bien
+quand GFS fournit une vraie période (meteo.nc résiduel : jamais, par design).
+
+### 2. AIFS dans le comparatif vent (`63714470`)
+
+ECMWF était déjà câblé dans le comparatif vent (courbes, tableau, rose,
+corrélation) — AIFS (même source Open Data, cache_key différent) n'y avait
+jamais été ajouté, décision de scope explicite du chantier ECMWF précédent,
+annulée sur demande de l'utilisateur. `_fetchEcmwfWind` factorisée en
+`_fetchOpenDataWind(cacheKey, spot)` (même pattern que `_fetchOpenDataArchive`
+côté houle), AIFS répété à chaque point de couplage déjà utilisé par ECMWF
+dans `_renderAromeCompare`/`_drawAromeCompareFromCache` (~15 endroits : fetch
+parallèle, cache archivé, clip, `_aromeCmpCache`, `corrSeries`, filtre de
+légende, domaine Y, tracé, survol, rose, badge de corrélation, tableau). Pas
+encore ré-échantillonnable "au point de mesure" (grille Open Data fixe,
+`WIND_UNRESAMPLABLE` étendu à `aifs`) — même limite assumée qu'ECMWF. En
+passant : tooltip légende ECMWF corrigé ("via Windguru"/"9 km" obsolètes
+depuis la migration Open Data du 30/07 — la pastille de résolution affichée,
+elle, était déjà à jour).
+
+Vérifié en réel : `_aromeCmpCache.aifsWind.length` = 25 points (même couverture
+qu'ECMWF), capture d'écran montrant la légende "ECMWF 28 km · AIFS 28 km" et
+une courbe rose (couleur AIFS) supplémentaire sur le graphe.
+
+**Non fait, gap connu** : l'AUTRE tableau (mono-modèle, `switchTable`/
+`TABLE_SRC_DEFS`) affiche toujours "pas de vent disponible" pour ECMWF/AIFS —
+pas le même tableau que celui visé par la demande (confirmé par capture), pas
+touché ici.
+
+### 3. Bandes de période — valeurs cachées (`894a1a5c`)
+
+Le seuil `barW >= 10px` qui masquait la valeur d'une barre trop étroite
+(figure combinée à 4 modèles, cf. session précédente) s'appliquait en fait
+PRESQUE TOUJOURS (barre ≈ 9,4px à 4 modèles sur 340px) — "on ne voit pas la
+taille" (régression signalée immédiatement après le chantier précédent).
+Remplacé par un libellé toujours affiché, tourné à la verticale (`rotate
+-90°`) : tient dans la largeur d'une barre quel que soit le nombre de modèles.
+Marge haute 12→20px pour loger ce texte plus haut qu'un libellé horizontal.
+
+### Discuté, pas implémenté
+
+- Idée utilisateur : dessiner une sinusoïde (au lieu d'une barre) par tranche
+  de période, amplitude=h/période=t — présentée avec hésitation ("ou pas une
+  bonne idée"). Réponse donnée : joli en complément décoratif, mais une barre
+  reste plus précisément comparable visuellement (hauteur = grandeur unique,
+  lisible d'un coup d'œil) qu'une onde (deux grandeurs encodées dans la même
+  courbe, plus dur à comparer entre 4 modèles à l'œil). Pas implémenté, en
+  attente d'un retour de l'utilisateur.
