@@ -765,37 +765,6 @@ function _gwDrawVectors(fi) {
   cv.width = W*dpr; cv.height = H*dpr;
   var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
-  // Le cercle centré sur H/2 mordait sur la bande d'info du bas (jusqu'à 2 lignes
-  // houle+vent, ~58px, position:absolute + bottom:0) — le repère "S" et parfois
-  // la flèche elle-même se retrouvaient masqués derrière (signalé par l'utilisateur :
-  // "c'était proprement en dessous avant"). Réserver cette zone en calculant le
-  // cercle sur la hauteur RESTANTE au-dessus, pas sur H entier.
-  var INFO_ZONE_H = 58;
-  var cx = W/2, cy = (H-INFO_ZONE_H)/2 + 4, R = Math.min(W, H-INFO_ZONE_H)/2 - 14;
-
-  // Repère : cercle + graduations 8 directions + lettres cardinales + point spot
-  ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2*Math.PI); ctx.stroke();
-  for (var tk = 0; tk < 8; tk++) {
-    var ta = tk*Math.PI/4 - Math.PI/2;
-    var tIn = tk%2===0 ? R-4 : R-2.5;
-    ctx.strokeStyle = tk%2===0 ? 'rgba(255,255,255,.45)' : 'rgba(255,255,255,.22)';
-    ctx.lineWidth = tk%2===0 ? 1.4 : 1;
-    ctx.beginPath();
-    ctx.moveTo(cx+tIn*Math.cos(ta), cy+tIn*Math.sin(ta));
-    ctx.lineTo(cx+(R+2)*Math.cos(ta), cy+(R+2)*Math.sin(ta));
-    ctx.stroke();
-  }
-  ctx.font = '700 9px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  [['N',0],['E',90],['S',180],['O',270]].forEach(function(cd){
-    var ca = (cd[1]-90)*Math.PI/180;
-    var lx0 = cx+(R+9)*Math.cos(ca), ly0 = cy+(R+9)*Math.sin(ca);
-    ctx.strokeStyle = 'rgba(6,16,30,.8)'; ctx.lineWidth = 3; ctx.strokeText(cd[0], lx0, ly0);
-    ctx.fillStyle = cd[0]==='N' ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.6)';
-    ctx.fillText(cd[0], lx0, ly0);
-  });
-  ctx.fillStyle = 'rgba(255,255,255,.9)';
-  ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2*Math.PI); ctx.fill();
 
   var s1h = d.sw1h[fi], s1d = d.sw1d[fi], s1t = d.sw1t && d.sw1t[fi];
   var s2h = d.sw2h && d.sw2h[fi], s2d = d.sw2d && d.sw2d[fi];
@@ -825,7 +794,7 @@ function _gwDrawVectors(fi) {
       var specAtMs = d.dates[fi].getTime() - 11*3600000, specBd = 4*3600000, specPt = null;
       specSrcPts.forEach(function(p){ var df = Math.abs(p.ms-specAtMs); if (df < specBd) { specBd = df; specPt = p; } });
       specParts = specPt && specPt.partitions ? specPt.partitions
-        .map(function(pt, idx){ return pt ? { idx:idx, h:pt.h, dir:pt.dir, spread:pt.spread } : null; })
+        .map(function(pt, idx){ return pt ? { idx:idx, h:pt.h, t:pt.t, dir:pt.dir, spread:pt.spread } : null; })
         .filter(function(x){ return x && x.dir!=null; }) : [];
     }
   }
@@ -851,7 +820,7 @@ function _gwDrawVectors(fi) {
   // dans la grille pour cette partition.
   var specInfoHtml = specParts.slice().sort(function(a,b){ return a.idx-b.idx; }).map(function(pt){
     var lbl = pt.idx===0 ? 'Mer vent' : ('H.'+pt.idx);
-    return '<span style="color:'+_gwSwellCol(pt.idx)+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+lbl+' '+pt.h.toFixed(1)+'m</span>';
+    return '<span style="color:'+_gwSwellCol(pt.idx)+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+lbl+' '+pt.h.toFixed(1)+'m'+(pt.t!=null?' '+Math.round(pt.t)+'s':'')+'</span>';
   }).join('');
   var infoHtml = specInfoHtml + arrows.map(function(ar){
     return '<span style="color:'+ar.col+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+ar.info+'</span>';
@@ -862,6 +831,47 @@ function _gwDrawVectors(fi) {
     var da = Math.abs(((arrows[a].deg-arrows[b2].deg)%360+540)%360-180);
     if (da < 22) { arrows[a].deg -= 10; arrows[b2].deg += 10; }
   }
+
+  // Écrit tôt (avant de calculer la géométrie du cercle) pour MESURER sa
+  // hauteur réelle une fois replié — avec plusieurs trains (jusqu'à 6 chips
+  // numéro+hauteur+période), la bande d'info peut prendre 2-3 lignes et
+  // débordait sur la rose (58px fixe ne suffisait pas, signalé par
+  // l'utilisateur : "l'écriture se superpose à la rose"). Mesure réelle
+  // (offsetHeight) plutôt que deviner un nombre de lignes.
+  var iEl = document.getElementById('gw-sat-info');
+  if (iEl) iEl.innerHTML = infoHtml;
+  // Le cercle centré sur H/2 mordait sur la bande d'info du bas — le repère "S"
+  // et parfois la flèche elle-même se retrouvaient masqués derrière (signalé
+  // par l'utilisateur : "c'était proprement en dessous avant"). Réserver cette
+  // zone en calculant le cercle sur la hauteur RESTANTE au-dessus, pas sur H
+  // entier. Bornée [40, 55% de H] : un panneau vide ne doit pas non plus
+  // écraser le cercle à 0.
+  var INFO_ZONE_H = Math.max(40, Math.min(H*0.55, (iEl ? iEl.offsetHeight : 58) + 8));
+  var cx = W/2, cy = (H-INFO_ZONE_H)/2 + 4, R = Math.min(W, H-INFO_ZONE_H)/2 - 14;
+
+  // Repère : cercle + graduations 8 directions + lettres cardinales + point spot
+  ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2*Math.PI); ctx.stroke();
+  for (var tk = 0; tk < 8; tk++) {
+    var ta = tk*Math.PI/4 - Math.PI/2;
+    var tIn = tk%2===0 ? R-4 : R-2.5;
+    ctx.strokeStyle = tk%2===0 ? 'rgba(255,255,255,.45)' : 'rgba(255,255,255,.22)';
+    ctx.lineWidth = tk%2===0 ? 1.4 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx+tIn*Math.cos(ta), cy+tIn*Math.sin(ta));
+    ctx.lineTo(cx+(R+2)*Math.cos(ta), cy+(R+2)*Math.sin(ta));
+    ctx.stroke();
+  }
+  ctx.font = '700 9px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  [['N',0],['E',90],['S',180],['O',270]].forEach(function(cd){
+    var ca = (cd[1]-90)*Math.PI/180;
+    var lx0 = cx+(R+9)*Math.cos(ca), ly0 = cy+(R+9)*Math.sin(ca);
+    ctx.strokeStyle = 'rgba(6,16,30,.8)'; ctx.lineWidth = 3; ctx.strokeText(cd[0], lx0, ly0);
+    ctx.fillStyle = cd[0]==='N' ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.6)';
+    ctx.fillText(cd[0], lx0, ly0);
+  });
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2*Math.PI); ctx.fill();
 
   // Cônes (spread mesuré, MARC) / vecteurs simples (pas de spread, MFWAM) par
   // train — remplace un premier jet (annotation texte + cône générique
@@ -895,16 +905,25 @@ function _gwDrawVectors(fi) {
         ctx.stroke();
       } else {
         // Pas de dispersion angulaire mesurée pour ce produit (MFWAM) : un cône
-        // à largeur fixe suggérerait une précision qui n'existe pas (signalé
-        // par l'utilisateur) — vecteur simple à la place.
-        var vx = cx + len*Math.cos(rad), vy = cy + len*Math.sin(rad);
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(vx, vy);
+        // à largeur fixe suggérerait une précision qui n'existe pas — vecteur
+        // simple à la place. BUG corrigé (signalé par l'utilisateur, "ça ne
+        // ressemble plus à des vecteurs") : un premier jet traçait le trait
+        // DEPUIS le centre vers l'extérieur avec la pointe PILE au centre —
+        // exactement recouverte par le disque central dessiné après coup
+        // (rayon 7, cf. plus bas), donc invisible : plus de pointe = plus un
+        // vecteur, juste un trait. Même géométrie "provenance→centre" que les
+        // flèches houle/vent ci-dessous (stopR), la pointe s'arrête PRÈS du
+        // centre, pas dessus.
+        var vStopR = 8;
+        var vsx = cx + len*Math.cos(rad), vsy = cy + len*Math.sin(rad); // départ provenance
+        var vex = cx + vStopR*Math.cos(rad), vey = cy + vStopR*Math.sin(rad); // arrivée près du centre
+        ctx.beginPath(); ctx.moveTo(vsx, vsy); ctx.lineTo(vex, vey);
         ctx.strokeStyle = col; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.stroke();
-        var vHeadLen = 7, vAng = rad + Math.PI; // pointe vers le centre (départ du trait)
+        var vHeadLen = 7, vArrAng = Math.atan2(vey-vsy, vex-vsx);
         ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx - vHeadLen*Math.cos(vAng-0.4), cy - vHeadLen*Math.sin(vAng-0.4));
-        ctx.lineTo(cx - vHeadLen*Math.cos(vAng+0.4), cy - vHeadLen*Math.sin(vAng+0.4));
+        ctx.moveTo(vex, vey);
+        ctx.lineTo(vex - vHeadLen*Math.cos(vArrAng-0.4), vey - vHeadLen*Math.sin(vArrAng-0.4));
+        ctx.lineTo(vex - vHeadLen*Math.cos(vArrAng+0.4), vey - vHeadLen*Math.sin(vArrAng+0.4));
         ctx.closePath(); ctx.fillStyle = col; ctx.fill();
       }
       // Numéro du train au bout du cône/vecteur — relie l'écart angulaire
@@ -954,10 +973,8 @@ function _gwDrawVectors(fi) {
     ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.stroke();
   }
 
-  // Valeurs regroupées dans la barre du bas (aucun chevauchement possible)
-  var iEl = document.getElementById('gw-sat-info');
-  if (iEl) iEl.innerHTML = infoHtml;
-
+  // Valeurs déjà écrites plus haut (mesure de hauteur pour INFO_ZONE_H) —
+  // aucun chevauchement possible, la géométrie du cercle en tient compte.
   var tEl = document.getElementById('gw-sat-time');
   if (tEl) tEl.textContent = _gwFmtSlot(d, fi);
 

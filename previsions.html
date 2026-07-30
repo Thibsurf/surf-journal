@@ -800,6 +800,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
       <span><span style="color:#3dba8a;">▮</span> 1–5 surfable</span>
       <span><span style="color:#e8a057;">▮</span> 5–15 bon</span>
       <span><span style="color:#a99ff8;">▮</span> &gt;15 costaud</span>
+      <span id="pwr-sw2-leg" style="display:none;" title="Même formule (½·Hs²·T) appliquée à la houle secondaire — barre à côté de la houle primaire, pas empilée"><span style="color:#8aa0b8;">▮</span> houle 2 (secondaire)</span>
       <span title="Ces lignes ne sont pas des mesures : hs/période viennent du formulaire de session, préremplies depuis la prévision du jour (sauf saisie manuelle). C'est ton seuil de déclenchement révélé (les jours où tu as choisi de surfer), pas tes conditions observées.">· lignes tiretées = ta référence de déclenchement (prévisions des jours où tu as surfé, pas des mesures)</span>
     </div>
   </div>
@@ -3322,6 +3323,23 @@ function _buildSecondaryCharts(d) {
   var cvPow=document.getElementById('c-power');
   if(cvPow){
     var pwrData=d.pwr||[];
+    // Puissance houle 2 (secondaire) — même formule (½·Hs²·T) appliquée à
+    // sw2h/sw2t, jusqu'ici jamais calculée nulle part dans l'app (seule la
+    // houle primaire alimentait ce graphe). Demandé par l'utilisateur :
+    // comparer visuellement l'énergie primaire/secondaire, plutôt qu'une
+    // nouvelle figure séparée — greffée sur ce graphe existant en barres
+    // groupées (2ᵉ dataset Chart.js, pas de `stack` commun = côte à côte).
+    // Couleur fixe (pas par seuil comme le dataset primaire) : le sens ici est
+    // "c'est la houle 2", pas "c'est fort/faible" — teinte neutre choisie
+    // pour ne pas entrer en collision avec les 4 couleurs déjà prises par les
+    // seuils de puissance dans la légende ci-dessous (bleu/vert/orange/violet).
+    var pwrData2=(d.sw2h||[]).map(function(h,i){
+      var t=d.sw2t&&d.sw2t[i];
+      return (h!=null&&t!=null)?+(0.5*h*h*t).toFixed(1):null;
+    });
+    var hasPwr2=pwrData2.some(function(v){return v!=null;});
+    var pwrSw2Leg=document.getElementById('pwr-sw2-leg');
+    if(pwrSw2Leg) pwrSw2Leg.style.display=hasPwr2?'':'none';
     var crossPow=makeCrosshairPlugin('c-power');
     // Plugin lignes de référence sessions historiques
     var pwrRefPlugin = {
@@ -3357,11 +3375,14 @@ function _buildSecondaryCharts(d) {
         ctx2.restore();
       }
     };
+    var pwrDatasets=[{label:'kW/m',data:pwrData,
+        backgroundColor:pwrData.map(function(v){return !v?'rgba(60,80,100,.3)':v<1?'rgba(79,163,199,.5)':v<5?'rgba(61,186,138,.6)':v<15?'rgba(232,160,87,.7)':'rgba(123,108,246,.8)';}),
+        borderColor:'transparent',borderWidth:0,borderRadius:2}];
+    if(hasPwr2) pwrDatasets.push({label:'kW/m (houle 2)',data:pwrData2,
+        backgroundColor:'rgba(138,160,184,.55)',borderColor:'transparent',borderWidth:0,borderRadius:2});
     charts['c-power']=new Chart(cvPow,{type:'bar',
       plugins:[crossPow,makeSecDayPlugin('c-power'),pwrRefPlugin],
-      data:{labels:d.lbl,datasets:[{label:'kW/m',data:pwrData,
-        backgroundColor:pwrData.map(function(v){return !v?'rgba(60,80,100,.3)':v<1?'rgba(79,163,199,.5)':v<5?'rgba(61,186,138,.6)':v<15?'rgba(232,160,87,.7)':'rgba(123,108,246,.8)';}),
-        borderColor:'transparent',borderWidth:0,borderRadius:2}]},
+      data:{labels:d.lbl,datasets:pwrDatasets},
       options:{responsive:true,maintainAspectRatio:false,
         layout:{padding:{top:18,bottom:22}},
         plugins:{legend:{display:false},tooltip:{enabled:false}},
@@ -5691,9 +5712,17 @@ function _renderCmpTable() {
         // La variable suit la bascule (--sun = ambre foncé #8a5c0f en clair) sans
         // re-render du tableau, et laisse le rendu sombre à l'identique.
         var outline = cellMatch ? 'outline:2px solid var(--sun);outline-offset:-2px;' : '';
+        // Ligne "sub" (période houle / rafale vent) réservée MÊME QUAND VIDE
+        // (placeholder invisible) : la rafale n'est pas toujours fournie (peu
+        // de modèles vent l'exposent, contrairement à la période, quasi
+        // toujours présente côté houle) — sans cette réserve, la section Vent
+        // n'avait qu'une ligne la plupart du temps contre deux pour la Houle,
+        // rendant le tableau vent visiblement moins "aéré" (signalé par
+        // l'utilisateur) alors que c'est juste une différence de densité de
+        // données, pas voulue visuellement.
         return '<td style="padding:4px 4px;text-align:center;font-size:11px;border-left:' + bl + ';background:' + bg + ';color:var(--text);font-weight:700;white-space:nowrap;line-height:1.15;' + outline + '">'
           + '<div>' + main + ' <span style="font-weight:400;font-size:9px;opacity:.85;">' + arrow + '</span></div>'
-          + (sub ? '<div>' + sub + '</div>' : '') + '</td>';
+          + '<div style="' + (sub ? '' : 'visibility:hidden;') + '">' + (sub || '&nbsp;') + '</div></td>';
       }).join('');
       var resBadge = st.res ? '<span style="font-size:8.5px;font-weight:600;color:var(--deep);background:' + st.col + ';border-radius:5px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + st.res + '</span>' : '';
       var labelCell = '<td style="padding:4px 8px 4px 8px;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';">'
@@ -6271,11 +6300,20 @@ function _drawSwellCompare() {
         // Pas de dispersion angulaire mesurée pour ce produit (MFWAM, cf.
         // _fetchMfArchive) : un cône à largeur fixe (±10° avant ce correctif)
         // suggérerait une précision qui n'existe pas — vecteur simple à la
-        // place (signalé par l'utilisateur).
-        var vx = cx + len * Math.cos(centerRad), vy = cy + len * Math.sin(centerRad);
-        svg += '<line x1="' + cx + '" y1="' + cy + '" x2="' + vx + '" y2="' + vy + '" stroke="' + col + '" stroke-width="2.4" stroke-linecap="round"/>';
-        var vah = 5, vArrAng = centerRad + Math.PI;
-        svg += '<polygon points="' + cx + ',' + cy + ' ' + (cx - vah * Math.cos(vArrAng - 0.4)) + ',' + (cy - vah * Math.sin(vArrAng - 0.4)) + ' ' + (cx - vah * Math.cos(vArrAng + 0.4)) + ',' + (cy - vah * Math.sin(vArrAng + 0.4)) + '" fill="' + col + '"/>';
+        // place. BUG corrigé (signalé par l'utilisateur, "ça ne ressemble
+        // plus à des vecteurs") : un premier jet traçait le trait DEPUIS le
+        // centre vers l'extérieur avec la pointe PILE au centre, où elle se
+        // mélangeait aux pointes des autres trains/à la flèche mer totale —
+        // aucun ne ressemblait plus à un vecteur distinct. Le trait s'arrête
+        // maintenant PRÈS du centre (vStopR), pas dessus, même géométrie
+        // "provenance→centre" (extérieur→intérieur) que la flèche mer totale
+        // ci-dessous.
+        var vStopR = 6;
+        var vsx = cx + len * Math.cos(centerRad), vsy = cy + len * Math.sin(centerRad);
+        var vex = cx + vStopR * Math.cos(centerRad), vey = cy + vStopR * Math.sin(centerRad);
+        svg += '<line x1="' + vsx + '" y1="' + vsy + '" x2="' + vex + '" y2="' + vey + '" stroke="' + col + '" stroke-width="2.4" stroke-linecap="round"/>';
+        var vah = 5, vArrAng = Math.atan2(vey - vsy, vex - vsx);
+        svg += '<polygon points="' + vex + ',' + vey + ' ' + (vex - vah * Math.cos(vArrAng - 0.4)) + ',' + (vey - vah * Math.sin(vArrAng - 0.4)) + ' ' + (vex - vah * Math.cos(vArrAng + 0.4)) + ',' + (vey - vah * Math.sin(vArrAng + 0.4)) + '" fill="' + col + '"/>';
       }
       // Numéro du train au bout du secteur/vecteur — même langage visuel que la
       // vue satellite du widget (_gwDrawVectors, widget-global.js), pour relier
