@@ -6429,11 +6429,13 @@ function _drawSwellCompare() {
     if (!series.length) { wrap.style.display = 'none'; return false; }
     wrap.style.display = '';
     var n = BANDS_COMBINED_LABELS.length, nS = series.length;
-    // Marge haute (padTop) dédiée à l'étiquette de valeur du plus grand barre :
-    // sans elle, la valeur peut sortir du viewBox par le haut et sembler
-    // "cachée sous le titre" (signalé par l'utilisateur sur l'ancien histogramme
-    // mono-modèle — même correctif appliqué ici dès l'écriture).
-    var W = 340, H = 108, padL = 4, padR = 4, padTop = 12, gap = 6, barGap = 1.5;
+    // Marge haute (padTop) dédiée à l'étiquette de valeur de la plus grande
+    // barre : sans elle, la valeur peut sortir du viewBox par le haut et
+    // sembler "cachée sous le titre" (signalé par l'utilisateur sur l'ancien
+    // histogramme mono-modèle). Portée à 20 (au lieu de 12) pour laisser la
+    // place à un libellé tourné à la verticale (cf. plus bas) — plus haut
+    // qu'un libellé horizontal à taille de police égale.
+    var W = 340, H = 108, padL = 4, padR = 4, padTop = 20, gap = 6, barGap = 1.5;
     var groupW = (W - padL - padR - gap * (n - 1)) / n;
     var barW = (groupW - barGap * (nS - 1)) / nS;
     var maxH = 0;
@@ -6449,11 +6451,14 @@ function _drawSwellCompare() {
         var barH = Math.max(2, (H - 22 - padTop) * (v / maxH));
         var y = H - 18 - barH;
         svg += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + barH + '" fill="' + s.col + '" fill-opacity="0.55" stroke="' + s.col + '" stroke-width="1" stroke-opacity="0.9" rx="1.5"><title>' + s.label + ' ' + BANDS_COMBINED_LABELS[i] + ' : ' + v.toFixed(1) + 'm</title></rect>';
-        // Valeur en texte seulement si la barre est assez large pour la lire —
-        // avec 4 modèles sur 340px de large, forcer le texte partout aurait
-        // rendu la figure illisible (demande explicite : "une belle figure
-        // lisible"). La valeur reste accessible au survol (title ci-dessus).
-        if (barW >= 10) svg += '<text x="' + (x + barW / 2) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="8" font-weight="700" fill="' + s.col + '" font-family="DM Sans,sans-serif">' + v.toFixed(1) + '</text>';
+        // Valeur toujours affichée, tournée à la verticale : à 4 modèles sur
+        // 340px de large chaque barre ne fait plus que ~9px, trop étroit pour
+        // un texte horizontal (signalé par l'utilisateur : "on ne voit pas la
+        // taille" — un premier jet masquait carrément la valeur sous ce seuil,
+        // seule au survol via le <title> ci-dessus). Le texte tourné tient
+        // dans la largeur d'une barre quel que soit le nombre de modèles.
+        var tx = x + barW / 2, ty = y - 3;
+        svg += '<text x="' + tx + '" y="' + ty + '" transform="rotate(-90 ' + tx + ' ' + ty + ')" text-anchor="start" font-size="8" font-weight="700" fill="' + s.col + '" font-family="DM Sans,sans-serif">' + v.toFixed(1) + '</text>';
       });
       svg += '<text x="' + (gx + groupW / 2) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="8" fill="rgba(122,148,170,.8)" font-family="DM Sans,sans-serif">' + BANDS_COMBINED_LABELS[i] + '</text>';
     }
