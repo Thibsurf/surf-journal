@@ -2577,3 +2577,23 @@ Marge haute 12→20px pour loger ce texte plus haut qu'un libellé horizontal.
   lisible d'un coup d'œil) qu'une onde (deux grandeurs encodées dans la même
   courbe, plus dur à comparer entre 4 modèles à l'œil). Pas implémenté, en
   attente d'un retour de l'utilisateur.
+
+### 4. Vent ECMWF/AIFS dans le tableau MONO-modèle (`8d8317d6`)
+
+Gap signalé en fin de session précédente puis confirmé à traiter : ce tableau
+(onglets meteo.nc/GFS/BOM/MF/ECMWF/AIFS/MARC, `switchTable`/`_swellCacheToTableData`,
+différent du comparatif multi-modèles traité au point 2) affichait "—" pour le
+vent ECMWF/AIFS — leur flux HOULE (`_fetchOpenDataArchive`) n'a pas de vent,
+contrairement à BOM/MF/MARC qui l'incluent nativement dans le même flux. Un
+vent existe bien pour ces deux modèles (fetché séparément pour le comparatif
+vent, `_fetchEcmwfWind`/`_fetchAifsWind`), déjà en mémoire dans
+`_aromeCmpCache` au moment où cette table est affichée (les deux comparatifs
+se chargent ensemble) — repris par recherche au plus proche dans
+`_swellCacheToTableData`, comme la houle 2. Pas de rafale pour ces deux
+sources (10m u/v seulement dans ce produit Open Data, cf. `build_wind_rows`/
+`fetch_ecmwf.py`) — colonne rafale laissée à "—", jamais une valeur inventée.
+
+Vérifié en réel : `switchTable('ecmwf')`/`switchTable('aifs')` puis lecture du
+DOM généré — colonnes Vent/Dir.vent peuplées ("6 nds"/"E 98°" pour ECMWF,
+"7/8/7/6 nds" pour AIFS sur 4 lignes consécutives), colonne rafale toujours
+"—" comme attendu.
