@@ -719,7 +719,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <span style="font-size:11px;color:var(--faint);"> — mer du vent + houles séparées, avec dispersion directionnelle (largeur du secteur)</span>
         </div>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-          <div id="marc-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur = un train de houle (rayon = hauteur, largeur = dispersion directionnelle). Flèche blanche = mer totale."></div>
+          <div id="marc-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur numéroté = un train de houle (rayon = hauteur, largeur = dispersion directionnelle, numéro = même houle N que dans la légende ci-contre). La fine flèche = mer totale (toutes composantes cumulées) — à ne pas confondre avec la mer du vent, qui a son propre secteur numéroté."></div>
           <div id="marc-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
         </div>
       </div>
@@ -729,7 +729,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <span style="font-size:11px;color:var(--faint);"> — mer du vent + houle primaire/secondaire, avec direction (pas de dispersion angulaire dans ce produit)</span>
         </div>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-          <div id="mf-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur = un train de houle (rayon = hauteur). Flèche blanche = mer totale."></div>
+          <div id="mf-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque flèche numérotée = un train de houle (longueur = hauteur, numéro = même houle N que dans la légende ci-contre) — pas de cône, ce produit n'a pas de dispersion angulaire mesurée. La fine flèche = mer totale (toutes composantes cumulées) — à ne pas confondre avec la mer du vent, qui a sa propre flèche numérotée."></div>
           <div id="mf-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
         </div>
       </div>
@@ -6259,38 +6259,74 @@ function _drawSwellCompare() {
     var sorted = parts.slice().sort(function(a, b) { return b.h - a.h; });
     sorted.forEach(function(pt) {
       var centerRad = (pt.dir - 90) * Math.PI / 180;
-      // Spread WW3 = mesure statistique de dispersion (écart-type angulaire), pas
-      // littéralement un demi-angle de cône — utilisé ici comme approximation
-      // visuelle raisonnable (houle "propre" = secteur étroit, "confuse" = large).
-      var halfWidthDeg = pt.spread != null ? Math.max(4, Math.min(85, pt.spread)) : 10;
-      var halfWidthRad = halfWidthDeg * Math.PI / 180;
       var len = 8 + (R - 12) * (pt.h / maxH);
-      var a1 = centerRad - halfWidthRad, a2 = centerRad + halfWidthRad;
-      var x1 = cx + len * Math.cos(a1), y1 = cy + len * Math.sin(a1);
-      var x2 = cx + len * Math.cos(a2), y2 = cy + len * Math.sin(a2);
-      var largeArc = halfWidthDeg * 2 > 180 ? 1 : 0;
       var col = MARC_PART_COLORS[pt.idx % MARC_PART_COLORS.length];
-      svg += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + len + ',' + len + ' 0 ' + largeArc + ' 1 ' + x2 + ',' + y2 + ' Z" fill="' + col + '" fill-opacity="0.4" stroke="' + col + '" stroke-width="1" stroke-opacity="0.85"/>';
+      if (pt.spread != null) {
+        // Spread WW3 = mesure statistique de dispersion (écart-type angulaire),
+        // pas littéralement un demi-angle de cône — utilisé ici comme
+        // approximation visuelle raisonnable (houle "propre" = secteur étroit,
+        // "confuse" = large).
+        var halfWidthDeg = Math.max(4, Math.min(85, pt.spread));
+        var halfWidthRad = halfWidthDeg * Math.PI / 180;
+        var a1 = centerRad - halfWidthRad, a2 = centerRad + halfWidthRad;
+        var x1 = cx + len * Math.cos(a1), y1 = cy + len * Math.sin(a1);
+        var x2 = cx + len * Math.cos(a2), y2 = cy + len * Math.sin(a2);
+        var largeArc = halfWidthDeg * 2 > 180 ? 1 : 0;
+        svg += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + len + ',' + len + ' 0 ' + largeArc + ' 1 ' + x2 + ',' + y2 + ' Z" fill="' + col + '" fill-opacity="0.4" stroke="' + col + '" stroke-width="1" stroke-opacity="0.85"/>';
+      } else {
+        // Pas de dispersion angulaire mesurée pour ce produit (MFWAM, cf.
+        // _fetchMfArchive) : un cône à largeur fixe (±10° avant ce correctif)
+        // suggérerait une précision qui n'existe pas — vecteur simple à la
+        // place (signalé par l'utilisateur).
+        var vx = cx + len * Math.cos(centerRad), vy = cy + len * Math.sin(centerRad);
+        svg += '<line x1="' + cx + '" y1="' + cy + '" x2="' + vx + '" y2="' + vy + '" stroke="' + col + '" stroke-width="2.4" stroke-linecap="round"/>';
+        var vah = 5, vArrAng = centerRad + Math.PI;
+        svg += '<polygon points="' + cx + ',' + cy + ' ' + (cx - vah * Math.cos(vArrAng - 0.4)) + ',' + (cy - vah * Math.sin(vArrAng - 0.4)) + ' ' + (cx - vah * Math.cos(vArrAng + 0.4)) + ',' + (cy - vah * Math.sin(vArrAng + 0.4)) + '" fill="' + col + '"/>';
+      }
+      // Numéro du train au bout du secteur/vecteur — même langage visuel que la
+      // vue satellite du widget (_gwDrawVectors, widget-global.js), pour relier
+      // l'écart angulaire affiché au numéro de houle listé dans la légende
+      // ci-dessous (demande explicite de l'utilisateur). Pas de numéro pour la
+      // mer du vent (idx 0), déjà nommée en toutes lettres dans la légende.
+      if (pt.idx >= 1) {
+        var nrad = Math.min(len + 9, R - 2);
+        var nx = cx + nrad * Math.cos(centerRad), ny = cy + nrad * Math.sin(centerRad);
+        svg += '<text x="' + nx + '" y="' + (ny + 3) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + col + '" font-family="DM Sans,sans-serif">' + pt.idx + '</text>';
+      }
     });
-    // Mer totale (hs/dir global) en flèche blanche par-dessus, repère "vue d'ensemble"
-    // — même géométrie que le widget : part de l'extérieur (provenance), pointe vers
+    // Mer totale (hs/dir global) en flèche par-dessus, repère "vue d'ensemble" —
+    // même géométrie que le widget : part de l'extérieur (provenance), pointe vers
     // le centre (arrivée au spot), pas l'inverse. Direction MOYENNE totale = p.totDir
-    // depuis la normalisation (p.dir vaut désormais la houle primaire) ; repli p.dir
-    // pour un vieux point de cache sans totDir.
+    // depuis la normalisation (p.dir vaut désormais la houle primaire) ; repli p.dir/
+    // p.h pour un vieux point de cache sans totDir/totH. Couleur thémée (blanc en
+    // sombre, sombre en clair, même logique que _msObsCol()) : un stroke blanc fixe
+    // était illisible sur le fond clair de la carte (signalé par l'utilisateur) — la
+    // vue satellite du widget n'a pas ce problème, elle peint sur une photo.
+    var _totCol = (typeof _panelLight === 'function' && _panelLight()) ? MODEL_STYLE.obs.colLight : '#fff';
     var _totDir = p.totDir != null ? p.totDir : p.dir;
+    var _totH = p.totH != null ? p.totH : p.h;
     if (_totDir != null) {
       var radT = (_totDir - 90) * Math.PI / 180;
       var lenT = R - 4, stopRT = 6;
       var sxt = cx + lenT * Math.cos(radT), syt = cy + lenT * Math.sin(radT); // départ provenance
       var ext = cx + stopRT * Math.cos(radT), eyt = cy + stopRT * Math.sin(radT); // arrivée au centre
-      svg += '<line x1="' + sxt + '" y1="' + syt + '" x2="' + ext + '" y2="' + eyt + '" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>';
+      svg += '<line x1="' + sxt + '" y1="' + syt + '" x2="' + ext + '" y2="' + eyt + '" stroke="' + _totCol + '" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>';
       var ah = 4.5, arrAngT = Math.atan2(eyt - syt, ext - sxt);
-      svg += '<polygon points="' + ext + ',' + eyt + ' ' + (ext - ah * Math.cos(arrAngT - 0.4)) + ',' + (eyt - ah * Math.sin(arrAngT - 0.4)) + ' ' + (ext - ah * Math.cos(arrAngT + 0.4)) + ',' + (eyt - ah * Math.sin(arrAngT + 0.4)) + '" fill="#fff" fill-opacity="0.9"/>';
+      svg += '<polygon points="' + ext + ',' + eyt + ' ' + (ext - ah * Math.cos(arrAngT - 0.4)) + ',' + (eyt - ah * Math.sin(arrAngT - 0.4)) + ' ' + (ext - ah * Math.cos(arrAngT + 0.4)) + ',' + (eyt - ah * Math.sin(arrAngT + 0.4)) + '" fill="' + _totCol + '" fill-opacity="0.9"/>';
     }
     svg += '</svg>';
     el.innerHTML = svg;
     if (legEl) {
-      legEl.innerHTML = sorted.map(function(pt) {
+      // Mer totale en tête de légende, même couleur que sa flèche : clarifie que
+      // ce n'est PAS la mer du vent (sa propre entrée, en dessous) mais la somme
+      // de toutes les composantes — confusion signalée par l'utilisateur. Affiche
+      // aussi sa hauteur, jusqu'ici absente (seule la direction était visible).
+      var legHtml = _totDir != null ? ('<div style="display:flex;align-items:center;gap:5px;">'
+        + '<span style="width:7px;height:7px;border-radius:50%;background:' + _totCol + ';flex-shrink:0;border:1px solid rgba(122,148,170,.4);"></span>'
+        + '<b style="color:var(--text);">' + _totH.toFixed(1) + 'm</b>'
+        + '<span style="color:var(--faint);">Mer totale (toutes composantes)</span>'
+        + '</div>') : '';
+      legHtml += sorted.map(function(pt) {
         return '<div style="display:flex;align-items:center;gap:5px;">'
           + '<span style="width:7px;height:7px;border-radius:50%;background:' + MARC_PART_COLORS[pt.idx % MARC_PART_COLORS.length] + ';flex-shrink:0;"></span>'
           + '<b style="color:var(--text);">' + pt.h.toFixed(1) + 'm</b>'
@@ -6299,6 +6335,7 @@ function _drawSwellCompare() {
           + '<span style="color:var(--faint);">' + MARC_PART_LABELS[pt.idx] + '</span>'
           + '</div>';
       }).join('');
+      legEl.innerHTML = legHtml;
     }
     return true;
   }
