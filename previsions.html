@@ -734,27 +734,21 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         </div>
       </div>
     </div>
-    <!-- Bandes de période ECMWF/AIFS (Open Data) : hauteur significative par bande
-         10-30s, SANS direction (aucune des deux sources ne l'expose) — donc un simple
-         histogramme, pas une rose comme MARC/MF ci-dessus. Nouveau le 30/07/2026,
-         remplace le relais Windguru (qui ne donnait qu'une houle globale SWELL1/2,
-         sans bandes). Comparable visuellement au spectre MARC/MF juste au-dessus
-         (même largeur de bloc), mais pas directement superposable (pas de direction). -->
-    <div id="bands-compare-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
-      <div id="ecmwf-bands-wrap" style="display:none;margin-bottom:10px;">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
-          <b style="color:var(--text);">📊 Bandes de période ECMWF</b>
-          <span style="font-size:11px;color:var(--faint);"> — hauteur significative par bande de période (10 à 30 s), sans direction</span>
-        </div>
-        <div id="ecmwf-bands-chart" style="width:100%;max-width:360px;height:80px;"></div>
+    <!-- Bandes de période : ECMWF/AIFS (Open Data) exposent nativement une hauteur
+         significative par bande 10-30s, SANS direction — MARC/MFWAM n'ont pas de
+         "bandes" mais un spectre par train (partitions h/t/dir), reclassé ici dans
+         les mêmes bandes (bucketing par période, cf. _bandsCombinedSeries) pour
+         comparer les 4 modèles sur UNE figure au lieu de deux histogrammes séparés
+         (avant le 30/07/2026 : ECMWF et AIFS chacun leur bloc, MARC/MFWAM absents
+         d'ici — leur spectre par train vit dans la rose au-dessus, mais une vue par
+         bande manquait pour les comparer aux deux modèles Open Data). -->
+    <div id="bands-combined-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+        <b style="color:var(--text);">📊 Bandes de période — comparatif modèles</b>
+        <span style="font-size:11px;color:var(--faint);"> — hauteur par bande de période (s), tous modèles disponibles à cet instant</span>
       </div>
-      <div id="aifs-bands-wrap" style="display:none;">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
-          <b style="color:var(--text);">📊 Bandes de période AIFS</b>
-          <span style="font-size:11px;color:var(--faint);"> — même principe, modèle IA d'ECMWF (AIFS-single)</span>
-        </div>
-        <div id="aifs-bands-chart" style="width:100%;max-width:360px;height:80px;"></div>
-      </div>
+      <div id="bands-combined-chart" style="width:100%;max-width:360px;height:108px;"></div>
+      <div id="bands-combined-legend" style="margin-top:4px;"></div>
     </div>
     <div id="swell-cmp-vote" style="display:none;margin-top:10px;padding:10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;"></div>
     <!-- Fiabilité au spot (AUDIT-previsions.md §11.9) : biais ordinal par modèle depuis
@@ -4642,8 +4636,8 @@ async function _fetchMfCombined(spot) {
 // ingestion/fetch_ecmwf.py. Pas de vraie partition houle/mer du vent en Open
 // Data gratuit : `h`/`t` = hauteur de la bande de période la plus haute
 // (approximation, PAS une période mesurée), `dir` toujours null (aucune
-// direction par bande) — `bands` porte les 6 hauteurs brutes pour
-// l'histogramme dédié (cf. _drawBandsBars). `totH`/`totDir` = mer totale
+// direction par bande) — `bands` porte les 6 hauteurs brutes pour la figure
+// combinée dédiée (cf. _drawBandsCombined). `totH`/`totDir` = mer totale
 // (swh/mwd), disponible pour un futur usage générique.
 function _fetchOpenDataArchive(cacheKey, spot) {
   return (async function() {
@@ -6339,40 +6333,102 @@ function _drawSwellCompare() {
     }
     return true;
   }
-  // Histogramme des 6 bandes de période ECMWF/AIFS (h1012...h2530, cf.
-  // ingestion/fetch_ecmwf.py) — pas de direction dans ce produit, donc pas de
-  // rose comme MARC/MF (_drawSpectrumRose) : simple barres, même génération
-  // SVG en chaîne que les roses. BAND_LABELS/couleur unique par modèle (pas
-  // un dégradé par bande : la couleur du modèle suffit à l'identifier à côté
-  // du spectre MARC/MF, la hauteur de chaque barre porte déjà l'info utile).
-  var BAND_LABELS = ['10-12s', '12-14s', '14-17s', '17-21s', '21-25s', '25-30s'];
-  function _drawBandsBars(modelKey, atMs) {
-    var wrap = document.getElementById(modelKey + '-bands-wrap');
-    var el = document.getElementById(modelKey + '-bands-chart');
-    if (!wrap || !el) return false;
+  // Bandes de période, comparatif multi-modèles (remplace deux histogrammes
+  // ECMWF/AIFS séparés, chacun mono-modèle). ECMWF/AIFS exposent nativement 6
+  // bandes 10-30s (h1012...h2530, cf. ingestion/fetch_ecmwf.py) SANS direction.
+  // MARC/MFWAM n'ont pas de "bandes" mais un spectre par train (partitions
+  // h/t/dir, cf. _fetchMarcWave/_fetchMfArchive) — reclassées ici dans les
+  // mêmes bandes par bucketing sur la période de chaque partition (sommées
+  // quand plusieurs tombent dans la même bande), exactement comme les bandes
+  // ECMWF/AIFS sont déjà des sommes d'énergie par bande. Le numérotage houle
+  // 1/2/3 n'a pas de sens ici (seule la distribution énergie/période compte) —
+  // contrairement à _drawSpectrumRose, aucune référence au tableau H.1-H.5.
+  // Bande <10s ajoutée pour MARC/MFWAM (mer du vent, houles courtes) : ECMWF/
+  // AIFS n'ont par construction rien en dessous de 10s, cette bande reste donc
+  // toujours vide pour eux.
+  var BANDS_COMBINED_LABELS = ['<10s', '10-12s', '12-14s', '14-17s', '17-21s', '21-25s', '25-30s'];
+  var BANDS_COMBINED_MODELS = ['ecmwf', 'aifs', 'marc', 'mf'];
+  function _bandBucketIdx(t) {
+    if (t == null) return -1;
+    if (t < 10) return 0;
+    if (t < 12) return 1;
+    if (t < 14) return 2;
+    if (t < 17) return 3;
+    if (t < 21) return 4;
+    if (t < 25) return 5;
+    return 6; // 25-30s et au-delà (clampé, cf. AUDIT — pas de train >30s observé en pratique)
+  }
+  function _bandsCombinedSeries(modelKey, atMs) {
     var modelPts = _swellCache && _swellCache[modelKey] && _swellCache[modelKey].primary;
     var p = modelPts && nearest(modelPts, atMs, 4 * 3600000);
-    var bands = p && p.bands;
-    if (!bands || !bands.length) { wrap.style.display = 'none'; return false; }
+    if (!p) return null;
+    var out = [null, null, null, null, null, null, null];
+    if (p.bands && p.bands.length) {
+      p.bands.forEach(function(h, i) { if (h != null) out[i + 1] = h; });
+      return out;
+    }
+    if (p.partitions && p.partitions.length) {
+      p.partitions.forEach(function(pt) {
+        if (!pt || pt.h == null) return;
+        var bi = _bandBucketIdx(pt.t);
+        if (bi < 0) return;
+        out[bi] = (out[bi] || 0) + pt.h;
+      });
+      return out;
+    }
+    return null;
+  }
+  function _drawBandsCombined(atMs) {
+    var wrap = document.getElementById('bands-combined-wrap');
+    var el = document.getElementById('bands-combined-chart');
+    var legEl = document.getElementById('bands-combined-legend');
+    if (!wrap || !el) return false;
+    var series = BANDS_COMBINED_MODELS.map(function(k) {
+      return { key: k, vals: _bandsCombinedSeries(k, atMs),
+        col: (MODEL_STYLE[k] && MODEL_STYLE[k].col) || '#a99ff8',
+        label: (MODEL_STYLE[k] && MODEL_STYLE[k].label) || k };
+    }).filter(function(s) { return s.vals && s.vals.some(function(v) { return v != null; }); });
+    if (!series.length) { wrap.style.display = 'none'; return false; }
     wrap.style.display = '';
-    var W = 340, H = 74, padL = 4, padR = 4, gap = 4;
-    var n = bands.length, barW = (W - padL - padR - gap * (n - 1)) / n;
-    var maxH = Math.max.apply(null, bands.map(function(b) { return b || 0; }));
+    var n = BANDS_COMBINED_LABELS.length, nS = series.length;
+    // Marge haute (padTop) dédiée à l'étiquette de valeur du plus grand barre :
+    // sans elle, la valeur peut sortir du viewBox par le haut et sembler
+    // "cachée sous le titre" (signalé par l'utilisateur sur l'ancien histogramme
+    // mono-modèle — même correctif appliqué ici dès l'écriture).
+    var W = 340, H = 108, padL = 4, padR = 4, padTop = 12, gap = 6, barGap = 1.5;
+    var groupW = (W - padL - padR - gap * (n - 1)) / n;
+    var barW = (groupW - barGap * (nS - 1)) / nS;
+    var maxH = 0;
+    series.forEach(function(s) { s.vals.forEach(function(v) { if (v != null && v > maxH) maxH = v; }); });
     if (maxH <= 0) maxH = 1;
-    var col = (MODEL_STYLE[modelKey] && MODEL_STYLE[modelKey].col) || '#a99ff8';
     var svg = '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMid meet">';
-    bands.forEach(function(h, i) {
-      var x = padL + i * (barW + gap);
-      var barH = h != null ? Math.max(2, (H - 22) * (h / maxH)) : 0;
-      var y = H - 18 - barH;
-      if (h != null) {
-        svg += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + barH + '" fill="' + col + '" fill-opacity="0.55" stroke="' + col + '" stroke-width="1" stroke-opacity="0.9" rx="2"/>';
-        svg += '<text x="' + (x + barW / 2) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + col + '" font-family="DM Sans,sans-serif">' + h.toFixed(1) + '</text>';
-      }
-      svg += '<text x="' + (x + barW / 2) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="8" fill="rgba(122,148,170,.8)" font-family="DM Sans,sans-serif">' + BAND_LABELS[i] + '</text>';
-    });
+    for (var i = 0; i < n; i++) {
+      var gx = padL + i * (groupW + gap);
+      series.forEach(function(s, si) {
+        var v = s.vals[i];
+        if (v == null) return;
+        var x = gx + si * (barW + barGap);
+        var barH = Math.max(2, (H - 22 - padTop) * (v / maxH));
+        var y = H - 18 - barH;
+        svg += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + barH + '" fill="' + s.col + '" fill-opacity="0.55" stroke="' + s.col + '" stroke-width="1" stroke-opacity="0.9" rx="1.5"><title>' + s.label + ' ' + BANDS_COMBINED_LABELS[i] + ' : ' + v.toFixed(1) + 'm</title></rect>';
+        // Valeur en texte seulement si la barre est assez large pour la lire —
+        // avec 4 modèles sur 340px de large, forcer le texte partout aurait
+        // rendu la figure illisible (demande explicite : "une belle figure
+        // lisible"). La valeur reste accessible au survol (title ci-dessus).
+        if (barW >= 10) svg += '<text x="' + (x + barW / 2) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="8" font-weight="700" fill="' + s.col + '" font-family="DM Sans,sans-serif">' + v.toFixed(1) + '</text>';
+      });
+      svg += '<text x="' + (gx + groupW / 2) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="8" fill="rgba(122,148,170,.8)" font-family="DM Sans,sans-serif">' + BANDS_COMBINED_LABELS[i] + '</text>';
+    }
     svg += '</svg>';
     el.innerHTML = svg;
+    if (legEl) {
+      legEl.innerHTML = series.map(function(s) {
+        return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;">'
+          + '<span style="width:7px;height:7px;border-radius:50%;background:' + s.col + ';flex-shrink:0;"></span>'
+          + '<span style="color:var(--faint);font-size:11px;">' + s.label + '</span>'
+          + '</span>';
+      }).join('');
+    }
     return true;
   }
   function _drawSwellRose(atMs) {
@@ -6382,10 +6438,9 @@ function _drawSwellCompare() {
     var mfShown = _drawSpectrumRose('mf', atMs);
     var compareWrap = document.getElementById('spectrum-compare-wrap');
     if (compareWrap) compareWrap.style.display = (marcShown || mfShown) ? '' : 'none';
-    var ecmwfBandsShown = _drawBandsBars('ecmwf', atMs);
-    var aifsBandsShown = _drawBandsBars('aifs', atMs);
-    var bandsWrap = document.getElementById('bands-compare-wrap');
-    if (bandsWrap) bandsWrap.style.display = (ecmwfBandsShown || aifsBandsShown) ? '' : 'none';
+    // _drawBandsCombined gère elle-même l'affichage de son wrap (aucun modèle
+    // dispo à cet instant → wrap masqué), pas besoin de le refaire ici.
+    _drawBandsCombined(atMs);
     var el = document.getElementById('swell-cmp-rose');
     var perEl = document.getElementById('swell-cmp-periods');
     if (!el) return;
