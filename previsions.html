@@ -117,43 +117,56 @@ nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:
   border-bottom:1px solid var(--border);padding:0 1.5rem;height:52px;display:flex;align-items:center;gap:1rem;}
 .logo{font-family:var(--font-d);font-size:1.05rem;color:var(--text);margin-right:auto;}
 .logo span{color:var(--accent);}
-.nav-tab{background:none;border:none;cursor:pointer;color:var(--muted);font-family:var(--font-b);
-  font-size:12px;padding:5px 10px;border-radius:var(--rs);transition:all .2s;white-space:nowrap;flex-shrink:0;}
-.nav-tab:hover{color:var(--text);background:var(--glass);}
-.nav-tab.active{color:var(--accent);}
-#last-update{font-size:11px;color:var(--faint);}
-#data-source-badge .ds-txt{margin-left:4px;}
-/* Liens inter-apps en ICÔNE SEULE partout (desktop compris) : le bandeau
-   débordait (token coupé à droite). L'icône + le title au survol suffisent —
-   moins de texte concurrent avec les onglets de vue. */
-.nav-link-txt{display:none;}
+#last-update{font-size:11px;color:var(--faint);white-space:nowrap;}
+/* Pastille source réduite à son point de couleur (texte complet au survol/tap) :
+   le bandeau reste léger. La navigation vit désormais dans le menu ☰. */
+#data-source-badge .ds-txt{display:none;}
 
-/* HAMBURGER MOBILE */
-.nav-hamburger{display:none;background:none;border:1px solid var(--border);color:var(--muted);
-  padding:5px 8px;border-radius:var(--rs);cursor:pointer;font-size:16px;line-height:1;margin-left:auto;}
-.nav-tabs-group{display:flex;align-items:center;gap:4px;}
+/* ─── BOUTON MENU ☰ — unique point d'entrée de TOUTE la navigation ──────────── */
+#nav-hamburger{display:flex;align-items:center;justify-content:center;background:none;
+  border:1px solid var(--border);color:var(--muted);font-family:var(--font-b);
+  font-size:15px;line-height:1;padding:6px 11px;border-radius:var(--rs);cursor:pointer;
+  flex-shrink:0;transition:color .15s,border-color .15s,background .15s;}
+#nav-hamburger:hover{color:var(--text);border-color:var(--border-h);background:var(--glass);}
+#nav-hamburger.open{color:var(--accent);border-color:var(--accent);background:var(--glass);}
+
+/* ─── POPOVER DE NAVIGATION ────────────────────────────────────────────────── */
+#main-menu{position:fixed;top:56px;right:12px;z-index:1001;
+  width:min(300px,calc(100vw - 24px));
+  background:var(--nav-bg-mobile);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--border);border-radius:16px;padding:10px;
+  box-shadow:0 16px 44px rgba(0,0,0,.42),0 3px 10px rgba(0,0,0,.28);
+  /* visibility+opacity (pas display) → l'apparition s'anime réellement */
+  visibility:hidden;opacity:0;transform:translateY(-8px) scale(.97);transform-origin:top right;
+  transition:opacity .16s ease,transform .16s ease,visibility 0s .16s;pointer-events:none;}
+#main-menu.open{visibility:visible;opacity:1;transform:none;pointer-events:auto;
+  transition:opacity .16s ease,transform .16s ease;}
+.mm-label{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);
+  font-weight:700;padding:4px 8px 5px;}
+.mm-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
+.mm-item{display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;
+  background:none;border:none;border-radius:10px;color:var(--text);font-family:var(--font-b);
+  font-size:13px;padding:9px 10px;cursor:pointer;text-align:left;text-decoration:none;
+  white-space:nowrap;transition:background .13s,color .13s;}
+.mm-item:hover{background:var(--glass);}
+.mm-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+.mm-item.active{background:var(--glass);color:var(--accent);font-weight:600;
+  box-shadow:inset 3px 0 0 var(--accent);}
+.mm-ic{font-size:15px;width:20px;text-align:center;flex:0 0 auto;line-height:1;}
+.mm-sep{height:1px;background:var(--border);margin:8px 6px;}
+.mm-item.mm-fuel{color:#e8c44a;}
 @media(max-width:680px){
-  .nav-hamburger{display:flex;}
-  .nav-tabs-group{
-    display:none;flex-direction:column;position:fixed;top:52px;left:0;right:0;
-    background:var(--nav-bg-mobile);border-bottom:1px solid var(--border);
-    padding:8px 1rem;gap:4px;z-index:999;
-  }
-  .nav-tabs-group.open{display:flex;}
-  .nav-tabs-group .nav-tab{text-align:left;padding:10px 12px;border-radius:var(--rs);
-    border-bottom:1px solid rgba(255,255,255,.04);font-size:13px;}
-  .nav-tabs-group a{padding:10px 12px;font-size:13px;}
   #last-update{display:none;}
   .logo{font-size:.95rem;}
-  /* Bandeau compact mobile : moins de padding/gap, badge en pastille seule, logo court */
+  /* Bandeau compact mobile : moins de padding/gap, suffixe de vue masqué (la
+     vue courante est surlignée dans le menu ☰). */
   nav{padding:0 .7rem;gap:.5rem;}
   .logo-suffix{display:none;}
-  #data-source-badge .ds-txt{display:none;}
   #data-source-badge{padding:2px 6px;}
-  /* Liens inter-app réduits à leur icône : sur téléphone, texte + logo + badge +
-     token + hamburger dépassaient la largeur et poussaient tout le document en
-     débordement horizontal (nav = flex sans wrap). L'icône seule suffit (titre au survol). */
-  .nav-link-txt{display:none;}
+  #nav-hamburger{padding:6px 9px;}
+  /* Menu : ancré aux deux bords, une seule colonne (plus lisible sur téléphone). */
+  #main-menu{top:54px;right:8px;left:8px;width:auto;}
+  .mm-grid{grid-template-columns:1fr;}
   /* Padding horizontal du conteneur réduit sur mobile : 1.5rem coûtait ~12% de la
      largeur d'un écran 390px — récupéré au profit des graphes et tableaux. */
   .container{padding:1.4rem .85rem;}
@@ -488,7 +501,7 @@ table.ft .night td{background:var(--night-row);}
 /* ── MODE WIDGET (?widget=1) : uniquement le météogramme, sans chrome ── */
 html.widget-mode nav,
 html.widget-mode #token-sync-status,
-html.widget-mode #quick-nav-menu,
+html.widget-mode #main-menu,
 html.widget-mode .container > *:not(#gw-widget),
 html.widget-mode #gw-widget .gw-tools,
 html.widget-mode #gw-ov-readout { display:none !important; }
@@ -508,20 +521,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 <body>
 
 <nav>
-  <a href="https://thibsurf.github.io/surf-journal/" style="color:var(--muted);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Retour au journal">←<span class="nav-link-txt"> Journal</span></a>
-  <a href="https://thibsurf.github.io/surf-journal/sorties.html" style="color:var(--muted);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;flex-shrink:0;" title="Sorties">🏄<span class="nav-link-txt"> Sorties</span></a>
-  <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" style="color:#e8c44a;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;margin-right:8px;padding:3px 8px;border:1px solid rgba(232,196,74,.35);border-radius:12px;background:rgba(232,196,74,.08);flex-shrink:0;" title="Gestion carburant bateau">⛽<span class="nav-link-txt"> Fuel</span></a>
-  <h1 class="logo" style="margin:0;">Surf <span>NC</span><span class="logo-suffix"> — Prévisions</span></h1>
-  <div class="nav-tabs-group" id="nav-tabs-group">
-    <button class="nav-tab active" onclick="showTab('forecast',this);closeNavMenu()">📊 Prévisions</button>
-    <button class="nav-tab" onclick="showTab('compare',this);closeNavMenu()">⚖️ Comparer</button>
-    <button class="nav-tab" onclick="showTab('map',this);closeNavMenu()" title="Carte des spots">🗺️ Carte</button>
-    <button class="nav-tab" onclick="showTab('windy',this);closeNavMenu()">🌊 Windy</button>
-    <button class="nav-tab" onclick="showTab('synop',this);closeNavMenu()">🗺 Isofronts</button>
-    <button class="nav-tab" onclick="showTab('maree',this);closeNavMenu()" title="Marée &amp; Pêche">🌊 Marée</button>
-    <button class="nav-tab" onclick="showTab('enso',this);closeNavMenu()">📈 ENSO</button>
-    <button class="nav-tab" onclick="showTab('forecast');shareSpotCard();closeNavMenu()" title="Partager le jour actuellement affiché dans le widget (image WhatsApp) — change de jour là-bas avant de partager">📤 Partager</button>
-  </div>
+  <h1 class="logo" style="margin:0 auto 0 0;">Surf <span>NC</span><span class="logo-suffix" id="nav-current"> — Prévisions</span></h1>
   <span id="last-update" style="font-size:11px;color:var(--faint);"></span>
   <span id="data-source-badge" onclick="showNetDiagPanel()"
     title="Source des données — toucher pour le diagnostic réseau"
@@ -540,8 +540,32 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:13px;line-height:1;
     white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;">
     <span id="theme-toggle-icon" aria-hidden="true">🌙</span></button>
-  <button class="nav-hamburger" id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
+  <button id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Ouvrir le menu de navigation"
+    aria-haspopup="true" aria-expanded="false" aria-controls="main-menu">☰</button>
 </nav>
+
+<!-- Menu de navigation UNIQUE (☰) : toutes les vues + les autres pages. Remplace
+     l'ancienne rangée de 8 onglets qui saturait le bandeau. Les boutons de vue
+     gardent la classe .nav-tab : c'est ce que showTab() sélectionne pour l'état
+     actif. -->
+<div id="main-menu" role="menu" aria-label="Navigation">
+  <div class="mm-label">Aller à</div>
+  <div class="mm-grid">
+    <button class="mm-item nav-tab active" role="menuitem" onclick="showTab('forecast',this);closeNavMenu()"><span class="mm-ic">📊</span>Prévisions</button>
+    <button class="mm-item nav-tab" role="menuitem" onclick="showTab('compare',this);closeNavMenu()"><span class="mm-ic">⚖️</span>Comparer</button>
+    <button class="mm-item nav-tab" role="menuitem" onclick="showTab('map',this);closeNavMenu()"><span class="mm-ic">🗺️</span>Carte spots</button>
+    <button class="mm-item nav-tab" role="menuitem" onclick="showTab('windy',this);closeNavMenu()"><span class="mm-ic">🌊</span>Windy</button>
+    <button class="mm-item nav-tab" role="menuitem" onclick="showTab('synop',this);closeNavMenu()"><span class="mm-ic">🗺</span>Isofronts</button>
+    <button class="mm-item nav-tab" role="menuitem" onclick="showTab('maree',this);closeNavMenu()"><span class="mm-ic">🌊</span>Marée &amp; Pêche</button>
+    <button class="mm-item nav-tab" role="menuitem" onclick="showTab('enso',this);closeNavMenu()"><span class="mm-ic">📈</span>ENSO</button>
+    <button class="mm-item nav-tab" role="menuitem" onclick="showTab('forecast');shareSpotCard();closeNavMenu()" title="Partager le jour affiché dans le widget (image WhatsApp)"><span class="mm-ic">📤</span>Partager</button>
+  </div>
+  <div class="mm-sep"></div>
+  <div class="mm-label">Autres pages</div>
+  <a class="mm-item" role="menuitem" href="https://thibsurf.github.io/surf-journal/" title="Retour au journal"><span class="mm-ic">←</span>Journal des sessions</a>
+  <a class="mm-item" role="menuitem" href="https://thibsurf.github.io/surf-journal/sorties.html" title="Sorties"><span class="mm-ic">🏄</span>Sorties</a>
+  <a class="mm-item mm-fuel" role="menuitem" href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" title="Gestion carburant bateau"><span class="mm-ic">⛽</span>Fuel Pro</a>
+</div>
 
 <!--  PAGE FORECAST  -->
 <div class="page active" id="tab-forecast">
@@ -2269,26 +2293,38 @@ _snApplyThemeChrome(document.documentElement.getAttribute('data-theme') === 'lig
 // TABS NAV
 // ---
 var mapInited=false, mareeInited=false, _ensoInited=false;
-// ─── HAMBURGER MOBILE ───────────────────────────────────────────────────────
+// Suffixe de vue affiché dans le logo (« Surf NC — <vue> »). Partager n'est pas
+// une vue (il reste sur Prévisions) → pas d'entrée.
+var _VIEW_LABELS = { forecast:' — Prévisions', compare:' — Comparer', map:' — Carte spots',
+  windy:' — Windy', synop:' — Isofronts', maree:' — Marée', enso:' — ENSO' };
+// ─── MENU DE NAVIGATION ☰ (popover unique) ──────────────────────────────────
 function toggleNavMenu() {
-  var g = document.getElementById('nav-tabs-group');
+  var m = document.getElementById('main-menu');
   var btn = document.getElementById('nav-hamburger');
-  if (!g) return;
-  var open = g.classList.toggle('open');
-  if (btn) btn.textContent = open ? '✕' : '☰';
+  if (!m) return;
+  var open = m.classList.toggle('open');
+  if (btn) { btn.classList.toggle('open', open); btn.textContent = open ? '✕' : '☰';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
 }
 function closeNavMenu() {
-  var g = document.getElementById('nav-tabs-group');
+  var m = document.getElementById('main-menu');
   var btn = document.getElementById('nav-hamburger');
-  if (g) g.classList.remove('open');
-  if (btn) btn.textContent = '☰';
+  if (m) m.classList.remove('open');
+  if (btn) { btn.classList.remove('open'); btn.textContent = '☰'; btn.setAttribute('aria-expanded', 'false'); }
 }
-// Fermer le menu en cliquant en dehors
+// Fermer en cliquant en dehors (le bouton se gère lui-même via son onclick).
 document.addEventListener('click', function(e) {
-  var g = document.getElementById('nav-tabs-group');
+  var m = document.getElementById('main-menu');
   var btn = document.getElementById('nav-hamburger');
-  if (!g || !g.classList.contains('open')) return;
-  if (!g.contains(e.target) && e.target !== btn) closeNavMenu();
+  if (!m || !m.classList.contains('open')) return;
+  if (!m.contains(e.target) && !(btn && btn.contains(e.target)) && e.target !== btn) closeNavMenu();
+});
+// Échap ferme le menu.
+document.addEventListener('keydown', function(e) {
+  if ((e.key === 'Escape' || e.keyCode === 27)) {
+    var m = document.getElementById('main-menu');
+    if (m && m.classList.contains('open')) closeNavMenu();
+  }
 });
 
 function showTab(name, btn) {
@@ -2296,6 +2332,12 @@ function showTab(name, btn) {
   document.getElementById('tab-'+name).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
+  // Sans bouton (appels programmatiques : Partager, boot…), retrouver l'entrée de
+  // menu correspondante pour la surligner quand même.
+  else { var _mi = document.querySelector('.nav-tab[onclick*="showTab(\'' + name + '\'"]'); if (_mi) _mi.classList.add('active'); }
+  // Reflète la vue courante dans le titre (« Surf NC — <vue> »).
+  var _navCur = document.getElementById('nav-current');
+  if (_navCur && _VIEW_LABELS[name]) _navCur.textContent = _VIEW_LABELS[name];
   // Menu flottant de navigation rapide : pertinent seulement sur la longue page Prévisions
   var _qnFab = document.getElementById('quick-nav-fab');
   if (_qnFab) {

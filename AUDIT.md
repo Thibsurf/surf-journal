@@ -2095,3 +2095,30 @@ l'inverse. Revert de `f513d895` → retour à la barre unique + boussole flottan
 - Résultat vérifié headless : tout tient sur **une ligne** à 1280px (plus de token
   coupé), mobile inchangé (onglets dans le ☰). Boussole flottante conservée
   (saut de section = 1 icône discret, pas une barre).
+
+### Toujours jugé « surchargé » → menu UNIQUE ☰ niveau pro (choix : autonomie)
+
+L'allègement ne suffisait pas (« la barre en haut est surchargée !! »). Décision
+prise en autonomie (utilisateur indispo) après lui avoir fait choisir la cible :
+**option « tout dans un menu ☰ »**. Refonte complète du bandeau.
+
+- **Barre du haut réduite à l'essentiel** : `Surf NC — <vue>` (le suffixe du logo
+  = `#nav-current`, mis à jour par `showTab` via `_VIEW_LABELS`) à gauche ;
+  `Màj HH:MM` + pastille source (point seul, `.ds-txt` masqué) + token + thème +
+  bouton ☰ à droite (logo `margin:0 auto 0 0` → cluster outils aligné à droite).
+- **Popover `#main-menu` (le seul menu)** : section « Aller à » (8 vues en grille
+  2 colonnes desktop / 1 colonne mobile, vue active surlignée barre d'accent),
+  séparateur, section « Autres pages » (Journal / Sorties / Fuel Pro). Les 8 liens
+  de vue gardent `.nav-tab` (sélecteur de `showTab` pour l'actif).
+- **Pro** : animation d'ouverture (visibility+opacity+scale, origine coin
+  haut-droit), fermeture au clic-dehors **et à Échap**, `aria-haspopup` /
+  `aria-expanded` / `role=menu` / `role=menuitem`, `:focus-visible`. Bouton ☰ ↔ ✕.
+- **Vérifs headless (ce poste)** : `node --check` OK ; test runtime EXÉCUTÉ (plus
+  fort qu'un check) → `toggleNavMenu` ouvre (`aria-expanded=true`, `✕`), sélection
+  ferme + surligne + `#nav-current=" — Carte spots"`, appel programmatique
+  surligne quand même (branche `else` par `querySelector[onclick*]`), Échap ferme.
+  Popover rendu clair + sombre + mobile : soigné.
+- **Non touché** : ES5 strict, pas de bump `sw.js`, boussole flottante conservée.
+  Ancienne rangee d'onglets + liens inline SUPPRIMÉS de la barre.
+
+thib c'est ok ma biche 💚
