@@ -2419,3 +2419,80 @@ houle — id `_wave` nouveau à ce chantier).
 
 **Non touché** : ES5 strict, pas de nouvelle extraction vers `assets/` — pas
 de bump `CACHE_NAME`.
+
+## Session du 30/07/2026 (suite 2) — lisibilité des spectres de houle (widget + comparatif)
+
+Signalé par l'utilisateur : dans le widget météo, impossible de relier un
+cône/spectre à sa ligne du tableau (H.1-H.5), flèche "mer totale" illisible
+en clair et confondue avec la mer du vent, MFWAM dessiné avec un faux cône à
+largeur fixe (pas de dispersion mesurée pour ce produit), houle 2 absente de
+la vue satellite, histogramme des bandes de période cachant sa plus grande
+valeur. Trois commits, un par chantier.
+
+### 1. `assets/widget-global.js` — grille + vue satellite (`d5d22550`)
+
+`GW_MARC_PART_COLORS` (cônes de la vue satellite) et les couleurs de la
+grille (H.1-H.5) étaient deux systèmes indépendants — H.2 en dur (`#6ab4d4`,
+non thémé), H.3/H.4/H.5 toutes identiques (`#8aa0b8`). Remplacés par une
+palette unique par numéro de houle (`GW_SWELL_COLORS`/`_gwSwellCol`, dark+
+light) utilisée aux deux endroits. Dans `_gwDrawVectors` : le spectre par
+train (cônes MARC, désormais aussi MFWAM) est calculé AVANT les flèches
+houle1/houle2 génériques pour savoir si un train est déjà représenté —
+avant ce correctif houle 1 était dessinée deux fois (flèche cyan fixe EN
+PLUS de son cône, deux couleurs différentes pour le même train). MFWAM
+(pas de spread mesuré) dessiné en vecteur simple, jamais en cône. Houle 2
+obtient enfin sa propre flèche quand disponible (ancienne décision "deux
+flèches suffisent" annulée sur demande explicite). Chaque cône/vecteur porte
+son numéro directement sur le canvas (halo sombre + `fillText`, même
+technique que les lettres cardinales) — relie l'écart angulaire affiché au
+numéro de houle du tableau. `#gw-sat-info` étendu avec des chips
+numéro+hauteur par train.
+
+Vérifié en réel (pas supposé) : diagnostic injecté dans une copie
+`__test.html`, `_gwSetSrc('marc')` + recherche du créneau MARC avec le plus
+de partitions (`bestCount=5`), `_gwSetHover()`, lecture du canvas (3841
+pixels non transparents → tracé réel) + `#gw-sat-info`/couleurs de grille en
+DOM. Capture d'écran : 4 cônes numérotés (1-4) + flèche vent, couleurs des
+chips exactement alignées avec les cônes.
+
+### 2. `previsions.html` — rose du comparatif (`3cda01dc`)
+
+Même correctifs côté rose MARC/MFWAM (`_drawSpectrumRose`) : flèche "mer
+totale" thémée (`#fff` en sombre, `MODEL_STYLE.obs.colLight` en clair — la
+rose est posée sur la carte thémée, contrairement à la vue satellite qui
+peint sur une photo), légende augmentée d'une entrée "Mer totale (toutes
+composantes)" avec sa hauteur (jusqu'ici seule la direction était visible,
+et elle se confondait avec l'entrée "Mer du vent" existante). MFWAM en
+vecteur au lieu d'un cône ±10° fixe. Numéros sur chaque secteur/vecteur.
+
+Vérifié headless : `toggleTheme()` (globale) appelée depuis le script
+injecté pour forcer le redessin thémé — `_drawSwellRose`/`_drawSpectrumRose`
+elles-mêmes sont des fonctions NON globales (nichées, pas accessibles
+depuis un script injecté séparément), piège rencontré en vérifiant : un
+premier essai d'appel direct a échoué silencieusement en `ReferenceError`
+côté `window.onerror`, découvert seulement après avoir ajouté un handler
+d'erreur explicite au diagnostic. La bascule de thème confirme le stroke
+passant de `#17232f` à `#fff` (et vice-versa) sur le même élément.
+
+### 3. `previsions.html` — bandes de période (`f955065d`)
+
+Correctif de rognage (marge haute dédiée, `padTop`) + remplacement des deux
+histogrammes séparés ECMWF/AIFS par une figure combinée à 4 modèles
+(ECMWF/AIFS/MARC/MFWAM), barres groupées par bande de période
+(`_drawBandsCombined`/`_bandsCombinedSeries`). MARC/MFWAM n'ont pas de "bandes" natives
+mais un spectre par train — reclassé par bucketing sur la période de chaque
+partition (sommées par bande), même principe que les bandes ECMWF/AIFS qui
+sont déjà des sommes d'énergie par bande de période. Bande `<10s`
+supplémentaire pour ces deux modèles (mer du vent/houles courtes), toujours
+vide pour ECMWF/AIFS par construction. Valeurs numériques affichées
+seulement quand la barre est assez large (≥10px) pour ne pas rendre la
+figure illisible à 4 séries — toujours accessibles via `<title>` SVG.
+
+Vérifié headless : `_swellCache` avec les 4 sources prêtes, lecture DOM du
+SVG généré (rects + `<title>` par barre, ex. "MARC WW3 <10s : 0.7m") et de
+la légende (4 pastilles colorées). Capture d'écran : figure lisible, aucun
+chevauchement, titre non rogné.
+
+**Non touché** : ES5 strict, pas de nouvelle extraction vers `assets/` côté
+`previsions.html` (déjà en place) ; `CACHE_NAME` bumpé uniquement pour le
+chantier 1 (seul à toucher `assets/`).
