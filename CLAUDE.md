@@ -66,35 +66,47 @@ Tables : `sessions`, `meteo_cache`, `model_forecast_cache`, `shared_tokens`, `sp
 `shared_spots`.
 
 Ingestion : `ingestion/fetch_arome.py` (GRIB2 Météo-France), `ingestion/fetch_marc.py`
-(MARC-WW3 Ifremer via OPeNDAP) et `ingestion/fetch_mfwam.py` (MFWAM via Copernicus
-Marine, `copernicusmarine.subset()` — nécessite les secrets repo
-`COPERNICUSMARINE_SERVICE_USERNAME`/`_PASSWORD`, compte gratuit), planifiées par
-`.github/workflows/cache-*.yml`, 3×/jour. Idem GFS/BOM/ECMWF via
-`.github/scripts/cache-model-forecasts.mjs`, même planning (MF n'y est plus depuis
-le 30/07/2026, cf. ci-dessous).
+(MARC-WW3 Ifremer via OPeNDAP), `ingestion/fetch_mfwam.py` (MFWAM via Copernicus
+Marine, `copernicusmarine.subset()` — secrets repo `COPERNICUSMARINE_SERVICE_
+USERNAME`/`_PASSWORD`, compte gratuit) et `ingestion/fetch_ecmwf.py` (ECMWF Open
+Data — IFS-HRES + AIFS-single, `ecmwf-opendata`, gratuit sans clé), planifiées par
+`.github/workflows/cache-model-forecasts.yml`, 3×/jour. Idem GFS/BOM via
+`.github/scripts/cache-model-forecasts.mjs`, même planning (MF et ECMWF/AIFS n'y
+sont plus depuis le 30/07/2026, chacun son script Python isolé désormais).
 
 Le Worker (`worker_cloudflare/worker.js`) a son propre cron (`*/5 * * * *`, token
 meteo.nc) qui piggyback aussi, depuis le 28/07/2026, le **préchauffage du cache edge
 `/arome`** (throttlé à ~100 min via une clé KV `arome-last-warm`, sous les 7200s du
 `Cache-Control`) — objectif : qu'un visiteur ne tombe (quasi) jamais sur un cache
 froid (2 aller-retours Windguru séquentiels, source du "tableau arome lent" signalé
-ce jour-là). IDs windguru des spots par défaut dupliqués une 3e fois dans
-`worker.js` (`KNOWN_WG_SPOTS`) — mêmes valeurs que `_wgIdForSpot()` (previsions.html)
-et `wgIdForSpot()` (cache-model-forecasts.mjs), à garder synchronisées à la main.
+ce jour-là). IDs windguru des spots par défaut dupliqués dans `worker.js`
+(`KNOWN_WG_SPOTS`) — mêmes valeurs que `_wgIdForSpot()` (previsions.html, encore
+utilisée pour le lien "voir sur windguru" du comparatif AROME et le réglage
+`ss-wgid` par spot — plus pour fetcher de la donnée depuis le 30/07/2026), à garder
+synchronisées à la main.
 
-Sources de prévision : meteo.nc, Open-Meteo (GFS), BOM WW3, ECMWF via Windguru,
-MARC (Ifremer, 5,5 km), AROME 2,5 km, **MFWAM via Copernicus Marine (direct depuis
-le 30/07/2026, grille 0,083°/~9 km — remplace le relais Open-Meteo)**. C'est,
-avec MARC, le seul modèle houle du comparatif à exposer une direction PAR
-partition (mer du vent/houle primaire/houle secondaire — `VHM0_WW`/`VHM0_SW1`/
-`VHM0_SW2` + dir/période), contrairement à BOM/GFS/ECMWF (houle globale seule).
-Le vrai swell partitionné directionnel d'ECMWF (`swh1/mwd1/mwp1`...) existe mais
-appartient au catalogue temps réel restreint d'ECMWF (licence payante/
-institutionnelle) — pas accessible via l'Open Data gratuit ni via un compte
-`api.ecmwf.int` standard (vérifié). ECMWF ici reste donc IFS-WAM via Windguru
-(`id_model=118/117`, accès non officiel pour les spots NC, cf. previsions.html) —
-chantier séparé prévu pour passer sur ECMWF Open Data (IFS + AIFS-single, direct,
-0,25°/~28 km, sans repli Windguru).
+Sources de prévision : meteo.nc, Open-Meteo (GFS), BOM WW3 (14 km),
+**MFWAM via Copernicus Marine (direct depuis le 30/07/2026, grille 0,083°/~9 km —
+remplace le relais Open-Meteo)**, **ECMWF IFS-HRES + AIFS-single via Open Data
+(direct depuis le 30/07/2026, grille 0,25°/~28 km — remplace le relais Windguru,
+qui affichait à tort "9 km")**, MARC (Ifremer, 5,5 km), AROME 2,5 km.
+
+MFWAM/MARC sont les deux seuls modèles du comparatif à exposer une direction PAR
+partition (mer du vent/houle primaire/houle secondaire — MFWAM : `VHM0_WW`/
+`VHM0_SW1`/`VHM0_SW2` + dir/période ; MARC : `phs*/ptp*/pdir*`), contrairement à
+BOM/GFS/ECMWF/AIFS (houle globale seule). ECMWF/AIFS Open Data ajoutent 6 hauteurs
+significatives par bande de période (10-30s, `h1012`...`h2530`) mais SANS direction
+— affichées en histogramme (`_drawBandsBars`), pas en rose comme MARC/MFWAM
+(`_drawSpectrumRose`). Le vrai swell partitionné directionnel d'ECMWF
+(`swh1/mwd1/mwp1`...) existe mais appartient au catalogue temps réel restreint
+d'ECMWF (licence payante/institutionnelle) — pas accessible via l'Open Data
+gratuit ni via un compte `api.ecmwf.int` standard (vérifié en pratique le
+30/07/2026 : `who-am-i` marche, `services/mars` répond "no access").
+
+ECMWF/AIFS ne sont pas (encore) ré-échantillonnables « au point de mesure » dans
+le comparatif vent (`WIND_UNRESAMPLABLE = {ecmwf:1}`, AIFS pas ajouté à ce
+comparatif du tout) — la donnée cache le permettrait (spots+stations), pas branché
+pour ne pas alourdir un widget déjà dense. Extension possible plus tard.
 
 ## Règles de travail
 

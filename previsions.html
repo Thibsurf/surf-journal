@@ -705,12 +705,13 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     <div id="cmp-tide-band-leg" style="display:none;font-size:11px;color:var(--faint);line-height:1.45;margin-top:3px;"></div>
     <!-- Spectre par train de houle (hauteur/période/direction, dispersion angulaire
          quand connue) : MARC et MF/MFWAM sont les deux seuls modèles du comparatif à
-         partitionner le spectre AVEC direction — BOM/GFS/ECMWF ne donnent qu'une houle
-         globale (ECMWF Open Data ajoute des bandes de période mais sans direction, pas
-         comparable ici). Deux roses côte à côte plutôt qu'une mélangée à celle du
-         dessus, chacune masquée indépendamment si son modèle n'a pas de partitions
-         pour l'instant affiché (cf. _drawSpectrumRose, généralisée le 30/07/2026 —
-         avant, ne savait dessiner que MARC). -->
+         partitionner le spectre AVEC direction — BOM/GFS ne donnent qu'une houle
+         globale. ECMWF/AIFS (Open Data) ont leur propre bloc juste en dessous : des
+         hauteurs par bande de période, mais SANS direction (pas comparable à une rose).
+         Deux roses côte à côte plutôt qu'une mélangée à celle du dessus, chacune
+         masquée indépendamment si son modèle n'a pas de partitions pour l'instant
+         affiché (cf. _drawSpectrumRose, généralisée le 30/07/2026 — avant, ne savait
+         dessiner que MARC). -->
     <div id="spectrum-compare-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
       <div id="marc-spectrum-wrap" style="display:none;margin-bottom:10px;">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
@@ -731,6 +732,28 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <div id="mf-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur = un train de houle (rayon = hauteur). Flèche blanche = mer totale."></div>
           <div id="mf-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
         </div>
+      </div>
+    </div>
+    <!-- Bandes de période ECMWF/AIFS (Open Data) : hauteur significative par bande
+         10-30s, SANS direction (aucune des deux sources ne l'expose) — donc un simple
+         histogramme, pas une rose comme MARC/MF ci-dessus. Nouveau le 30/07/2026,
+         remplace le relais Windguru (qui ne donnait qu'une houle globale SWELL1/2,
+         sans bandes). Comparable visuellement au spectre MARC/MF juste au-dessus
+         (même largeur de bloc), mais pas directement superposable (pas de direction). -->
+    <div id="bands-compare-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
+      <div id="ecmwf-bands-wrap" style="display:none;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+          <b style="color:var(--text);">📊 Bandes de période ECMWF</b>
+          <span style="font-size:11px;color:var(--faint);"> — hauteur significative par bande de période (10 à 30 s), sans direction</span>
+        </div>
+        <div id="ecmwf-bands-chart" style="width:100%;max-width:360px;height:80px;"></div>
+      </div>
+      <div id="aifs-bands-wrap" style="display:none;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+          <b style="color:var(--text);">📊 Bandes de période AIFS</b>
+          <span style="font-size:11px;color:var(--faint);"> — même principe, modèle IA d'ECMWF (AIFS-single)</span>
+        </div>
+        <div id="aifs-bands-chart" style="width:100%;max-width:360px;height:80px;"></div>
       </div>
     </div>
     <div id="swell-cmp-vote" style="display:none;margin-top:10px;padding:10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;"></div>
@@ -891,7 +914,8 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <button id="tbl-btn-om" onclick="switchTable('om')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">🌐 GFS</button>
           <button id="tbl-btn-bom" onclick="switchTable('bom')" title="Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">BOM</button>
           <button id="tbl-btn-mf" onclick="switchTable('mf')" title="Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine — grille 0,083° (~9 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
-          <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-WAM (via Windguru) — pas de vent disponible pour cette source" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
+          <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km) — pas de vent disponible pour cette source" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
+          <button id="tbl-btn-aifs" onclick="switchTable('aifs')" title="ECMWF AIFS-single (modèle IA) — grille 0,25° (~28 km) — pas de vent disponible pour cette source" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">AIFS</button>
           <button id="tbl-btn-marc" onclick="switchTable('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
         </div>
       </div>
@@ -4608,33 +4632,57 @@ async function _fetchMfCombined(spot) {
   return _fetchMeteoFranceWave(spot);
 }
 
-// ECMWF (IFS-WAM, id_model=118 chez Windguru) — PAS listé dans id_model_arr
-// pour les spots NC (leur curation par spot ne l'inclut pas), mais la requête
-// directe par id_model répond quand même avec de vraies données (vérifié :
-// SWELL1/SWPER1/SWELL2/SWPER2 cohérents, 9 km, ~14,75 j d'horizon). CORS ouvert
-// (access-control-allow-origin:*) et un Referer non-windguru fonctionne (testé :
-// seul un Referer VIDE renvoie 401) → appel direct client, pas de worker.
-async function _fetchEcmwfWave(spot) {
-  var wgId = typeof _wgIdForSpot === 'function' ? _wgIdForSpot(spot) : null;
-  if (!wgId) return { primary: [], secondary: [] };
-  var ctrl = new AbortController();
-  var tt = setTimeout(function(){ ctrl.abort(); }, 10000);
-  try {
-    var r = await fetch('https://www.windguru.cz/int/iapi.php?q=forecast&id_model=118&id_spot=' + wgId, { signal: ctrl.signal });
-    if (!r.ok) return { primary: [], secondary: [] };
-    var j = await r.json();
-    var f = j && j.fcst;
-    if (!f || !f.hours || !f.SWELL1 || !f.initstamp) return { primary: [], secondary: [] };
-    var initMs = f.initstamp * 1000, primary = [], secondary = [];
-    for (var i = 0; i < f.hours.length; i++) {
-      var ms = initMs + f.hours[i] * 3600000;
-      if (f.SWELL1[i] != null) primary.push({ ms: ms, h: f.SWELL1[i], t: f.SWPER1 && f.SWPER1[i], dir: f.SWDIR1 && f.SWDIR1[i] });
-      if (f.SWELL2 && f.SWELL2[i] != null) secondary.push({ ms: ms, h: f.SWELL2[i], t: f.SWPER2 && f.SWPER2[i], dir: f.SWDIR2 && f.SWDIR2[i] });
-    }
-    return { primary: primary, secondary: secondary };
-  } catch (e) { console.warn('[ECMWF wave]', e && e.message); return { primary: [], secondary: [] }; }
-  finally { clearTimeout(tt); }
+// ECMWF Open Data (IFS-HRES + AIFS-single), direct depuis data.ecmwf.int —
+// remplace depuis le 30/07/2026 le relais Windguru (id_model=118, un point
+// d'accès qui n'était même pas dans la curation officielle Windguru pour les
+// spots NC : ne répondait "par accident" que pour les ~7 spots ayant un ID
+// codé en dur). Cache-ONLY, pas de repli live (décision explicite : cette
+// source Open Data est gratuite/documentée/fiable, contrairement au relais
+// Windguru — rien à sauver en repli). Grille réelle 0,25° (~28 km), cf.
+// ingestion/fetch_ecmwf.py. Pas de vraie partition houle/mer du vent en Open
+// Data gratuit : `h`/`t` = hauteur de la bande de période la plus haute
+// (approximation, PAS une période mesurée), `dir` toujours null (aucune
+// direction par bande) — `bands` porte les 6 hauteurs brutes pour
+// l'histogramme dédié (cf. _drawBandsBars). `totH`/`totDir` = mer totale
+// (swh/mwd), disponible pour un futur usage générique.
+function _fetchOpenDataArchive(cacheKey, spot) {
+  return (async function() {
+    try {
+      if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
+      var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
+      var ids = [], nowA = new Date();
+      // -1..+6j : couvre la fenêtre écrite par fetch_ecmwf.py (steps 0-144h,
+      // cf. son docstring) avec une marge d'un jour de chaque côté.
+      for (var dd = -1; dd <= 6; dd++) {
+        var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000);
+        ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_' + cacheKey + '_wave');
+      }
+      var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+      if (!r || !r.data || !r.data.length) return null;
+      var primary = [];
+      r.data.forEach(function(row) {
+        var p = row.date.split('-');
+        (row.hours || []).forEach(function(hh) {
+          // hh.hour == null : même garde que _fetchEcmwfWind contre une ligne
+          // d'archive au schéma inattendu (id `..._wave` propre à ce chantier,
+          // donc pas de collision connue avec une ancienne écriture — gardé
+          // par prudence, un ms NaN corromprait le tri ci-dessous).
+          if (!hh || hh.totH == null || hh.hour == null) return;
+          var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
+          primary.push({
+            ms: ms, h: hh.val, t: hh.period, dir: null,
+            totH: hh.totH, totDir: hh.totDir, bands: hh.bands || null,
+          });
+        });
+      });
+      if (!primary.length) return null;
+      primary.sort(function(a, b) { return a.ms - b.ms; });
+      return { primary: primary, secondary: [] };
+    } catch (e) { console.warn('[' + cacheKey + ' archive]', e && e.message); return null; }
+  })();
 }
+function _fetchEcmwfArchive(spot) { return _fetchOpenDataArchive('ecmwf', spot); }
+function _fetchAifsArchive(spot) { return _fetchOpenDataArchive('aifs', spot); }
 
 // MARC-WW3 Nouvelle-Calédonie (Ifremer/CNRS-IRD-UBO) — WaveWatch III RÉGIONAL
 // 3 arcmin (~5,5 km), plus fin que BOM (0,125°) et que MFWAM global (clé "mf").
@@ -4903,10 +4951,11 @@ function _rgbaFromHex(hex, alpha) {
 // page et volontairement absents d'ici. « obs » (mesure réelle en station) n'est pas
 // un modèle : couleur neutre distincte pour ne pas rivaliser avec les modèles.
 // Résolution, du plus fin au plus large (renseigne le choix des couleurs, pas un ordre
-// d'affichage) : AROME 2,5 km · MARC 5,5 km · ECMWF 9 km (Windguru — pas la vraie
-// résolution ECMWF Open Data, cf. chantier à venir) · MF global 9 km (Copernicus
-// Marine/MFWAM, direct depuis le 30/07/2026 — auparavant "non communiquée", relais
-// Open-Meteo) · BOM 14 km · GFS 28 km · meteo.nc régional (non documentée).
+// d'affichage) : AROME 2,5 km · MARC 5,5 km · MF global 9 km (Copernicus Marine/MFWAM,
+// direct depuis le 30/07/2026 — auparavant "non communiquée", relais Open-Meteo) ·
+// BOM 14 km · GFS/ECMWF/AIFS 28 km (ECMWF/AIFS : direct depuis Open Data le 30/07/2026,
+// remplace le relais Windguru qui affichait à tort "9 km", une valeur Windguru non
+// vérifiable) · meteo.nc régional (non documentée).
 // res = résolution affichée dans les légendes (AUDIT-previsions.md §9.4) — jusqu'ici
 // cachée dans un `title` (invisible sur mobile) alors que c'est l'information qui
 // hiérarchise la confiance entre modèles. null = non communiquée publiquement.
@@ -4918,7 +4967,8 @@ var MODEL_STYLE = {
   obs:   { label: 'mesuré',    col: '#e8eef4', colLight: '#17232f', res: null },
   aro:   { label: 'AROME',     col: '#7b6cf6', res: '2,5 km' },
   marc:  { label: 'MARC WW3',  col: '#7dd3fc', res: '5,5 km' },
-  ecmwf: { label: 'ECMWF',     col: '#a99ff8', res: '9 km' },
+  ecmwf: { label: 'ECMWF',     col: '#a99ff8', res: '28 km' },
+  aifs:  { label: 'AIFS',      col: '#e06bb0', res: '28 km' },
   bom:   { label: 'BOM WW3',   col: '#e8a057', res: '14 km' },
   gfs:   { label: 'GFS',       col: '#4fa3c7', res: '28 km' },
   mf:    { label: 'MF global', col: '#7a94aa', res: '9 km' },
@@ -4927,7 +4977,7 @@ var MODEL_STYLE = {
 // Couleur de la courbe « mesures » (obs), thémée — seule entrée de MODEL_STYLE
 // à en avoir besoin (les autres teintes restent lisibles sur fond clair ET sombre).
 function _msObsCol() { return (typeof _panelLight === 'function' && _panelLight()) ? MODEL_STYLE.obs.colLight : MODEL_STYLE.obs.col; }
-// ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global / ECMWF / MARC) ──
+// ─── Comparatif houle multi-modèles (meteo.nc / GFS / BOM WW3 / MF global / ECMWF / AIFS / MARC) ──
 // _ncFcastData et _omFcastData sont TOUJOURS peuplés en parallèle (cf. commentaire
 // « Toujours peupler _omFcastData... même si useNC=true, on veut pouvoir comparer »
 // plus haut) — donc les deux séries sont disponibles indépendamment du toggle
@@ -4938,7 +4988,8 @@ var SWELL_MODELS = [
   { key: 'gfs',   label: 'GFS',       col: _rgbaFromHex(MODEL_STYLE.gfs.col, .95), desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
   { key: 'bom',   label: 'BOM WW3',   col: _rgbaFromHex(MODEL_STYLE.bom.col, .95),   desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
   { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine (GLOBAL_ANALYSISFORECAST_WAV_001_027) — grille 0,083° (~9 km), houle primaire/secondaire + mer du vent avec direction' },
-  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-WAM (via Windguru, id_model 118) — grille 0,09° (~9 km), le plus fin des modèles globaux ici' },
+  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Houle "primaire" = bande de période la plus haute parmi 6 (10-30s), pas une vraie partition mesurée ; pas de direction par bande.' },
+  { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Même limite : houle "primaire" approximée par bande de période, sans direction.' },
   { key: 'marc',  label: 'MARC WW3',  col: _rgbaFromHex(MODEL_STYLE.marc.col, .95),  desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici' }
 ];
 var _swellMode = 'primary'; // 'primary' | 'secondary'
@@ -6031,9 +6082,9 @@ async function _renderSwellCompare() {
   // _windCmpAtStation (les deux comparatifs sont indépendants par construction —
   // le vent peut re-échantillonner, la houle ne le fait jamais).
   var _spotForFetch = SPOTS[currentSpot];
-  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMfCombined(_spotForFetch), _fetchEcmwfWave(_spotForFetch), _fetchMarcCombined(_spotForFetch)]);
+  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMfCombined(_spotForFetch), _fetchEcmwfArchive(_spotForFetch), _fetchMarcCombined(_spotForFetch), _fetchAifsArchive(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
-  _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3] };
+  _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3], aifs: _extra[4] };
   _cmpZoom.a = 0; _cmpZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
   _drawSwellCompare();
   _renderCmpTable();
@@ -6251,6 +6302,42 @@ function _drawSwellCompare() {
     }
     return true;
   }
+  // Histogramme des 6 bandes de période ECMWF/AIFS (h1012...h2530, cf.
+  // ingestion/fetch_ecmwf.py) — pas de direction dans ce produit, donc pas de
+  // rose comme MARC/MF (_drawSpectrumRose) : simple barres, même génération
+  // SVG en chaîne que les roses. BAND_LABELS/couleur unique par modèle (pas
+  // un dégradé par bande : la couleur du modèle suffit à l'identifier à côté
+  // du spectre MARC/MF, la hauteur de chaque barre porte déjà l'info utile).
+  var BAND_LABELS = ['10-12s', '12-14s', '14-17s', '17-21s', '21-25s', '25-30s'];
+  function _drawBandsBars(modelKey, atMs) {
+    var wrap = document.getElementById(modelKey + '-bands-wrap');
+    var el = document.getElementById(modelKey + '-bands-chart');
+    if (!wrap || !el) return false;
+    var modelPts = _swellCache && _swellCache[modelKey] && _swellCache[modelKey].primary;
+    var p = modelPts && nearest(modelPts, atMs, 4 * 3600000);
+    var bands = p && p.bands;
+    if (!bands || !bands.length) { wrap.style.display = 'none'; return false; }
+    wrap.style.display = '';
+    var W = 340, H = 74, padL = 4, padR = 4, gap = 4;
+    var n = bands.length, barW = (W - padL - padR - gap * (n - 1)) / n;
+    var maxH = Math.max.apply(null, bands.map(function(b) { return b || 0; }));
+    if (maxH <= 0) maxH = 1;
+    var col = (MODEL_STYLE[modelKey] && MODEL_STYLE[modelKey].col) || '#a99ff8';
+    var svg = '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMinYMid meet">';
+    bands.forEach(function(h, i) {
+      var x = padL + i * (barW + gap);
+      var barH = h != null ? Math.max(2, (H - 22) * (h / maxH)) : 0;
+      var y = H - 18 - barH;
+      if (h != null) {
+        svg += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + barH + '" fill="' + col + '" fill-opacity="0.55" stroke="' + col + '" stroke-width="1" stroke-opacity="0.9" rx="2"/>';
+        svg += '<text x="' + (x + barW / 2) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + col + '" font-family="DM Sans,sans-serif">' + h.toFixed(1) + '</text>';
+      }
+      svg += '<text x="' + (x + barW / 2) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="8" fill="rgba(122,148,170,.8)" font-family="DM Sans,sans-serif">' + BAND_LABELS[i] + '</text>';
+    });
+    svg += '</svg>';
+    el.innerHTML = svg;
+    return true;
+  }
   function _drawSwellRose(atMs) {
     // Wrap englobant : visible dès qu'AU MOINS un des deux modèles a des
     // partitions pour cet instant (chacun garde sa propre visibilité interne).
@@ -6258,6 +6345,10 @@ function _drawSwellCompare() {
     var mfShown = _drawSpectrumRose('mf', atMs);
     var compareWrap = document.getElementById('spectrum-compare-wrap');
     if (compareWrap) compareWrap.style.display = (marcShown || mfShown) ? '' : 'none';
+    var ecmwfBandsShown = _drawBandsBars('ecmwf', atMs);
+    var aifsBandsShown = _drawBandsBars('aifs', atMs);
+    var bandsWrap = document.getElementById('bands-compare-wrap');
+    if (bandsWrap) bandsWrap.style.display = (ecmwfBandsShown || aifsBandsShown) ? '' : 'none';
     var el = document.getElementById('swell-cmp-rose');
     var perEl = document.getElementById('swell-cmp-periods');
     if (!el) return;
@@ -8697,6 +8788,7 @@ var TABLE_SRC_DEFS = {
   bom:   { btn:'tbl-btn-bom',   label:'BOM WW3',         bg:_rgbaFromHex(MODEL_STYLE.bom.col,.2),   col:MODEL_STYLE.bom.col },
   mf:    { btn:'tbl-btn-mf',    label:'MF global',       bg:_rgbaFromHex(MODEL_STYLE.mf.col,.2),    col:MODEL_STYLE.mf.col },
   ecmwf: { btn:'tbl-btn-ecmwf', label:'ECMWF',           bg:_rgbaFromHex(MODEL_STYLE.ecmwf.col,.2), col:MODEL_STYLE.ecmwf.col },
+  aifs:  { btn:'tbl-btn-aifs',  label:'AIFS',            bg:_rgbaFromHex(MODEL_STYLE.aifs.col,.2),  col:MODEL_STYLE.aifs.col },
   marc:  { btn:'tbl-btn-marc',  label:'MARC WW3',        bg:_rgbaFromHex(MODEL_STYLE.marc.col,.2),  col:MODEL_STYLE.marc.col }
 };
 // Convertit _swellCache[key] (points {ms,h,t,dir,totH,windSeaH,windKt,windDir,
@@ -8744,7 +8836,7 @@ function _swellCacheToTableData(key) {
   return { dates:dates,sw1h:sw1h,sw1t:sw1t,sw1d:sw1d,sw2h:sw2h,sw2d:sw2d,wSpd:wSpd,wGst:wGst,wDir:wDir,pwr:pwr,sst:sst,totH:totH,wndH:wndH };
 }
 
-var _tableSrc = 'nc'; // 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf' | 'marc'
+var _tableSrc = 'nc'; // 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf' | 'aifs' | 'marc'
 function switchTable(src) {
   _tableSrc = src;
   Object.keys(TABLE_SRC_DEFS).forEach(function(k) {
@@ -9284,7 +9376,7 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
     var dkm = stDistKm != null ? ' (~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km)' : '';
     var stLine = stName ? '<b>' + stName + '</b>' + dkm : 'station inconnue';
     note.innerHTML = atStation
-      ? 'Modèles ré-échantillonnés au point de mesure ' + stLine + ' — le classement de fiabilité ci-dessous est valide ici, et seulement ici. ECMWF indisponible dans ce mode (lié à un spot Windguru fixe).'
+      ? 'Modèles ré-échantillonnés au point de mesure ' + stLine + ' — le classement de fiabilité ci-dessous est valide ici, et seulement ici. ECMWF indisponible dans ce mode (ré-échantillonnage à la station pas encore branché pour cette source).'
       : (hasStation
           ? 'Ce que tu vas surfer. Modèles échantillonnés au spot — mesures les plus proches : ' + stLine + '. Un écart inclut cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle.'
           : 'Station de mesure inconnue — comparaison au spot uniquement, aucune vérification possible ici.');
@@ -9300,7 +9392,7 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
     if (hidden) anyHidden = true;
     if (unavailable) {
       sp.style.opacity = '.28'; sp.style.cursor = 'not-allowed';
-      sp.title = 'Indisponible en mode « au point de mesure » (lié à un spot Windguru)';
+      sp.title = 'Indisponible en mode « au point de mesure » (ré-échantillonnage à la station pas encore branché pour cette source)';
     } else {
       sp.style.opacity = hidden ? '.4' : '1';
       sp.style.cursor = 'pointer';
@@ -9808,24 +9900,46 @@ async function _fetchBomWind(spot) {
   } catch (e) { console.warn('[BOM wind]', e && e.message); return []; }
   finally { clearTimeout(tt); }
 }
+// Lecture du cache Supabase alimenté par ingestion/fetch_ecmwf.py (modèle
+// `ecmwf` = IFS-HRES, kind='wind') — remplace depuis le 30/07/2026 le relais
+// Windguru (id_model=117). Cache-ONLY, pas de repli live (même décision que
+// _fetchEcmwfArchive côté houle) : ce vent est échantillonné aux spots ET aux
+// stations (fetch_ecmwf.py suit le même invariant que fetch_arome.py), mais
+// PAS encore branché en mode « au point de mesure » ici (WIND_UNRESAMPLABLE
+// garde ecmwf — cf. commentaire à cet endroit) : ce serait une extension
+// naturelle, pas faite dans ce chantier pour ne pas alourdir un widget déjà
+// dense (6 séries + mesures).
 async function _fetchEcmwfWind(spot) {
-  var wgId = typeof _wgIdForSpot === 'function' ? _wgIdForSpot(spot) : null;
-  if (!wgId) return [];
-  var ctrl = new AbortController();
-  var tt = setTimeout(function(){ ctrl.abort(); }, 10000);
   try {
-    var r = await fetch('https://www.windguru.cz/int/iapi.php?q=forecast&id_model=117&id_spot=' + wgId, { signal: ctrl.signal });
-    if (!r.ok) return [];
-    var j = await r.json();
-    var f = j && j.fcst;
-    if (!f || !f.hours || !f.WINDSPD || !f.initstamp) return [];
-    var pts = [];
-    for (var i = 0; i < f.hours.length; i++) {
-      if (f.WINDSPD[i] != null) pts.push({ ms: f.initstamp * 1000 + f.hours[i] * 3600000, kt: f.WINDSPD[i], dir: f.WINDDIR && f.WINDDIR[i], gust: f.GUST && f.GUST[i] });
+    if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return [];
+    var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
+    var ids = [], nowA = new Date();
+    for (var dd = -1; dd <= 6; dd++) {
+      var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000);
+      ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_ecmwf_wind');
     }
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+    if (!r || !r.data || !r.data.length) return [];
+    var pts = [];
+    r.data.forEach(function(row) {
+      var p = row.date.split('-');
+      (row.hours || []).forEach(function(hh) {
+        // hh.hour == null : garde contre une ligne d'une ANCIENNE archive
+        // (avant ce chantier, le relais Windguru/_cacheModelPoints écrivait
+        // `hh.h`, pas `hh.hour`, sur le même id `..._ecmwf_wind` bare —
+        // constaté en vérifiant après coup : une ligne du 29/07 datant d'avant
+        // la migration de clé de run traînait encore avec ce vieux schéma).
+        // Sans cette garde, Math.floor(undefined) -> NaN -> ms NaN -> corrompt
+        // le Math.max(t1) global du comparatif vent (TOUTES les séries clippées
+        // à rien, pas seulement ECMWF) — bug trouvé en vérifiant en headless.
+        if (!hh || hh.val == null || hh.hour == null) return;
+        var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
+        pts.push({ ms: ms, kt: hh.val, dir: hh.dir });
+      });
+    });
+    pts.sort(function(a, b) { return a.ms - b.ms; });
     return pts;
-  } catch (e) { console.warn('[ECMWF wind]', e && e.message); return []; }
-  finally { clearTimeout(tt); }
+  } catch (e) { console.warn('[ECMWF wind archive]', e && e.message); return []; }
 }
 // MARC-WW3 NC — vent ECMWF opérationnel au point de grille (uwnd/vwnd, même
 // résolution 5,5 km que la houle, cf. _fetchMarcWave). Contrairement à AROME/
@@ -14365,7 +14479,8 @@ var MODEL_CACHE_LABELS = {
   gfs:   { label: 'GFS',       col: '#4fa3c7' },
   bom:   { label: 'BOM WW3',   col: '#e8a057' },
   mf:    { label: 'MF global', col: '#a99ff8' },
-  ecmwf: { label: 'ECMWF',     col: '#e05c5c' }
+  ecmwf: { label: 'ECMWF',     col: '#e05c5c' },
+  aifs:  { label: 'AIFS',      col: '#e06bb0' }
 };
 async function _renderCachedModelsBlock(spot, date) {
   if (typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return '';
@@ -14416,7 +14531,7 @@ async function _renderCachedModelsBlock(spot, date) {
       else if (row.kind === 'wind') byModel[row.model].wind = { val: p.val, dir: p.dir };
       byModelIssued[key] = row.issued_at;
     });
-    var order = ['nc', 'gfs', 'bom', 'mf', 'ecmwf'];
+    var order = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'aifs'];
     var present = order.filter(function(k) { return byModel[k]; });
     if (!present.length) return '';
     var compass = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];

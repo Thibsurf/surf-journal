@@ -60,3 +60,21 @@ jobs:
           COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.COPERNICUSMARINE_SERVICE_USERNAME }}
           COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
         run: python ingestion/fetch_mfwam.py
+
+  # ECMWF Open Data (IFS-HRES + AIFS-single) — remplace le relais Windguru
+  # (id_model=118/117, accès non officiel pour les spots NC, ne couvrait que
+  # ~7 spots) : en direct depuis data.ecmwf.int, gratuit, sans clé (CC-BY-4.0).
+  # Grille réelle 0,25° (~28 km), 25 steps (0-144h par 6h, cf. le docstring de
+  # fetch_ecmwf.py pour le détail de ce choix) x 2 modèles ≈ 500 Mo/run — job
+  # plus long que les autres, sans commune mesure avec le volume AROME/MFWAM.
+  ecmwf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r ingestion/requirements.txt
+      - name: Fetch + archive ECMWF Open Data (IFS + AIFS-single)
+        run: python ingestion/fetch_ecmwf.py

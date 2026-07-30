@@ -2320,3 +2320,102 @@ planning 3×/j que `arome`. Nécessite 2 secrets repo à créer par l'utilisateu
 reste dans `previsions.html`/`ingestion/`/`.github/`) — pas de bump
 `CACHE_NAME`. Chantier ECMWF (IFS Open Data + AIFS-single, remplacement du
 relais Windguru) prévu en chantier séparé, cf. CLAUDE.md.
+
+## Session du 30/07/2026 (suite) — ECMWF Open Data (IFS-HRES + AIFS-single), remplace le relais Windguru
+
+Chantier 2 annoncé dans la session précédente. Recherche confirmée sur
+`data.ecmwf.int`/`ecmwf-opendata` : grille réelle **0,25° (~28 km, pas 9 km**
+comme l'affichait `MODEL_STYLE.ecmwf.res` depuis toujours, une valeur Windguru
+jamais vérifiée). Flux `wave` (IFS ET AIFS-single, mêmes 13 paramètres) :
+`swh/mwd/mwp` (mer totale) + 6 hauteurs par bande de période 10-30s
+(`h1012`...`h2530`, nouveauté cycle 50r1) — **sans direction par bande**.
+Flux `oper` séparé pour le vent (`10u`/`10v`).
+
+**Cadence des steps mesurée avant d'écrire le script** (comme prévu) : 25
+steps (0-144h par 6h) choisis délibérément — 144h est le plus petit horizon
+observé (cycle 18Z d'IFS, "scwv" 3-horaire s'arrête là), 6h est un multiple de
+3h donc toujours valide côté grille. Coût réel mesuré : ~8,7 Mo/step pour 9
+paramètres houle (test réel), ~1,6 Mo/step pour le vent (2 paramètres) — pas
+de sous-échantillonnage spatial serveur côté ECMWF Open Data (contrairement à
+Copernicus Marine/MARC) : chaque step télécharge la grille mondiale entière.
+
+Deux bugs trouvés en vérifiant après coup, avant même le premier run complet :
+- cfgrib décode un fichier GRIB2 multi-step en dimension `step` (timedelta
+  depuis l'init du run), PAS `time` (qui reste l'instant scalaire d'init) —
+  `valid_time` (indexé par step) donne l'instant réel de chaque échéance. Le
+  premier jet du script utilisait `.isel(time=i)`, qui aurait planté ou donné
+  des données incohérentes ; corrigé après un test réel de décodage.
+- Longitude de la grille ECMWF Open Data en -180..180 (standard), PAS 0..360
+  comme supposé au départ par analogie avec d'autres services — `to_lon360()`
+  était un no-op pour les coordonnées NC (positives, <180) donc sans
+  conséquence pratique ici, mais basé sur une hypothèse fausse ; retiré.
+
+`ingestion/fetch_ecmwf.py` (nouveau) exécuté en réel pendant la vérification :
+IFS **et** AIFS-single, houle **et** vent, 7 spots + 23 stations — **518
+lignes upsertées, 0 échec**. Valeurs cohérentes et physiquement plausibles :
+houle SE dominante (~160-170°), vent ESE ~6-7 nds (alizés), ET un écart
+mesurable IFS vs AIFS sur la même échéance (Hs totale 0,79 m contre 1,11 m) —
+exactement le genre de comparaison inter-modèles que l'utilisateur voulait
+pouvoir observer entre le modèle physique et le modèle IA.
+
+Côté `previsions.html` :
+- `_fetchEcmwfArchive`/`_fetchAifsArchive` (nouveau, cache-ONLY — décision
+  utilisateur explicite : pas de repli live, contrairement à MF, le relais
+  Windguru n'avait rien à sauver). `_fetchEcmwfWind` réécrite en lecteur de
+  cache (même décision) au lieu du relais Windguru id_model=117.
+  `_fetchEcmwfWave` (Windguru id_model=118) et `_wgIdForSpot`-dans-ce-contexte
+  supprimés ; `_wgIdForSpot` lui-même conservé (encore utilisé pour le lien
+  "voir sur windguru" et le réglage `ss-wgid` par spot, sans rapport avec la
+  donnée houle/vent).
+- `cache-model-forecasts.mjs` : `fetchEcmwf()`/`wgIdForSpot()` retirés
+  (redondants, superseded par le script Python).
+- AIFS ajouté comme modèle à part entière côté **houle** : `MODEL_STYLE`,
+  `SWELL_MODELS`, `TABLE_SRC_DEFS` (+ bouton `tbl-btn-aifs`),
+  `MODEL_CACHE_LABELS`/`order` du bloc comparatif archivé. Couleur `#e06bb0`
+  (aucune couleur du vent/houle réservée au jugement — vert/rouge évités,
+  cf. commentaire existant sur `MODEL_STYLE`).
+- **Scope volontairement limité côté vent** : AIFS n'a PAS été ajouté au
+  comparatif vent (`_renderAromeCompare`/`arome-cmp`, ~20 variables
+  étroitement couplées : `ecmwfWind`, `ecmwfCachePts`, `corrSeries.ecmwf`,
+  `_windCmpHidden.ecmwf`, légendes, etc.) — décision délibérée pour ne pas
+  doubler la complexité d'un widget déjà dense (6 séries + mesures) alors que
+  la demande utilisateur portait sur la houle/les bandes de période. Les
+  données vent AIFS existent déjà dans le cache (écrites par
+  `fetch_ecmwf.py`), une extension future est possible sans re-ingestion.
+- Nouveau bloc `#bands-compare-wrap` (`_drawBandsBars`) : histogramme des 6
+  bandes de période pour ECMWF et AIFS, sous le spectre MARC/MFWAM — pas de
+  rose ici (aucune direction par bande), juste des barres colorées par
+  modèle. Vérifié headless : les deux histogrammes rendent un SVG réel avec
+  les bonnes valeurs.
+- `MODEL_STYLE.ecmwf.res` corrigé (`'9 km'` → `'28 km'`), tooltips mis à jour
+  partout (table, légendes, comparatif houle) pour dire "direct depuis Open
+  Data" au lieu de "via Windguru".
+
+**Limite assumée, pas cachée** : ECMWF/AIFS n'ont pas de vraie partition
+houle/mer du vent en Open Data gratuit — la "houle primaire" affichée est la
+bande de période la plus haute parmi 6, sans direction, une approximation
+documentée dans le code et les tooltips (pas présentée comme équivalente à
+MARC/MFWAM).
+
+Nouveau job CI `ecmwf` (`.github/workflows/cache-model-forecasts.yml`), même
+planning 3×/j — plus long que les autres jobs (~10-15 min mesurés en local
+pour IFS+AIFS combinés) vu le volume réseau propre à ECMWF Open Data
+(~500 Mo/run), mais sans clé/secret nécessaire (licence CC-BY-4.0).
+
+**Bug trouvé en vérifiant après coup (headless, pas supposé)** : une ligne
+`model_forecast_cache` du 29/07 (`..._ecmwf_wind`, id SANS suffixe de run —
+antérieure à la migration de clé de run mentionnée ailleurs dans ce journal)
+traînait encore avec l'ancien schéma `{h, val, dir, period}` au lieu du
+nouveau `{hour, val, dir}`. `_fetchEcmwfWind` lisait `hh.hour` sans garde ->
+`Math.floor(undefined)` -> `NaN` -> un point à `ms: NaN` glissé dans
+`ecmwfWind`. Sans conséquence visible dans l'immédiat (`clip()` filtre déjà
+les `ms` hors fenêtre), MAIS ce point NaN alimentait aussi le calcul de `t1`
+(`Math.max` sur tous les modèles) qui l'aurait propagé en `NaN` et cassé le
+`clip()` de TOUTES les séries du comparatif vent, pas seulement ECMWF — un
+vieux résidu de données aurait donc pu vider tout le graphe silencieusement.
+Corrigé par une garde `hh.hour == null` (et son équivalent dans
+`_fetchOpenDataArchive`, par prudence bien qu'aucune collision connue côté
+houle — id `_wave` nouveau à ce chantier).
+
+**Non touché** : ES5 strict, pas de nouvelle extraction vers `assets/` — pas
+de bump `CACHE_NAME`.

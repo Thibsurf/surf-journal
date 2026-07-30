@@ -12,3 +12,9 @@ requests==2.32.5
 # USERNAME/_PASSWORD, cf. workflow). xarray décode le NetCDF téléchargé.
 copernicusmarine==2.2.1
 xarray==2024.2.0
+
+# fetch_ecmwf.py — ecmwf-opendata (Apache-2.0), aucune clé nécessaire (Open
+# Data CC-BY-4.0). cfgrib/eccodes déjà présents via meteofetch (cf. plus
+# haut), épinglés ici en plus car importés directement (engine="cfgrib").
+ecmwf-opendata==0.3.33
+cfgrib==0.9.15.0

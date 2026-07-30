@@ -1,16 +1,14 @@
-// Archive périodique des prévisions multi-modèles (GFS/BOM/MF/ECMWF) pour les
-// spots prioritaires, dans model_forecast_cache — sans dépendre d'une visite
-// manuelle de previsions.html (demandé par l'utilisateur : "ça suppose
-// d'ouvrir toutes les pages météo, pas moyen d'automatiser un peu ça ?").
-//
-// Ne couvre PAS meteo.nc : ce modèle nécessite un token capturé côté
-// navigateur (extension), pas reproductible ici sans risquer de casser ce
-// mécanisme — il reste alimenté par les visites normales de l'app (déjà
-// fonctionnel, cf. _saveForecastDays côté client).
+// Archive périodique des prévisions multi-modèles (GFS/BOM/MARC + meteo.nc si
+// un token est dispo) pour les spots prioritaires, dans model_forecast_cache —
+// sans dépendre d'une visite manuelle de previsions.html (demandé par
+// l'utilisateur : "ça suppose d'ouvrir toutes les pages météo, pas moyen
+// d'automatiser un peu ça ?"). MF (Copernicus Marine) et ECMWF/AIFS (Open
+// Data) ont chacun leur propre script Python isolé (fetch_mfwam.py,
+// fetch_ecmwf.py) — plus dans ce fichier depuis le 30/07/2026.
 //
 // Logique de fetch/parsing calquée sur previsions.html (BOM THREDDS ASCII,
-// Windguru iapi.php, Open-Meteo) pour rester cohérente avec ce que l'app
-// affiche déjà — mêmes URLs, mêmes conventions d'ID que _cacheModelPoints().
+// Open-Meteo) pour rester cohérente avec ce que l'app affiche déjà — mêmes
+// URLs, mêmes conventions d'ID que _cacheModelPoints().
 
 const SUPABASE_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
@@ -50,18 +48,6 @@ async function fetchSpots() {
 }
 
 const BOM_WW3_BASE = 'https://ocean-thredds01.spc.int/thredds/dodsC/POP/model/regional/bom/forecast/hourly/wavewatch3_latest/latest_merged.nc';
-
-function wgIdForSpot(spot) {
-  const n = spot.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  if (n.includes('tenia')) return 6476;
-  if (n.includes('dumbe')) return 208760;
-  if (n.includes('ouano')) return 208762;
-  if (n.includes('maitre')) return 207051;
-  if (n.includes('poe')) return 208763;
-  if (n.includes('vata')) return 208755;
-  if (n.includes('noumea')) return 4164;
-  return null;
-}
 
 async function fetchWithTimeout(url, ms = 15000, headers) {
   const ctrl = new AbortController();
@@ -274,40 +260,15 @@ async function fetchGfsWind(spot) {
   } catch (e) { console.warn('[GFS wind]', spot.name, e.message); return []; }
 }
 
-// ── ECMWF (IFS-WAM / IFS vent) via Windguru iapi.php ────────────────────
-async function fetchEcmwf(spot) {
-  const wgId = wgIdForSpot(spot);
-  if (!wgId) return { swell: [], wind: [] };
-  async function one(idModel) {
-    try {
-      // Referer non vide obligatoire côté Windguru (401 sinon) — un navigateur
-      // l'envoie automatiquement, mais le fetch() de Node ne met rien par
-      // défaut (confirmé : 401 sans, 200 avec un Referer arbitraire non-vide).
-      const r = await fetchWithTimeout(
-        `https://www.windguru.cz/int/iapi.php?q=forecast&id_model=${idModel}&id_spot=${wgId}`,
-        15000,
-        { Referer: `https://www.windguru.cz/${wgId}` }
-      );
-      if (!r.ok) return null;
-      const j = await r.json();
-      return j?.fcst || null;
-    } catch (e) { console.warn('[ECMWF]', spot.name, idModel, e.message); return null; }
-  }
-  const [waveF, windF] = await Promise.all([one(118), one(117)]);
-  const swell = [];
-  if (waveF?.hours && waveF.SWELL1 && waveF.initstamp) {
-    for (let i = 0; i < waveF.hours.length; i++) {
-      if (waveF.SWELL1[i] != null) swell.push({ ms: waveF.initstamp * 1000 + waveF.hours[i] * 3600000, val: waveF.SWELL1[i], period: waveF.SWPER1?.[i], dir: waveF.SWDIR1?.[i] });
-    }
-  }
-  const wind = [];
-  if (windF?.hours && windF.WINDSPD && windF.initstamp) {
-    for (let i = 0; i < windF.hours.length; i++) {
-      if (windF.WINDSPD[i] != null) wind.push({ ms: windF.initstamp * 1000 + windF.hours[i] * 3600000, val: windF.WINDSPD[i], dir: windF.WINDDIR?.[i] });
-    }
-  }
-  return { swell, wind };
-}
+// ECMWF (IFS-HRES + AIFS-single) n'est plus alimenté ici depuis le 30/07/2026 :
+// le relais Windguru (id_model=118/117, accès non officiel — pas dans la
+// curation Windguru pour les spots NC, ne couvrait que ~7 spots avec un ID
+// codé en dur) est remplacé par ingestion/fetch_ecmwf.py, qui interroge
+// data.ecmwf.int EN DIRECT (Open Data, gratuit, sans clé) pour TOUS les spots.
+// previsions.html lit ce nouveau cache (modèles `ecmwf`/`aifs`, kind `wave`/
+// `wind`) via _fetchEcmwfArchive/_fetchAifsArchive côté houle — pas de repli
+// live (contrairement à MF) : décision explicite, le relais Windguru n'avait
+// rien à sauver en repli.
 
 // ── meteo.nc (modèle officiel régionalisé NC) via rpcache ────────────────
 // Le token Bearer est capturé côté navigateur par l'extension puis poussé
@@ -403,18 +364,19 @@ async function run() {
   console.log(`=== Cache modèles météo — ${new Date().toISOString()} ===`);
   const ncToken = await getNcToken();
   console.log(ncToken ? '[nc] token trouvé — meteo.nc inclus' : '[nc] pas de token Supabase — meteo.nc sauté (alimenté par les visites de l\'app)');
-  // INVARIANT : `spots` = spots marins (shared_spots) UNIQUEMENT. La houle (BOM/MF/
-  // GFS/ECMWF/MARC) n'a de sens qu'à un point de mer — jamais aux stations de mesure
-  // du vent (OBS_STATIONS, côté previsions.html), qui incluent des points terrestres
-  // (ex. aéroport de La Tontouta) sans aucune pertinence pour une hauteur de houle.
-  // ingestion/fetch_arome.py, lui, combine spots+stations mais UNIQUEMENT pour le
-  // vent (kind='wind') — jamais pour la houle.
+  // INVARIANT : `spots` = spots marins (shared_spots) UNIQUEMENT. La houle (BOM/
+  // GFS/MARC ici — MF et ECMWF/AIFS ont leur propre script, même invariant) n'a de
+  // sens qu'à un point de mer — jamais aux stations de mesure du vent (OBS_STATIONS,
+  // côté previsions.html), qui incluent des points terrestres (ex. aéroport de La
+  // Tontouta) sans aucune pertinence pour une hauteur de houle. ingestion/
+  // fetch_arome.py, lui, combine spots+stations mais UNIQUEMENT pour le vent
+  // (kind='wind') — jamais pour la houle.
   const spots = await fetchSpots();
   console.log(`[spots] ${spots.length} point(s) à traiter`);
   for (const spot of spots) {
     console.log(`--- ${spot.name} ---`);
-    const [bom, gfsWave, gfsWind, ecmwf, nc, marc] = await Promise.all([
-      fetchBom(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot), fetchMeteoNc(spot, ncToken), fetchMarc(spot),
+    const [bom, gfsWave, gfsWind, nc, marc] = await Promise.all([
+      fetchBom(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchMeteoNc(spot, ncToken), fetchMarc(spot),
     ]);
     const rows = [
       ...toRows(spot, 'nc', 'swell_primary', nc.swell),
@@ -423,8 +385,6 @@ async function run() {
       ...toRows(spot, 'bom', 'wind', bom.wind),
       ...toRows(spot, 'gfs', 'swell_primary', gfsWave),
       ...toRows(spot, 'gfs', 'wind', gfsWind),
-      ...toRows(spot, 'ecmwf', 'swell_primary', ecmwf.swell),
-      ...toRows(spot, 'ecmwf', 'wind', ecmwf.wind),
       ...toRows(spot, 'marc', 'swell_primary', marc.swell),
       ...toRows(spot, 'marc', 'wind', marc.wind),
     ];
