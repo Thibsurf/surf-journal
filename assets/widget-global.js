@@ -41,6 +41,30 @@ var _GW_SEM_DARK  = { ok: '61,186,138', accent: '79,163,199', bad: '224,92,92', 
 var _GW_SEM_LIGHT = { ok: '18,122,78',  accent: '26,114,155', bad: '199,62,62', warm: '168,99,31' };
 function _gwSemRGB(name) { return (typeof _panelLight === 'function' && _panelLight() ? _GW_SEM_LIGHT : _GW_SEM_DARK)[name]; }
 
+// Une seule palette « par numéro de houle », partagée par la grille (H.1-H.5,
+// _gwRenderGrid) ET la vue satellite (cônes/vecteurs, _gwDrawVectors) — avant ce
+// correctif chacun avait ses propres couleurs (H.2 en dur, H.3/H.4/H.5 toutes
+// identiques) sans rapport avec celles des cônes de la vue satellite, rendant
+// impossible de relier un cône à sa ligne du tableau (signalé par l'utilisateur).
+// Index 0 = mer du vent, volontairement gris neutre pour ne pas entrer en
+// collision avec l'orange du vent atmosphérique (#e8a057, flèche vent de la vue
+// satellite) — mer du vent n'a pas de ligne dédiée dans la grille, seul l'indice
+// compte ici. `light` = variante plus saturée/sombre pour rester lisible sur le
+// fond clair de la grille (la vue satellite peint sur une photo, thème-invariant,
+// mais réutilise quand même cette palette pour la cohérence des couleurs).
+var GW_SWELL_COLORS = [
+  { dark: '#94a3b8', light: '#5c7080' }, // 0 mer du vent
+  { dark: '#4fa3c7', light: '#1a729b' }, // 1 houle 1
+  { dark: '#a99ff8', light: '#5b3fc4' }, // 2 houle 2
+  { dark: '#e05c5c', light: '#c73e3e' }, // 3 houle 3
+  { dark: '#3dba8a', light: '#127a4e' }, // 4 houle 4
+  { dark: '#f0c674', light: '#a8631f' }, // 5 houle 5
+];
+function _gwSwellCol(idx) {
+  var c = GW_SWELL_COLORS[idx] || GW_SWELL_COLORS[1];
+  return (typeof _panelLight === 'function' && _panelLight()) ? c.light : c.dark;
+}
+
 // ─── Sources supplémentaires pour le widget (BOM/MFWAM) ─────────────────────
 // Le reste de la page (graphe principal, tableau détaillé, ~15 autres endroits)
 // ne bascule qu'entre meteo.nc/GFS via _currentHsSrc, partagé partout. BOM/MFWAM
@@ -774,18 +798,62 @@ function _gwDrawVectors(fi) {
   ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2*Math.PI); ctx.fill();
 
   var s1h = d.sw1h[fi], s1d = d.sw1d[fi], s1t = d.sw1t && d.sw1t[fi];
+  var s2h = d.sw2h && d.sw2h[fi], s2d = d.sw2d && d.sw2d[fi];
   var ws = d.wSpd && d.wSpd[fi], wd2 = d.wDir && d.wDir[fi];
   var hMax = Math.max(s1h||0, 0.5);
 
-  // Houle primaire + vent uniquement : la houle 2 (résidu) reste dans la grille,
-  // deux flèches suffisent pour une lecture immédiate sur la photo.
+  // Spectre par train (mer du vent + houle 1..5), calculé AVANT les flèches
+  // houle1/houle2 génériques ci-dessous pour savoir si un train donné est déjà
+  // représenté par son propre cône/vecteur numéroté — sinon houle 1 se
+  // retrouvait dessinée deux fois (flèche cyan fixe EN PLUS de son cône MARC,
+  // dans une couleur différente : signalé par l'utilisateur comme source de
+  // confusion, "quel spectre correspond à quelle houle ?"). Disponible pour
+  // MARC/mix (dispersion angulaire réelle, spr/pspr, cf. _fetchMarcWave) et,
+  // depuis ce correctif, MFWAM (3 partitions ww/sw1/sw2, SANS dispersion
+  // mesurée — cf. _fetchMfArchive : dessinées en vecteur simple plus bas,
+  // jamais en cône, pour ne pas suggérer une précision qui n'existe pas). "mix"
+  // pioche toujours ses trains 3/4/5 (et donc son spectre) chez MARC en premier
+  // (cf. HOULE_PRIORITY, _gwBuildBestMix) — même source que pour 'marc' seul.
+  var GW_SPECTRAL_KEY = { marc:'marc', mix:'marc', mf:'mf' }[_gwExtraSrc];
+  var specParts = [];
+  if (GW_SPECTRAL_KEY) {
+    var specSrcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache[GW_SPECTRAL_KEY]) ? _swellCache[GW_SPECTRAL_KEY].primary : null;
+    if (specSrcPts && specSrcPts.length) {
+      // d.dates[fi] est décalé +11h (convention du fichier principal), .ms est un
+      // vrai epoch UTC (_fetchMarcWave/_fetchMfArchive) — décaler avant de
+      // comparer, cf. [[timestamps-utc11-vs-brut]].
+      var specAtMs = d.dates[fi].getTime() - 11*3600000, specBd = 4*3600000, specPt = null;
+      specSrcPts.forEach(function(p){ var df = Math.abs(p.ms-specAtMs); if (df < specBd) { specBd = df; specPt = p; } });
+      specParts = specPt && specPt.partitions ? specPt.partitions
+        .map(function(pt, idx){ return pt ? { idx:idx, h:pt.h, dir:pt.dir, spread:pt.spread } : null; })
+        .filter(function(x){ return x && x.dir!=null; }) : [];
+    }
+  }
+  var specIdxSet = {};
+  specParts.forEach(function(x){ specIdxSet[x.idx] = true; });
+
   var arrows = [];
-  if (s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.4), col:'#4fc3e8',
+  // Houle 1/2 : flèche pleine seulement si le train n'est PAS déjà rendu par le
+  // spectre ci-dessous (idx 1/2) — évite le double rendu à deux couleurs.
+  // Houle 2 : demandée par l'utilisateur (avant, seule la grille la montrait,
+  // "deux flèches suffisent" — décision annulée par une demande explicite).
+  if (!specIdxSet[1] && s1d!=null && s1h!=null) arrows.push({ deg:s1d, mag:Math.max(s1h/hMax,.4), col:'#4fc3e8',
     info:'🌊 '+s1h.toFixed(1)+'m'+(s1t?' '+Math.round(s1t)+'s':'')+' '+compass(s1d)+' '+Math.round(s1d)+'°', lw:3.2 });
+  if (!specIdxSet[2] && s2d!=null && s2h!=null) arrows.push({ deg:s2d, mag:Math.max(Math.min(s2h/hMax,1),.3), col:_gwSwellCol(2),
+    info:'🌊 '+s2h.toFixed(1)+'m '+compass(s2d)+' '+Math.round(s2d)+'°', lw:2.4 });
   if (wd2!=null && ws!=null) arrows.push({ deg:wd2, mag:Math.max(Math.min(ws/25,1),.35), col:'#e8a057',
     info:'💨 '+Math.round(ws)+'nds '+compass(wd2)+' '+Math.round(wd2)+'°', lw:2.6 });
 
-  var infoHtml = arrows.map(function(ar){
+  // Chips « ①0.8m » par train spectral (numéro + hauteur) — répond à « afficher
+  // la taille » et documente ce que chaque numéro/couleur de cône représente
+  // sans avoir à deviner depuis la seule couleur. "Mer vent" = même libellé que
+  // la barre empilée houle (mkStackedHs, previsions.html), pas de ligne dédiée
+  // dans la grille pour cette partition.
+  var specInfoHtml = specParts.slice().sort(function(a,b){ return a.idx-b.idx; }).map(function(pt){
+    var lbl = pt.idx===0 ? 'Mer vent' : ('H.'+pt.idx);
+    return '<span style="color:'+_gwSwellCol(pt.idx)+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+lbl+' '+pt.h.toFixed(1)+'m</span>';
+  }).join('');
+  var infoHtml = specInfoHtml + arrows.map(function(ar){
     return '<span style="color:'+ar.col+';text-shadow:0 1px 2px rgba(0,0,0,.9);">'+ar.info+'</span>';
   }).join('');
   // Anti-collision légère : écart < 22° → ±10° (deg0 = direction vraie pour le label)
@@ -795,55 +863,61 @@ function _gwDrawVectors(fi) {
     if (da < 22) { arrows[a].deg -= 10; arrows[b2].deg += 10; }
   }
 
-  // Spectre MARC complet (jusqu'à 6 partitions : mer du vent + trains de houle
-  // séparés) sur la vue satellite QUAND MARC est la source active du widget, ET
-  // sur le mix (qui pioche sa houle chez MARC en premier, cf. HOULE_PRIORITY) —
-  // même détail que la rose spectrale du comparatif houle plus bas
-  // (_drawMarcSpectrumRose dans previsions.html), réadapté ici en canvas au lieu
-  // de SVG. Remplace un premier jet (annotation texte + cône générique superposé
-  // à une AUTRE source) qui débordait de la vue et n'était pas voulu — le cône ne
-  // s'affiche que quand la houle affichée vient réellement de MARC.
-  // partition 0 (mer du vent) était en '#e8a057' — IDENTIQUE à la couleur de la
-  // flèche vent ci-dessus (col:'#e8a057' ligne ~670), signalé par l'utilisateur
-  // comme se confondant sur la vue satellite. Remplacé par un ton neutre distinct
-  // des deux flèches (houle #4fc3e8, vent #e8a057).
-  var GW_MARC_PART_COLORS = ['#94a3b8', '#4fa3c7', '#a99ff8', '#e05c5c', '#3dba8a', '#f0c674'];
-  if (_gwExtraSrc === 'marc' || _gwExtraSrc === 'mix') {
-    var marcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
-    if (marcPts && marcPts.length) {
-      // d.dates[fi] est décalé +11h (convention du fichier principal), marcPts[].ms
-      // est un vrai epoch UTC (_fetchMarcWave) — décaler avant de comparer, cf.
-      // [[timestamps-utc11-vs-brut]].
-      var atMs = d.dates[fi].getTime() - 11*3600000, bd = 4*3600000, marcPt = null;
-      marcPts.forEach(function(p){ var df = Math.abs(p.ms-atMs); if (df < bd) { bd = df; marcPt = p; } });
-      var parts = marcPt && marcPt.partitions ? marcPt.partitions
-        .map(function(pt, idx){ return pt ? { idx:idx, h:pt.h, dir:pt.dir, spread:pt.spread } : null; })
-        .filter(function(x){ return x && x.dir!=null; }) : [];
-      if (parts.length) {
-        var maxPartH = Math.max.apply(null, parts.map(function(x){ return x.h; }));
-        // Les plus grands trains dessinés en premier (dessous) : les petits, souvent
-        // plus étroits (spread faible = houle propre), restent visibles par-dessus —
-        // même ordre que la rose spectrale du comparatif.
-        parts.slice().sort(function(x,y){ return y.h-x.h; }).forEach(function(pt){
-          var halfDeg = pt.spread!=null ? Math.max(4, Math.min(85, pt.spread)) : 10;
-          var halfRad = halfDeg*Math.PI/180;
-          var rad = (pt.dir-90)*Math.PI/180; // même convention "provenance" que les flèches ci-dessous
-          var len = Math.max(R*0.22, (pt.h/maxPartH)*R*0.8);
-          var col = GW_MARC_PART_COLORS[pt.idx] || '#7dd3fc';
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.arc(cx, cy, len, rad-halfRad, rad+halfRad);
-          ctx.closePath();
-          // Alpha remonté (signalé peu visible sur PC, ~16%/50% avant) — reste
-          // discret vu la superposition des trains (les plus grands en dessous).
-          ctx.fillStyle = col + '45'; // ~27% alpha (notation hex #RRGGBBAA)
-          ctx.fill();
-          ctx.strokeStyle = col + 'cc'; // ~80% alpha
-          ctx.lineWidth = 1.4;
-          ctx.stroke();
-        });
+  // Cônes (spread mesuré, MARC) / vecteurs simples (pas de spread, MFWAM) par
+  // train — remplace un premier jet (annotation texte + cône générique
+  // superposé à une AUTRE source) qui débordait de la vue et n'était pas voulu.
+  // Couleur par index = _gwSwellCol (palette partagée avec la grille H.1-H.5,
+  // cf. GW_SWELL_COLORS) : indice 0 volontairement gris neutre, distinct de
+  // l'orange du vent atmosphérique ci-dessous (déjà signalé par l'utilisateur
+  // comme se confondant sur la vue satellite).
+  if (specParts.length) {
+    var maxPartH = Math.max.apply(null, specParts.map(function(x){ return x.h; }));
+    // Les plus grands trains dessinés en premier (dessous) : les petits, souvent
+    // plus étroits (spread faible = houle propre), restent visibles par-dessus —
+    // même ordre que la rose spectrale du comparatif.
+    specParts.slice().sort(function(x,y){ return y.h-x.h; }).forEach(function(pt){
+      var rad = (pt.dir-90)*Math.PI/180; // même convention "provenance" que les flèches ci-dessous
+      var len = Math.max(R*0.22, (pt.h/maxPartH)*R*0.8);
+      var col = _gwSwellCol(pt.idx);
+      if (pt.spread != null) {
+        var halfDeg = Math.max(4, Math.min(85, pt.spread));
+        var halfRad = halfDeg*Math.PI/180;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, len, rad-halfRad, rad+halfRad);
+        ctx.closePath();
+        // Alpha remonté (signalé peu visible sur PC, ~16%/50% avant) — reste
+        // discret vu la superposition des trains (les plus grands en dessous).
+        ctx.fillStyle = col + '45'; // ~27% alpha (notation hex #RRGGBBAA)
+        ctx.fill();
+        ctx.strokeStyle = col + 'cc'; // ~80% alpha
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      } else {
+        // Pas de dispersion angulaire mesurée pour ce produit (MFWAM) : un cône
+        // à largeur fixe suggérerait une précision qui n'existe pas (signalé
+        // par l'utilisateur) — vecteur simple à la place.
+        var vx = cx + len*Math.cos(rad), vy = cy + len*Math.sin(rad);
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(vx, vy);
+        ctx.strokeStyle = col; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.stroke();
+        var vHeadLen = 7, vAng = rad + Math.PI; // pointe vers le centre (départ du trait)
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx - vHeadLen*Math.cos(vAng-0.4), cy - vHeadLen*Math.sin(vAng-0.4));
+        ctx.lineTo(cx - vHeadLen*Math.cos(vAng+0.4), cy - vHeadLen*Math.sin(vAng+0.4));
+        ctx.closePath(); ctx.fillStyle = col; ctx.fill();
       }
-    }
+      // Numéro du train au bout du cône/vecteur — relie l'écart angulaire
+      // affiché au numéro de houle (H.1..H.5) de la grille juste en dessous
+      // (demande explicite de l'utilisateur). Pas de badge pour la mer du vent
+      // (idx 0) : pas de ligne dédiée dans la grille pour elle.
+      if (pt.idx >= 1) {
+        var bx = cx + Math.min(len+9, R-4)*Math.cos(rad), by = cy + Math.min(len+9, R-4)*Math.sin(rad);
+        ctx.font = '700 9px DM Sans,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.strokeStyle = 'rgba(6,16,30,.85)'; ctx.lineWidth = 3; ctx.strokeText(String(pt.idx), bx, by);
+        ctx.fillStyle = col; ctx.fillText(String(pt.idx), bx, by);
+      }
+    });
   }
 
   // Même géométrie que drawArrow() de la rose Houles & Vent : la flèche part de
@@ -871,7 +945,7 @@ function _gwDrawVectors(fi) {
   });
 
   // Disque central propre par-dessus les pointes convergentes (comme la rose)
-  if (arrows.length) {
+  if (arrows.length || specParts.length) {
     ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 2*Math.PI);
     var dgr = ctx.createRadialGradient(cx, cy, 0, cx, cy, 7);
     dgr.addColorStop(0, 'rgba(30,50,80,0.95)');
@@ -1075,10 +1149,14 @@ function _gwRenderGrid(d, day) {
   // si au moins un créneau du jour a de la donnée — sinon rien (les autres modèles
   // n'ont pas ces trains). Chaque train tient sur UNE ligne (flèche + m + période),
   // comme H.2. Demandé par l'utilisateur pour les modèles à spectre complet.
+  // idx (3/4/5) porté explicitement sur chaque def : le filtre ci-dessous peut
+  // retirer une entrée (ex. H.3 absent, H.4 présent) et décaler les positions —
+  // sans ce champ, la couleur par houle (_gwSwellCol) retomberait sur le
+  // mauvais index une fois filtré.
   var extraDefs = [
-    { lbl:'H.3', h:d.sw3h, t:d.sw3t, dir:d.sw3d },
-    { lbl:'H.4', h:d.sw4h, t:d.sw4t, dir:d.sw4d },
-    { lbl:'H.5', h:d.sw5h, t:d.sw5t, dir:d.sw5d }
+    { lbl:'H.3', idx:3, h:d.sw3h, t:d.sw3t, dir:d.sw3d },
+    { lbl:'H.4', idx:4, h:d.sw4h, t:d.sw4t, dir:d.sw4d },
+    { lbl:'H.5', idx:5, h:d.sw5h, t:d.sw5t, dir:d.sw5d }
   ].filter(function(def){ return def.h && idxs.some(function(fi){ return def.h[fi] != null; }); });
   var nExtra = extraDefs.length;
   // Décalage de toutes les lignes SOUS la houle 2 (ligne 7) par le nombre de
@@ -1140,8 +1218,11 @@ function _gwRenderGrid(d, day) {
       + _gwPerPill(s1t)+'</div>';
 
     var s1d = d.sw1d && d.sw1d[fi];
-    var _dirS = _panelLight() ? '#1a729b' : '#4fa3c7';
-    var _dirSlbl = _panelLight() ? '#1a729b' : 'rgba(79,163,199,.75)';
+    // Couleur houle 1 = _gwSwellCol(1), même palette que la vue satellite
+    // (cônes/vecteurs) et H.2/H.3/H.4/H.5 ci-dessous — coïncidait déjà avec les
+    // anciennes valeurs en dur, donc aucun changement visuel ici.
+    var _dirS = _gwSwellCol(1);
+    var _dirSlbl = _panelLight() ? _dirS : 'rgba(79,163,199,.75)';
     html += '<div class="gw-cell"'+gia+' style="grid-row:6;grid-column:'+col+';'+nBg+'">'+(s1d!=null?svgArrow(s1d,_dirS)
       + '<span class="u" style="color:'+_dirSlbl+';">'+Math.round(s1d)+'°</span>':'—')+'</div>';
 
@@ -1157,7 +1238,7 @@ function _gwRenderGrid(d, day) {
     var s2Resid = s2h != null && !(d.sw2NativeArr ? d.sw2NativeArr[fi] : d.sw2Native);
     html += '<div class="gw-cell"'+gia+' style="grid-row:7;grid-column:'+col+';'+nBg+'"'
       + (s2Resid ? ' title="Résidu calculé (Hs − houle 1 − mer du vent), pas une vraie houle secondaire modélisée par cette source."' : '') + '>'
-      + (s2h && s2x.dir!=null ? svgArrow(s2x.dir,'#6ab4d4') : '')
+      + (s2h && s2x.dir!=null ? svgArrow(s2x.dir,_gwSwellCol(2)) : '')
       + '<span class="v" style="color:'+hsCol(s2h)+';font-size:11px;">'+(s2h?(s2Resid?'≈':'')+s2h.toFixed(1)+'m':'—')+'</span>'
       + (s2h ? _gwPerPill(s2x.t, true) : '')
       + '</div>';
@@ -1166,7 +1247,7 @@ function _gwRenderGrid(d, day) {
     extraDefs.forEach(function(def, ei){
       var eh = def.h[fi], et = def.t && def.t[fi], ed = def.dir && def.dir[fi];
       html += '<div class="gw-cell"'+gia+' style="grid-row:'+(8+ei)+';grid-column:'+col+';'+nBg+'">'
-        + (eh!=null && ed!=null ? svgArrow(ed,'#8aa0b8') : '')
+        + (eh!=null && ed!=null ? svgArrow(ed,_gwSwellCol(def.idx)) : '')
         + '<span class="v" style="color:'+hsCol(eh)+';font-size:11px;">'+(eh!=null?eh.toFixed(1)+'m':'—')+'</span>'
         + (eh!=null ? _gwPerPill(et, true) : '')
         + '</div>';
