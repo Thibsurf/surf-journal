@@ -234,22 +234,13 @@ async function fetchMarc(spot) {
   } catch (e) { console.warn('[MARC]', spot.name, e.message); return { swell: [], wind: [] }; }
 }
 
-// ── Météo-France global (MFWAM) via Open-Meteo — houle seulement ───────
-async function fetchMfWave(spot) {
-  try {
-    const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.lat}&longitude=${spot.lon}`
-      + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction&models=meteofrance_wave&forecast_days=10&timezone=GMT';
-    const r = await fetchWithTimeout(url);
-    const j = await r.json();
-    if (!j?.hourly?.time) return [];
-    const h = j.hourly, out = [];
-    for (let i = 0; i < h.time.length; i++) {
-      const ms = Date.parse(h.time[i] + 'Z');
-      if (h.swell_wave_height[i] != null) out.push({ ms, val: h.swell_wave_height[i], period: h.swell_wave_period?.[i], dir: h.swell_wave_direction?.[i] });
-    }
-    return out;
-  } catch (e) { console.warn('[MF wave]', spot.name, e.message); return []; }
-}
+// MFWAM (Météo-France) n'est plus alimenté ici depuis le 30/07/2026 : le relais
+// Open-Meteo (`meteofrance_wave`, houle seule, résolution jamais documentée)
+// est remplacé par ingestion/fetch_mfwam.py, qui interroge Copernicus Marine
+// EN DIRECT (mêmes runs MFWAM, mais résolution réelle 0,083°/~9 km + vraies
+// partitions avec direction : mer du vent/houle 1/houle 2 — cf. son docstring).
+// previsions.html lit ce nouveau cache (modèle `mf`, kind `wave`) via
+// _fetchMfArchive, avec repli sur le fetch Open-Meteo live si le cache est vide.
 
 // ── GFS (houle via ncep_gfswave025, vent via gfs_seamless) — Open-Meteo ──
 async function fetchGfsWave(spot) {
@@ -422,15 +413,14 @@ async function run() {
   console.log(`[spots] ${spots.length} point(s) à traiter`);
   for (const spot of spots) {
     console.log(`--- ${spot.name} ---`);
-    const [bom, mfWave, gfsWave, gfsWind, ecmwf, nc, marc] = await Promise.all([
-      fetchBom(spot), fetchMfWave(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot), fetchMeteoNc(spot, ncToken), fetchMarc(spot),
+    const [bom, gfsWave, gfsWind, ecmwf, nc, marc] = await Promise.all([
+      fetchBom(spot), fetchGfsWave(spot), fetchGfsWind(spot), fetchEcmwf(spot), fetchMeteoNc(spot, ncToken), fetchMarc(spot),
     ]);
     const rows = [
       ...toRows(spot, 'nc', 'swell_primary', nc.swell),
       ...toRows(spot, 'nc', 'wind', nc.wind),
       ...toRows(spot, 'bom', 'swell_primary', bom.swell),
       ...toRows(spot, 'bom', 'wind', bom.wind),
-      ...toRows(spot, 'mf', 'swell_primary', mfWave),
       ...toRows(spot, 'gfs', 'swell_primary', gfsWave),
       ...toRows(spot, 'gfs', 'wind', gfsWind),
       ...toRows(spot, 'ecmwf', 'swell_primary', ecmwf.swell),

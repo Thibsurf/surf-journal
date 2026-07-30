@@ -6,3 +6,9 @@
 meteofetch==0.5.8
 pandas==2.3.3
 requests==2.32.5
+
+# fetch_mfwam.py — copernicusmarine (EUPL-1.2) : nécessite un compte gratuit
+# Copernicus Marine (identifiants passés en CI via COPERNICUSMARINE_SERVICE_
+# USERNAME/_PASSWORD, cf. workflow). xarray décode le NetCDF téléchargé.
+copernicusmarine==2.2.1
+xarray==2024.2.0

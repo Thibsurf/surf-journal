@@ -2239,3 +2239,84 @@ tableau restent cohérents avec BOM sur le nouveau spot, 0 erreur JS.
 
 **Non touché** : ES5 strict (que des `var`), pas de nouvelle extraction vers
 `assets/`. `CACHE_NAME` → **v52** (previsions.html modifié).
+
+## Session du 30/07/2026 — MFWAM en direct via Copernicus Marine (remplace le relais Open-Meteo)
+
+Demande utilisateur : lacune suspectée sur ECMWF (résolution "9 km" jamais
+vérifiée, seuls ~7 spots avec un ID Windguru en dur reçoivent une courbe).
+Recherche faite sur ECMWF Open Data (`data.ecmwf.int`, package `ecmwf-opendata`) :
+confirmé IFS+AIFS-single existent, grille réelle 0,25° (~28 km, pas 9 km), mais
+sans direction par partition (seulement des hauteurs par bande de période
+10-30s, nouveauté cycle 50r1). Les vraies partitions ECMWF (`swh1/mwd1/mwp1`
+etc., existent bien, param-db confirmé) appartiennent au catalogue temps réel
+restreint — **vérifié en pratique** avec une clé `api.ecmwf.int` que
+l'utilisateur a créée : `who-am-i` marche, mais `services/mars` répond "no
+access", `datasets/tigge`/`datasets/s2s` demandent une licence à accepter (et
+sont de toute façon hors-sujet, pas de houle temps réel dedans). Piste
+écartée.
+
+L'utilisateur a signalé un accès Copernicus Marine — recherche confirmée : le
+produit `GLOBAL_ANALYSISFORECAST_WAV_001_027` (MFWAM, Météo-France), dataset
+`cmems_mod_glo_wav_anfc_0.083deg_PT3H-i`, expose bien de vraies partitions
+AVEC direction (mer du vent `VHM0_WW`/`VMDR_WW`/`VTM01_WW`, houle primaire
+`VHM0_SW1`/`VMDR_SW1`/`VTM01_SW1`, houle secondaire `VHM0_SW2`/`VMDR_SW2`/
+`VTM01_SW2`), grille 0,083° (~9 km, vérifié via `cm.describe()` : step
+0.08333°), 2 runs/j, horizon 10 j. C'est le même modèle que la clé `mf`
+existante (jusqu'ici via le relais Open-Meteo `meteofrance_wave`, résolution
+jamais documentée, houle primaire/secondaire seulement) — décision : `mf`
+passe en direct sur Copernicus Marine, chantier ECMWF (IFS+AIFS Open Data)
+remis à un chantier séparé.
+
+**Vérifié en réel, pas supposé** : `copernicusmarine.subset()` avec bbox
+étroite (englobant les 7 spots + marge 0,6°) + les 13 variables houle en un
+seul appel — 887 Ko pour 6°×4°×1j×13 vars (test), largement sous ce
+qu'AROME/ECMWF téléchargent en entier. `end_datetime` au-delà de l'horizon
+réel du produit ne lève PAS d'erreur (juste un warning, le résultat est
+clampé) — pas besoin de calculer le run le plus récent comme pour AROME.
+Aucune case terre/masquée rencontrée sur les 7 spots NC actuels (grille 9 km
+suffisamment fine pour les passes/lagons testés, contrairement à ce qui était
+anticipé) — filet de sécurité (`nearest_valid_cell`) ajouté quand même par
+prudence pour de futurs spots plus côtiers.
+
+`ingestion/fetch_mfwam.py` (nouveau) exécuté en réel pendant la vérification :
+7 spots, 77 lignes upsertées dans `model_forecast_cache` (modèle `mf`, kind
+`wave` — même convention que `fetch_marc.py`, pas `swell_primary` comme
+l'ancien cron JS). Valeurs cohérentes avec la climatologie NC (houle SE
+dominante ~150-160°, mer du vent courte période ESE, houle secondaire SSW
+plus longue période).
+
+Deux bugs de compatibilité trouvés en vérifiant après coup (le changement de
+kind `swell_primary`→`wave` pour `mf` cassait deux lecteurs génériques qui ne
+géraient jusqu'ici QUE ce premier schéma) :
+- `_renderCachedModelsBlock` (bloc comparatif archivé) : ne savait lire que
+  `kind='swell_primary'` avec champs `val/period/dir` — ne trouvait rien pour
+  `kind='wave'` (schéma `hour/totH/totT/totDir`, celui de MARC ET maintenant
+  MF). Généralisé pour lire les deux schémas.
+- `_lookupModelCache` (repli du vote de fiabilité) : même souci — et révèle au
+  passage que ce repli n'a probablement JAMAIS fonctionné pour MARC (kind
+  mismatch depuis l'origine de `fetch_marc.py`, invisible car un autre
+  mécanisme, `_cacheModelPoints`, réarchive déjà les points de `_swellCache`
+  en `swell_primary` à chaque visite de page). Généralisé la même façon,
+  bénéficie aux deux modèles.
+
+`_drawMarcSpectrumRose` généralisée en `_drawSpectrumRose(modelKey, atMs)` —
+MARC et MF affichés côte à côte dans `#spectrum-compare-wrap` (chacun masqué
+indépendamment si son modèle n'a pas de partitions pour l'instant affiché).
+C'est la comparaison de spectre demandée par l'utilisateur — MF a 3
+partitions (mer du vent/houle 1/houle 2) contre jusqu'à 6 pour MARC, mais les
+deux ont une vraie direction par train, contrairement aux bandes de période
+ECMWF (hauteur seule).
+
+`_fetchMfCombined` (cache-first Copernicus Marine, repli `_fetchMeteoFranceWave`
+si le cache est vide pour ce spot) — même pattern que `_fetchMarcCombined`,
+gardé pour le bonus vent ARPEGE qu'Open-Meteo fournit et que Copernicus Marine
+(catalogue océan) n'a pas.
+
+Nouveau job CI `mfwam` (`.github/workflows/cache-model-forecasts.yml`), même
+planning 3×/j que `arome`. Nécessite 2 secrets repo à créer par l'utilisateur :
+`COPERNICUSMARINE_SERVICE_USERNAME`, `COPERNICUSMARINE_SERVICE_PASSWORD`.
+
+**Non touché** : ES5 strict, pas de nouvelle extraction vers `assets/` (tout
+reste dans `previsions.html`/`ingestion/`/`.github/`) — pas de bump
+`CACHE_NAME`. Chantier ECMWF (IFS Open Data + AIFS-single, remplacement du
+relais Windguru) prévu en chantier séparé, cf. CLAUDE.md.

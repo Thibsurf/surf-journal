@@ -65,9 +65,13 @@ Supabase `tiiptlozingmgzcnexpu.supabase.co` (clé anon côté client) + Worker C
 Tables : `sessions`, `meteo_cache`, `model_forecast_cache`, `shared_tokens`, `spots`,
 `shared_spots`.
 
-Ingestion : `ingestion/fetch_arome.py` (GRIB2 Météo-France) et `ingestion/fetch_marc.py`
-(MARC-WW3 Ifremer via OPeNDAP), planifiées par `.github/workflows/cache-*.yml`, 3×/jour.
-Idem GFS/BOM/MF/ECMWF via `.github/scripts/cache-model-forecasts.mjs`, même planning.
+Ingestion : `ingestion/fetch_arome.py` (GRIB2 Météo-France), `ingestion/fetch_marc.py`
+(MARC-WW3 Ifremer via OPeNDAP) et `ingestion/fetch_mfwam.py` (MFWAM via Copernicus
+Marine, `copernicusmarine.subset()` — nécessite les secrets repo
+`COPERNICUSMARINE_SERVICE_USERNAME`/`_PASSWORD`, compte gratuit), planifiées par
+`.github/workflows/cache-*.yml`, 3×/jour. Idem GFS/BOM/ECMWF via
+`.github/scripts/cache-model-forecasts.mjs`, même planning (MF n'y est plus depuis
+le 30/07/2026, cf. ci-dessous).
 
 Le Worker (`worker_cloudflare/worker.js`) a son propre cron (`*/5 * * * *`, token
 meteo.nc) qui piggyback aussi, depuis le 28/07/2026, le **préchauffage du cache edge
@@ -78,8 +82,19 @@ ce jour-là). IDs windguru des spots par défaut dupliqués une 3e fois dans
 `worker.js` (`KNOWN_WG_SPOTS`) — mêmes valeurs que `_wgIdForSpot()` (previsions.html)
 et `wgIdForSpot()` (cache-model-forecasts.mjs), à garder synchronisées à la main.
 
-Sources de prévision : meteo.nc, Open-Meteo (GFS, MFWAM), BOM WW3, ECMWF via Windguru,
-MARC (Ifremer), AROME 2,5 km.
+Sources de prévision : meteo.nc, Open-Meteo (GFS), BOM WW3, ECMWF via Windguru,
+MARC (Ifremer, 5,5 km), AROME 2,5 km, **MFWAM via Copernicus Marine (direct depuis
+le 30/07/2026, grille 0,083°/~9 km — remplace le relais Open-Meteo)**. C'est,
+avec MARC, le seul modèle houle du comparatif à exposer une direction PAR
+partition (mer du vent/houle primaire/houle secondaire — `VHM0_WW`/`VHM0_SW1`/
+`VHM0_SW2` + dir/période), contrairement à BOM/GFS/ECMWF (houle globale seule).
+Le vrai swell partitionné directionnel d'ECMWF (`swh1/mwd1/mwp1`...) existe mais
+appartient au catalogue temps réel restreint d'ECMWF (licence payante/
+institutionnelle) — pas accessible via l'Open Data gratuit ni via un compte
+`api.ecmwf.int` standard (vérifié). ECMWF ici reste donc IFS-WAM via Windguru
+(`id_model=118/117`, accès non officiel pour les spots NC, cf. previsions.html) —
+chantier séparé prévu pour passer sur ECMWF Open Data (IFS + AIFS-single, direct,
+0,25°/~28 km, sans repli Windguru).
 
 ## Règles de travail
 

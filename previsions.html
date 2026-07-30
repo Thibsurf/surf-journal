@@ -703,18 +703,34 @@ html.widget-mode #gw-widget { margin-bottom:0; }
          préférence n'est réglée dans ⚙ Score. Une seule fois pour la pile
          houle+période+vent : la répéter sur les trois panneaux serait du bruit. -->
     <div id="cmp-tide-band-leg" style="display:none;font-size:11px;color:var(--faint);line-height:1.45;margin-top:3px;"></div>
-    <!-- Spectre MARC (mer du vent + houles séparées) : seul modèle ici à distinguer les
-         trains de houle individuellement (hauteur/période/direction/dispersion angulaire)
-         — BOM/GFS/MF/ECMWF ne donnent qu'une houle globale, pas de comparatif possible,
-         donc rose à part plutôt que mélangée à celle du dessus (cf. _drawMarcSpectrumRose). -->
-    <div id="marc-spectrum-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
-        <b style="color:var(--text);">🌊 Spectre MARC</b>
-        <span style="font-size:11px;color:var(--faint);"> — mer du vent + houles séparées, avec dispersion directionnelle (largeur du secteur)</span>
+    <!-- Spectre par train de houle (hauteur/période/direction, dispersion angulaire
+         quand connue) : MARC et MF/MFWAM sont les deux seuls modèles du comparatif à
+         partitionner le spectre AVEC direction — BOM/GFS/ECMWF ne donnent qu'une houle
+         globale (ECMWF Open Data ajoute des bandes de période mais sans direction, pas
+         comparable ici). Deux roses côte à côte plutôt qu'une mélangée à celle du
+         dessus, chacune masquée indépendamment si son modèle n'a pas de partitions
+         pour l'instant affiché (cf. _drawSpectrumRose, généralisée le 30/07/2026 —
+         avant, ne savait dessiner que MARC). -->
+    <div id="spectrum-compare-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
+      <div id="marc-spectrum-wrap" style="display:none;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+          <b style="color:var(--text);">🌊 Spectre MARC</b>
+          <span style="font-size:11px;color:var(--faint);"> — mer du vent + houles séparées, avec dispersion directionnelle (largeur du secteur)</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div id="marc-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur = un train de houle (rayon = hauteur, largeur = dispersion directionnelle). Flèche blanche = mer totale."></div>
+          <div id="marc-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
+        </div>
       </div>
-      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-        <div id="marc-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur = un train de houle (rayon = hauteur, largeur = dispersion directionnelle). Flèche blanche = mer totale."></div>
-        <div id="marc-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
+      <div id="mf-spectrum-wrap" style="display:none;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+          <b style="color:var(--text);">🌊 Spectre MFWAM (Copernicus Marine)</b>
+          <span style="font-size:11px;color:var(--faint);"> — mer du vent + houle primaire/secondaire, avec direction (pas de dispersion angulaire dans ce produit)</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div id="mf-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque secteur = un train de houle (rayon = hauteur). Flèche blanche = mer totale."></div>
+          <div id="mf-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
+        </div>
       </div>
     </div>
     <div id="swell-cmp-vote" style="display:none;margin-top:10px;padding:10px;background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:8px;"></div>
@@ -874,7 +890,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <button id="tbl-btn-nc" onclick="switchTable('nc')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;white-space:nowrap;">🛰 meteo.nc</button>
           <button id="tbl-btn-om" onclick="switchTable('om')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">🌐 GFS</button>
           <button id="tbl-btn-bom" onclick="switchTable('bom')" title="Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">BOM</button>
-          <button id="tbl-btn-mf" onclick="switchTable('mf')" title="Météo-France — modèle vague global MFWAM" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
+          <button id="tbl-btn-mf" onclick="switchTable('mf')" title="Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine — grille 0,083° (~9 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
           <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-WAM (via Windguru) — pas de vent disponible pour cette source" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
           <button id="tbl-btn-marc" onclick="switchTable('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
         </div>
@@ -4466,9 +4482,14 @@ async function _fetchBomWw3(spot) {
   }
 }
 
-// Météo-France global (MFWAM) — distinct de « meteo.nc » : ce dernier est le
-// bulletin officiel régionalisé NC, celui-ci le modèle vague global brut,
-// utile pour voir l'effet de la régionalisation meteo.nc sur la houle brute.
+// Météo-France global (MFWAM) via Open-Meteo — distinct de « meteo.nc » : ce
+// dernier est le bulletin officiel régionalisé NC, celui-ci le modèle vague
+// global brut, utile pour voir l'effet de la régionalisation meteo.nc sur la
+// houle brute. Depuis le 30/07/2026, N'EST PLUS la source primaire de `mf` :
+// _fetchMfCombined lit d'abord le cache Copernicus Marine (_fetchMfArchive,
+// vraie résolution + partitions avec direction), et ne retombe ici que si ce
+// cache est vide pour ce spot — gardé pour son bonus vent ARPEGE, absent du
+// produit CMEMS (catalogue océan uniquement).
 async function _fetchMeteoFranceWave(spot) {
   var ctrl = new AbortController();
   var tt = setTimeout(function(){ ctrl.abort(); }, 8000);
@@ -4527,6 +4548,64 @@ async function _fetchMeteoFranceWave(spot) {
     return { primary: primary, secondary: secondary };
   } catch (e) { console.warn('[MF wave]', e && e.message); return { primary: [], secondary: [] }; }
   finally { clearTimeout(tt); }
+}
+// Lecture du cache Supabase alimenté par ingestion/fetch_mfwam.py (Copernicus
+// Marine, GitHub Action) — même principe que _fetchMarcArchive/_fetchAromeArchive :
+// une lecture Supabase quasi instantanée plutôt qu'un fetch Open-Meteo à chaque
+// page. Contrairement à MARC, les 3 partitions CMEMS (mer du vent/houle 1/houle 2
+// = WW/SW1/SW2) sont déjà classées par construction (pas de recherche façon
+// _marcPrimarySwell nécessaire) : houle primaire = SW1, houle secondaire = SW2,
+// mer du vent = WW. Pas de vent 10 m dans ce produit (catalogue océan uniquement) —
+// windKt/windDir/windGustKt restent null ici, à la différence du fetch live
+// _fetchMeteoFranceWave (ARPEGE) qui les fournit en bonus.
+async function _fetchMfArchive(spot) {
+  try {
+    if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
+    var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
+    var ids = [], nowA = new Date();
+    // -1..+10j : couvre la fenêtre écrite par fetch_mfwam.py (recul 1j + horizon
+    // 10j du produit CMEMS) avec une marge d'un jour de chaque côté.
+    for (var dd = -1; dd <= 10; dd++) {
+      var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000); // jour NC-local
+      ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_mf_wave');
+    }
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+    if (!r || !r.data || !r.data.length) return null;
+    var primary = [], secondary = [];
+    r.data.forEach(function(row) {
+      var p = row.date.split('-');
+      (row.hours || []).forEach(function(hh) {
+        if (!hh || hh.totH == null) return;
+        var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
+        var parts = hh.partitions || [];
+        var ww = parts[0], sw1 = parts[1], sw2 = parts[2];
+        if (sw1) {
+          primary.push({
+            ms: ms, h: sw1.h, t: sw1.t, dir: sw1.dir,
+            totH: hh.totH, totDir: hh.totDir,
+            windSeaH: ww ? ww.h : null, windSeaDir: ww ? ww.dir : null,
+            windKt: null, windDir: null, windGustKt: null,
+            partitions: parts,
+          });
+        }
+        if (sw2) secondary.push({ ms: ms, h: sw2.h, t: sw2.t, dir: sw2.dir });
+      });
+    });
+    if (!primary.length) return null;
+    primary.sort(function(a, b) { return a.ms - b.ms; });
+    secondary.sort(function(a, b) { return a.ms - b.ms; });
+    return { primary: primary, secondary: secondary };
+  } catch (e) { console.warn('[MF archive]', e && e.message); return null; }
+}
+// Cache-first, repli sur le fetch Open-Meteo direct seulement si le cache est
+// vide (spot jamais ingéré, run GitHub Action pas encore passé, etc.) — même
+// logique que _fetchMarcCombined. Le job tourne 3x/jour donc ce repli reste
+// rare en usage normal ; il reste utile car _fetchMeteoFranceWave fournit en
+// prime le vent ARPEGE (absent du produit CMEMS).
+async function _fetchMfCombined(spot) {
+  var cached = await _fetchMfArchive(spot);
+  if (cached && cached.primary && cached.primary.length >= 2) return cached;
+  return _fetchMeteoFranceWave(spot);
 }
 
 // ECMWF (IFS-WAM, id_model=118 chez Windguru) — PAS listé dans id_model_arr
@@ -4756,7 +4835,7 @@ async function _fetchMarcWave(spot) {
 // fetch bloquant tout de même), une lecture Supabase quasi instantanée. Format des
 // lignes identique à celui produit par _fetchMarcWave (mêmes clés `primary[].{h,t,
 // dir,spread,windKt,windDir,partitions}`) pour rester interchangeable pour
-// _gwBuildModelFcast/_drawSwellCompare/_drawMarcSpectrumRose.
+// _gwBuildModelFcast/_drawSwellCompare/_drawSpectrumRose.
 async function _fetchMarcArchive(spot) {
   try {
     if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
@@ -4824,8 +4903,10 @@ function _rgbaFromHex(hex, alpha) {
 // page et volontairement absents d'ici. « obs » (mesure réelle en station) n'est pas
 // un modèle : couleur neutre distincte pour ne pas rivaliser avec les modèles.
 // Résolution, du plus fin au plus large (renseigne le choix des couleurs, pas un ordre
-// d'affichage) : AROME 2,5 km · MARC 5,5 km · ECMWF 9 km · BOM 14 km · GFS 28 km ·
-// MF global (résolution non communiquée par Open-Meteo) · meteo.nc régional (non documentée).
+// d'affichage) : AROME 2,5 km · MARC 5,5 km · ECMWF 9 km (Windguru — pas la vraie
+// résolution ECMWF Open Data, cf. chantier à venir) · MF global 9 km (Copernicus
+// Marine/MFWAM, direct depuis le 30/07/2026 — auparavant "non communiquée", relais
+// Open-Meteo) · BOM 14 km · GFS 28 km · meteo.nc régional (non documentée).
 // res = résolution affichée dans les légendes (AUDIT-previsions.md §9.4) — jusqu'ici
 // cachée dans un `title` (invisible sur mobile) alors que c'est l'information qui
 // hiérarchise la confiance entre modèles. null = non communiquée publiquement.
@@ -4840,7 +4921,7 @@ var MODEL_STYLE = {
   ecmwf: { label: 'ECMWF',     col: '#a99ff8', res: '9 km' },
   bom:   { label: 'BOM WW3',   col: '#e8a057', res: '14 km' },
   gfs:   { label: 'GFS',       col: '#4fa3c7', res: '28 km' },
-  mf:    { label: 'MF global', col: '#7a94aa', res: null },
+  mf:    { label: 'MF global', col: '#7a94aa', res: '9 km' },
   nc:    { label: 'meteo.nc',  col: '#f0c674', res: null }
 };
 // Couleur de la courbe « mesures » (obs), thémée — seule entrée de MODEL_STYLE
@@ -4856,7 +4937,7 @@ var SWELL_MODELS = [
   { key: 'nc',    label: 'meteo.nc',  col: _rgbaFromHex(MODEL_STYLE.nc.col, .95),  desc: 'Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé)' },
   { key: 'gfs',   label: 'GFS',       col: _rgbaFromHex(MODEL_STYLE.gfs.col, .95), desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
   { key: 'bom',   label: 'BOM WW3',   col: _rgbaFromHex(MODEL_STYLE.bom.col, .95),   desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
-  { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM (meteofrance_wave, via Open-Meteo) — résolution non communiquée publiquement par Open-Meteo' },
+  { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine (GLOBAL_ANALYSISFORECAST_WAV_001_027) — grille 0,083° (~9 km), houle primaire/secondaire + mer du vent avec direction' },
   { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-WAM (via Windguru, id_model 118) — grille 0,09° (~9 km), le plus fin des modèles globaux ici' },
   { key: 'marc',  label: 'MARC WW3',  col: _rgbaFromHex(MODEL_STYLE.marc.col, .95),  desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici' }
 ];
@@ -5722,11 +5803,39 @@ async function _lookupModelCache(spot, modelKey, kind, dateStr, targetMs) {
     var r = await _ensureSupabaseClient().from('model_forecast_cache').select('hours')
       .eq('date', dateStr).eq('lat', spot.lat).eq('lon', spot.lon).eq('model', modelKey).eq('kind', kind)
       .order('issued_at', { ascending: false }).limit(1).maybeSingle();
+    // MARC/MF (fetch_marc.py/fetch_mfwam.py) archivent kind='wave' (houle totale +
+    // partitions), pas 'swell_primary'/'swell_secondary' comme le cron JS (toRows())
+    // — sans ce repli, ces deux modèles ne trouvent jamais rien ici (kind ne
+    // correspondrait à aucune ligne existante).
+    var usedWaveKind = false;
+    if ((!r.data || !r.data.hours || !r.data.hours.length) && (kind === 'swell_primary' || kind === 'swell_secondary')) {
+      r = await _ensureSupabaseClient().from('model_forecast_cache').select('hours')
+        .eq('date', dateStr).eq('lat', spot.lat).eq('lon', spot.lon).eq('model', modelKey).eq('kind', 'wave')
+        .order('issued_at', { ascending: false }).limit(1).maybeSingle();
+      usedWaveKind = true;
+    }
     if (!r.data || !r.data.hours || !r.data.hours.length) return null;
     var targetH = new Date(targetMs + 11 * 3600000).getUTCHours();
     var best = null, bd = 5;
-    r.data.hours.forEach(function(row) { var df = Math.abs(row.h - targetH); if (df < bd) { bd = df; best = row; } });
-    return best ? { h: best.val, t: best.period, dir: best.dir } : null;
+    // .h (nc/gfs/bom/ecmwf) vs .hour (marc/mf) — cf. commentaire équivalent dans
+    // _renderCachedModelsBlock.
+    r.data.hours.forEach(function(row) { var rh = row.h != null ? row.h : row.hour; var df = Math.abs(rh - targetH); if (df < bd) { bd = df; best = row; } });
+    if (!best) return null;
+    if (usedWaveKind) {
+      // Houle primaire/secondaire = partition SW1/SW2 (MF) ou la plus énergétique de
+      // type houle (MARC, cf. _marcPrimarySwell) — pas dispo ici sans dupliquer cette
+      // logique, on prend directement l'index attendu (1=primaire,2=secondaire) avec
+      // repli sur la mer totale si absent. totH/totT/totDir (MF) vs hs/t02/dir (MARC) :
+      // deux scripts, deux conventions de nom pour le même total — les deux lues ici.
+      var parts = best.partitions || [];
+      var p = kind === 'swell_secondary' ? parts[2] : parts[1];
+      if (p) return { h: p.h, t: p.t, dir: p.dir };
+      var totH = best.totH != null ? best.totH : best.hs;
+      var totT = best.totT != null ? best.totT : best.t02;
+      var totDir = best.totDir != null ? best.totDir : best.dir;
+      return totH != null ? { h: totH, t: totT, dir: totDir } : null;
+    }
+    return { h: best.val, t: best.period, dir: best.dir };
   } catch (e) { return null; }
 }
 
@@ -5922,7 +6031,7 @@ async function _renderSwellCompare() {
   // _windCmpAtStation (les deux comparatifs sont indépendants par construction —
   // le vent peut re-échantillonner, la houle ne le fait jamais).
   var _spotForFetch = SPOTS[currentSpot];
-  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMeteoFranceWave(_spotForFetch), _fetchEcmwfWave(_spotForFetch), _fetchMarcCombined(_spotForFetch)]);
+  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMfCombined(_spotForFetch), _fetchEcmwfWave(_spotForFetch), _fetchMarcCombined(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
   _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3] };
   _cmpZoom.a = 0; _cmpZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
@@ -6048,25 +6157,33 @@ function _drawSwellCompare() {
   // flèches — avec 5 modèles les vecteurs se chevauchent souvent (directions
   // de houle proches) et du texte dessus aurait fait un pâté illisible
   // (remarque de l'utilisateur en cours de route).
-  // Spectre MARC (mer du vent + houles séparées) : seul modèle intégré ici à exposer
-  // une décomposition par train de houle avec dispersion directionnelle (spr/pspr0-5,
-  // cf. _fetchMarcWave — vérifié empiriquement qu'aucun autre modèle du comparatif ne
-  // le propose). Indépendant du toggle houle 1/2 (_swellMode) : la décomposition par
-  // partition est plus fine que ce binaire, donc toujours affichée sur la houle totale
-  // (primary), qu'on soit en vue houle 1 ou houle 2 du graphe au-dessus.
+  // Spectre par train de houle avec direction : MARC (dispersion angulaire en
+  // plus, spr/pspr0-5, cf. _fetchMarcWave) et MF/MFWAM (3 partitions CMEMS
+  // classées mer du vent/houle 1/houle 2, cf. _fetchMfArchive) — vérifié
+  // empiriquement qu'aucun autre modèle du comparatif ne fournit de direction
+  // PAR partition (BOM/GFS/ECMWF n'ont qu'une houle globale ; les bandes de
+  // période ECMWF Open Data n'ont pas de direction non plus). Généralisée le
+  // 30/07/2026 (avant : _drawMarcSpectrumRose, ne savait dessiner que MARC) —
+  // MARC_PART_COLORS/LABELS réutilisées telles quelles pour MF : ses 3
+  // partitions (mer du vent/houle 1/houle 2) tombent exactement sur les index
+  // 0/1/2, déjà classées par énergie par MFWAM (pas de recherche façon
+  // _marcPrimarySwell nécessaire côté MF). Indépendant du toggle houle 1/2
+  // (_swellMode) : la décomposition par partition est plus fine que ce
+  // binaire, donc toujours affichée sur la houle totale (primary), qu'on soit
+  // en vue houle 1 ou houle 2 du graphe au-dessus.
   var MARC_PART_COLORS = ['#e8a057', '#4fa3c7', '#a99ff8', '#e05c5c', '#3dba8a', '#f0c674'];
   var MARC_PART_LABELS = ['Mer du vent', 'Houle 1', 'Houle 2', 'Houle 3', 'Houle 4', 'Houle 5'];
-  function _drawMarcSpectrumRose(atMs) {
-    var wrap = document.getElementById('marc-spectrum-wrap');
-    var el = document.getElementById('marc-spectrum-rose');
-    var legEl = document.getElementById('marc-spectrum-legend');
-    if (!wrap || !el) return;
-    var marcPts = _swellCache && _swellCache.marc && _swellCache.marc.primary;
-    var p = marcPts && nearest(marcPts, atMs, 4 * 3600000);
+  function _drawSpectrumRose(modelKey, atMs) {
+    var wrap = document.getElementById(modelKey + '-spectrum-wrap');
+    var el = document.getElementById(modelKey + '-spectrum-rose');
+    var legEl = document.getElementById(modelKey + '-spectrum-legend');
+    if (!wrap || !el) return false;
+    var modelPts = _swellCache && _swellCache[modelKey] && _swellCache[modelKey].primary;
+    var p = modelPts && nearest(modelPts, atMs, 4 * 3600000);
     var parts = p && p.partitions ? p.partitions
       .map(function(pt, idx) { return pt ? { idx: idx, h: pt.h, t: pt.t, dir: pt.dir, spread: pt.spread } : null; })
       .filter(function(x) { return x && x.dir != null; }) : [];
-    if (!parts.length) { wrap.style.display = 'none'; return; }
+    if (!parts.length) { wrap.style.display = 'none'; return false; }
     wrap.style.display = '';
     var S = 92, cx = S / 2, cy = S / 2, R = 34;
     var svg = '<svg width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '">';
@@ -6132,9 +6249,15 @@ function _drawSwellCompare() {
           + '</div>';
       }).join('');
     }
+    return true;
   }
   function _drawSwellRose(atMs) {
-    _drawMarcSpectrumRose(atMs);
+    // Wrap englobant : visible dès qu'AU MOINS un des deux modèles a des
+    // partitions pour cet instant (chacun garde sa propre visibilité interne).
+    var marcShown = _drawSpectrumRose('marc', atMs);
+    var mfShown = _drawSpectrumRose('mf', atMs);
+    var compareWrap = document.getElementById('spectrum-compare-wrap');
+    if (compareWrap) compareWrap.style.display = (marcShown || mfShown) ? '' : 'none';
     var el = document.getElementById('swell-cmp-rose');
     var perEl = document.getElementById('swell-cmp-periods');
     if (!el) return;
@@ -14265,7 +14388,10 @@ async function _renderCachedModelsBlock(spot, date) {
     function pick(hours) {
       if (!hours || !hours.length) return null;
       var best = null, bd = 99;
-      hours.forEach(function(h) { var df = Math.abs((h.h != null ? h.h : 12) - targetH); if (df < bd) { bd = df; best = h; } });
+      // .h (nc/gfs/bom/ecmwf, cf. toRows() cache-model-forecasts.mjs) vs .hour
+      // (mf/marc, schéma fetch_mfwam.py/fetch_marc.py) — deux conventions
+      // d'heure coexistent dans model_forecast_cache selon le script qui écrit.
+      hours.forEach(function(h) { var hh = h.h != null ? h.h : h.hour; var df = Math.abs((hh != null ? hh : 12) - targetH); if (df < bd) { bd = df; best = h; } });
       return best;
     }
     // Le cron (cache-model-forecasts.mjs) archive une NOUVELLE ligne à (quasi)
@@ -14283,6 +14409,10 @@ async function _renderCachedModelsBlock(spot, date) {
       if (!p) return;
       byModel[row.model] = byModel[row.model] || {};
       if (row.kind === 'swell_primary') byModel[row.model].swell = { val: p.val, period: p.period, dir: p.dir };
+      // kind='wave' (MARC/MF, cf. fetch_marc.py/fetch_mfwam.py) : houle totale
+      // totH/totT/totDir plutôt que val/period/dir — ex. MF depuis le 30/07/2026
+      // (remplace le relais Open-Meteo qui écrivait en 'swell_primary').
+      else if (row.kind === 'wave') byModel[row.model].swell = { val: p.totH, period: p.totT, dir: p.totDir };
       else if (row.kind === 'wind') byModel[row.model].wind = { val: p.val, dir: p.dir };
       byModelIssued[key] = row.issued_at;
     });

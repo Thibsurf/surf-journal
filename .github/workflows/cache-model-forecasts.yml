@@ -38,3 +38,25 @@ jobs:
         run: pip install -r ingestion/requirements.txt
       - name: Fetch + archive AROME OM NC
         run: python ingestion/fetch_arome.py
+
+  # MFWAM (Météo-France) via Copernicus Marine — remplace le relais Open-Meteo
+  # `meteofrance_wave` pour la clé modèle `mf` : mêmes runs/même modèle, mais en
+  # direct, avec la vraie résolution (0,083°, ~9 km) et de vraies partitions
+  # AVEC direction (mer du vent + houle primaire/secondaire), cf. le docstring
+  # de fetch_mfwam.py. Nécessite un compte Copernicus Marine gratuit — secrets
+  # du repo à créer par l'utilisateur (Settings → Secrets and variables →
+  # Actions) : COPERNICUSMARINE_SERVICE_USERNAME, COPERNICUSMARINE_SERVICE_PASSWORD.
+  mfwam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r ingestion/requirements.txt
+      - name: Fetch + archive MFWAM (Copernicus Marine)
+        env:
+          COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.COPERNICUSMARINE_SERVICE_USERNAME }}
+          COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
+        run: python ingestion/fetch_mfwam.py
