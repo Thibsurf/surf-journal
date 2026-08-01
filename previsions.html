@@ -714,8 +714,15 @@ html.widget-mode #gw-widget { margin-bottom:0; }
          généralisée le 30/07/2026 — avant, ne savait dessiner que MARC ; étendue à
          LOTUS le 02/08/2026 sans code nouveau, la fonction est déjà générique par
          modelKey). -->
-    <div id="spectrum-compare-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
-      <div id="marc-spectrum-wrap" style="display:none;margin-bottom:10px;">
+    <!-- flex-wrap : les 3 spectres (MARC/MFWAM/LOTUS) côte à côte sur desktop
+         (2-3 par ligne) plutôt qu'empilés verticalement — réduit la hauteur
+         occupée quand plusieurs modèles ont un spectre au même instant (retour
+         utilisateur : « les spectres prennent beaucoup de place verticale »).
+         Sur mobile, flex:1 1 260px force le retour à la ligne = empilé. Chaque
+         enfant reste masqué/affiché indépendamment (display none/block) par
+         _drawSpectrumRose ; dans un parent flex, un enfant block devient item. -->
+    <div id="spectrum-compare-wrap" style="display:none;flex-wrap:wrap;gap:8px 18px;align-items:flex-start;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
+      <div id="marc-spectrum-wrap" style="display:none;flex:1 1 260px;min-width:0;">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
           <b style="color:var(--text);">🌊 Spectre MARC</b>
           <span style="font-size:11px;color:var(--faint);"> — mer du vent + houles séparées, avec dispersion directionnelle (largeur du secteur)</span>
@@ -725,7 +732,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <div id="marc-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
         </div>
       </div>
-      <div id="mf-spectrum-wrap" style="display:none;margin-bottom:10px;">
+      <div id="mf-spectrum-wrap" style="display:none;flex:1 1 260px;min-width:0;">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
           <b style="color:var(--text);">🌊 Spectre MFWAM (Copernicus Marine)</b>
           <span style="font-size:11px;color:var(--faint);"> — mer du vent + houle primaire/secondaire, avec direction (pas de dispersion angulaire dans ce produit)</span>
@@ -735,7 +742,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <div id="mf-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
         </div>
       </div>
-      <div id="lotus-spectrum-wrap" style="display:none;">
+      <div id="lotus-spectrum-wrap" style="display:none;flex:1 1 260px;min-width:0;">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
           <b style="color:var(--text);">🌊 Spectre LOTUS (Surfline)</b>
           <span style="font-size:11px;color:var(--faint);"> — jusqu'à 6 trains directionnels natifs (pas de dispersion angulaire publiée dans ce produit)</span>
@@ -6620,7 +6627,9 @@ function _drawSwellCompare() {
     var mfShown = _drawSpectrumRose('mf', atMs);
     var lotusShown = _drawSpectrumRose('lotus', atMs);
     var compareWrap = document.getElementById('spectrum-compare-wrap');
-    if (compareWrap) compareWrap.style.display = (marcShown || mfShown || lotusShown) ? '' : 'none';
+    // 'flex' (pas '') : le conteneur est une rangée flex-wrap (spectres côte à
+    // côte), cf. le style inline du wrap. '' retomberait sur block = empilé.
+    if (compareWrap) compareWrap.style.display = (marcShown || mfShown || lotusShown) ? 'flex' : 'none';
     // _drawBandsCombined gère elle-même l'affichage de son wrap (aucun modèle
     // dispo à cet instant → wrap masqué), pas besoin de le refaire ici.
     _drawBandsCombined(atMs);

@@ -3248,3 +3248,14 @@ bias client), filtre `_windCmpHidden.lotus`, `visKt`/`allKt` (échelle Y), `sort
 légende chip `wcmp-leg-lotus` + `_updateWindCmpControls`, barre de lecture
 (`_renderCmpReadBar` x2), cross-cursor. Vérifié headless réel : 112 pts vent en
 cache, chip présent, **0 erreur JS**.
+
+### Présentation : spectres MARC/MFWAM/LOTUS côte à côte (compaction verticale)
+
+Retour utilisateur : « les spectres prennent beaucoup de place verticale ».
+`#spectrum-compare-wrap` passé en `display:flex;flex-wrap:wrap` (au lieu de
+block empilé) ; chaque bloc spectre en `flex:1 1 260px`. Résultat vérifié
+headless (largeur 866px) : les 3 roses (MARC/MFWAM/LOTUS) sur UNE ligne (même
+offsetTop, ~277px chacune) au lieu de 3 empilées → hauteur ÷3 sur desktop ;
+retour à la ligne automatique = empilé sur mobile. `_drawSwellRose` toggle
+maintenant le wrap en 'flex' (pas '') pour préserver le layout. 0 régression
+(chaque enfant reste masqué/affiché indépendamment).
