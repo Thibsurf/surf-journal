@@ -15,3 +15,8 @@ nc-token-extension-v10.zip
 # Python (ingestion/)
 __pycache__/
 *.pyc
+
+# surfline_client.py — état local (dédup de run) et réponses brutes de debug,
+# jamais versionnés (données volatiles, régénérées à chaque run)
+ingestion/surfline_state/
+ingestion/debug_raw/
