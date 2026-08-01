@@ -3121,3 +3121,81 @@ thib, tout est poussé et vérifié (headless réel quand possible, sinon noté
 explicitement). Le seul job encore rouge (`mfwam`) l'est sur une coupure
 réseau transitoire Copernicus, désormais absorbée par un retry — il repassera
 vert au prochain cron. Bonne nuit 🌙
+
+## Session du 02/08/2026 (nuit, fin) — passe APIs/variables + passe UX
+
+Retry mfwam **confirmé** : run de validation relancé → `mfwam` repasse vert
+(5/5 jobs verts). Le chantier CI est solide.
+
+### Passe APIs / crons / variables chargées par modèle — PROPRE
+
+Inventaire complet des sources et vérification en base (pas supposé) :
+- **Crons** : `cache-marc.yml` (0 1,9,17) + `cache-model-forecasts.yml`
+  (15 1,9,17) avec 5 jobs (cache Node = nc/gfs/bom ; arome ; mfwam ; ecmwf ;
+  surfline). Tous verts après les correctifs de cette nuit.
+- **Conversions de vent → nds vérifiées cohérentes sur TOUS les modèles** :
+  BOM `wnd_spd × 1.944` (m/s), GFS `wind_speed_unit=kn` (natif), nc
+  `wind_speed_kt` (natif), AROME/ECMWF/AIFS/MARC `× MS_KT` (m/s→nds depuis
+  u/v ou si10), LOTUS `KPH / 1.852`. Aucune double conversion, aucune unité
+  incohérente.
+- **Détection automatique des champs systématiquement nuls** (signature d'un
+  nom de variable erroné, comme le bug fg10) sur les 17 combos modèle/kind en
+  base : **aucun bug résiduel**. Les seuls champs tout-nuls sont sémantiquement
+  normaux — `period` sur les lignes `wind` (le vent n'a pas de période, champ
+  vestigial du helper `toRows`, jamais lu côté client) et `dir` sur ecmwf/aifs
+  `wave` (bandes de période sans direction, documenté). `aro/wind` : plus aucun
+  champ nul → confirme que le correctif fg10 de cette nuit a bien pris.
+- **Disponibilité rafale (gust)** cataloguée : présente seulement pour AROME
+  (`fg10`) et LOTUS (Surfline). Absente pour BOM/GFS/nc/ECMWF/AIFS/MARC — c'est
+  INHÉRENT aux flux (WW3, GFS-marine, IFS-oper, rpcache ne l'exposent pas dans
+  ces chemins), pas un bug. La table AROME et le hover du comparatif vent
+  affichent la rafale là où elle existe.
+- **Observation (pas un bug, à décider plus tard)** : `fetch_surfline.py` écrit
+  `model=lotus, kind=wind` en cache, mais RIEN ne le lit encore (le comparatif
+  vent ne fetche pas LOTUS). Donnée « morte » pour l'instant — assumée comme
+  préparation à l'intégration LOTUS au comparatif vent (chantier futur, hors
+  périmètre de cette nuit). Coût négligeable (5 spots × 7 j). À câbler ou à
+  retirer selon la décision sur le comparatif vent.
+
+### Passe UX / design — 2 vrais bugs corrigés, reste = propositions à valider en voyant le rendu
+
+Approche : capture d'écran réelle de la page (thème clair) + lecture du markup,
+plutôt que deviner. Limite assumée : les **canvas** (figures Hs/période/vent,
+roses de spectre) ne se rendent PAS de façon fiable en capture headless
+(`requestAnimationFrame` s'arrête une fois la page quiescente, cf. CLAUDE.md) —
+impossible de vérifier visuellement une refonte de figure sans un œil humain.
+
+**Vérifié SANS bug à corriger** :
+- Les deux tableaux volumineux (détaillé `#table-wrap.tscroll` 13 colonnes, et
+  comparatif `#cmp-table-wrap` 7 j × 56 créneaux) sont DÉJÀ dans des conteneurs
+  `overflow-x:auto` avec 1ʳᵉ colonne collante — pas de débordement mobile, scroll
+  horizontal propre. Rien à corriger.
+- En-tête de la carte AROME générique et exact après la migration GRIB2 (le
+  libellé de source précis vient de `j.model` au rendu, pas de texte Windguru
+  figé).
+- Sélecteur du tableau détaillé (nc/gfs/bom/mf/ecmwf/aifs/marc) SANS LOTUS :
+  choix cohérent (LOTUS ne couvre que 5 spots → afficherait « non chargé »
+  partout ailleurs ; il vit dans le comparatif, pas ce sélecteur mono-modèle).
+
+**Bugs UX réellement corrigés cette nuit** (déjà décrits plus haut) : badge
+« Mesuré » du comparatif vent rendu distinct (référence, pas un modèle de
+plus) ; tooltip ECMWF/AIFS de la légende houle cassé par des guillemets non
+échappés.
+
+**Propositions de refonte NON faites — délibérément laissées à Thib** (design
+subjectif, visible, non vérifiable headless, et CLAUDE.md demande de valider
+avant tout changement de style) :
+- Légende houle à 8 chips : dense sur mobile. Piste : regrouper visuellement
+  par famille (régional NC : nc/marc/arome · globaux : gfs/bom/mf/ecmwf/aifs ·
+  Surfline : lotus) ou un mode compact repliable. À trancher en voyant le rendu.
+- Tableau détaillé 13 colonnes : dense mais chaque colonne porte une info
+  distincte — un mode « essentiel/complet » (masquer T1/Mer vent/rafale par
+  défaut) réduirait la charge, mais change une vue centrale : à valider.
+- Les 3 roses de spectre (MARC/MFWAM/LOTUS) empilées verticalement : sur
+  desktop large, un affichage côte à côte gagnerait en lisibilité comparative.
+
+**Décision autonome assumée** : ne PAS restyler les figures/tableaux à l'aveugle
+la nuit. Les gains sûrs (bugs) sont faits et vérifiés ; les changements
+subjectifs attendent un retour visuel de Thib plutôt qu'un pari non vérifiable.
+Faire du volume de restyling risqué ne servirait pas le projet — mieux vaut des
+propositions nettes qu'un design imposé seul.
