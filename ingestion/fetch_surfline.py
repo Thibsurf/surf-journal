@@ -67,10 +67,12 @@ def _wind_at(wind_entries, timestamp_s):
         if d < bd:
             bd, best = d, w
     if not best or bd > 5400:  # > 1h30 : pas d'appariement fiable
-        return None, None
+        return None, None, None
     spd = best.get("speed")
+    gst = best.get("gust")
     kt = round(spd / 1.852, 2) if spd is not None else None  # KPH -> nds
-    return kt, best.get("direction")
+    gust_kt = round(gst / 1.852, 2) if gst is not None else None
+    return kt, best.get("direction"), gust_kt
 
 
 def build_rows(spot_name, spot_id):
@@ -119,10 +121,14 @@ def build_rows(spot_name, spot_id):
         hs_tot = round(math.sqrt(sum(p["h"] ** 2 for p in partitions)), 3)
         # dominant (plus haut) pour dir/période/spread d'en-tête
         dom = max(partitions, key=lambda p: p["h"])
-        wind_kt, wind_dir = _wind_at(wind_entries, ts)
+        wind_kt, wind_dir, wind_gust = _wind_at(wind_entries, ts)
         by_date_wave.setdefault(ds, []).append({
             "hour": hour, "hs": hs_tot, "t02": dom["t"], "dir": dom["dir"], "spread": dom["spread"],
-            "windKt": wind_kt, "windDir": wind_dir, "partitions": partitions,
+            # windGustKt inclus dans la ligne wave (pas seulement dans la ligne
+            # wind) : le widget du haut lit p.windGustKt sur la source houle active
+            # (_gwBuildModelFcast) — sans lui, LOTUS affichait le vent mais pas la
+            # rafale dans le widget, alors que Surfline la fournit.
+            "windKt": wind_kt, "windDir": wind_dir, "windGustKt": wind_gust, "partitions": partitions,
         })
 
     for w in wind_entries:
