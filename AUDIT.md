@@ -3027,3 +3027,38 @@ parallèle). Résultat sur le spot par défaut au chargement : **`errCount: 0`**
 `display:""` (visibles — LOTUS a bien des données pour ce spot et son rendu
 s'affiche), `_swellCache` confirmé contenir la clé `lotus`. Vérification
 runtime réelle réussie, pas seulement statique.
+
+## Session du 02/08/2026 (nuit, suite) — vrai bug trouvé en creusant « légendes peu compréhensibles »
+
+Demande utilisateur : passe sur les légendes, jugées peu compréhensibles.
+Avant de me lancer dans une refonte subjective, j'ai extrait le HTML RÉELLEMENT
+rendu de la légende du comparatif houle (headless, `swell-cmp-legend`, 8
+modèles avec LOTUS) pour voir ce qu'un utilisateur voit vraiment — pas deviner.
+
+**Bug trouvé : le tooltip (`title=`) d'ECMWF et d'AIFS était HTML cassé.**
+Leurs `desc` contiennent un guillemet littéral (`Houle "primaire" = bande de
+période...`), inséré tel quel dans `title="' + m.desc + '"'` sans échappement
+— la légende checkbox (`swell-cmp-legend`, previsions.html ~L6252) était le
+SEUL des 3 points d'injection de `desc` à ne pas échapper (les 2 autres,
+`_renderCmpTable`/`_aromeCmpShellHtml` posés plus tôt cette session, le
+faisaient déjà correctement). Résultat réel avant correctif : l'attribut
+`title` se terminait à "Houle " (coupé au premier guillemet), le reste du
+texte réapparaissait comme une série de faux attributs HTML invalides
+(`primaire"="bande" de="" période="" ...`). **Concrètement, exactement les 2
+modèles dont la limite est la plus importante à communiquer (approximation
+par bande de période, aucune direction) avaient leur explication tronquée au
+survol** — plausiblement une bonne part du "peu compréhensible" signalé.
+Corrigé (`m.desc.replace(/"/g, '&quot;')`), vérifié en headless : tooltip
+ECMWF désormais complet et correctement affiché. Grep systématique confirmé :
+c'était la seule occurrence de ce pattern dans le fichier.
+
+**Non fait cette entrée** (refonte plus large des légendes, au-delà de ce bug
+précis) : par manque de temps dans cette session déjà très longue — piste
+identifiée mais pas commencée : la légende à 8 chips reste dense sur mobile
+(texte simple sans grouping visuel), pourrait bénéficier d'un regroupement
+par résolution ou d'un mode compact, à discuter avec l'utilisateur avant de
+changer une structure aussi visible plutôt que de décider seul un nouveau
+design.
+
+**Vérification** : `node --check` OK, correctif confirmé en headless réel
+(attribut title complet, plus de troncature).

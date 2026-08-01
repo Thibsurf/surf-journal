@@ -6252,7 +6252,13 @@ function _drawSwellCompare() {
     legEl.innerHTML = dataModels.map(function(m) {
       var off = !!_swellHidden[m.key];
       var res = MODEL_STYLE[m.key] && MODEL_STYLE[m.key].res;
-      return '<span onclick="_toggleSwellModel(\'' + m.key + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-pressed="' + (!off) + '" title="' + m.desc + (off ? ' — masqué, clic pour afficher' : ' — clic pour masquer') + '" '
+      // BUG corrigé (02/08/2026) : m.desc non échappé cassait l'attribut title=
+      // dès qu'un desc contenait un guillemet littéral (ECMWF/AIFS : Houle
+      // "primaire" = ...) — le tooltip était tronqué après "Houle " et le
+      // reste du texte réapparaissait comme de faux attributs HTML invalides.
+      // Justement les deux modèles dont la limite (approximation par bande de
+      // période, pas de direction) est la plus importante à communiquer.
+      return '<span onclick="_toggleSwellModel(\'' + m.key + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-pressed="' + (!off) + '" title="' + m.desc.replace(/"/g, '&quot;') + (off ? ' — masqué, clic pour afficher' : ' — clic pour masquer') + '" '
         + 'style="cursor:pointer;user-select:none;opacity:' + (off ? '.4' : '1') + ';">'
         + '<span style="color:' + m.col + ';font-weight:700;">' + (off ? '☐' : '━') + '</span> ' + m.label
         + (res ? '<span style="color:var(--faint);font-size:10px;"> ' + res + '</span>' : '')
