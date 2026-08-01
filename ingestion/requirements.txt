@@ -22,6 +22,13 @@ requests==2.32.5
 # soient corrigés).
 copernicusmarine==2.2.1
 xarray==2024.11.0
+# h5netcdf (dépendance transitive de copernicusmarine, décode le NetCDF final)
+# déclare h5py comme extra OPTIONNEL (`h5py; extra == "h5py"`, vérifié sur
+# PyPI le 01/08/2026), pas comme dépendance dure — un `pip install` normal ne
+# le tire donc PAS automatiquement. Sans lui : ImportError au moment d'écrire
+# le NetCDF (`h5netcdf/core.py:_parse_backend`), après avoir passé
+# authentification + téléchargement + décodage zarr avec succès.
+h5py==3.16.0
 
 # fetch_ecmwf.py — ecmwf-opendata (Apache-2.0), aucune clé nécessaire (Open
 # Data CC-BY-4.0). cfgrib/eccodes déjà présents via meteofetch (cf. plus
