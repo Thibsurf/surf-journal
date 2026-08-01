@@ -23,12 +23,24 @@ Vérifié empiriquement le 2026-07-24 (pas dans la doc meteofetch) :
 - UN SEUL paquet suffit : SP1 (~1.5-2.5 Mo/fichier, ~90 Mo pour les 49 échéances
   du run entier) contient déjà u10/v10/si10/wdir10 (vitesse+direction du vent
   déjà calculées par Météo-France, pas besoin de dériver de u10/v10),
-  max_i10fg (rafale), t2m, r2, prmsl (pression MSL), tp (précipitation
+  fg10 (rafale), t2m, r2, prmsl (pression MSL), tp (précipitation
   cumulée depuis le début du run). SP2/SP3/IP*/HP* ne contiennent que des
   niveaux isobares/hauteurs (profils verticaux, 10-30 Mo chacun) — inutiles ici
   et nettement plus lourds.
-- max_i10fg et tp sont ABSENTS à l'échéance H+0 (accumulation nulle sur une
-  durée nulle) : on écrit `null` pour cette heure-là plutôt que de planter.
+- BUG corrigé le 02/08/2026 (signalé par l'utilisateur : rafale toujours vide
+  dans la table AROME) : le nom de variable rafale sur ce domaine Outre-Mer est
+  `fg10`, PAS `max_i10fg` (qui est le nom utilisé sur le domaine métropole
+  d'après la doc meteofetch — copié par erreur ici sans vérifier contre le
+  domaine réellement utilisé). `sel_series("max_i10fg")` renvoyait donc
+  toujours une série vide, silencieusement (`if name not in data: return
+  pd.Series(dtype=float)`), et gust_kt valait `None` sur 100% des points,
+  tous spots/dates/runs confondus — jamais juste l'échéance H+0 comme l'ancien
+  commentaire le supposait. Vérifié empiriquement le 02/08/2026 : variables
+  réelles du paquet SP1 OM NC = efg10/fg10/nfg10/prmsl/r2/si10/ssrd/t2m/tgrp/
+  tp/tsnowp/u10/unknown/v10/wdir10 — `fg10` (rafale scalaire, pas de
+  composante directionnelle) est la bonne série à lire.
+- tp est ABSENT à l'échéance H+0 (accumulation nulle sur une durée nulle) : on
+  écrit `null` pour cette heure-là plutôt que de planter.
 - Pas de MFWAM régional Nouvelle-Calédonie dans meteofetch : les classes
   MFWAM0025/MFWAM01 ne couvrent que la France élargie / Europe-Globe. Le
   comparatif houle utilise déjà MFWAM global (via Open-Meteo, meteofrance_wave,
@@ -183,7 +195,7 @@ def upsert(rows):
 
 def to_series_dict(data, lat, lon):
     """Extrait, pour un point, les séries alignées par timestamp réel (les
-    champs accumulés comme max_i10fg/tp n'ont pas d'entrée à H+0 -> index
+    champs accumulés comme fg10/tp peuvent ne pas avoir d'entrée à H+0 -> index
     temporel plus court que si10/t2m/prmsl ; on aligne sur l'union et on laisse
     `None` là où la donnée n'existe pas, plutôt que de planter ou de mal
     décaler les séries)."""
@@ -201,7 +213,7 @@ def to_series_dict(data, lat, lon):
 
     si10 = sel_series("si10")
     wdir10 = sel_series("wdir10")
-    gust = sel_series("max_i10fg")
+    gust = sel_series("fg10")  # cf. docstring module : PAS max_i10fg (nom métropole, absent ici)
     t2m = sel_series("t2m")
     prmsl = sel_series("prmsl")
     tp = sel_series("tp")

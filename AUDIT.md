@@ -2853,3 +2853,77 @@ compréhensibles). + Écart AROME table/comparatif : MÊME source vérifiée
 (_aromeData, worker /arome ← Windguru m94) — écart présentationnel à faire
 préciser par l'utilisateur (correction de biais ? fenêtre ? arrondi ?) avant de
 toucher quoi que ce soit.
+
+## Session du 02/08/2026 (nuit) — AROME Windguru→GRIB2 + bug rafale + début audit large
+
+Contexte : l'utilisateur a confirmé l'écart AROME = « table 2,5km vs comparatif
+vent » (pas table vs table). Diagnostic + décision : basculer la table sur le
+GRIB2 (déjà utilisé par le comparatif « au point de mesure »), Windguru en
+repli seulement. Puis l'utilisateur est parti dormir en donnant autonomie
+complète pour la suite (décisions, commits, push) jusqu'à épuisement du budget
+de la session — chantier élargi : fiabilité rechargement tous spots, cohérence
+Journal, comparatif/plot, présentation des modèles, UX, LOTUS étape 2.
+
+### Bug trouvé en vérifiant AVANT de migrer (pas supposé) : rafale AROME toujours vide
+
+En creusant pourquoi basculer la table sur le GRIB2 ne perdrait pas la rafale
+affichée aujourd'hui par Windguru, requête directe sur `model_forecast_cache`
+(`model=aro, kind=wind`) : **`gust` = `null` sur 100% des points, tous
+spots/dates/runs** — pas seulement à l'échéance H+0 comme l'ancien commentaire
+du code le supposait. Cause : `ingestion/fetch_arome.py` lisait la variable
+`max_i10fg`, qui est le nom de la rafale sur le domaine AROME MÉTROPOLE — sur
+le domaine Outre-Mer Nouvelle-Calédonie, ce nom n'existe simplement pas dans le
+GRIB2 décodé. `sel_series()` renvoyait donc silencieusement une série vide
+(`if name not in data: return pd.Series(dtype=float)`, aucune exception), et
+`gust_kt` valait toujours `None`.
+
+Vérifié empiriquement (téléchargement réel d'un run SP1 complet, ~90 Mo, et
+inspection de `data.keys()`) : les variables réellement présentes sont
+`efg10, fg10, nfg10, prmsl, r2, si10, ssrd, t2m, tgrp, tp, tsnowp, u10,
+unknown, v10, wdir10` — la bonne série est **`fg10`** (rafale scalaire ; efg10/
+nfg10 sont les composantes est/nord, pas utiles ici). Corrigé dans
+`fetch_arome.py` (+ docstring mise à jour). Run réel relancé après correctif :
+**24/24 points avec rafale peuplée**, valeurs cohérentes (ex. vent 24 nds /
+rafale 30-31 nds, ratio ~1,25-1,3 plausible).
+
+### AROME : Windguru → GRIB2 comme source PRIORITAIRE de la table (previsions.html)
+
+`_loadAromeWidget` essayait Windguru live EN PREMIER, avec l'archive GRIB2
+(`_fetchAromeArchive`, déjà lancée en parallèle) seulement en repli si Windguru
+échouait — alors que le comparatif « au point de mesure » utilisait déjà
+l'archive GRIB2 pour AROME. Résultat : deux produits AROME différents visibles
+simultanément selon la vue (valeurs ET parfois horizon différents), source
+exacte de l'écart signalé par l'utilisateur. Inversé : l'archive GRIB2 (même
+point que le comparatif, tourne 3×/jour, rafale désormais correcte) est
+maintenant tentée EN PREMIER et utilisée directement si présente ; Windguru
+n'est plus appelé qu'en repli SÉQUENTIEL (pas systématique) si l'archive n'a
+encore aucune donnée pour ce point — réduit aussi la dépendance à Windguru
+comme demandé, sans le supprimer entièrement (résilience si le cron a du
+retard sur un spot tout juste ajouté). Horizon inchangé (~48h dans les deux
+cas, nature du modèle AROME — ne va pas plus loin dans le temps en changeant
+de source, contrairement à ce qui aurait pu être supposé).
+
+Mode « à la station » (`_loadAromeWidget(wgId, spot, station)`) n'a pas changé
+: il utilisait déjà UNIQUEMENT l'archive GRIB2 (Windguru n'a pas de notion de
+point libre), donc déjà cohérent avec le nouveau comportement par défaut.
+
+### UX : toggle « Mesuré » du comparatif vent peu visible
+
+Repéré en marge de la migration AROME (le comparatif vent est le seul endroit
+où les mesures réelles de station sont un item de légende togglable) : le chip
+`wcmp-leg-obs` (« mesures ») avait EXACTEMENT le même traitement visuel que les
+7 chips de modèles à côté (texte 11px, pas de fond, différencié seulement par
+la couleur du tiret devant) — alors que c'est la donnée de RÉFÉRENCE par
+rapport à laquelle tous les modèles sont jugés, pas un modèle de plus. Ajouté
+un fond + bordure + gras (badge), libellé renommé « Mesuré » (cohérent avec
+`MODEL_STYLE.obs.label`, au lieu de « mesures » qui ne l'était pas). Changement
+CSS pur, aucun impact fonctionnel.
+
+**Vérification** : `node --check` sur previsions.html OK ; `py_compile` +
+exécution réelle de `fetch_arome.py` (upsert Supabase, 90 lignes) OK ; requêtes
+Supabase directes confirmant la rafale peuplée sur les nouvelles lignes.
+
+**Non fait cette entrée** (todo restant, cf. mandat élargi) : audit fiabilité
+rechargement tous spots, cohérence Journal, comparatif/plot, présentation des
+modèles, UX au-delà du toggle Mesuré, LOTUS étape 2 — suite dans les entrées
+qui suivent.

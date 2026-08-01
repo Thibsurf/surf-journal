@@ -9622,14 +9622,22 @@ async function _loadAromeWidget(wgId, spot, station) {
     await _renderAromeCompare(null);
     return;
   }
-  // Archive Supabase lancée EN PARALLÈLE du live Windguru, pas seulement en
-  // repli séquentiel après coup : avant, un cache Worker froid (2 aller-retours
-  // Windguru en direct) pouvait bloquer la carte jusqu'à 12s avant même de
-  // commencer le repli (signalé : "le tableau arome met du temps à charger").
-  // Le Worker préchauffe désormais son propre cache par cron (~100 min), donc
-  // ce cas devient rare — cette parallélisation reste la sécurité pour le
-  // reste (cache froid malgré tout, Windguru indisponible, spot sans wgId).
-  var archPromise = _fetchAromeArchive(spot).catch(function(){ return null; });
+  // Archive GRIB2 (ingestion/fetch_arome.py) désormais PRIORITAIRE — chantier du
+  // 02/08/2026 : avant, Windguru était tenté en premier ici alors que le
+  // comparatif "au point de mesure" affichait déjà l'archive GRIB2 → deux AROME
+  // différents (valeurs ET parfois horizon) visibles sur le même écran selon la
+  // vue, source de confusion signalée par l'utilisateur ("arome a l'air
+  // différent entre le premier tableau et celui du comparatif"). L'archive vient
+  // en plus du MÊME point (lat/lon du spot) que le comparatif, tourne 3×/jour,
+  // et n'a plus le bug de rafale toujours vide (cf. fetch_arome.py, fg10 vs
+  // max_i10fg). Windguru (m94, relais tiers) reste un repli SÉQUENTIEL — appelé
+  // seulement si l'archive n'a encore aucune donnée pour ce point (spot tout
+  // juste ajouté, avant le premier passage du cron) — plutôt qu'un appel réseau
+  // systématique à un service qu'on cherche justement à ne plus utiliser en
+  // priorité. Les deux sources ont le même horizon réel (~48h, nature du modèle
+  // AROME) : ce changement ne raccourcit ni n'allonge la fenêtre affichée.
+  var jArch = await _fetchAromeArchive(spot).catch(function(){ return null; });
+  if (jArch) { _renderAromeCardData(jArch, wgId, body); return; }
   var j = null, errCode = null;
   if (wgId) {
     try {
@@ -9641,22 +9649,15 @@ async function _loadAromeWidget(wgId, spot, station) {
     } catch(e) {}
   }
   if (!j || !j.ok || !j.hours || !j.hours.length || !j.init) {
-    // Windguru absent (pas de wgId) ou indisponible pour ce spot → repli sur
-    // l'archive GRIB2 décodée directement (ingestion/fetch_arome.py), à la lat/lon
-    // du spot — mêmes tableau/graphe, juste une source différente (cf. j.model).
-    // Déjà lancée en parallèle ci-dessus : cet await ne retarde donc plus rien
-    // dans le cas courant (elle a eu tout le temps du fetch live pour résoudre).
-    var jArch = await archPromise;
-    if (jArch) { _renderAromeCardData(jArch, wgId, body); return; }
     _wgLoadedFor = null; // permettre une nouvelle tentative
     _aromeData = null; window._aromeColInfo = null; // jamais de données d'un autre spot
     // Message honnête : distinguer « ce spot n'a pas AROME chez Windguru » (limite
     // fournisseur, pas un bug) d'une vraie panne réseau/run en cours/archive pas encore passée.
     var msg = !wgId
-      ? 'Pas de correspondance AROME/windguru pour ce spot, et pas encore d\'archive GRIB2 pour ce point (le job GitHub Actions passe 3×/jour).'
+      ? 'Pas encore d\'archive GRIB2 pour ce point (le job GitHub Actions passe 3×/jour), et pas de correspondance Windguru pour ce spot.'
       : (errCode === 'AROME_NOT_AVAILABLE'
-        ? 'AROME non configuré pour ce spot chez Windguru (limite du fournisseur, pas un bug de l\'app), et pas encore d\'archive GRIB2 pour ce point.'
-        : '⚠ AROME indisponible pour l\'instant (erreur réseau ou run en cours) — réessaie plus tard.');
+        ? 'Pas encore d\'archive GRIB2 pour ce point, et AROME non configuré pour ce spot chez Windguru (limite du fournisseur, pas un bug de l\'app).'
+        : 'Pas encore d\'archive GRIB2 pour ce point ; ⚠ relais Windguru indisponible pour l\'instant (erreur réseau ou run en cours) — réessaie plus tard.');
     // AROME indisponible pour ce spot, mais le comparatif vent (nc/gfs/bom/ecmwf/
     // marc) n'a aucune dépendance à AROME — l'afficher quand même (cf.
     // _aromeCmpShellPresent) plutôt que de faire disparaître toute la figure
@@ -9736,7 +9737,11 @@ function _aromeCmpShellHtml() {
     // sans refetch). État (opacité/barré/clic) posé par _updateWindCmpControls().
     // Rangée séparée plus bas : marqueurs de points archivés (cercle creux).
     + '<div style="display:flex;gap:10px;row-gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-bottom:5px;">'
-    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures de la station — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+_msObsCol()+';font-weight:700;">━</span> mesures <span id="arome-cmp-st"></span></span>'
+    // "mesures" = la donnée de RÉFÉRENCE (tous les modèles sont jugés par
+    // rapport à elle), pas un modèle de plus parmi 7 : mise en avant (fond +
+    // contour distincts, "RÉEL" en gras) plutôt que le même poids visuel qu'un
+    // chip de modèle — signalé difficile à repérer dans la rangée (02/08/2026).
+    + '<span id="wcmp-leg-obs" onclick="_toggleWindCmpModel(\'obs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Mesures réelles de la station (référence de comparaison) — clic pour masquer" style="cursor:pointer;user-select:none;background:rgba(232,238,244,.10);border:1px solid rgba(232,238,244,.35);border-radius:8px;padding:3px 9px;font-weight:700;"><span style="color:'+_msObsCol()+';font-weight:700;">●</span> Mesuré <span id="arome-cmp-st"></span></span>'
     + '<span id="wcmp-leg-aro" onclick="_toggleWindCmpModel(\'aro\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="AROME 2,5 km Nouvelle-Calédonie (Météo-France) — modèle régional haute résolution — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.aro.col+';font-weight:700;">━</span> AROME<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.aro.res+'</span></span>'
     + '<span id="wcmp-leg-nc" onclick="_toggleWindCmpModel(\'nc\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="Météo-France — modèle officiel Nouvelle-Calédonie (régionalisé) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.nc.col+';font-weight:700;">╌</span> meteo.nc</span>'
     + '<span id="wcmp-leg-gfs" onclick="_toggleWindCmpModel(\'gfs\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" title="NOAA GFS (gfs_seamless, via Open-Meteo) — grille 0,25° (~28 km) — clic pour masquer" style="cursor:pointer;user-select:none;"><span style="color:'+MODEL_STYLE.gfs.col+';font-weight:700;">╌</span> GFS<span style="color:var(--faint);font-size:10px;"> '+MODEL_STYLE.gfs.res+'</span></span>'
