@@ -10,8 +10,18 @@ requests==2.32.5
 # fetch_mfwam.py — copernicusmarine (EUPL-1.2) : nécessite un compte gratuit
 # Copernicus Marine (identifiants passés en CI via COPERNICUSMARINE_SERVICE_
 # USERNAME/_PASSWORD, cf. workflow). xarray décode le NetCDF téléchargé.
+# xarray>=2024.10.0 EXIGÉ par copernicusmarine (pyproject.toml du projet,
+# vérifié le 01/08/2026) : c'est la version qui a introduit le paramètre
+# zarr_format sur open_zarr (remplace zarr_version, déprécié depuis 2024.9.1),
+# que copernicusmarine==2.2.1 appelle en interne pour lire du zarr-python 3.x.
+# Le pin précédent (2024.2.0) était sous ce minimum → chaque run CI plantait
+# avec `TypeError: open_zarr() got unexpected keyword arguments zarr_format`,
+# indépendamment des identifiants (bug distinct, trouvé le même jour que le
+# correctif d'identifiants — les deux masquaient l'un l'autre : le job ne
+# passait jamais assez loin pour révéler celui-ci avant que les identifiants
+# soient corrigés).
 copernicusmarine==2.2.1
-xarray==2024.2.0
+xarray==2024.11.0
 
 # fetch_ecmwf.py — ecmwf-opendata (Apache-2.0), aucune clé nécessaire (Open
 # Data CC-BY-4.0). cfgrib/eccodes déjà présents via meteofetch (cf. plus
