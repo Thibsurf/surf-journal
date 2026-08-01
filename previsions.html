@@ -5005,7 +5005,13 @@ var SWELL_MODELS = [
   { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine (GLOBAL_ANALYSISFORECAST_WAV_001_027) — grille 0,083° (~9 km), houle primaire/secondaire + mer du vent avec direction' },
   { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Houle "primaire" = bande de période la plus haute parmi 6 (10-30s), pas une vraie partition mesurée ; pas de direction par bande.' },
   { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Même limite : houle "primaire" approximée par bande de période, sans direction.' },
-  { key: 'marc',  label: 'MARC WW3',  col: _rgbaFromHex(MODEL_STYLE.marc.col, .95),  desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici' }
+  // desc étendue le 01/08/2026 (audit houle 1/2) : MARC est désormais le SEUL
+  // modèle du comparatif dont la « houle 1 » n'est ni un champ natif ni
+  // disclosed dans son desc — nc/gfs/bom/mf ont un vrai champ natif, ecmwf/aifs
+  // disclosent déjà leur approximation par bande de période ci-dessus. Les 6
+  // partitions WW3 de MARC ne sont pas numérotées de façon stable par Ifremer
+  // (vérifié empiriquement le 29/07, cf. _marcPrimarySwell) : à disclose pareil.
+  { key: 'marc',  label: 'MARC WW3',  col: _rgbaFromHex(MODEL_STYLE.marc.col, .95),  desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici. Pas de partition primaire/secondaire native : parmi 6 trains WW3 non numérotés de façon stable par la source, on retient ici le plus énergétique avec période ≥ 8s (méthode du site, pas un champ Ifremer).' }
 ];
 var _swellMode = 'primary'; // 'primary' | 'secondary'
 var _swellCache = null;     // { nc:{primary,secondary}, gfs:{...}, bom:{...}, mf:{...} } — repeuplé par fetch, redessiné sans réseau au toggle
@@ -5725,7 +5731,12 @@ function _renderCmpTable() {
           + '<div style="' + (sub ? '' : 'visibility:hidden;') + '">' + (sub || '&nbsp;') + '</div></td>';
       }).join('');
       var resBadge = st.res ? '<span style="font-size:8.5px;font-weight:600;color:var(--deep);background:' + st.col + ';border-radius:5px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + st.res + '</span>' : '';
-      var labelCell = '<td style="padding:4px 8px 4px 8px;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';">'
+      // Title sur le libellé de ligne (houle seulement) = comment CE modèle définit
+      // sa houle 1/2 — réutilise SWELL_MODELS[key].desc, seul endroit qui documente
+      // déjà cette méthodo par modèle (audit houle 1/2 du 01/08/2026).
+      var rowDesc = kind === 'swell' ? (SWELL_MODELS.filter(function(m){ return m.key === d.key; })[0] || {}).desc : null;
+      var labelTitle = rowDesc ? ' title="' + rowDesc.replace(/"/g, '&quot;') + '"' : '';
+      var labelCell = '<td' + labelTitle + ' style="padding:4px 8px 4px 8px;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';cursor:' + (rowDesc ? 'help' : 'default') + ';">'
         + '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + st.col + ';margin-right:5px;vertical-align:middle;"></span>' + st.label + resBadge + '</td>';
       return '<tr>' + labelCell + cells + '</tr>';
     }).join('');

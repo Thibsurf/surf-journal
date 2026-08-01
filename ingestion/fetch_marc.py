@@ -48,7 +48,15 @@ MARC_BASE = "https://tds1.ifremer.fr/thredds/dodsC/MARC-WW3_CALEDONIE_3MIN-FOR_F
 MARC_EPOCH = datetime(1990, 1, 1, tzinfo=timezone.utc)  # "days since 1990-01-01T00:00:00", cf. .das
 MARC_SCALE = {"hs": 0.002, "t02": 0.01, "dir": 0.1, "uwnd": 0.1, "vwnd": 0.1, "spr": 0.1,
               "phs": 0.002, "ptp": 0.01, "pdir": 0.1, "pspr": 0.1}
-MARC_PARTITIONS = [0, 1, 2, 3, 4, 5]  # 0 = mer du vent, 1..5 = trains de houle (énergie décroissante)
+MARC_PARTITIONS = [0, 1, 2, 3, 4, 5]  # 6 partitions WW3 brutes, stockées telles quelles.
+# ATTENTION : la source ne les numérote PAS de façon stable par énergie décroissante —
+# vérifié empiriquement le 29/07/2026 que la houle dominante se trouve tantôt en
+# partition 0, tantôt en 1 (ni "0 = mer du vent" ni "ordre décroissant" ne tiennent
+# systématiquement). Ce script n'a besoin d'aucune hypothèse d'ordre : il extrait les
+# 6 partitions brutes sans les trier. La sélection de la houle primaire (partition la
+# plus énergétique avec période ≥ 8s) est faite côté client, cf. _marcPrimarySwell
+# dans previsions.html — s'y référer pour la vraie règle si ce script doit un jour
+# reproduire la même logique côté serveur.
 NSTEPS = 64  # ~8j à 3h : recul archivé + prévision (grille du produit, cf. .das)
 STEP_MS = 0.125 * 86400000  # 3h en ms (cadence du produit, vérifiée empiriquement)
 GRID_LAT0, GRID_LON0, GRID_STEP = -24.0, 162.0, 0.05  # cf. previsions.html:_fetchMarcWave
