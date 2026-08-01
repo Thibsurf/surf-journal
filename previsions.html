@@ -704,14 +704,16 @@ html.widget-mode #gw-widget { margin-bottom:0; }
          houle+période+vent : la répéter sur les trois panneaux serait du bruit. -->
     <div id="cmp-tide-band-leg" style="display:none;font-size:11px;color:var(--faint);line-height:1.45;margin-top:3px;"></div>
     <!-- Spectre par train de houle (hauteur/période/direction, dispersion angulaire
-         quand connue) : MARC et MF/MFWAM sont les deux seuls modèles du comparatif à
-         partitionner le spectre AVEC direction — BOM/GFS ne donnent qu'une houle
-         globale. ECMWF/AIFS (Open Data) ont leur propre bloc juste en dessous : des
-         hauteurs par bande de période, mais SANS direction (pas comparable à une rose).
-         Deux roses côte à côte plutôt qu'une mélangée à celle du dessus, chacune
-         masquée indépendamment si son modèle n'a pas de partitions pour l'instant
-         affiché (cf. _drawSpectrumRose, généralisée le 30/07/2026 — avant, ne savait
-         dessiner que MARC). -->
+         quand connue) : MARC, MF/MFWAM et LOTUS (Surfline, branché le 02/08/2026)
+         sont les seuls modèles du comparatif à partitionner le spectre AVEC
+         direction — BOM/GFS ne donnent qu'une houle globale. ECMWF/AIFS (Open Data)
+         ont leur propre bloc juste en dessous : des hauteurs par bande de période,
+         mais SANS direction (pas comparable à une rose). Roses côte à côte plutôt
+         qu'une mélangée à celle du dessus, chacune masquée indépendamment si son
+         modèle n'a pas de partitions pour l'instant affiché (cf. _drawSpectrumRose,
+         généralisée le 30/07/2026 — avant, ne savait dessiner que MARC ; étendue à
+         LOTUS le 02/08/2026 sans code nouveau, la fonction est déjà générique par
+         modelKey). -->
     <div id="spectrum-compare-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
       <div id="marc-spectrum-wrap" style="display:none;margin-bottom:10px;">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
@@ -723,7 +725,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <div id="marc-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
         </div>
       </div>
-      <div id="mf-spectrum-wrap" style="display:none;">
+      <div id="mf-spectrum-wrap" style="display:none;margin-bottom:10px;">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
           <b style="color:var(--text);">🌊 Spectre MFWAM (Copernicus Marine)</b>
           <span style="font-size:11px;color:var(--faint);"> — mer du vent + houle primaire/secondaire, avec direction (pas de dispersion angulaire dans ce produit)</span>
@@ -733,15 +735,26 @@ html.widget-mode #gw-widget { margin-bottom:0; }
           <div id="mf-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
         </div>
       </div>
+      <div id="lotus-spectrum-wrap" style="display:none;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+          <b style="color:var(--text);">🌊 Spectre LOTUS (Surfline)</b>
+          <span style="font-size:11px;color:var(--faint);"> — jusqu'à 6 trains directionnels natifs (pas de dispersion angulaire publiée dans ce produit)</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div id="lotus-spectrum-rose" style="width:92px;height:92px;flex-shrink:0;" title="Chaque flèche numérotée = un train de houle Surfline (longueur = hauteur, numéro = même houle N que dans la légende ci-contre). La fine flèche = mer totale (combinaison énergétique des trains) — à ne pas confondre avec un train individuel."></div>
+          <div id="lotus-spectrum-legend" style="display:flex;flex-direction:column;gap:3px;font-size:11px;flex:1;min-width:140px;"></div>
+        </div>
+      </div>
     </div>
     <!-- Bandes de période : ECMWF/AIFS (Open Data) exposent nativement une hauteur
-         significative par bande 10-30s, SANS direction — MARC/MFWAM n'ont pas de
-         "bandes" mais un spectre par train (partitions h/t/dir), reclassé ici dans
+         significative par bande 10-30s, SANS direction — MARC/MFWAM/LOTUS n'ont pas
+         de "bandes" mais un spectre par train (partitions h/t/dir), reclassé ici dans
          les mêmes bandes (bucketing par période, cf. _bandsCombinedSeries) pour
-         comparer les 4 modèles sur UNE figure au lieu de deux histogrammes séparés
-         (avant le 30/07/2026 : ECMWF et AIFS chacun leur bloc, MARC/MFWAM absents
-         d'ici — leur spectre par train vit dans la rose au-dessus, mais une vue par
-         bande manquait pour les comparer aux deux modèles Open Data). -->
+         comparer les 5 modèles sur UNE figure au lieu de plusieurs histogrammes
+         séparés (avant le 30/07/2026 : ECMWF et AIFS chacun leur bloc, MARC/MFWAM
+         absents d'ici ; LOTUS ajouté le 02/08/2026 — leur spectre par train vit
+         aussi dans la rose au-dessus, mais une vue par bande manquait pour les
+         comparer aux modèles Open Data). -->
     <div id="bands-combined-wrap" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
         <b style="color:var(--text);">📊 Bandes de période — comparatif modèles</b>
@@ -4946,6 +4959,48 @@ async function _fetchMarcCombined(spot) {
   return _fetchMarcWave(spot);
 }
 
+// LOTUS (Surfline), branché le 02/08/2026 — ingestion/fetch_surfline.py, format
+// de ligne calqué sur MARC (kind='wave', partitions[{h,t,dir,spread}] jusqu'à 6
+// trains). DIFFÉRENCE avec MARC/MF/ECMWF/AIFS : ces derniers écrivent aux
+// coordonnées EXACTES de shared_spots (id déterministe lat.toFixed(3)/
+// lon.toFixed(3) suffit) — LOTUS écrit aux coordonnées SURFLINE de ses 5 zones,
+// qui ne coïncident jamais exactement avec un spot du site. Recherche par
+// TOLÉRANCE de coordonnées (±0,05°, même tolérance que _fetchModelTableRows
+// côté Journal) plutôt que par id déterministe — sinon aucune ligne ne matche
+// jamais. Cache-only comme ECMWF/AIFS : pas de repli live (appeler l'API
+// Surfline depuis le navigateur sortirait du périmètre "usage perso" du client
+// Python et risquerait le blocage anti-bot CORS, jamais testé côté navigateur).
+async function _fetchLotusArchive(spot) {
+  try {
+    if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
+    var tol = 0.05;
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,lat,lon')
+      .eq('model', 'lotus').eq('kind', 'wave')
+      .gte('lat', spot.lat - tol).lte('lat', spot.lat + tol)
+      .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol);
+    if (!r || !r.data || !r.data.length) return null;
+    var primary = [];
+    r.data.forEach(function(row) {
+      var p = row.date.split('-');
+      (row.hours || []).forEach(function(hh) {
+        if (!hh || hh.hs == null) return;
+        var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
+        // dominant déjà sélectionné côté serveur (train le plus haut, cf.
+        // fetch_surfline.py) — .h/.t/.dir en portent la valeur, .partitions le
+        // spectre complet, même convention que MARC (.hs/.t02/.dir + .partitions).
+        primary.push({
+          ms: ms, h: hh.hs, t: hh.t02, dir: hh.dir,
+          totH: hh.hs, totT: hh.t02, totDir: hh.dir, spread: hh.spread,
+          windKt: hh.windKt, windDir: hh.windDir, partitions: hh.partitions || [],
+        });
+      });
+    });
+    if (!primary.length) return null;
+    primary.sort(function(a, b) { return a.ms - b.ms; });
+    return { primary: primary, secondary: [] };
+  } catch (e) { console.warn('[LOTUS archive]', e && e.message); return null; }
+}
+
 // hex '#rrggbb' → 'rgba(r,g,b,alpha)', alpha écrit sans zéro initial ('.95' pas '0.95')
 // pour rester compatible avec les `.replace(',.95)', ',.25)')` déjà utilisés en aval
 // pour dériver une bordure plus translucide à partir de la couleur pleine d'un modèle.
@@ -4987,7 +5042,14 @@ var MODEL_STYLE = {
   bom:   { label: 'BOM WW3',   col: '#e8a057', res: '14 km' },
   gfs:   { label: 'GFS',       col: '#4fa3c7', res: '28 km' },
   mf:    { label: 'MF global', col: '#7a94aa', res: '9 km' },
-  nc:    { label: 'meteo.nc',  col: '#f0c674', res: null }
+  nc:    { label: 'meteo.nc',  col: '#f0c674', res: null },
+  // LOTUS (Surfline) branché le 02/08/2026 — WW3 + assimilation satellite +
+  // forecasters, résolution de grille non publiée (produit propriétaire, pas
+  // un modèle physique à maille documentée comme les autres) -> res: null,
+  // même traitement que nc/mf. Couleur IDENTIQUE à MODEL_RELIABILITY_LABELS.lotus
+  // (index.html) : même piège déjà corrigé une fois pour tous les autres
+  // modèles (cf. commentaire "TABLE UNIQUE" ci-dessus), à ne pas réintroduire.
+  lotus: { label: 'LOTUS',    col: '#2dd4bf', res: null }
 };
 // Couleur de la courbe « mesures » (obs), thémée — seule entrée de MODEL_STYLE
 // à en avoir besoin (les autres teintes restent lisibles sur fond clair ET sombre).
@@ -5011,7 +5073,14 @@ var SWELL_MODELS = [
   // disclosent déjà leur approximation par bande de période ci-dessus. Les 6
   // partitions WW3 de MARC ne sont pas numérotées de façon stable par Ifremer
   // (vérifié empiriquement le 29/07, cf. _marcPrimarySwell) : à disclose pareil.
-  { key: 'marc',  label: 'MARC WW3',  col: _rgbaFromHex(MODEL_STYLE.marc.col, .95),  desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici. Pas de partition primaire/secondaire native : parmi 6 trains WW3 non numérotés de façon stable par la source, on retient ici le plus énergétique avec période ≥ 8s (méthode du site, pas un champ Ifremer).' }
+  { key: 'marc',  label: 'MARC WW3',  col: _rgbaFromHex(MODEL_STYLE.marc.col, .95),  desc: 'Ifremer/CNRS-IRD-UBO — WaveWatch III RÉGIONAL Nouvelle-Calédonie, forcé par le vent ECMWF — grille 0,05° (~5,5 km), le plus fin de tous ici. Pas de partition primaire/secondaire native : parmi 6 trains WW3 non numérotés de façon stable par la source, on retient ici le plus énergétique avec période ≥ 8s (méthode du site, pas un champ Ifremer).' },
+  // LOTUS branché le 02/08/2026 (ingestion/fetch_surfline.py). Seul modèle du
+  // comparatif à ne couvrir que 5 zones précises en NC (produit Surfline, pas
+  // une grille globale) — absent du comparatif pour tout spot à plus de 0,05°
+  // de l'une d'elles (Passe de Dumbéa, Ilot Ténia, Passe de Boulari le plus
+  // souvent, cf. correspondance par coordonnées dans _fetchLotusArchive) :
+  // normal de le voir manquer sur la plupart des spots, pas un bug.
+  { key: 'lotus', label: 'LOTUS',     col: _rgbaFromHex(MODEL_STYLE.lotus.col, .95), desc: 'Surfline — modèle propriétaire LOTUS (WaveWatch III + assimilation satellite + observations forecaster), résolution non publiée. Jusqu\'à 6 trains directionnels natifs. Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa G+D/Boulari) — absent des autres spots, ce n\'est pas un modèle global comme les autres ci-dessus.' }
 ];
 var _swellMode = 'primary'; // 'primary' | 'secondary'
 var _swellCache = null;     // { nc:{primary,secondary}, gfs:{...}, bom:{...}, mf:{...} } — repeuplé par fetch, redessiné sans réseau au toggle
@@ -6116,9 +6185,9 @@ async function _renderSwellCompare() {
   // _windCmpAtStation (les deux comparatifs sont indépendants par construction —
   // le vent peut re-échantillonner, la houle ne le fait jamais).
   var _spotForFetch = SPOTS[currentSpot];
-  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMfCombined(_spotForFetch), _fetchEcmwfArchive(_spotForFetch), _fetchMarcCombined(_spotForFetch), _fetchAifsArchive(_spotForFetch)]);
+  var _extra = await Promise.all([_fetchBomWw3(_spotForFetch), _fetchMfCombined(_spotForFetch), _fetchEcmwfArchive(_spotForFetch), _fetchMarcCombined(_spotForFetch), _fetchAifsArchive(_spotForFetch), _fetchLotusArchive(_spotForFetch)]);
   if (SPOTS[currentSpot] !== _spotForFetch) return; // spot changé pendant l'attente réseau → rendu obsolète abandonné
-  _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3], aifs: _extra[4] };
+  _swellCache = { nc: ncData, gfs: gfsData, bom: _extra[0], mf: _extra[1], ecmwf: _extra[2], marc: _extra[3], aifs: _extra[4], lotus: _extra[5] };
   _cmpZoom.a = 0; _cmpZoom.b = 1; // nouvelles données (spot) → on repart de la vue complète
   _drawSwellCompare();
   _renderCmpTable();
@@ -6269,6 +6338,13 @@ function _drawSwellCompare() {
       .map(function(pt, idx) { return pt ? { idx: idx, h: pt.h, t: pt.t, dir: pt.dir, spread: pt.spread } : null; })
       .filter(function(x) { return x && x.dir != null; }) : [];
     if (!parts.length) { wrap.style.display = 'none'; return false; }
+    // MARC/MFWAM ont un slot 0 = « mer du vent » par convention de la source
+    // (déjà nommé en toutes lettres, pas de numéro) — LOTUS/Surfline n'a PAS
+    // cette convention : `partitions` y est juste l'ordre brut swells[] de
+    // l'API (zéro-remplissage déjà filtré côté client), aucun train n'y est
+    // "la mer du vent". Sans cette distinction, le 1er train LOTUS aurait été
+    // affiché sans numéro et légendé "Mer du vent" à tort.
+    var hasWindSeaSlot = (modelKey === 'marc' || modelKey === 'mf');
     wrap.style.display = '';
     var S = 92, cx = S / 2, cy = S / 2, R = 34;
     var svg = '<svg width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '">';
@@ -6330,11 +6406,14 @@ function _drawSwellCompare() {
       // vue satellite du widget (_gwDrawVectors, widget-global.js), pour relier
       // l'écart angulaire affiché au numéro de houle listé dans la légende
       // ci-dessous (demande explicite de l'utilisateur). Pas de numéro pour la
-      // mer du vent (idx 0), déjà nommée en toutes lettres dans la légende.
-      if (pt.idx >= 1) {
+      // mer du vent (idx 0, MARC/MFWAM uniquement), déjà nommée en toutes
+      // lettres dans la légende — LOTUS numérote TOUS ses trains dès 1 (pas de
+      // slot mer du vent, cf. hasWindSeaSlot).
+      if (hasWindSeaSlot ? pt.idx >= 1 : true) {
+        var numLabel = hasWindSeaSlot ? pt.idx : (pt.idx + 1);
         var nrad = Math.min(len + 9, R - 2);
         var nx = cx + nrad * Math.cos(centerRad), ny = cy + nrad * Math.sin(centerRad);
-        svg += '<text x="' + nx + '" y="' + (ny + 3) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + col + '" font-family="DM Sans,sans-serif">' + pt.idx + '</text>';
+        svg += '<text x="' + nx + '" y="' + (ny + 3) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + col + '" font-family="DM Sans,sans-serif">' + numLabel + '</text>';
       }
     });
     // Mer totale (hs/dir global) en flèche par-dessus, repère "vue d'ensemble" —
@@ -6370,12 +6449,16 @@ function _drawSwellCompare() {
         + '<span style="color:var(--faint);">Mer totale (toutes composantes)</span>'
         + '</div>') : '';
       legHtml += sorted.map(function(pt) {
+        // LOTUS n'a pas de slot "mer du vent" (cf. hasWindSeaSlot) : label
+        // générique "Houle N" numéroté à partir de 1, jamais MARC_PART_LABELS
+        // (qui suppose l'index 0 = mer du vent).
+        var lbl = hasWindSeaSlot ? MARC_PART_LABELS[pt.idx] : ('Houle ' + (pt.idx + 1));
         return '<div style="display:flex;align-items:center;gap:5px;">'
           + '<span style="width:7px;height:7px;border-radius:50%;background:' + MARC_PART_COLORS[pt.idx % MARC_PART_COLORS.length] + ';flex-shrink:0;"></span>'
           + '<b style="color:var(--text);">' + pt.h.toFixed(1) + 'm</b>'
           + (pt.t != null ? '<span style="color:var(--faint);">' + Math.round(pt.t) + 's</span>' : '')
           + (pt.spread != null ? '<span style="color:var(--faint);">±' + Math.round(pt.spread) + '°</span>' : '')
-          + '<span style="color:var(--faint);">' + MARC_PART_LABELS[pt.idx] + '</span>'
+          + '<span style="color:var(--faint);">' + lbl + '</span>'
           + '</div>';
       }).join('');
       legEl.innerHTML = legHtml;
@@ -6396,7 +6479,11 @@ function _drawSwellCompare() {
   // AIFS n'ont par construction rien en dessous de 10s, cette bande reste donc
   // toujours vide pour eux.
   var BANDS_COMBINED_LABELS = ['<10s', '10-12s', '12-14s', '14-17s', '17-21s', '21-25s', '25-30s'];
-  var BANDS_COMBINED_MODELS = ['ecmwf', 'aifs', 'marc', 'mf'];
+  // lotus ajouté le 02/08/2026 : _bandsCombinedSeries est déjà générique par
+  // .partitions (bucket + somme des hauteurs par bande de période), aucune
+  // hypothèse "mer du vent à l'index 0" ici (contrairement à _drawSpectrumRose)
+  // — les partitions LOTUS s'agrègent donc correctement sans code spécifique.
+  var BANDS_COMBINED_MODELS = ['ecmwf', 'aifs', 'marc', 'mf', 'lotus'];
   function _bandBucketIdx(t) {
     if (t == null) return -1;
     if (t < 10) return 0;
@@ -6490,8 +6577,9 @@ function _drawSwellCompare() {
     // partitions pour cet instant (chacun garde sa propre visibilité interne).
     var marcShown = _drawSpectrumRose('marc', atMs);
     var mfShown = _drawSpectrumRose('mf', atMs);
+    var lotusShown = _drawSpectrumRose('lotus', atMs);
     var compareWrap = document.getElementById('spectrum-compare-wrap');
-    if (compareWrap) compareWrap.style.display = (marcShown || mfShown) ? '' : 'none';
+    if (compareWrap) compareWrap.style.display = (marcShown || mfShown || lotusShown) ? '' : 'none';
     // _drawBandsCombined gère elle-même l'affichage de son wrap (aucun modèle
     // dispo à cet instant → wrap masqué), pas besoin de le refaire ici.
     _drawBandsCombined(atMs);

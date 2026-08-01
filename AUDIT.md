@@ -2927,3 +2927,97 @@ Supabase directes confirmant la rafale peuplée sur les nouvelles lignes.
 rechargement tous spots, cohérence Journal, comparatif/plot, présentation des
 modèles, UX au-delà du toggle Mesuré, LOTUS étape 2 — suite dans les entrées
 qui suivent.
+
+## Session du 02/08/2026 (nuit, suite) — audit fiabilité + LOTUS étape 2 (comparatif previsions.html)
+
+### Audit fiabilité rechargement tous spots : SAIN, une trouvaille mineure
+
+Vérifié en base (pas supposé) pour les 7 `shared_spots` actuels : nc/gfs/bom/mf
+tous frais (< 4h, cron sain), LOTUS matche bien 2 spots par coordonnées
+(Dumbéa, Boulari) malgré des noms différents (Surfline vs site) — **aucun trou
+de fiabilité réel**. Fausse alerte initiale corrigée en cours de route : un
+premier passage (top-1000 lignes par fraîcheur) faisait croire 4 spots
+orphelins, artefact d'échantillonnage (mes propres tests avaient noyé Dumbéa/
+Ténia/Ouano de lignes très fraîches) — corrigé en requêtant chaque spot
+individuellement.
+
+**Trouvaille réelle** : recensement complet de `model_forecast_cache` (35807
+lignes) → 97 lignes dont les coordonnées ne matchent aucun spot/station actuel
+à 0,05° près. Sur ces 97 : 14 sont LOTUS "False Pass" (légitime, zone Surfline
+sans spot site à proximité, pas un bug) ; **83 sont "TEST Océan Vide"**
+(-25/160, plein océan, écriture unique du 28/07 — donnée de test oubliée en
+prod). Tentative de suppression via la clé anon : **RLS bloque silencieusement
+le DELETE** (HTTP 200, 0 ligne affectée — le piège documenté dans CLAUDE.md,
+vérifié ici en pratique). **Action utilisateur requise** : supprimer ces 83
+lignes via le dashboard Supabase si souhaité (`spot_name=eq.TEST Océan Vide`)
+— impact nul sur le fonctionnement (jamais interrogées par le site), juste de
+l'hygiène. Script de vérification/dry-run laissé dans le scratchpad de session
+si besoin de le rejouer.
+
+### Audit cohérence Journal (vote « meilleur train », ajouté plus tôt cette nuit)
+
+Relu : syntaxe `.in('kind', [...])` cohérente avec le reste du fichier,
+`_bestTrain`/`_modelTrains`/`_observedFromCtx` sans référence cassée, garde-fous
+null cohérents. Aucune régression trouvée.
+
+### LOTUS étape 2 — branché dans le comparatif houle de previsions.html
+
+Suite de l'étape 1 (ingestion + vote Journal, plus tôt cette nuit). Cette fois :
+le comparatif multi-modèles de la page Prévisions elle-même.
+
+- **`_fetchLotusArchive(spot)`** (nouveau, calqué sur `_fetchMarcArchive`) :
+  DIFFÉRENCE clé identifiée avant de coder — MARC/MF/ECMWF/AIFS écrivent aux
+  coordonnées EXACTES de `shared_spots` (id déterministe suffit), LOTUS écrit
+  aux coordonnées SURFLINE de ses 5 zones (jamais identiques à un spot du
+  site). Recherche par TOLÉRANCE de coordonnées (±0,05°, requête `.gte/.lte`
+  sur lat/lon) plutôt que par id — sinon zéro ligne n'aurait jamais matché.
+  Cache-only, pas de repli live (même décision qu'ECMWF/AIFS : API tierce, pas
+  de CORS testé côté navigateur).
+- **`MODEL_STYLE.lotus`** (couleur `#2dd4bf`, IDENTIQUE à celle déjà posée
+  côté Journal — piège "même modèle, deux couleurs" déjà corrigé une fois pour
+  tous les autres modèles, vigilance pour ne pas le réintroduire) et
+  **`SWELL_MODELS`** (desc précisant la couverture LIMITÉE à 5 zones NC — pas
+  un modèle global comme les autres, absence normale sur la plupart des spots).
+- **`_extra`/`_swellCache`** : `_fetchLotusArchive` ajouté au `Promise.all`,
+  clé `lotus` ajoutée à `_swellCache`. Vérifié par grep systématique : TOUS les
+  points de lecture de `_swellCache[key]` (11 sites) gardent déjà avec
+  `_swellCache[key] && ...` — `lotus: null` (spot hors zone Surfline) s'intègre
+  donc sans code défensif supplémentaire nulle part.
+- **Rose de spectre (`_drawSpectrumRose`)** : déjà générique par `modelKey`,
+  fonctionne pour LOTUS SANS modification de la fonction de dessin elle-même —
+  juste le bloc HTML `lotus-spectrum-wrap` ajouté (calqué sur marc/mf) et
+  l'appel `_drawSpectrumRose('lotus', atMs)`. **Piège trouvé et corrigé avant
+  que ce soit trompeur** : la fonction traite l'index 0 des partitions comme
+  "mer du vent" sans numéro (convention MARC/MFWAM, où ce slot existe
+  réellement) — LOTUS n'a PAS cette convention (`partitions` = ordre brut
+  `swells[]` de Surfline, aucun train n'y est spécifiquement la mer du vent).
+  Sans correctif, le 1er train LOTUS aurait été affiché sans numéro et légendé
+  à tort "Mer du vent". Ajouté `hasWindSeaSlot = (modelKey==='marc'||modelKey
+  ==='mf')` : LOTUS numérote tous ses trains dès 1, légende "Houle N" générique.
+- **Barres de période (`BANDS_COMBINED_MODELS`)** : `_bandsCombinedSeries` est
+  déjà générique par `.partitions` (bucket + somme par bande), aucune
+  hypothèse "mer du vent" ici contrairement à la rose — `lotus` ajouté au
+  tableau sans autre changement.
+- Légende du comparatif houle (cases à cocher) : déjà pilotée par
+  `SWELL_MODELS`/`dataModels` — LOTUS y apparaît automatiquement dès qu'il a
+  de la donnée pour le spot courant, aucun code de légende à toucher.
+
+**Non fait par manque de temps/pertinence du périmètre demandé** : LOTUS n'a
+PAS été ajouté au comparatif VENT (structure séparée bien plus lourde à
+étendre — fetchLotusWind, `_windExtra`, bias tracking, `WIND_UNRESAMPLABLE`,
+légende dédiée — alors que la demande explicite portait sur "roses de
+direction/spread... barres de période", des concepts houle, pas vent). Refonte
+des légendes (jugées peu compréhensibles) pas encore commencée, todo suivant.
+
+**Vérification** : `node --check` OK après chaque étape. **Limite assumée** :
+le diagnostic runtime headless (injection + capture d'erreurs JS) s'est révélé
+peu fiable dans ce sandbox pour une page aussi chargée en fetchs réseau réels
+(`--virtual-time-budget` ne délaie pas de façon fiable un `setTimeout` mêlé à
+de vrais appels réseau — plusieurs tentatives, échecs systématiques malgré un
+mécanisme de base validé sur un cas trivial). Vérification donc STATIQUE
+uniquement pour ce chantier (relecture ligne à ligne de chaque fonction
+touchée + grep systématique de tous les points d'usage de `_swellCache`) — pas
+de test runtime réel dans un navigateur. **À vérifier visuellement par
+l'utilisateur** au réveil : ouvrir previsions.html sur un spot proche de Passe
+de Dumbéa ou Passe de Boulari, confirmer que le bloc "Spectre LOTUS" et sa
+barre dans "Bandes de période" apparaissent sans erreur console.
