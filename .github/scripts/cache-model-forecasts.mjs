@@ -230,19 +230,26 @@ async function fetchMarc(spot) {
 
 // ── GFS (houle via ncep_gfswave025, vent via gfs_seamless) — Open-Meteo ──
 async function fetchGfsWave(spot) {
+  // Houle primaire ET secondaire : ncep_gfswave025 expose une VRAIE houle 2
+  // native avec direction (secondary_swell_wave_*, vérifié empiriquement, cf.
+  // previsions.html). Archivée depuis le 01/08/2026 pour l'évaluation "meilleur
+  // train" du Journal (une houle 2 longue est parfois le vrai déclencheur) —
+  // avant, seule la primaire était mise en cache par le cron.
   try {
     const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.lat}&longitude=${spot.lon}`
-      + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction&models=ncep_gfswave025&forecast_days=10&timezone=GMT';
+      + '&hourly=swell_wave_height,swell_wave_period,swell_wave_direction,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction'
+      + '&models=ncep_gfswave025&forecast_days=10&timezone=GMT';
     const r = await fetchWithTimeout(url);
     const j = await r.json();
-    if (!j?.hourly?.time) return [];
-    const h = j.hourly, out = [];
+    if (!j?.hourly?.time) return { primary: [], secondary: [] };
+    const h = j.hourly, primary = [], secondary = [];
     for (let i = 0; i < h.time.length; i++) {
       const ms = Date.parse(h.time[i] + 'Z');
-      if (h.swell_wave_height[i] != null) out.push({ ms, val: h.swell_wave_height[i], period: h.swell_wave_period?.[i], dir: h.swell_wave_direction?.[i] });
+      if (h.swell_wave_height[i] != null) primary.push({ ms, val: h.swell_wave_height[i], period: h.swell_wave_period?.[i], dir: h.swell_wave_direction?.[i] });
+      if (h.secondary_swell_wave_height?.[i] != null) secondary.push({ ms, val: h.secondary_swell_wave_height[i], period: h.secondary_swell_wave_period?.[i], dir: h.secondary_swell_wave_direction?.[i] });
     }
-    return out;
-  } catch (e) { console.warn('[GFS wave]', spot.name, e.message); return []; }
+    return { primary, secondary };
+  } catch (e) { console.warn('[GFS wave]', spot.name, e.message); return { primary: [], secondary: [] }; }
 }
 async function fetchGfsWind(spot) {
   try {
@@ -383,7 +390,8 @@ async function run() {
       ...toRows(spot, 'nc', 'wind', nc.wind),
       ...toRows(spot, 'bom', 'swell_primary', bom.swell),
       ...toRows(spot, 'bom', 'wind', bom.wind),
-      ...toRows(spot, 'gfs', 'swell_primary', gfsWave),
+      ...toRows(spot, 'gfs', 'swell_primary', gfsWave.primary),
+      ...toRows(spot, 'gfs', 'swell_secondary', gfsWave.secondary),
       ...toRows(spot, 'gfs', 'wind', gfsWind),
       ...toRows(spot, 'marc', 'swell_primary', marc.swell),
       ...toRows(spot, 'marc', 'wind', marc.wind),

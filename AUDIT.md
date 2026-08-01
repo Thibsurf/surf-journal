@@ -2597,3 +2597,209 @@ Vérifié en réel : `switchTable('ecmwf')`/`switchTable('aifs')` puis lecture d
 DOM généré — colonnes Vent/Dir.vent peuplées ("6 nds"/"E 98°" pour ECMWF,
 "7/8/7/6 nds" pour AIFS sur 4 lignes consécutives), colonne rafale toujours
 "—" comme attendu.
+
+## Session du 01/08/2026 — reprise de l'audit houle 1/2 : ma première passe portait sur un clone périmé de 13 commits
+
+**Erreur de méthode à noter pour la prochaine fois** : plus tôt dans cette
+session, j'ai audité `TASK_SWELL_AUDIT.md` (§1, tableau houle 1/2 par modèle)
+et conclu que le doc contenait des faits inventés — en particulier « AIFS
+n'existe nulle part dans le dépôt » et « la ligne ECMWF du doc est fausse,
+le vrai code lit SWELL1/SWDIR1 natif via Windguru ». **Ces deux conclusions
+étaient vraies pour le code que j'avais sous les yeux, mais mon clone local
+était périmé de 13 commits** (`git status` disait « up to date » en tout
+début de session, mais quelqu'un — vraisemblablement une session Claude Code
+parallèle, poussant directement sur `origin/main` — a ajouté entre-temps
+`feat(previsions): ECMWF Open Data (IFS-HRES + AIFS-single), remplace le
+relais Windguru`, `feat(previsions): MFWAM en direct via Copernicus Marine`,
+et `feat(previsions): AIFS dans le comparatif vent`, entre autres. Un
+`git fetch` fait APRÈS avoir commencé à travailler a révélé le retard ;
+`git log --oneline main..origin/main` l'a confirmé : 13 commits, dont le
+remplacement complet du mécanisme ECMWF et l'ajout d'AIFS.
+
+**Correction des faits, vérifiés sur le code réel après `git pull --ff-only`** :
+
+- **AIFS existe bel et bien**, massivement intégré depuis le 30/07/2026 :
+  `MODEL_STYLE.aifs` (couleur `#e06bb0` — exactement la couleur que
+  `TASK_SWELL_AUDIT.md` citait, donc ce doc décrivait fidèlement un état déjà
+  vrai ou en cours d'implémentation, pas une invention), `SWELL_MODELS`
+  (comparatif houle), comparatif vent, table mono-modèle (`switchTable('aifs')`,
+  bouton dédié), suivi de biais. Mon « zéro résultat » de grep était exact
+  contre mon clone, faux contre la réalité.
+- **La ligne ECMWF a changé de sens entre-temps** : le relais Windguru
+  (SWELL1/SWDIR1 natif que j'avais vérifié) a été **remplacé** par ECMWF Open
+  Data (IFS-HRES direct, `data.ecmwf.int`). Le nouveau desc dans
+  `SWELL_MODELS` dit maintenant, texto : *« Houle "primaire" = bande de
+  période la plus haute parmi 6 (10-30s), pas une vraie partition mesurée ;
+  pas de direction par bande »* — exactement ce que `TASK_SWELL_AUDIT.md`
+  décrivait à l'origine. Ma « correction » était donc vraie AU MOMENT où je
+  l'ai écrite (le relais Windguru existait encore dans mon clone) mais fausse
+  dès le pull. Le desc AIFS reprend la même limite, mot pour mot.
+- **MF a changé de sens aussi, dans le même sens** : Open-Meteo
+  (`meteofrance_wave`, ce que j'avais vérifié) a été remplacé par Copernicus
+  Marine en direct (`GLOBAL_ANALYSISFORECAST_WAV_001_027`, 0,083°/~9 km),
+  avec de vraies partitions `VHM0_WW/VHM0_SW1/VHM0_SW2` **avec direction** —
+  ce que le doc original décrivait (« Partition SW1, déjà ordonnée par
+  construction CMEMS ») était donc, encore une fois, un état réel/à venir,
+  pas une invention.
+- **Conclusion générale à retenir** : ne plus jamais auditer un repo sans
+  `git fetch` + comparaison à `origin/<branche>` en tout DÉBUT de session ET
+  avant toute conclusion factuelle définitive — un `git status` fait une
+  seule fois en tout début de session ne suffit pas si une autre session
+  peut pousser des commits pendant que je travaille. `TASK_SWELL_AUDIT.md`
+  n'était probablement pas rédigé « sans accès au dépôt » comme je l'avais
+  conclu à tort — il décrivait un état du dépôt que je n'avais simplement
+  pas encore.
+
+**T1/T3 réappliqués sur le code à jour** (T2 sur `fetch_marc.py` restait
+valide, ce fichier n'a pas été touché par les 13 commits) :
+
+- **T1** — `SWELL_MODELS['marc'].desc` (previsions.html ~L5008) : MARC est
+  maintenant le SEUL modèle du comparatif dont la houle 1/2 n'est ni un champ
+  natif ni disclosed — nc/gfs/bom/mf ont un vrai champ natif, ecmwf/aifs
+  disclosent déjà leur approximation. Phrase de disclosure ajoutée, même
+  esprit que ecmwf/aifs.
+- **T3** — `_renderCmpTable()` → `rowsFor()` (previsions.html ~L5690-5736) :
+  `title=` sur la cellule d'étiquette de chaque ligne houle = `SWELL_MODELS[
+  key].desc`, curseur `help`. Structure de la fonction inchangée par les 13
+  commits (juste des lignes décalées), le correctif s'applique pareil qu'avant.
+- **T10, jugé « non applicable » à tort dans ma première passe** : AIFS
+  ajouté à `MODEL_RELIABILITY_ORDER`/`MODEL_RELIABILITY_LABELS` (index.html
+  ~L3471-3489), couleur `#e06bb0` reprise de `MODEL_STYLE.aifs.col`. **Ne
+  s'affichera pas encore dans la table de vote** : `_fetchModelTableRows` ne
+  lit que `kind='swell_primary'`, et `ingestion/fetch_ecmwf.py` n'écrit que
+  `kind='wave'`/`'wind'` pour aifs (comme pour ecmwf) — même trou déjà
+  documenté pour MF/ECMWF dans `TASK_SWELL_AUDIT.md` §3/T11, maintenant vrai
+  aussi pour AIFS. Pas corrigé ici : c'est une décision d'architecture (faut-il
+  qu'un modèle sans direction par bande figure dans un vote où, selon Thib,
+  la direction est le critère qui compte le plus pour les passes NC ?) à
+  trancher avec lui, pas un correctif mécanique.
+
+**Nouveau, suite à la demande explicite de vérifier les GitHub Actions** :
+
+- **`mfwam` (job de `cache-model-forecasts.yml`) échoue à CHAQUE run depuis
+  sa création — 6/6, jamais un seul succès en CI.** Vérifié précisément : le
+  run #20 (dernier succès du workflow AVANT le refactor du 30/07, jobs
+  `arome`+`cache` seulement) a réussi ; le run #21 (2026-07-30T11:19:57Z,
+  premier run avec les 4 jobs `cache`/`arome`/`mfwam`/`ecmwf`) a vu `mfwam`
+  échouer dès sa toute première exécution, et pareil pour les runs #22 à #26
+  (dernier : 2026-08-01T04:33:31Z). Cause probable, déjà anticipée par le
+  commentaire du workflow lui-même (« secrets du repo à créer par
+  l'utilisateur ») : `COPERNICUSMARINE_SERVICE_USERNAME`/
+  `COPERNICUSMARINE_SERVICE_PASSWORD` absents ou invalides côté Settings →
+  Secrets and variables → Actions — logs bruts inaccessibles pour confirmer
+  à 100 % (403 sans `gh auth login`). **Conséquence mesurée côté données** :
+  `model_forecast_cache` (`model=mf, kind=wave`) n'a plus été mis à jour
+  depuis **2026-07-30T04:19** (~44h de retard à l'heure de cette vérification,
+  et ça grandit chaque jour) — cette ligne vient très probablement d'un test
+  local du développeur (poste avec `copernicusmarine login` déjà configuré,
+  cf. docstring `fetch_mfwam.py`), pas d'un run CI réussi. `ecmwf`/`aifs`
+  (kind=wave), eux, sont frais (2026-08-01T04:37-04:38, même run que le
+  succès du job `ecmwf`). `cache` (nc/gfs/bom/marc, kind=swell_primary) et
+  `arome` tournent sans accroc. **Action requise côté Thib** : créer/vérifier
+  ces deux secrets — je ne peux pas les lire ni les créer moi-même.
+- **meteo.nc bien distinct de GFS et bien à jour.** Confirmé dans le code
+  (`.github/scripts/cache-model-forecasts.mjs`) : nc passe par `rpcache` avec
+  un token Bearer poussé par le Worker Cloudflare (`getNcToken`, table
+  `shared_tokens` id=`meteo-nc`), GFS par Open-Meteo anonyme
+  (`ncep_gfswave025`/`gfs_seamless`) — deux chemins réseau et deux
+  fournisseurs de données entièrement séparés, jamais mélangés. Vérifié en
+  base : `shared_tokens.meteo-nc.updated_at` = 2026-08-01T09:10 (le Worker le
+  rafraîchit toutes les 5 min, indépendamment du cron de cache) ;
+  `model_forecast_cache` pour nc/gfs/bom/marc (`kind=swell_primary`) partagent
+  tous le même `updated_at` (2026-08-01T09:04, le run `cache` le plus récent)
+  — nc n'est ni en retard ni sauté silencieusement faute de token.
+
+**LOTUS/Surfline : toujours pas intégré au site.** Recherche `surfline`/`lotus`
+sur `origin/main` (tous fichiers) : zéro résultat en dehors des docs
+`TASK_surfline_lotus_nc.md`/`POINTS_CLES_surfline_lotus.md` et de
+`ingestion/surfline_client.py` (livré cette session, cf. plus haut/plus bas
+selon l'ordre final du fichier) — ce dernier est un client Python autonome,
+jamais appelé depuis `previsions.html`/`index.html`/un cron GitHub Actions.
+Rien côté site n'affiche de donnée Surfline à ce jour ; l'intégration
+Supabase/Worker reste explicitement hors scope du brief d'origine.
+
+**Vérification** : `node --check` sur les blocs JS principaux de
+`previsions.html` (744 Ko) et `index.html` (287 Ko) = OK. Pas de test runtime
+headless refait sur ce chantier.
+
+## Session du 01/08/2026 (suite) — CI mfwam réparée + évaluation "meilleur train" du Journal
+
+### CI `mfwam` : 3 bugs empilés, réparés (poussés `cd12dac7`, `8a2a36e7`)
+
+Le job `mfwam` de `cache-model-forecasts.yml` échouait à CHAQUE run depuis sa
+création (30/07). Diagnostic via `gh` (authentifié cette session) sur les vrais
+logs — 3 causes qui se masquaient l'une l'autre, révélées une par une :
+1. **Identifiants Copernicus Marine invalides** (`InvalidUsernameOrPassword`) —
+   l'utilisateur avait mis le mauvais mot de passe dans le secret repo. Corrigé
+   côté GitHub par lui.
+2. **`xarray==2024.2.0` trop ancien** : `copernicusmarine==2.2.1` appelle
+   `open_zarr(..., zarr_format=2)`, paramètre introduit en xarray 2024.10.0.
+   → bumpé à `2024.11.0` (`TypeError: open_zarr() got unexpected keyword
+   arguments zarr_format`).
+3. **`h5py` manquant** : `h5netcdf` le déclare en extra OPTIONNEL, jamais tiré
+   par un `pip install` normal → `ImportError` à l'écriture du NetCDF. Ajouté
+   à `requirements.txt`.
+Chaque correctif a été testé en réel via `workflow_dispatch` avant de conclure.
+Run final (`30695328697`) : **4/4 jobs verts**, MF de nouveau frais en base
+(vérifié : `model=mf` mis à jour, avant figé au 30/07). meteo.nc confirmé
+distinct de GFS (chemins/fournisseurs séparés) et à jour (token 5 min + cron).
+
+### Journal — évaluation au "meilleur train" (houle 2/3 parfois > houle 1)
+
+Demande utilisateur : le vote de fiabilité ne comparait que la houle PRIMAIRE
+de chaque modèle, or une houle 2 (voire 3) est parfois le vrai déclencheur sur
+une passe (houle longue de faible amplitude sous une mer plus haute), et MARC/
+LOTUS/etc. ont souvent >2 trains. Refonte du mécanisme (choix utilisateur parmi
+3 options proposées : "vote au meilleur train").
+
+**Données (vérifiées en base avant de coder)** — sources FIABLES (cron) par
+modèle : MARC `kind=wave` = jusqu'à 6 partitions directionnelles ;
+MFWAM `kind=wave` = 3 partitions (mer vent/houle 1/houle 2) directionnelles ;
+nc/gfs/bom `swell_primary` (1 train dir) ; ecmwf/aifs `kind=wave` = bandes de
+période SANS direction. Découverte : `swell_secondary` n'était écrit par AUCUN
+cron (seulement écritures client opportunistes de previsions.html, ecmwf/gfs/mf
+uniquement) — donc inexploitable de façon fiable jusqu'ici.
+
+**index.html** : nouvelles fonctions `_modelTrains` (rassemble tous les trains
+d'un modèle depuis sa source de cache fiable), `_bestTrain`/`_trainDistance`
+(distance pondérée obs↔train, **direction ×2** vs hauteur/période ×1 — retour
+utilisateur : sur les passes NC c'est la direction qui décide), `_observedFromCtx`
+(conditions saisies : session enregistrée ou champs du formulaire, direction via
+`dirToDeg`). `_fetchModelTableRows` lit désormais `swell_primary`+`swell_secondary`
++`wave` (avant : primary seul), garde la ligne la plus fraîche par (modèle,kind).
+`_modelTableHTML` affiche chaque modèle AVEC ses trains, marque d'un ★ le train
+le plus proche des conditions saisies, et surligne le modèle globalement suggéré
+(l'utilisateur vote quand même à la main). Filtre : trains résiduels exclus SAUF
+houle longue (≥13s préservée même petite — souvent le déclencheur). Logique
+testée en Node sur données réelles (Passe de Dumbéa, 02/08) AVANT portage :
+cas démontré où MARC gagne grâce à sa houle 2 (0,64m **15s** 179°) qui colle à
+un observé "1,2m 14s 190°" mieux que la primaire de tout autre modèle.
+
+**cache-model-forecasts.mjs** : `fetchGfsWave` archive maintenant AUSSI la houle
+2 native de GFS (`secondary_swell_wave_*`, kind=`swell_secondary`) — avant, GFS
+n'avait qu'1 train fiable. Vérifié : le champ est bien renvoyé par Open-Meteo
+(48/48h) ; les 0.0 des jours à houle unique sont filtrés par le plancher
+`_TRAIN_MIN_H`.
+
+**Non fait / limites** : ecmwf/aifs restent sans direction par train (bandes
+Open Data — limite native, ne peuvent matcher que hauteur+période, pénalité
+appliquée). Pas de champ "conditions observées au large" SÉPARÉ des champs de
+session (le matching réutilise hs/period/swell_dir de la session — pragmatique,
+mais §4 recommandait à terme un champ distinct pour ne pas mêler prévision
+pré-remplie et observation ; à trancher plus tard). Le vote stocké reste
+`votedModel` (compat) — le ★ est une aide à la décision, pas un vote automatique.
+
+**Vérification** : `node --check` sur index.html (295 Ko) et
+cache-model-forecasts.mjs = OK ; regroupement `_fetchModelTableRows` re-répliqué
+en Node sur données réelles (7 modèles rendus, MARC/MFWAM 2 trains, série graphe
+préservée). Pas de rendu headless de la table authentifiée (nécessiterait un
+login Supabase + une session).
+
+### LOTUS/Surfline — TOUJOURS pas sur le site (confirmé à l'utilisateur)
+
+Question explicite : "je ne vois pas LOTUS sur la PWA ni PC, tu as ajouté ?".
+Réponse : non — `ingestion/surfline_client.py` est un client autonome, jamais
+branché (ni previsions.html, ni comparatif, ni cron, ni Supabase), même pas
+encore commité. C'était le périmètre du brief (intégration = tâche séparée).
+Le jour où il sera branché, ses 6 trains entreront directement dans la logique
+`_modelTrains` ci-dessus (même moule que MARC).

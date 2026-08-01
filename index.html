@@ -3478,7 +3478,15 @@ var MODEL_RELIABILITY_LABELS = {
   // absent jusqu'ici alors que c'est le seul modèle qui résout la bathymétrie du lagon,
   // donc précisément celui dont la valeur ajoutée mérite le plus d'être mesurée
   // (AUDIT-previsions.md §11.10).
-  marc:  { label: 'MARC WW3', col: '#7dd3fc' }
+  marc:  { label: 'MARC WW3', col: '#7dd3fc' },
+  // AIFS (ECMWF AIFS-single, modèle IA) ajouté le 01/08/2026 — même couleur que
+  // côté previsions.html (MODEL_STYLE.aifs.col). ATTENTION : ajouté ici pour la
+  // cohérence des libellés/couleurs, mais ne s'affichera dans la table de vote
+  // QUE le jour où ingestion/fetch_ecmwf.py écrira aussi kind='swell_primary'
+  // pour 'aifs' (aujourd'hui il n'écrit que kind='wave'/'wind', cf. AUDIT.md,
+  // même trou déjà documenté pour mf/ecmwf) — _fetchModelTableRows n'affiche
+  // que les modèles qui ont une ligne swell_primary pour le spot/date demandés.
+  aifs:  { label: 'AIFS',     col: '#e06bb0' }
 };
 // Fenêtre passée corrigée le 28/07/2026 : 2 jours cachait TOTALEMENT l'outil
 // (section masquée, aucun message) dès qu'une session était saisie avec un
@@ -3661,6 +3669,124 @@ async function _hasModelCacheTableJournal() {
 // previsions.html (_lookupModelCache : plus proche de l'heure cible), pour
 // que le Journal et Prévisions jugent les modèles sur le même critère.
 // Repli sur midi (12h) si l'heure de session est inconnue — jamais le pic.
+// ── Trains de houle multi-partitions (évaluation "meilleur train", 01/08/2026) ──
+// Avant : le vote de fiabilité ne comparait que la houle PRIMAIRE de chaque modèle.
+// Problème signalé par l'utilisateur : une houle 2 (ou 3…) est PARFOIS le vrai
+// déclencheur sur une passe (houle longue de faible amplitude, sous une mer plus
+// haute), et "primaire" ne veut même pas dire la même chose selon le modèle
+// (plus haute pour nc/gfs/bom/mf ; plus énergétique ≥8s pour MARC). On rassemble
+// donc TOUS les trains disponibles par modèle et on désigne celui qui colle le
+// mieux aux conditions observées — direction pondérée fort (passes NC à fenêtre
+// angulaire étroite). Sources FIABLES (cron) par modèle : MARC/MFWAM = spectre
+// partitionné directionnel (kind=wave) ; nc/gfs/bom = swell_primary (+secondary
+// gfs) ; ecmwf/aifs = bandes de période SANS direction (Open Data). Logique
+// testée sur données réelles avant portage (cf. AUDIT.md 01/08).
+var _TRAIN_MIN_H = 0.15;      // m — plancher absolu (ignore les trains résiduels)
+var _TRAIN_MIN_RATIO = 0.12;  // fraction de la houle la plus haute du modèle
+
+function _trainNearestHour(hours, targetH) {
+  if (!hours || !hours.length) return null;
+  var best = null, bd = Infinity;
+  for (var i = 0; i < hours.length; i++) {
+    var hh = hours[i];
+    if (hh == null) continue;
+    var hv = hh.hour != null ? hh.hour : hh.h; // wave: .hour ; swell_*: .h
+    if (hv == null) continue;
+    var df = Math.abs(hv - targetH);
+    if (df < bd) { bd = df; best = hh; }
+  }
+  return best;
+}
+
+// Rassemble les trains d'un modèle à l'heure cible depuis sa source de cache la
+// plus fiable. byKind = { wave, swell_primary, swell_secondary } (tableaux hours).
+// Retourne [{h,t,dir,hasDir}] trié par hauteur décroissante, résiduels exclus —
+// mais une houle LONGUE (≥13s) est préservée même petite (souvent le déclencheur).
+function _modelTrains(model, byKind, targetH) {
+  var raw = [];
+  if (model === 'marc' || model === 'mf') {
+    var wh = _trainNearestHour(byKind.wave, targetH);
+    var parts = wh && wh.partitions;
+    if (parts) for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (p && p.h != null) raw.push({ h: p.h, t: p.t, dir: p.dir, hasDir: p.dir != null });
+    }
+  } else if (model === 'ecmwf' || model === 'aifs') {
+    var wb = _trainNearestHour(byKind.wave, targetH);
+    if (wb && wb.val != null) raw.push({ h: wb.val, t: wb.period, dir: null, hasDir: false });
+  } else {
+    var sp = _trainNearestHour(byKind.swell_primary, targetH);
+    if (sp && sp.val != null) raw.push({ h: sp.val, t: sp.period, dir: sp.dir, hasDir: sp.dir != null });
+    var ss = _trainNearestHour(byKind.swell_secondary, targetH);
+    if (ss && ss.val != null) raw.push({ h: ss.val, t: ss.period, dir: ss.dir, hasDir: ss.dir != null });
+  }
+  if (!raw.length) return [];
+  var maxH = 0, j;
+  for (j = 0; j < raw.length; j++) if (raw[j].h > maxH) maxH = raw[j].h;
+  var kept = raw.filter(function (tr) {
+    if (tr.h < _TRAIN_MIN_H) return false;
+    if (tr.h >= maxH * _TRAIN_MIN_RATIO) return true;
+    if (tr.t != null && tr.t >= 13 && tr.h >= 0.25) return true; // houle longue préservée
+    return false;
+  });
+  if (!kept.length) kept = [raw.reduce(function (a, b) { return b.h > a.h ? b : a; })];
+  kept.sort(function (a, b) { return b.h - a.h; });
+  return kept;
+}
+
+function _trainDirDelta(a, b) {
+  if (a == null || b == null) return null;
+  var d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+// Distance pondérée observation↔train. Direction pèse 2× (hauteur/période 1×) :
+// sur les passes NC, 10-15° d'écart de direction décident si le spot marche,
+// plus que la hauteur (retour utilisateur). Échelles : 40°/1m/5s = "1 unité".
+// Train sans direction (ecmwf/aifs) : pénalité fixe, il ne peut pas gagner sur
+// la dir contre un train qui a une dir qui colle.
+function _trainDistance(train, obs) {
+  var parts = 0, n = 0, x;
+  if (obs.h != null && train.h != null) { x = Math.abs(train.h - obs.h) / 1.0; parts += x * x; n++; }
+  if (obs.t != null && train.t != null) { x = Math.abs(train.t - obs.t) / 5.0; parts += x * x; n++; }
+  if (obs.dir != null && train.hasDir) { x = _trainDirDelta(train.dir, obs.dir) / 40.0; parts += x * x * 2; n++; }
+  else if (obs.dir != null && !train.hasDir) { parts += 0.5 * 2; }
+  if (!n) return Infinity;
+  return Math.sqrt(parts);
+}
+
+// Meilleur train d'un modèle vs conditions observées. Sans obs exploitable →
+// train dominant (le plus haut). Retourne { train, dist, idx }.
+function _bestTrain(trains, obs) {
+  if (!trains || !trains.length) return null;
+  if (!obs || (obs.h == null && obs.t == null && obs.dir == null)) return { train: trains[0], dist: Infinity, idx: 0 };
+  var best = null, bd = Infinity, bi = 0;
+  for (var i = 0; i < trains.length; i++) {
+    var d = _trainDistance(trains[i], obs);
+    if (d < bd) { bd = d; best = trains[i]; bi = i; }
+  }
+  return { train: best, dist: bd, idx: bi };
+}
+
+// Conditions observées pour le matching ★ : session enregistrée (détail) ou
+// champs du formulaire en saisie. Direction via dirToDeg ("S"/"SSO"/"190°").
+function _observedFromCtx(ctx) {
+  var h = null, t = null, dir = null;
+  if (ctx && ctx.session) {
+    var s = ctx.session;
+    h = s.hs != null ? +s.hs : null;
+    t = s.period != null ? +s.period : null;
+    dir = s.swell_dir ? dirToDeg(s.swell_dir) : null;
+  } else if (ctx && ctx.formMode) {
+    var he = document.getElementById('f-hs'), te = document.getElementById('f-period'), de = document.getElementById('f-swell-dir');
+    h = he && he.value ? parseFloat(he.value) : null;
+    t = te && te.value ? parseFloat(te.value) : null;
+    dir = de && de.value ? dirToDeg(de.value) : null;
+  }
+  if ((h == null || isNaN(h)) && (t == null || isNaN(t)) && dir == null) return null;
+  return { h: (h != null && !isNaN(h)) ? h : null, t: (t != null && !isNaN(t)) ? t : null, dir: dir };
+}
+
 async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
   if (!(await _hasModelCacheTableJournal())) return null;
   // Résolution centralisée (cf. _resolveSpotCoords) : AVANT, seule la table
@@ -3673,44 +3799,49 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
   if (!station) return null;
   var targetH = (sessionHour == null || isNaN(sessionHour)) ? 12 : sessionHour;
   try {
-    var r = await sb.from('model_forecast_cache').select('model,lat,lon,hours,issued_at').eq('date', dateVal).eq('kind', 'swell_primary');
+    // Lit TROIS kinds (avant : swell_primary seul) : `wave` porte le spectre
+    // partitionné directionnel de MARC (6 trains) et MFWAM (3 trains),
+    // `swell_secondary` la houle 2 de GFS — indispensables pour le vote au
+    // "meilleur train" (cf. _modelTrains). swell_primary reste la base présente
+    // pour tous les modèles (cron) : train par défaut nc/bom/gfs + série du graphe.
+    var r = await sb.from('model_forecast_cache').select('model,kind,lat,lon,hours,issued_at').eq('date', dateVal).in('kind', ['swell_primary', 'swell_secondary', 'wave']);
     if (r.error || !r.data || !r.data.length) return null;
-    // Tolérance élargie 0,02°→0,05° (~2,2km→~5,5km) : les coordonnées archivées
-    // DÉRIVENT d'un run à l'autre pour un même spot logique (écriture cron avec
-    // shared_spots arrondi vs écriture client avec les coordonnées précises du
-    // moment, spot repositionné sur la carte…). Vérifié sur Supabase le 29/07 :
-    // pour Ilot Ténia, un point archivé avant le correctif MARC (-22.01831,
-    // 165.91981) tombait à 0,02019° de la position canonique actuelle
-    // (-22.01, 165.94) — À PEINE hors de l'ancienne fenêtre 0,02°, alors qu'un
-    // point plus proche (0,00... °) mais PLUS ANCIEN pouvait rester dedans côté
-    // longitude. Avec une fenêtre trop juste, le tri par fraîcheur (juste en
-    // dessous) peut de nouveau retomber sur une ligne pré-correctif simplement
-    // parce que la ligne fraîche est passée hors champ à cause de la dérive —
-    // aucun des spots du dépôt n'est assez proche l'un de l'autre pour qu'un
-    // rayon de 0,05° en confonde deux (vérifié sur les 7 spots).
-    var rows = r.data.filter(function(row) {
+    // Tolérance 0,05° (~5,5km) : les coordonnées archivées DÉRIVENT d'un run à
+    // l'autre pour un même spot logique (cron shared_spots arrondi vs écriture
+    // client précise, spot repositionné…). Vérifié le 29/07 : pour Ilot Ténia un
+    // point pré-correctif MARC tombait à 0,0202° de la position canonique — à
+    // peine hors d'une fenêtre 0,02°. Aucun spot du dépôt n'est assez proche d'un
+    // autre pour qu'un rayon de 0,05° en confonde deux (vérifié sur les 7 spots).
+    var near = r.data.filter(function(row) {
       return Math.abs(row.lat - station.lat) < 0.05 && Math.abs(row.lon - station.lon) < 0.05;
     });
-    if (!rows.length) return null;
-    // Le cron (cache-model-forecasts.mjs) tourne bien plus souvent que "3×/jour" et
-    // n'écrase jamais l'ancien run (id suffixé par runTag, cf. le script) : plusieurs
-    // lignes coexistent pour un même modèle/date, y compris des lignes ANTÉRIEURES à
-    // un correctif de calcul (ex. bug MARC houle totale/période moyenne au lieu de
-    // houle dominante, corrigé 29/07 — vérifié sur Supabase : une ligne du 27/07
-    // porte encore period≈5s, celle du 29/07 period≈11s pour la même date cible).
-    // Sans filtrer sur issued_at, ce garde une ligne au hasard de l'ordre renvoyé par
-    // Supabase → régression silencieuse à chaque bug de calcul déjà corrigé.
-    var out = {}, outIssued = {};
-    rows.forEach(function(row) {
+    if (!near.length) return null;
+    // Garde la ligne la plus FRAÎCHE (issued_at) par (modèle, kind) : le cron
+    // n'écrase jamais l'ancien run (id suffixé par runTag), plusieurs lignes
+    // coexistent, dont des lignes ANTÉRIEURES à un correctif de calcul (ex. bug
+    // MARC houle totale/période moyenne, corrigé 29/07). Sans ce tri par
+    // fraîcheur → régression silencieuse en retombant sur une ligne périmée.
+    var byModel = {};
+    near.forEach(function(row) {
       if (!row.hours || !row.hours.length) return;
-      if (out[row.model] && outIssued[row.model] >= row.issued_at) return;
-      var best = null, bd = Infinity;
-      row.hours.forEach(function(hh) {
-        if (hh.val == null) return;
-        var df = Math.abs(hh.h - targetH);
-        if (df < bd) { bd = df; best = hh; }
-      });
-      if (best) { out[row.model] = { val: best.val, period: best.period, dir: best.dir, hours: row.hours }; outIssued[row.model] = row.issued_at; }
+      byModel[row.model] = byModel[row.model] || {};
+      var slot = byModel[row.model][row.kind];
+      if (slot && (slot._issued || '') >= (row.issued_at || '')) return;
+      byModel[row.model][row.kind] = { hours: row.hours, _issued: row.issued_at || '' };
+    });
+    var out = {};
+    Object.keys(byModel).forEach(function(model) {
+      var bk = {
+        wave: byModel[model].wave && byModel[model].wave.hours,
+        swell_primary: byModel[model].swell_primary && byModel[model].swell_primary.hours,
+        swell_secondary: byModel[model].swell_secondary && byModel[model].swell_secondary.hours,
+      };
+      var trains = _modelTrains(model, bk, targetH);
+      if (!trains.length) return;
+      // hours (série du jour) pour le graphe = swell_primary si dispo (inchangé) ;
+      // val/period/dir d'en-tête + vote = train dominant (le plus haut).
+      var dom = trains[0];
+      out[model] = { val: dom.h, period: dom.t, dir: dom.hasDir ? dom.dir : null, hours: bk.swell_primary || null, trains: trains };
     });
     return Object.keys(out).length ? out : null;
   } catch (e) { return null; }
@@ -3726,42 +3857,66 @@ var _modelTableCtx = null;
 // sinon la légende (couleur du texte du modèle) et les courbes du graphe se
 // contrediraient, comme le bug déjà corrigé une fois sur previsions.html
 // (AUDIT-previsions.md T03, MODEL_STYLE unifié).
-var MODEL_RELIABILITY_ORDER = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'marc'];
+var MODEL_RELIABILITY_ORDER = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'aifs', 'marc'];
 
-function _modelTableHTML(rows, sessionHour, voteUrl) {
+// observed (facultatif) = { h, t, dir } conditions saisies : si fourni, on
+// désigne par ★ le train le plus proche PAR modèle, et on surligne le modèle
+// dont le meilleur train colle le mieux (suggestion — l'utilisateur vote quand
+// même à la main). Sans observed : chaque modèle montre ses trains, ★ = dominant.
+function _modelTableHTML(rows, sessionHour, voteUrl, observed) {
   var present = MODEL_RELIABILITY_ORDER.filter(function(k) { return rows[k]; });
   if (!present.length) return null;
   var hourLbl = (sessionHour == null || isNaN(sessionHour)) ? 'midi (heure de session inconnue)' : (sessionHour + 'h');
+  // Meilleur train par modèle + modèle globalement suggéré (plus petit écart).
+  var bestByModel = {}, suggested = null, suggDist = Infinity;
+  present.forEach(function(k) {
+    var trains = rows[k].trains || [{ h: rows[k].val, t: rows[k].period, dir: rows[k].dir, hasDir: rows[k].dir != null }];
+    var bt = _bestTrain(trains, observed);
+    bestByModel[k] = bt;
+    if (observed && bt && isFinite(bt.dist) && bt.dist < suggDist) { suggDist = bt.dist; suggested = k; }
+  });
+  function _trainLine(t, starred) {
+    var dirTxt = t.hasDir ? ((_degToCardinal(t.dir) || '') + ' ' + Math.round(t.dir) + '°')
+      : '<span style="opacity:.55;font-style:italic;">sans dir</span>';
+    return '<div style="font-size:11.5px;line-height:1.5;' + (starred ? 'font-weight:700;color:var(--accent);' : 'color:var(--text);') + '">'
+      + (starred ? '★ ' : '<span style="opacity:.3;">•</span> ')
+      + (t.h != null ? t.h.toFixed(1) + 'm' : '—')
+      + ' · ' + (t.t != null ? Math.round(t.t) + 's' : '—')
+      + ' · ' + dirTxt + '</div>';
+  }
   var trs = present.map(function(k) {
     var info = MODEL_RELIABILITY_LABELS[k];
     var r = rows[k];
-    var dirLbl = r.dir != null ? (_degToCardinal(r.dir) || '') + ' ' + Math.round(r.dir) + '°' : '—';
-    return '<tr onclick="_castInlineModelVote(\'' + k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-label="Voter ' + info.label + ' comme modèle le plus fiable" style="cursor:pointer;border-bottom:1px solid var(--border);">'
-      + '<td style="padding:6px 4px;color:' + info.col + ';font-weight:600;font-size:12px;">' + info.label + '</td>'
-      + '<td style="padding:6px 4px;text-align:center;font-size:12px;">' + (r.val != null ? r.val.toFixed(1) + 'm' : '—') + '</td>'
-      + '<td style="padding:6px 4px;text-align:center;font-size:12px;">' + (r.period != null ? Math.round(r.period) + 's' : '—') + '</td>'
-      + '<td style="padding:6px 4px;text-align:center;font-size:11px;color:var(--text-muted);">' + dirLbl + '</td>'
-      + '<td style="padding:6px 4px;text-align:center;"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);"></span></td>'
+    var trains = r.trains || [{ h: r.val, t: r.period, dir: r.dir, hasDir: r.dir != null }];
+    var bestIdx = (bestByModel[k] && bestByModel[k].train) ? bestByModel[k].idx : -1;
+    var isSugg = (k === suggested);
+    var trainCells = trains.map(function(t, i) { return _trainLine(t, i === bestIdx); }).join('');
+    return '<tr onclick="_castInlineModelVote(\'' + k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-label="Voter ' + info.label + ' comme modèle le plus fiable" style="cursor:pointer;border-bottom:1px solid var(--border);' + (isSugg ? 'background:rgba(79,163,199,.10);' : '') + '">'
+      + '<td style="padding:6px 4px;color:' + info.col + ';font-weight:600;font-size:12px;white-space:nowrap;vertical-align:top;">' + info.label
+      + (isSugg ? '<div style="font-size:9px;color:var(--accent);font-weight:600;">suggéré</div>' : '') + '</td>'
+      + '<td style="padding:6px 4px;">' + trainCells + '</td>'
+      + '<td style="padding:6px 4px;text-align:center;vertical-align:top;"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:1.5px solid ' + (isSugg ? 'var(--accent)' : 'var(--border)') + ';"></span></td>'
       + '</tr>';
   }).join('');
-  // Figure : courbe houle du jour par modèle + repère vertical sur l'heure de
-  // session — sans ça le tableau ne montre qu'un chiffre par modèle, aucun
-  // moyen de voir VISUELLEMENT lequel collait le mieux à la tendance réelle
-  // (montée/baisse, pic avant/après le créneau). Dessinée après coup par
-  // _drawModelReliabilityChart (a besoin du canvas déjà dans le DOM pour
-  // connaître sa largeur réelle, cf. clientWidth).
+  var obsLine = observed
+    ? '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">★ = train le plus proche de ce que tu as saisi ('
+        + (observed.h != null ? observed.h.toFixed(1) + 'm' : '?') + ' · '
+        + (observed.t != null ? Math.round(observed.t) + 's' : '?') + ' · '
+        + (observed.dir != null ? (_degToCardinal(observed.dir) || '') + ' ' + Math.round(observed.dir) + '°' : '?')
+        + ') — direction pondérée fort. La houle 2/3 peut coller mieux que la 1.</div>'
+    : '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">Chaque modèle et ses trains de houle (le ★ marque le dominant). Renseigne hauteur/période/direction de la session pour repérer le train le plus proche.</div>';
+  // Figure : courbe houle du jour par modèle + repère vertical sur l'heure de session.
   return '<div style="position:relative;margin-bottom:6px;">'
     + '<canvas class="model-rel-chart" style="width:100%;height:130px;display:block;"></canvas>'
     + '</div>'
     + '<div style="font-size:10px;color:var(--text-faint);margin-bottom:8px;">Houle (m) sur la journée, par modèle — repère vertical : '
-    + hourLbl + '. Les valeurs du tableau ci-dessous sont lues au plus proche de ce créneau, pas le pic de la journée.'
+    + hourLbl + '. Trains lus au plus proche de ce créneau, pas le pic de la journée.'
     + (voteUrl ? ' <a href="' + voteUrl + '" target="_blank" style="color:var(--accent);white-space:nowrap;">Comparatif complet →</a>' : '') + '</div>'
+    + obsLine
     + '<table style="width:100%;border-collapse:collapse;">'
     + '<thead><tr style="border-bottom:1px solid var(--border);">'
     + '<th style="text-align:left;padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Modèle</th>'
-    + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Hauteur</th>'
-    + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Période</th>'
-    + '<th style="padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Direction</th>'
+    + '<th style="text-align:left;padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Houle(s) — haut. · période · dir</th>'
     + '<th style="padding:4px;"></th>'
     + '</tr></thead><tbody>' + trs + '</tbody></table>'
     + '<div onclick="_castInlineModelVote(null)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" style="cursor:pointer;text-align:center;padding:6px;font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);margin-top:2px;">Aucun modèle fiable pour cette session</div>';
@@ -3892,7 +4047,8 @@ async function _renderModelTableInto(wrapEl, spot, date, ctx) {
   var sessionHour = ctx && ctx.sessionHour;
   var voteUrl = _modelVoteUrl({ spot: spot, date: date, hour: sessionHour, id: ctx && ctx.sessionId });
   var rows = await _fetchModelTableRows(spot, date, sessionHour);
-  var tableHtml = rows ? _modelTableHTML(rows, sessionHour, voteUrl) : null;
+  var observed = _observedFromCtx(ctx);
+  var tableHtml = rows ? _modelTableHTML(rows, sessionHour, voteUrl, observed) : null;
   if (!tableHtml) {
     wrapEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Pas encore de données modèles archivées pour ce spot/cette date. '
       + '<a href="' + voteUrl + '" target="_blank" style="color:var(--accent);">Ouvrir Prévisions</a> pour ce spot les met en cache automatiquement.</div>';
