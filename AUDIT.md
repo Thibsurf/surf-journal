@@ -3232,3 +3232,19 @@ Le widget a un sélecteur de source alternative (`_gwExtraSrc`) lisant
 houle multi-trains + vent (avec rafale). `sw.js` bumpé v53→v54 (règle : tout
 changement dans assets/ impose un bump). Vérifié headless réel : source LOTUS
 sélectionnée → 128 pts houle + 128 pts vent, `fellBack=false`, **0 erreur JS**.
+
+### Vent LOTUS ajouté au comparatif des vents (previsions.html)
+
+Suite à la demande explicite ("+ le vent de lotus dans comparatif des vents?").
+LOTUS a vitesse + direction + RAFALE (Surfline, vérifié API). Nouveau helper
+`_fetchLotusWind` (recherche par tolérance de coordonnées, kind='wind', comme
+`_fetchLotusArchive`). Câblé aux ~15 points du comparatif vent en miroir de
+MARC : `_windExtra`/destructuration, `t1` (horizon), `clip`, `_aromeCmpCache`,
+destructuration draw, mode station (LOTUS vide — ajouté à `WIND_UNRESAMPLABLE`,
+Surfline = 5 zones fixes), `anyData`, `corrSeries` (série directe, pas d'archive
+bias client), filtre `_windCmpHidden.lotus`, `visKt`/`allKt` (échelle Y), `sort`,
+`_windRefSeries` (candidat ruban direction), tracé `drawSmooth` (couleur
+`MODEL_STYLE.lotus.col`), readout de survol (avec rafale), rose des vents,
+légende chip `wcmp-leg-lotus` + `_updateWindCmpControls`, barre de lecture
+(`_renderCmpReadBar` x2), cross-cursor. Vérifié headless réel : 112 pts vent en
+cache, chip présent, **0 erreur JS**.
