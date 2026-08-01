@@ -3062,3 +3062,62 @@ design.
 
 **Vérification** : `node --check` OK, correctif confirmé en headless réel
 (attribut title complet, plus de troncature).
+
+## Bilan de la nuit du 01→02/08/2026 — session autonome (utilisateur endormi)
+
+Récapitulatif des 6 commits de cette nuit, tous poussés sur `main` :
+
+1. `aae9f96e` — rafale AROME toujours vide (`fg10` vs `max_i10fg`, bug
+   systémique 100% des points) + migration table AROME Windguru→GRIB2
+   (source unifiée avec le comparatif, fin de l'écart signalé par
+   l'utilisateur) + badge "Mesuré" plus visible.
+2. `cd12dac7`/`8a2a36e7` (juste avant, même fil) — CI `mfwam` réparée (3 bugs
+   empilés : mot de passe Copernicus, xarray trop vieux, h5py manquant).
+3. `53efae71` — client Surfline LOTUS autonome.
+4. `a2c80690` — disclosure houle MARC + tooltips comparatif.
+5. `49c85362` — Journal : évaluation au « meilleur train » (houle 2/3 peut
+   battre la houle 1), AIFS ajouté au vote, GFS houle 2 archivée.
+6. `b3e7cdd0` — LOTUS étape 1 (ingestion + vote Journal).
+7. `b3e7cdd0`/`32e3336e` — LOTUS étape 2 (comparatif houle previsions.html :
+   `_fetchLotusArchive`, rose de spectre, barres de période).
+8. `b8149308` — bug tooltip ECMWF/AIFS cassé (HTML invalide) dans la légende.
+
+**Audits faits sans rien à corriger** (vérifié, pas supposé) : fiabilité du
+rechargement sur tous les spots (sain — la seule trouvaille, 83 lignes de
+test oubliées en base, nécessite une suppression manuelle via le dashboard
+Supabase, RLS bloque la clé anon) ; cohérence du vote Journal ; cohérence des
+descriptions/résolutions par modèle.
+
+**Ce qui reste ouvert, par ordre de valeur probable** :
+- Vérifier visuellement LOTUS sur previsions.html (Passe de Dumbéa/Boulari) —
+  vérifié en headless, mais un coup d'œil humain reste utile.
+- Supprimer les 83 lignes `TEST Océan Vide` via le dashboard Supabase (cf.
+  section dédiée plus haut) — cosmétique, aucun impact fonctionnel.
+- Refonte plus large de la légende houle (8 chips denses sur mobile) — piste
+  identifiée, pas commencée, à discuter avant de changer un design aussi
+  visible.
+- LOTUS dans le comparatif VENT (hors périmètre de cette nuit, plus gros
+  chantier).
+- §3/§4 de l'audit houle 1/2 du 01/08 (AIFS dans le Journal déjà fait, reste
+  la discussion sur la saisie de conditions observées → suggestion auto,
+  jamais tranchée).
+
+### Post-scriptum — mfwam re-tombe (erreur DIFFÉRENTE, transitoire) + retry ajouté
+
+Run de validation finale déclenché après tous les commits : `mfwam` re-échoue,
+mais avec une erreur DIFFÉRENTE des 3 déjà corrigées —
+`CouldNotConnectToAuthenticationSystem` (connexion au serveur d'auth Copernicus
+Marine, pas les identifiants : un run identique venait de passer 4/4 juste
+avant). C'est un aléa réseau transitoire côté service, pas un bug de code. Mais
+`fetch_mfwam.py` n'avait AUCUN retry autour de `copernicusmarine.subset()` —
+donc un seul blip réseau fait échouer tout le job jusqu'au prochain cron (~8h)
+et fige la donnée MF. Ajouté un retry (3 tentatives, backoff 10s/20s) autour du
+seul appel réseau — le reste (`sample_point`/`build_rows`) est local et déjà
+protégé par ses propres try/except. `py_compile` OK. Ce genre de coupure
+restera possible (service tiers), mais ne fera plus échouer le job sur un
+simple aléa.
+
+thib, tout est poussé et vérifié (headless réel quand possible, sinon noté
+explicitement). Le seul job encore rouge (`mfwam`) l'est sur une coupure
+réseau transitoire Copernicus, désormais absorbée par un retry — il repassera
+vert au prochain cron. Bonne nuit 🌙

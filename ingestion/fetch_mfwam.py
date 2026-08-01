@@ -40,6 +40,7 @@ import json
 import logging
 import sys
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -253,16 +254,37 @@ def run():
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir) / "mfwam.nc"
         logger.info("Téléchargement Copernicus Marine (%s, %s -> %s)...", DATASET_ID, start_dt, end_dt)
-        copernicusmarine.subset(
-            dataset_id=DATASET_ID,
-            variables=VARS,
-            minimum_longitude=bbox[0], maximum_longitude=bbox[1],
-            minimum_latitude=bbox[2], maximum_latitude=bbox[3],
-            start_datetime=start_dt, end_datetime=end_dt,
-            output_directory=str(tmpdir), output_filename=out_path.name,
-            disable_progress_bar=True,
-            overwrite=True,
-        )
+        # Retry avec backoff : la connexion au serveur d'AUTHENTIFICATION
+        # Copernicus Marine échoue par intermittence (CouldNotConnectToAuthentication
+        # System, observé le 02/08/2026 sur un run alors qu'un run identique venait
+        # de passer 4/4) — coupure transitoire côté service, pas un bug de code ni
+        # d'identifiants. Sans retry, un seul aléa réseau fait échouer tout le job
+        # jusqu'au prochain cron (~8h) et fige la donnée MF. 3 tentatives, backoff
+        # 10s/20s, suffisant pour absorber un blip sans allonger déraisonnablement
+        # un job qui tourne 3×/jour.
+        last_err = None
+        for attempt in range(1, 4):
+            try:
+                copernicusmarine.subset(
+                    dataset_id=DATASET_ID,
+                    variables=VARS,
+                    minimum_longitude=bbox[0], maximum_longitude=bbox[1],
+                    minimum_latitude=bbox[2], maximum_latitude=bbox[3],
+                    start_datetime=start_dt, end_datetime=end_dt,
+                    output_directory=str(tmpdir), output_filename=out_path.name,
+                    disable_progress_bar=True,
+                    overwrite=True,
+                )
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+                logger.warning("subset() tentative %d/3 échouée: %s", attempt, e)
+                if attempt < 3:
+                    time.sleep(10 * attempt)
+        if last_err is not None:
+            logger.error("Copernicus Marine injoignable après 3 tentatives — abandon (%s)", last_err)
+            sys.exit(1)
         ds = xr.open_dataset(out_path)
 
         all_rows = []
