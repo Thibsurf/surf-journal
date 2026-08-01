@@ -3199,3 +3199,36 @@ la nuit. Les gains sûrs (bugs) sont faits et vérifiés ; les changements
 subjectifs attendent un retour visuel de Thib plutôt qu'un pari non vérifiable.
 Faire du volume de restyling risqué ne servirait pas le projet — mieux vaut des
 propositions nettes qu'un design imposé seul.
+
+## Session du 02/08/2026 (jour) — LOTUS : widget du haut + vent + bug houle 1 corrigé
+
+Réponses aux questions de l'utilisateur, vérifiées sur l'API Surfline :
+- **Résolution LOTUS : NON exposée** (bloc `associated` sans champ résolution ;
+  `forecastLocation` = point de grille offshore, pas la résolution surf). Pas de
+  badge résolution — `res: null` (déjà en place) est correct, pas de chiffre
+  inventé. Cohérent avec nc/MF (aussi `res: null`).
+- **Vent LOTUS : DISPONIBLE** (vitesse + direction + type + RAFALE — que seul
+  AROME a par ailleurs). → intégré.
+
+### Bug trouvé dans mon propre code d'hier (étape 2) : houle 1 LOTUS surestimée
+
+`_fetchLotusArchive` mettait `h: hh.hs` comme houle primaire, or `hh.hs` de
+fetch_surfline.py est la combinaison énergétique √Σh² (mer TOTALE), pas un
+train. LOTUS affichait donc sa mer totale cumulée comme « houle 1 » dans le
+comparatif — surestimation. Corrigé : `.h/.t/.dir` dérivent maintenant du
+train le plus haut de `partitions[]` (comme `_fetchMarcArchive` via
+`_marcPrimarySwell`), `totH` garde le cumul. Affecte le comparatif houle ET le
+widget.
+
+### LOTUS ajouté au widget du haut (widget-global.js)
+
+Le widget a un sélecteur de source alternative (`_gwExtraSrc`) lisant
+`_swellCache[key]` génériquement. Ajouté LOTUS comme source sélectionnable :
+`_gwSetSrc` + `_gwActiveData` (autorise 'lotus'), bouton `GW_SRC_BTNS_DEF`
+(🏄 LOTUS, title expliquant la couverture 5 zones), branche spectre
+(`key==='marc' || key==='lotus'` : explosion en trains H.1-H.5 via
+`_gwMarcClassifyPartitions`, générique par période), `GW_SPECTRAL_KEY`
+(rose de spectre), `sw2Native` (LOTUS a des trains natifs). LOTUS y montre donc
+houle multi-trains + vent (avec rafale). `sw.js` bumpé v53→v54 (règle : tout
+changement dans assets/ impose un bump). Vérifié headless réel : source LOTUS
+sélectionnée → 128 pts houle + 128 pts vent, `fellBack=false`, **0 erreur JS**.

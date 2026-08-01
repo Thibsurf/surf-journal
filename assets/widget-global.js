@@ -75,7 +75,7 @@ function _gwSwellCol(idx) {
 var _gwExtraSrc = (function(){ try { return localStorage.getItem('gwExtraSrc') || null; } catch(e){ return null; } })();
 
 function _gwSetSrc(src) {
-  if (src === 'bom' || src === 'mf' || src === 'marc' || src === 'mix') {
+  if (src === 'bom' || src === 'mf' || src === 'marc' || src === 'lotus' || src === 'mix') {
     _gwExtraSrc = src;
   } else {
     _gwExtraSrc = null;
@@ -142,10 +142,10 @@ function _gwBuildModelFcast(key) {
   var out = { dates:[], sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], sw2NativeArr:[], wndH:[], totH:[],
     sw3h:[], sw3t:[], sw3d:[], sw4h:[], sw4t:[], sw4d:[], sw5h:[], sw5t:[], sw5d:[], // trains de houle 3/4/5 (MARC seul, cf. spectre)
     wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
-    sw2Native: key === 'marc' ? true : sec.length > 0 };
+    sw2Native: (key === 'marc' || key === 'lotus') ? true : sec.length > 0 };
   entry.primary.forEach(function(p){
     out.dates.push(new Date(p.ms + 11*3600000)); // même convention que partout : UTC+11 lu en getUTC*
-    if (key === 'marc' && p.partitions) {
+    if ((key === 'marc' || key === 'lotus') && p.partitions && p.partitions.length) {
       // MARC : hs/dir au sommet = houle TOTALE (toutes partitions confondues),
       // pas la houle primaire — la vraie décomposition est dans p.partitions[].
       // BUG corrigé (signalé par l'utilisateur : « MARC n'annonçait pas ce qui
@@ -332,7 +332,7 @@ function _gwBuildBestMix() {
 var _gwFellBack = false;
 function _gwActiveData() {
   _gwFellBack = false;
-  if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf' || _gwExtraSrc === 'marc') {
+  if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf' || _gwExtraSrc === 'marc' || _gwExtraSrc === 'lotus') {
     var built = _gwBuildModelFcast(_gwExtraSrc);
     if (built) return built;
     _gwFellBack = true;
@@ -375,6 +375,7 @@ var GW_SRC_BTNS_DEF = [
   { key:'bom',  lbl:'🇦🇺 BOM' },
   { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France globale (résolution non communiquée par Open-Meteo) + vent ARPEGE (résolution non documentée ici).' },
   { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Lu depuis un cache rafraîchi 3x/jour (ingestion/fetch_marc.py) ; repli sur une requête directe Ifremer (~3s) si le cache est vide pour ce spot.' },
+  { key:'lotus', lbl:'🏄 LOTUS', title:'Surfline — modèle propriétaire LOTUS (WW3 + assimilation satellite + forecasters), houle en trains directionnels + vent (avec rafale). Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa G+D/Boulari) : indisponible pour les autres spots. Cache rafraîchi 3x/jour (ingestion/fetch_surfline.py).' },
   { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km/BOM 14km/MFWAM en repli. Vent : meteo.nc > BOM 14km > MARC (ECMWF ~9km) > GFS 28km > MFWAM (ARPEGE). Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
 ];
 function _gwResSuffix(key) {
@@ -783,7 +784,7 @@ function _gwDrawVectors(fi) {
   // jamais en cône, pour ne pas suggérer une précision qui n'existe pas). "mix"
   // pioche toujours ses trains 3/4/5 (et donc son spectre) chez MARC en premier
   // (cf. HOULE_PRIORITY, _gwBuildBestMix) — même source que pour 'marc' seul.
-  var GW_SPECTRAL_KEY = { marc:'marc', mix:'marc', mf:'mf' }[_gwExtraSrc];
+  var GW_SPECTRAL_KEY = { marc:'marc', mix:'marc', mf:'mf', lotus:'lotus' }[_gwExtraSrc];
   var specParts = [];
   if (GW_SPECTRAL_KEY) {
     var specSrcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache[GW_SPECTRAL_KEY]) ? _swellCache[GW_SPECTRAL_KEY].primary : null;

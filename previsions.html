@@ -4985,13 +4985,19 @@ async function _fetchLotusArchive(spot) {
       (row.hours || []).forEach(function(hh) {
         if (!hh || hh.hs == null) return;
         var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
-        // dominant déjà sélectionné côté serveur (train le plus haut, cf.
-        // fetch_surfline.py) — .h/.t/.dir en portent la valeur, .partitions le
-        // spectre complet, même convention que MARC (.hs/.t02/.dir + .partitions).
+        // CONVENTION MARC (corrigée le 02/08/2026) : .h/.t/.dir = TRAIN PRIMAIRE
+        // (le plus haut des partitions), pas la mer totale. hh.hs de
+        // fetch_surfline est la combinaison énergétique √Σh² (mer totale) — la
+        // mettre en .h surestimait la « houle 1 » de LOTUS (montrait le cumul).
+        // On dérive donc le train dominant depuis partitions[], comme
+        // _fetchMarcArchive le fait via _marcPrimarySwell. totH garde le cumul.
+        var parts = hh.partitions || [], dom = null;
+        parts.forEach(function(pp) { if (pp && pp.h != null && (!dom || pp.h > dom.h)) dom = pp; });
         primary.push({
-          ms: ms, h: hh.hs, t: hh.t02, dir: hh.dir,
-          totH: hh.hs, totT: hh.t02, totDir: hh.dir, spread: hh.spread,
-          windKt: hh.windKt, windDir: hh.windDir, partitions: hh.partitions || [],
+          ms: ms,
+          h: dom ? dom.h : hh.hs, t: dom ? dom.t : hh.t02, dir: dom ? dom.dir : hh.dir,
+          totH: hh.hs, totT: hh.t02, totDir: hh.dir, spread: dom ? dom.spread : hh.spread,
+          windKt: hh.windKt, windDir: hh.windDir, partitions: parts,
         });
       });
     });
