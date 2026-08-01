@@ -2803,3 +2803,53 @@ branché (ni previsions.html, ni comparatif, ni cron, ni Supabase), même pas
 encore commité. C'était le périmètre du brief (intégration = tâche séparée).
 Le jour où il sera branché, ses 6 trains entreront directement dans la logique
 `_modelTrains` ci-dessus (même moule que MARC).
+
+## Session du 01/08/2026 (suite) — LOTUS branché (étape 1 : ingestion + Journal)
+
+Demande : mettre LOTUS/Surfline sur le site + que tous les modèles multi-trains
+aient leurs spectres direction/spread comme MARC + rejoignent le graphe des
+barres de période + légendes plus claires. Chantier découpé — cette étape =
+FONDATION (données) + branchement dans le vote du Journal. Le reste (comparatif/
+spectre/barres/légendes de previsions.html) = étape 2, à faire avec la donnée
+LOTUS déjà présente pour pouvoir vérifier en headless.
+
+- **`ingestion/fetch_surfline.py`** (nouveau) : réutilise le client testé
+  (`surfline_client`), écrit `model='lotus'` dans `model_forecast_cache` au
+  format EXACT de MARC — `kind='wave'` avec `hours[{hour,hs,t02,dir,spread,
+  windKt,windDir,partitions:[{h,t,dir,spread}]}]` + `kind='wind'`. Hs total =
+  combinaison énergétique des trains (√Σh²) ; spread ≈ |direction −
+  directionMin| de Surfline ; date/heure en local NC (+11h, convention projet) ;
+  id déterministe (merge-duplicates comme MARC). Testé en dry-run puis upsert
+  réel (70 lignes, 5 spots × 7 j). Vérifié en base : Dumbea Right (-22.35/
+  166.243) tombe à <0,05° de « Passe de Dumbéa », Skate Park de « Passe de
+  Boulari », St Vincent près de Ténia — donc lu par le site via la recherche
+  par coordonnées, sans mapping manuel. Multi-trains directionnels confirmés
+  (ex. Skate Park 4 trains 12s/8s/11s/7s ; Dumbéa 2,97m 12s 189° + houle 2).
+- **`.github/workflows/cache-model-forecasts.yml`** : job `surfline` ajouté
+  (même planning 3×/jour, aucun secret — API ouverte, en-têtes réalistes gérés
+  par le client). Seule dépendance = `requests` (déjà dans requirements.txt).
+- **`index.html`** : LOTUS ajouté au vote « meilleur train » —
+  `MODEL_RELIABILITY_LABELS.lotus` (couleur `#2dd4bf`),
+  `MODEL_RELIABILITY_ORDER` (+lotus), et cas `lotus` dans `_modelTrains` (lit
+  les `partitions` de `kind='wave'` exactement comme MARC/MFWAM). LOTUS apparaît
+  donc dès maintenant dans le tableau de vote pour les spots proches d'une zone
+  Surfline, avec son spectre multi-trains dans le calcul du ★. Vérifié
+  end-to-end sur données réelles (Passe de Dumbéa → 2 lignes lotus, trains
+  directionnels lus). Note : LOTUS n'a pas de `swell_primary` → pas de courbe
+  dans le mini-graphe du jour (qui lit swell_primary), mais présent dans la
+  table — acceptable, à raccorder si besoin à l'étape 2.
+
+**Vérification** : `py_compile` fetch_surfline.py OK ; dry-run + upsert réels OK ;
+`node --check` index.html OK ; YAML workflow valide ; lecture par coordonnées
+re-testée en Node sur la vraie donnée.
+
+**Reste (étape 2, previsions.html)** : ajouter LOTUS comme modèle du comparatif
+houle/vent (`MODEL_STYLE.lotus`, `SWELL_MODELS`, un `_fetchLotusArchive` lisant
+`model_forecast_cache` model=lotus comme `_fetchMarcArchive`) ; faire que TOUS
+les modèles multi-trains (MARC, MFWAM, LOTUS) exposent leur rose de direction/
+spread (`_drawSpectrumRose`) et rejoignent les barres de période
+(`BANDS_COMBINED_MODELS` / `_drawBandsBars`) ; refondre les légendes (jugées peu
+compréhensibles). + Écart AROME table/comparatif : MÊME source vérifiée
+(_aromeData, worker /arome ← Windguru m94) — écart présentationnel à faire
+préciser par l'utilisateur (correction de biais ? fenêtre ? arrondi ?) avant de
+toucher quoi que ce soit.

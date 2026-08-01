@@ -78,3 +78,19 @@ jobs:
         run: pip install -r ingestion/requirements.txt
       - name: Fetch + archive ECMWF Open Data (IFS + AIFS-single)
         run: python ingestion/fetch_ecmwf.py
+
+  # Surfline (modèle LOTUS) — 5 spots NC couverts par Surfline. API interne non
+  # documentée, sans clé (en-têtes réalistes envoyés par surfline_client.py) —
+  # écrit model='lotus', kind='wave' (6 trains directionnels, format MARC) + 'wind'
+  # dans model_forecast_cache. Aucun secret. Usage strictement personnel (CGU).
+  surfline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r ingestion/requirements.txt
+      - name: Fetch + archive Surfline LOTUS NC
+        run: python ingestion/fetch_surfline.py

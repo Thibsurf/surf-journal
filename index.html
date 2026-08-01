@@ -3486,7 +3486,13 @@ var MODEL_RELIABILITY_LABELS = {
   // pour 'aifs' (aujourd'hui il n'écrit que kind='wave'/'wind', cf. AUDIT.md,
   // même trou déjà documenté pour mf/ecmwf) — _fetchModelTableRows n'affiche
   // que les modèles qui ont une ligne swell_primary pour le spot/date demandés.
-  aifs:  { label: 'AIFS',     col: '#e06bb0' }
+  aifs:  { label: 'AIFS',     col: '#e06bb0' },
+  // LOTUS (Surfline) — modèle propriétaire (WW3 + assimilation satellite +
+  // forecasters), ajouté au vote le 01/08/2026. Alimenté par ingestion/
+  // fetch_surfline.py (kind='wave' avec 6 trains directionnels, format MARC) —
+  // ne couvre que les 5 spots NC de Surfline, donc n'apparaît que pour les spots
+  // du site proches (association par coordonnées, cf. _fetchModelTableRows).
+  lotus: { label: 'LOTUS',    col: '#2dd4bf' }
 };
 // Fenêtre passée corrigée le 28/07/2026 : 2 jours cachait TOTALEMENT l'outil
 // (section masquée, aucun message) dès qu'une session était saisie avec un
@@ -3704,7 +3710,9 @@ function _trainNearestHour(hours, targetH) {
 // mais une houle LONGUE (≥13s) est préservée même petite (souvent le déclencheur).
 function _modelTrains(model, byKind, targetH) {
   var raw = [];
-  if (model === 'marc' || model === 'mf') {
+  if (model === 'marc' || model === 'mf' || model === 'lotus') {
+    // Spectre partitionné directionnel (kind=wave) : MARC 6 trains, MFWAM 3,
+    // LOTUS/Surfline jusqu'à 6 — même format `partitions:[{h,t,dir,spread}]`.
     var wh = _trainNearestHour(byKind.wave, targetH);
     var parts = wh && wh.partitions;
     if (parts) for (var i = 0; i < parts.length; i++) {
@@ -3857,7 +3865,7 @@ var _modelTableCtx = null;
 // sinon la légende (couleur du texte du modèle) et les courbes du graphe se
 // contrediraient, comme le bug déjà corrigé une fois sur previsions.html
 // (AUDIT-previsions.md T03, MODEL_STYLE unifié).
-var MODEL_RELIABILITY_ORDER = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'aifs', 'marc'];
+var MODEL_RELIABILITY_ORDER = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'aifs', 'marc', 'lotus'];
 
 // observed (facultatif) = { h, t, dir } conditions saisies : si fourni, on
 // désigne par ★ le train le plus proche PAR modèle, et on surligne le modèle
