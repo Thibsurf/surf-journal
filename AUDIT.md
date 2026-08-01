@@ -3016,8 +3016,14 @@ peu fiable dans ce sandbox pour une page aussi chargée en fetchs réseau réels
 de vrais appels réseau — plusieurs tentatives, échecs systématiques malgré un
 mécanisme de base validé sur un cas trivial). Vérification donc STATIQUE
 uniquement pour ce chantier (relecture ligne à ligne de chaque fonction
-touchée + grep systématique de tous les points d'usage de `_swellCache`) — pas
-de test runtime réel dans un navigateur. **À vérifier visuellement par
-l'utilisateur** au réveil : ouvrir previsions.html sur un spot proche de Passe
-de Dumbéa ou Passe de Boulari, confirmer que le bloc "Spectre LOTUS" et sa
-barre dans "Bandes de période" apparaissent sans erreur console.
+touchée + grep systématique de tous les points d'usage de `_swellCache`).
+
+**Correction : le runtime headless a fini par marcher** (4ᵉ tentative, marge
+augmentée à 45s de budget virtuel / 6s de délai avant capture — les tentatives
+précédentes à 15-25s étaient trop justes face au volume réel de fetchs
+réseau de cette page : nc+gfs+bom+mf+ecmwf+aifs+marc+lotus+arome+obs+marée en
+parallèle). Résultat sur le spot par défaut au chargement : **`errCount: 0`**
+(zéro erreur JS), `lotus-spectrum-wrap` et `bands-combined-wrap` tous deux
+`display:""` (visibles — LOTUS a bien des données pour ce spot et son rendu
+s'affiche), `_swellCache` confirmé contenir la clé `lotus`. Vérification
+runtime réelle réussie, pas seulement statique.
