@@ -935,7 +935,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         </div>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--faint);margin:-3px 0 8px;">🎯 Cases cerclées = créneau qui correspond au filtre houle réglé au-dessus (Houle — comparatif modèles). BOM/MF/MARC : vent au point de grille houle (pas de rafales/mer/°C — ECMWF n'a même pas de vent, source Windguru).</div>
+    <div style="font-size:11px;color:var(--faint);margin:-3px 0 8px;">🎯 Cases cerclées = créneau qui correspond au filtre houle réglé au-dessus (Houle — comparatif modèles). BOM/MF/MARC/ECMWF/AIFS : vent au point de grille houle (pas de rafales/mer/°C dans ces flux ; rafale seulement pour AROME et meteo.nc).</div>
     <div class="tscroll" id="table-wrap">
       <div class="loading"><div class="spin"></div> Chargement…</div>
     </div>
@@ -4739,7 +4739,7 @@ var MARC_SCALE = { hs: 0.002, t02: 0.01, dir: 0.1, uwnd: 0.1, vwnd: 0.1, spr: 0.
 // énergie décroissante par convention WW3, non garanti à 100%). Vérifié en vrai
 // (Passe de Dumbéa, 2026-07-24) : sqrt(Σ phs_i²) ≈ hs total (± arrondi) — la
 // décomposition est cohérente. Spread absent chez tous les autres modèles
-// intégrés ici (BOM/GFS via Open-Meteo/MF via Open-Meteo/ECMWF via Windguru) —
+// intégrés ici (BOM/GFS via Open-Meteo/MF via Copernicus Marine/ECMWF+AIFS via Open Data) —
 // vérifié empiriquement, pas de comparatif multi-modèle possible, cf. spectre.
 // Restauré à [0..5] (les 6 trains) : la lenteur venait de la fenêtre mal calculée
 // (cf. _marcWindow ci-dessous), pas du nombre de variables — vérifié après
@@ -10262,7 +10262,7 @@ function _fetchEcmwfWind(spot) { return _fetchOpenDataWind('ecmwf', spot); }
 function _fetchAifsWind(spot) { return _fetchOpenDataWind('aifs', spot); }
 // MARC-WW3 NC — vent ECMWF opérationnel au point de grille (uwnd/vwnd, même
 // résolution 5,5 km que la houle, cf. _fetchMarcWave). Contrairement à AROME/
-// ECMWF (Windguru), ré-échantillonnable à n'importe quelle lat/lon → PAS dans
+// ECMWF/AIFS (Open Data, grille fixe), ré-échantillonnable à n'importe quelle lat/lon → PAS dans
 // WIND_UNRESAMPLABLE, disponible aussi en mode station.
 async function _fetchMarcWind(spot) {
   var ctrl = new AbortController();
@@ -10344,7 +10344,7 @@ async function _renderAromeCompare(j) {
   if (stEl) stEl.textContent = stName
     ? '(' + stName + (stDistKm != null ? ' · ~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km du spot' : '') + ')'
     : '(station indispo)';
-  // 1bis. BOM (Australie), ECMWF (via Windguru) et MARC (Ifremer) — mêmes
+  // 1bis. BOM (Australie), ECMWF/AIFS (Open Data), MARC (Ifremer) et LOTUS (Surfline) — mêmes
   // sources que le comparatif houle, mais leurs champs vent respectifs.
   var _spotForWind = SPOTS[currentSpot];
   var _windExtra = await Promise.all([_fetchBomWind(_spotForWind), _fetchEcmwfWind(_spotForWind), _fetchMarcWind(_spotForWind), _fetchAifsWind(_spotForWind), _fetchLotusWind(_spotForWind)]);
