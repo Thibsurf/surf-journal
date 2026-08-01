@@ -3259,3 +3259,22 @@ offsetTop, ~277px chacune) au lieu de 3 empilées → hauteur ÷3 sur desktop ;
 retour à la ligne automatique = empilé sur mobile. `_drawSwellRose` toggle
 maintenant le wrap en 'flex' (pas '') pour préserver le layout. 0 régression
 (chaque enfant reste masqué/affiché indépendamment).
+
+### Doc périmée corrigée + fraîcheur LOTUS confirmée
+
+- Légende du tableau détaillé : « ECMWF n'a même pas de vent, source Windguru »
+  était faux depuis le 30/07 (ECMWF = Open Data avec vent). Reformulé. + 3
+  commentaires de code Windguru périmés (ECMWF/MF) mis à jour.
+- Cron `surfline` confirmé actif en prod : LOTUS wave+wind écrits
+  automatiquement (updated_at du cron, pas seulement le seeding manuel).
+
+**Bilan du segment (LOTUS partout + bugs + présentation)** — commits poussés :
+bd38baf0 (widget du haut + fix houle 1), 183d1584 (vent comparatif),
+27ba7943 (spectres côte à côte), ce122005 (doc périmée). LOTUS est désormais
+dans : vote Journal (meilleur train), comparatif houle (courbe+table+spectre+
+barres), widget du haut (source sélectionnable, houle+vent), comparatif vent
+(courbe+rose+readbar+légende). 4 vrais bugs corrigés sur le segment (tooltip
+ECMWF cassé, rafale AROME fg10, houle 1 LOTUS surestimée, légende ECMWF
+périmée). Présentation : 3 spectres côte à côte (hauteur ÷3 desktop).
+Vérifs : node --check + headless réel (widget 128pts, vent 112pts, spectres
+même ligne, 0 erreur JS sur previsions/index/sorties).
