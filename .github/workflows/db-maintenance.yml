@@ -1,0 +1,33 @@
+name: DB maintenance (manuel)
+
+# DÉCLENCHEMENT MANUEL UNIQUEMENT — aucun `schedule`. Nettoyage ponctuel de
+# model_forecast_cache (ex. purge des lignes de test). Dry-run par défaut :
+# ne supprime rien tant qu'on ne choisit pas explicitement 'purge-test'.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action de maintenance"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - purge-test
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Run DB maintenance
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MAINT_ACTION: ${{ github.event.inputs.action }}
+        run: python ingestion/db_maintenance.py
