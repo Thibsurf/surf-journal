@@ -4977,6 +4977,24 @@ async function _fetchMarcCombined(spot) {
 // jamais. Cache-only comme ECMWF/AIFS : pas de repli live (appeler l'API
 // Surfline depuis le navigateur sortirait du périmètre "usage perso" du client
 // Python et risquerait le blocage anti-bot CORS, jamais testé côté navigateur).
+// La tolérance ±0,05° peut englober PLUSIEURS zones Surfline autour d'un même
+// spot (ex. « Passe de Dumbéa » tombe à la fois sur « Dumbea Right » ET
+// « Dumbea Left ») — fusionner leurs lignes donnerait 2 points par heure,
+// entrelacés, avec un spectre/courbe incohérents. On ne garde donc que la zone
+// UNIQUE la plus proche du spot (par distance quadratique lat/lon), puis toutes
+// ses lignes. Corrigé le 02/08/2026 (signalé par l'utilisateur : gauche/droite
+// de Dumbéa).
+function _lotusNearestZoneRows(rows, spot) {
+  var best = null, bd = Infinity;
+  rows.forEach(function(row) {
+    var dl = row.lat - spot.lat, dn = row.lon - spot.lon, d = dl * dl + dn * dn;
+    if (d < bd) { bd = d; best = { lat: row.lat, lon: row.lon }; }
+  });
+  if (!best) return [];
+  return rows.filter(function(row) {
+    return Math.abs(row.lat - best.lat) < 1e-4 && Math.abs(row.lon - best.lon) < 1e-4;
+  });
+}
 async function _fetchLotusArchive(spot) {
   try {
     if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
@@ -4987,7 +5005,7 @@ async function _fetchLotusArchive(spot) {
       .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol);
     if (!r || !r.data || !r.data.length) return null;
     var primary = [];
-    r.data.forEach(function(row) {
+    _lotusNearestZoneRows(r.data, spot).forEach(function(row) {
       var p = row.date.split('-');
       (row.hours || []).forEach(function(hh) {
         if (!hh || hh.hs == null) return;
@@ -5029,7 +5047,7 @@ async function _fetchLotusWind(spot) {
       .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol);
     if (!r || !r.data || !r.data.length) return [];
     var pts = [];
-    r.data.forEach(function(row) {
+    _lotusNearestZoneRows(r.data, spot).forEach(function(row) {
       var p = row.date.split('-');
       (row.hours || []).forEach(function(hh) {
         if (!hh || hh.val == null) return;
