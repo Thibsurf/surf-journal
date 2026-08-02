@@ -3906,13 +3906,20 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed) {
       + '<td style="padding:6px 4px;text-align:center;vertical-align:top;"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:1.5px solid ' + (isSugg ? 'var(--accent)' : 'var(--border)') + ';"></span></td>'
       + '</tr>';
   }).join('');
+  // Transparence (02/08/2026) : le ★ compare aux champs hs/période/dir de la
+  // session — qui sont PRÉ-REMPLIS depuis la prévision nc/gfs et seulement
+  // éditables. Si tu ne les corriges pas avec ce que tu as VU au large, le ★
+  // compare les modèles à une autre prévision, pas à la réalité → on le dit
+  // explicitement plutôt que de laisser croire à une vérification absolue
+  // (limite connue, cf. AUDIT §4 : un champ « observé » dédié serait mieux mais
+  // demande une colonne Supabase). Rendre la limite lisible = plus honnête.
   var obsLine = observed
-    ? '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">★ = train le plus proche de ce que tu as saisi ('
+    ? '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">★ = train le plus proche des conditions de ta session ('
         + (observed.h != null ? observed.h.toFixed(1) + 'm' : '?') + ' · '
         + (observed.t != null ? Math.round(observed.t) + 's' : '?') + ' · '
         + (observed.dir != null ? (_degToCardinal(observed.dir) || '') + ' ' + Math.round(observed.dir) + '°' : '?')
-        + ') — direction pondérée fort. La houle 2/3 peut coller mieux que la 1.</div>'
-    : '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">Chaque modèle et ses trains de houle (le ★ marque le dominant). Renseigne hauteur/période/direction de la session pour repérer le train le plus proche.</div>';
+        + '), direction pondérée fort. <span style="color:var(--accent-warm,#e8a057);">⚠ ces valeurs sont pré-remplies depuis la prévision : corrige-les avec ce que tu as vu au large pour un vrai classement.</span> La houle 2/3 peut coller mieux que la 1.</div>'
+    : '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">Chaque modèle et ses trains de houle (le ★ marque le dominant). Renseigne hauteur/période/direction OBSERVÉES (au large) pour repérer le train le plus proche.</div>';
   // Figure : courbe houle du jour par modèle + repère vertical sur l'heure de session.
   return '<div style="position:relative;margin-bottom:6px;">'
     + '<canvas class="model-rel-chart" style="width:100%;height:130px;display:block;"></canvas>'

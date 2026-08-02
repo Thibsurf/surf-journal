@@ -3278,3 +3278,37 @@ ECMWF cassé, rafale AROME fg10, houle 1 LOTUS surestimée, légende ECMWF
 périmée). Présentation : 3 spectres côte à côte (hauteur ÷3 desktop).
 Vérifs : node --check + headless réel (widget 128pts, vent 112pts, spectres
 même ligne, 0 erreur JS sur previsions/index/sorties).
+
+## Session du 02/08/2026 — questions utilisateur : attribution spots LOTUS + audit du retour de session
+
+1. **Bug attribution spots LOTUS (Dumbéa gauche/droite)** — signalé par
+   l'utilisateur, confirmé : la tolérance ±0,05° faisait matcher PLUSIEURS zones
+   Surfline pour un spot (« Passe de Dumbéa » = Dumbea Right ET Dumbea Left),
+   et `_fetchLotusArchive`/`_fetchLotusWind` FUSIONNAIENT leurs lignes → 2
+   points/heure entrelacés, spectre+courbe incohérents. Corrigé
+   (`_lotusNearestZoneRows` : ne garde que la zone unique la plus proche).
+   Vérifié headless : 64 pts, 0 doublon (avant ~128). Correspondances : Dumbéa→
+   Dumbea Right, Ténia→St Vincent, Boulari→Skate Park ; Ouano/Mato/Maître/Ste
+   Marie hors des 5 zones Surfline (normal).
+
+2. **Audit honnête du « retour de session » (évaluation modèles/houles/vent)** —
+   demande explicite « est-ce pro/lisible/ingénieux ? ». Bilan donné à
+   l'utilisateur :
+   - Ingénieux : vote « meilleur train » (tous les trains, dir pondérée), stat
+     de calibration relative en mètres sans observation absolue, cohérence
+     couleurs/ordre.
+   - **Pas encore pro (2 défauts de fond)** : (a) le ★ compare aux champs
+     hs/période/dir de la session, qui sont PRÉ-REMPLIS depuis nc/gfs et
+     seulement éditables → si non corrigés, on compare des modèles à une autre
+     prévision, pas à la réalité (§4 : manque un champ « observé au large »
+     dédié, nécessite une colonne Supabase) ; (b) le VENT — décisif sur les
+     passes NC — est absent du jugement des modèles (vote houle seule ; le vent
+     n'a qu'un `wind_delta` ordinal). + chevauchement vote/obs_delta,
+     direction depuis un champ texte (perte de précision).
+   - **Amélioration sûre faite maintenant** (sans schéma) : le libellé du ★
+     dit désormais explicitement que les valeurs sont pré-remplies depuis la
+     prévision et invite à les corriger avec l'observation au large — rendre la
+     limite LISIBLE plutôt que la masquer (transparence = plus honnête/pro).
+   - **Reste à décider avec l'utilisateur** (touche schéma/UX) : champ
+     « conditions observées au large » dédié (colonnes Supabase à ajouter) ;
+     intégrer le vent au jugement des modèles dans le Journal.
