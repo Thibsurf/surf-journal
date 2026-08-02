@@ -3868,6 +3868,51 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
 // travers un attribut onclick="" (source du bug de guillemets ci-dessus).
 var _modelTableCtx = null;
 
+// Orientation « vent idéal » par spot (windDirIdeal, en °, direction VERS
+// laquelle souffle le vent quand il est offshore au spot) — réglée par spot
+// dans previsions.html (⚙ Score) et synchronisée dans shared_spots.scoreParams.
+// Chargée une fois (cache), sert à colorer le vent de chaque modèle en
+// offshore/travers/onshore dans le tableau de fiabilité (02/08/2026 : le site
+// fait le calcul, l'humain n'a aucun degré à estimer).
+var _spotWindIdeal = null; // name normalisé -> windDirIdeal ; null tant que pas chargé
+var _spotWindIdealP = null;
+function _ensureSpotOrient() {
+  if (_spotWindIdeal) return Promise.resolve(_spotWindIdeal);
+  if (_spotWindIdealP) return _spotWindIdealP;
+  _spotWindIdealP = (async function() {
+    var map = {};
+    try {
+      if (sb) {
+        var res = await sb.from('shared_spots').select('spots').eq('id', 'default').maybeSingle();
+        if (res && !res.error && res.data && res.data.spots) {
+          JSON.parse(res.data.spots).forEach(function(s) {
+            var sp = s.scoreParams || {};
+            if (s.name && sp.windDirIdeal != null) map[_normSpotName(s.name)] = sp.windDirIdeal;
+          });
+        }
+      }
+    } catch (e) {}
+    _spotWindIdeal = map;
+    return map;
+  })();
+  return _spotWindIdealP;
+}
+// Qualité du vent au spot depuis une PROVENANCE (deg) et l'orientation idéale —
+// même convention/seuils que previsions.html::_windQualityAt (offshore ≤60° de
+// l'idéal, onshore >120°, travers entre). ideal = windDirIdeal (direction VERS
+// laquelle le vent souffle en offshore). Retourne 'off'|'cross'|'on'|null.
+function _windQualJournal(dirFrom, ideal) {
+  if (dirFrom == null || ideal == null) return null;
+  var to = (dirFrom + 180) % 360;
+  var diff = Math.abs(((to - ideal + 180 + 360) % 360) - 180);
+  return diff <= 60 ? 'off' : (diff > 120 ? 'on' : 'cross');
+}
+var _WIND_QUAL_JOURNAL = {
+  off:   { lbl: 'offshore', col: '#3dba8a' },
+  cross: { lbl: 'travers',  col: '#e8c44a' },
+  on:    { lbl: 'onshore',  col: '#e05c5c' }
+};
+
 // order = ordre d'affichage COMMUN au tableau et au graphe (cf.
 // _drawModelReliabilityChart) : mêmes modèles, mêmes couleurs, même ordre —
 // sinon la légende (couleur du texte du modèle) et les courbes du graphe se
@@ -3879,7 +3924,7 @@ var MODEL_RELIABILITY_ORDER = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'aifs', 'marc'
 // désigne par ★ le train le plus proche PAR modèle, et on surligne le modèle
 // dont le meilleur train colle le mieux (suggestion — l'utilisateur vote quand
 // même à la main). Sans observed : chaque modèle montre ses trains, ★ = dominant.
-function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote) {
+function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote, windIdeal) {
   var present = MODEL_RELIABILITY_ORDER.filter(function(k) { return rows[k]; });
   if (!present.length) return null;
   var votedBy = (existingVote && existingVote.votedBy) || {};
@@ -3912,8 +3957,14 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote) {
     // rend « qui a eu le bon vent » jugeable dans le même tableau que la houle.
     if (r.wind && r.wind.kt != null) {
       var wd = r.wind.dir != null ? (_degToCardinal(r.wind.dir) || '') : '';
+      // Qualité offshore/travers/onshore calculée par le site (orientation de la
+      // passe) : pastille colorée = tu vois d'un coup d'œil quel modèle prévoit
+      // le bon vent, sans estimer aucun degré. Absente si le spot n'a pas
+      // d'orientation réglée (windIdeal null) → juste vitesse + direction.
+      var q = _windQualJournal(r.wind.dir, windIdeal);
+      var qHtml = q ? ' <span style="color:' + _WIND_QUAL_JOURNAL[q].col + ';font-weight:700;">● ' + _WIND_QUAL_JOURNAL[q].lbl + '</span>' : '';
       trainCells += '<div style="font-size:11px;line-height:1.4;color:var(--text-muted);">💨 '
-        + Math.round(r.wind.kt) + ' nds' + (wd ? ' ' + wd : '')
+        + Math.round(r.wind.kt) + ' nds' + (wd ? ' ' + wd : '') + qHtml
         + (r.wind.gust != null ? ' <span style="opacity:.7;">(raf ' + Math.round(r.wind.gust) + ')</span>' : '') + '</div>';
     }
     return '<tr onclick="_castInlineModelVote(\'' + k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-label="Voter ' + info.label + ' comme modèle le plus fiable" style="cursor:pointer;border-bottom:1px solid var(--border);' + (isSugg ? 'background:rgba(79,163,199,.10);' : '') + '">'
@@ -4159,7 +4210,11 @@ async function _renderModelTableInto(wrapEl, spot, date, ctx) {
   var rows = await _fetchModelTableRows(spot, date, sessionHour);
   var observed = _observedFromCtx(ctx);
   var existingVote = (ctx && ctx.session) ? getModelReliability(ctx.session) : _readPendingVote(spot, date);
-  var tableHtml = rows ? _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote) : null;
+  // Orientation du spot (windDirIdeal) pour colorer le vent des modèles en
+  // offshore/travers/onshore — best-effort, ne bloque pas le rendu si absente.
+  var windIdeal = null;
+  try { var orient = await _ensureSpotOrient(); windIdeal = orient[_normSpotName(spot)]; } catch (e) {}
+  var tableHtml = rows ? _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote, windIdeal) : null;
   if (!tableHtml) {
     wrapEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Pas encore de données modèles archivées pour ce spot/cette date. '
       + '<a href="' + voteUrl + '" target="_blank" style="color:var(--accent);">Ouvrir Prévisions</a> pour ce spot les met en cache automatiquement.</div>';

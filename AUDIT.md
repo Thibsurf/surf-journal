@@ -3358,3 +3358,23 @@ headless (rendu synthétique) : ligne vent + ligne de vote vent + chips câblés
 0 erreur. Note : le vent reste jugé par l'humain (pas de conversion auto
 offshore/onshore ici — ça viendrait avec l'orientation du spot, étape suivante
 possible).
+
+### « go » : auto offshore/travers/onshore du vent par modèle (Journal)
+
+Le site calcule désormais la qualité de vent de CHAQUE modèle au spot (pastille
+🟢 offshore / 🟡 travers / 🔴 onshore) — l'humain ne saisit aucun degré. Chargement
+de l'orientation `windDirIdeal` par spot depuis `shared_spots.scoreParams`
+(`_ensureSpotOrient`, caché), calcul `_windQualJournal` en miroir exact de
+previsions.html::_windQualityAt (offshore ≤60° de l'idéal, onshore >120°, travers
+entre). Affiché sur la ligne 💨 de chaque modèle dans le tableau de fiabilité →
+le vote « quel modèle a eu le bon vent » se fait à l'œil, informé par la couleur.
+Retombée gracieuse si le spot n'a pas d'orientation réglée (2/7 spots l'ont :
+Dumbéa 270°, Ténia 298° — les autres montrent vitesse+direction sans qualité).
+Vérifié headless : SE→off, NO→on, S→travers ; labels rendus ; 0 erreur.
+index.html = network-first (pas dans sw.js ASSETS) → pas de bump cache.
+
+**Seul reste non faisable en autonomie** : champ « conditions observées » avec
+colonnes Supabase dédiées (nécessite un ALTER TABLE, impossible via la clé anon
++ RLS). SQL fourni à l'utilisateur. Alternative sans schéma (stockage dans le
+JSON model_reliability) volontairement NON ajoutée pour ne pas créer un 3e
+mécanisme redondant avec le vote par variable déjà en place.
