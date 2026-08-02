@@ -1305,11 +1305,20 @@ create table sessions (
   distance_nm float,
   tube_count int,
   bateau text,
-  forecast_accuracy int,
+  forecast_accuracy int,   -- RETIRÉ de l'UI le 02/08/2026 (doublon non signé) ; colonne conservée pour l'historique
   tide_ranges jsonb,
   tide_port text,
   from_sortie_id uuid,
-  nb_surfers smallint
+  nb_surfers smallint,
+  -- Évaluation de la qualité des prévisions (ajoutés par migrations successives ;
+  -- ce bloc était périmé et cassait un provisionnement à neuf — saveSession écrit
+  -- ces colonnes). Écarts ressentis signés -2..+2 (biais par variable) :
+  session_hour smallint,   -- heure NC de la session (appariement rétro à la prévision)
+  fcst_model text,         -- modèle du préremplissage ('nc' | 'gfs') pour attribuer les écarts
+  obs_delta smallint,      -- taille : ≪Petit … ≫Gros
+  period_delta smallint,   -- période : ≪Courte … ≫Longue
+  wind_delta smallint,     -- vent : ≪Mou … ≫Fort
+  model_reliability jsonb  -- vote « modèle le plus fiable » + votedBy {height,period,dir,wind}
 );
 alter table sessions enable row level security;
 create policy "Users see own sessions and shared" on sessions
@@ -4246,6 +4255,32 @@ async function _renderModelTableInto(wrapEl, spot, date, ctx) {
   _drawModelReliabilityChart(wrapEl.querySelector('canvas.model-rel-chart'), rows, sessionHour);
 }
 
+// Écarts ressentis à la prévision, tels que loggés (taille/période/vent), affichés
+// dans le détail — sinon ils sont WRITE-ONLY : l'utilisateur les saisit à la création
+// mais ne les revoit jamais (ils ne vivaient que dans l'agrégat des stats). Mêmes
+// couleurs sémantiques que le formulaire (DELTA_COLORS : bleu = sous la prévision,
+// vert = conforme, rouge = au-dessus).
+var _DELTA_DETAIL = {
+  obs_delta:    { icon: '🌊', neg: 'plus petit',   pos: 'plus gros'   },
+  period_delta: { icon: '⏱', neg: 'plus courte',  pos: 'plus longue' },
+  wind_delta:   { icon: '🌬', neg: 'plus mou',     pos: 'plus fort'   }
+};
+function _deltaWord(kind, v) {
+  var m = _DELTA_DETAIL[kind];
+  if (+v === 0) return 'conforme';
+  return (Math.abs(v) === 2 ? 'nettement ' : '') + (v < 0 ? m.neg : m.pos);
+}
+function _renderDeltaChipsDetail(s) {
+  var chips = ['obs_delta', 'period_delta', 'wind_delta'].filter(function(k) { return s[k] != null; }).map(function(k) {
+    var v = s[k], col = DELTA_COLORS[String(v)] || 'var(--text-muted)';
+    return '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:' + col + '22;border:1px solid ' + col + ';color:' + col + ';white-space:nowrap;">'
+      + _DELTA_DETAIL[k].icon + ' ' + escapeHtml(_deltaWord(k, v)) + '</span>';
+  });
+  if (!chips.length) return '';
+  return '<div class="detail-item" style="grid-column:1/-1;"><div class="detail-label">Vs prévision (ressenti)</div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + chips.join('') + '</div></div>';
+}
+
 // Section HTML "Fiabilité houle" pour le détail d'une session (uniquement
 // pertinent pour ses propres sessions, cf. appel conditionné à isOwn).
 function _renderModelReliabilitySection(s) {
@@ -4396,6 +4431,7 @@ async function openDetail(id) {
       ${s.launch_point ? `<div class="detail-item"><div class="detail-label">Mise à l'eau</div><div class="detail-value">${escapeHtml(s.launch_point)}</div></div>` : ''}
       ${s.price_cfp ? `<div class="detail-item"><div class="detail-label">Prix bateau</div><div class="detail-value">${s.price_cfp.toLocaleString('fr')} CFP</div></div>` : ''}
       ${s.shared_with && s.shared_with.length ? `<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">Surfeurs</div><div class="detail-value">${escapeHtml(s.shared_with.join(', '))}</div></div>` : ''}
+      ${_renderDeltaChipsDetail(s)}
       ${(isOwn && s.hs) ? _renderModelReliabilitySection(s) : ''}
     </div>
     ${s.observations ? `<div style="margin-top:1rem;padding:12px 14px;background:var(--glass);border-radius:var(--radius-sm);font-size:13px;color:var(--text);line-height:1.7;">${escapeHtml(s.observations)}</div>` : ''}
@@ -7000,7 +7036,7 @@ async function exportSessionsCSV() {
       'wind_kts','wind_dir','tide','tide_port','session_hour',
       'board','quality','moves','tube_count',
       'price_cfp','observations','forecast_accuracy',
-      'obs_delta','wind_delta','fcst_model',
+      'obs_delta','period_delta','wind_delta','fcst_model',
       'is_shared','created_at'
     ];
     var out = [headers];
@@ -7011,7 +7047,7 @@ async function exportSessionsCSV() {
         s.wind_kts||'', s.wind_dir||'', s.tide||'', s.tide_port||'', s.session_hour!=null?s.session_hour:'',
         s.board||'', s.quality||'', Array.isArray(s.moves)?s.moves.join('|'):(s.moves||''), s.tube_count||0,
         s.price_cfp||'', s.observations||'', s.forecast_accuracy||'',
-        s.obs_delta!=null?s.obs_delta:'', s.wind_delta!=null?s.wind_delta:'', s.fcst_model||'',
+        s.obs_delta!=null?s.obs_delta:'', s.period_delta!=null?s.period_delta:'', s.wind_delta!=null?s.wind_delta:'', s.fcst_model||'',
         s.is_shared?'oui':'non', s.created_at||''
       ]);
     });

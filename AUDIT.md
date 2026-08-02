@@ -3459,3 +3459,25 @@ fonctionne) :** dans Supabase, `alter table sessions add column period_delta sma
 
 Non commité/poussé (à toi de vérifier puis push — repo sans CI). Pas de bump
 `CACHE_NAME` nécessaire (aucun fichier `assets/` touché, seulement `index.html`).
+
+### Suite immédiate — migration passée + 2ᵉ passe (2026-08-02)
+
+Migration `alter table sessions add column period_delta smallint;` **exécutée par
+l'utilisateur**. Vérifié en vrai (probe REST clé anon publique : `HTTP 200`,
+`[{"period_delta":null}]`) puis en headless (`_hasPeriodDeltaColumn()` = `true`
+contre le vrai Supabase) → l'écart Période se persiste désormais à la sauvegarde.
+
+Passe de cohérence supplémentaire sur le flux session, 3 correctifs :
+1. **CSV** : `period_delta` ajouté à l'export (était oublié à côté de obs/wind_delta).
+2. **Vue détail : écarts rendus visibles** (`_renderDeltaChipsDetail`) — ils étaient
+   WRITE-ONLY (saisis à la création, jamais réaffichés ; ne vivaient que dans l'agrégat
+   stats). Chips colorés « Vs prévision (ressenti) » : 🌊 nettement plus gros · ⏱ plus
+   courte · 🌬 conforme, mêmes couleurs sémantiques que le formulaire (DELTA_COLORS).
+3. **Bloc SQL de doc (`create table sessions`) corrigé** : il était périmé et un
+   provisionnement à neuf aurait cassé au 1er `saveSession` (colonnes `session_hour`,
+   `fcst_model`, `obs_delta`, `period_delta`, `wind_delta`, `model_reliability`
+   manquantes). Ajoutées avec commentaires ; `forecast_accuracy` annotée « RETIRÉ ».
+
+Vérifié : `select('*')` sur tous les chargements de session qui alimentent stats/détail
+(1717/4376/4500/4524…) → `period_delta` bien chargé. `node --check` OK ; headless boot
+0 erreur ; chips testés (plein / vide / un seul écart). Toujours `index.html` seul.
