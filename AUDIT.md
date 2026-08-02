@@ -3344,3 +3344,17 @@ calculé par le site depuis l'orientation de la passe) comme 4e variable —
 l'orientation est dans `shared_spots.scoreParams.windDirIdeal`, faisable ;
 et un champ « conditions observées » dédié (colonnes Supabase) si on veut une
 vérification absolue plutôt que relative.
+
+### Vent ajouté comme 4e variable de fiabilité (Journal)
+
+Le vent étant LE critère décisif (retour utilisateur), il devient la 4e variable
+jugeable : `_fetchModelTableRows` lit désormais aussi `kind='wind'` et attache
+`rows[k].wind = {kt,dir,gust}` (nearest hour du créneau) ; le tableau affiche une
+ligne « 💨 X nds DIR (raf) » sous les trains de chaque modèle ; la section
+« affiner » a une 4e ligne 🌬 Vent ; les stats ④ agrègent le vent. Ainsi
+« quel modèle a eu le bon vent » se vote à l'œil, sans saisir de degrés — l'humain
+voit le vent prévu de chaque modèle et se souvient de ce qu'il a eu. Vérifié
+headless (rendu synthétique) : ligne vent + ligne de vote vent + chips câblés,
+0 erreur. Note : le vent reste jugé par l'humain (pas de conversion auto
+offshore/onshore ici — ça viendrait avec l'orientation du spot, étape suivante
+possible).

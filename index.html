@@ -3812,7 +3812,10 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
     // `swell_secondary` la houle 2 de GFS — indispensables pour le vote au
     // "meilleur train" (cf. _modelTrains). swell_primary reste la base présente
     // pour tous les modèles (cron) : train par défaut nc/bom/gfs + série du graphe.
-    var r = await sb.from('model_forecast_cache').select('model,kind,lat,lon,hours,issued_at').eq('date', dateVal).in('kind', ['swell_primary', 'swell_secondary', 'wave']);
+    // 'wind' ajouté (02/08/2026) : le vent est LE critère décisif sur les passes
+    // NC (retour utilisateur) — on l'affiche par modèle dans le tableau pour que
+    // « quel modèle a eu le bon vent » soit une variable jugeable comme la houle.
+    var r = await sb.from('model_forecast_cache').select('model,kind,lat,lon,hours,issued_at').eq('date', dateVal).in('kind', ['swell_primary', 'swell_secondary', 'wave', 'wind']);
     if (r.error || !r.data || !r.data.length) return null;
     // Tolérance 0,05° (~5,5km) : les coordonnées archivées DÉRIVENT d'un run à
     // l'autre pour un même spot logique (cron shared_spots arrondi vs écriture
@@ -3849,7 +3852,12 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
       // hours (série du jour) pour le graphe = swell_primary si dispo (inchangé) ;
       // val/period/dir d'en-tête + vote = train dominant (le plus haut).
       var dom = trains[0];
-      out[model] = { val: dom.h, period: dom.t, dir: dom.hasDir ? dom.dir : null, hours: bk.swell_primary || null, trains: trains };
+      // Vent au créneau de session (nearest hour) — kt/dir/gust, pour la variable
+      // « qui a eu le bon vent ». Absent pour les modèles sans vent en cache.
+      var windHours = byModel[model].wind && byModel[model].wind.hours;
+      var wh = windHours ? _trainNearestHour(windHours, targetH) : null;
+      var wind = wh ? { kt: wh.val, dir: wh.dir, gust: wh.gust } : null;
+      out[model] = { val: dom.h, period: dom.t, dir: dom.hasDir ? dom.dir : null, hours: bk.swell_primary || null, trains: trains, wind: wind };
     });
     return Object.keys(out).length ? out : null;
   } catch (e) { return null; }
@@ -3900,6 +3908,14 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote) {
     var bestIdx = (bestByModel[k] && bestByModel[k].train) ? bestByModel[k].idx : -1;
     var isSugg = (k === suggested);
     var trainCells = trains.map(function(t, i) { return _trainLine(t, i === bestIdx); }).join('');
+    // Ligne vent du modèle (💨 vitesse + direction + rafale) sous les trains :
+    // rend « qui a eu le bon vent » jugeable dans le même tableau que la houle.
+    if (r.wind && r.wind.kt != null) {
+      var wd = r.wind.dir != null ? (_degToCardinal(r.wind.dir) || '') : '';
+      trainCells += '<div style="font-size:11px;line-height:1.4;color:var(--text-muted);">💨 '
+        + Math.round(r.wind.kt) + ' nds' + (wd ? ' ' + wd : '')
+        + (r.wind.gust != null ? ' <span style="opacity:.7;">(raf ' + Math.round(r.wind.gust) + ')</span>' : '') + '</div>';
+    }
     return '<tr onclick="_castInlineModelVote(\'' + k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" aria-label="Voter ' + info.label + ' comme modèle le plus fiable" style="cursor:pointer;border-bottom:1px solid var(--border);' + (isSugg ? 'background:rgba(79,163,199,.10);' : '') + '">'
       + '<td style="padding:6px 4px;color:' + info.col + ';font-weight:600;font-size:12px;white-space:nowrap;vertical-align:top;">' + info.label
       + (isSugg ? '<div style="font-size:9px;color:var(--accent);font-weight:600;">suggéré</div>' : '') + '</td>'
@@ -3955,7 +3971,7 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote) {
 // Complète le vote « modèle global » plutôt que de le remplacer. Chips = pastille
 // colorée + libellé court, dans le même ordre/couleurs que le tableau.
 function _varVoteSectionHTML(present, votedBy) {
-  var VARS = [['height', '🌊 Taille'], ['period', '⏱ Période'], ['dir', '🧭 Direction']];
+  var VARS = [['height', '🌊 Taille'], ['period', '⏱ Période'], ['dir', '🧭 Direction'], ['wind', '🌬 Vent']];
   var rows = VARS.map(function(v) {
     var key = v[0], lbl = v[1];
     var chips = present.map(function(k) {
@@ -4743,8 +4759,8 @@ function renderStats(sessions, el) {
       // sur toutes les sessions — un modèle peut dominer sur une grandeur et pas
       // une autre (retour utilisateur). % = part des sessions où ce modèle a été
       // désigné le meilleur SUR CET ASPECT (parmi celles où l'aspect a été jugé).
-      var VARLBL = { height: '🌊 Taille', period: '⏱ Période', dir: '🧭 Direction' };
-      var varAgg = { height: {}, period: {}, dir: {}, _tot: { height: 0, period: 0, dir: 0 } };
+      var VARLBL = { height: '🌊 Taille', period: '⏱ Période', dir: '🧭 Direction', wind: '🌬 Vent' };
+      var varAgg = { height: {}, period: {}, dir: {}, wind: {}, _tot: { height: 0, period: 0, dir: 0, wind: 0 } };
       votes.forEach(function(v) {
         if (!v.votedBy) return;
         Object.keys(VARLBL).forEach(function(vk) {
@@ -4754,7 +4770,7 @@ function renderStats(sessions, el) {
           varAgg._tot[vk]++;
         });
       });
-      var hasVarData = varAgg._tot.height + varAgg._tot.period + varAgg._tot.dir > 0;
+      var hasVarData = varAgg._tot.height + varAgg._tot.period + varAgg._tot.dir + varAgg._tot.wind > 0;
       var block4 = !hasVarData ? '' : (
         '<div style="margin-top:12px;">'
         + '<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:5px;">④ Fiabilité par variable</div>'
