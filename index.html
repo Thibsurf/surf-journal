@@ -3913,13 +3913,22 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed) {
   // explicitement plutôt que de laisser croire à une vérification absolue
   // (limite connue, cf. AUDIT §4 : un champ « observé » dédié serait mieux mais
   // demande une colonne Supabase). Rendre la limite lisible = plus honnête.
+  // Philosophie (02/08/2026, retour utilisateur « compliqué d'estimer une
+  // direction en ° ») : on n'exige PLUS que tu quantifies la houle au large
+  // (hauteur/période/direction précises) — c'est artificiel, un surfeur voit la
+  // vague qui casse et sent le vent, pas la houle à 195°/14s. Le vrai mécanisme
+  // est le VOTE : tu cliques le modèle qui collait le mieux à ce que tu as vu
+  // (jugement humain, zéro chiffre). Le ★ n'est qu'une AIDE optionnelle SI des
+  // conditions (même approximatives, au cardinal près) sont déjà dans la
+  // session — pas une mesure. On le dit tel quel plutôt que de réclamer une
+  // précision impossible.
   var obsLine = observed
-    ? '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">★ = train le plus proche des conditions de ta session ('
+    ? '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">Clique le modèle qui collait le mieux à ta session. Le ★ est juste une aide (train le plus proche des conditions notées : '
         + (observed.h != null ? observed.h.toFixed(1) + 'm' : '?') + ' · '
         + (observed.t != null ? Math.round(observed.t) + 's' : '?') + ' · '
-        + (observed.dir != null ? (_degToCardinal(observed.dir) || '') + ' ' + Math.round(observed.dir) + '°' : '?')
-        + '), direction pondérée fort. <span style="color:var(--accent-warm,#e8a057);">⚠ ces valeurs sont pré-remplies depuis la prévision : corrige-les avec ce que tu as vu au large pour un vrai classement.</span> La houle 2/3 peut coller mieux que la 1.</div>'
-    : '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">Chaque modèle et ses trains de houle (le ★ marque le dominant). Renseigne hauteur/période/direction OBSERVÉES (au large) pour repérer le train le plus proche.</div>';
+        + (observed.dir != null ? (_degToCardinal(observed.dir) || '') : '?')
+        + ', souvent le pré-remplissage prévision — pas une mesure). La houle 2/3 peut coller mieux que la 1.</div>'
+    : '<div style="font-size:10px;color:var(--text-faint);margin-bottom:6px;">Clique le modèle qui collait le mieux à ce que tu as vu (houle ET orientation du vent) — jugement à l\'œil, pas besoin de chiffres.</div>';
   // Figure : courbe houle du jour par modèle + repère vertical sur l'heure de session.
   return '<div style="position:relative;margin-bottom:6px;">'
     + '<canvas class="model-rel-chart" style="width:100%;height:130px;display:block;"></canvas>'
