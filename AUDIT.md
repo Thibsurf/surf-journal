@@ -3493,3 +3493,27 @@ Vérifié : `select('*')` sur tous les chargements de session qui alimentent sta
   groupes) : un lecteur d'écran annonce désormais lequel est sélectionné.
 - Vérifié headless : en-tête + 3 libellés présents, plus aucun libellé verbeux (l'unique
   occurrence restante est dans un commentaire), `aria-pressed` true/false correct, 0 erreur.
+
+### Audit données historiques + P1 rétention (2026-08-03)
+
+Mesuré via clé anon (REST) : `model_forecast_cache` = **46 583 lignes**, archive de runs
+depuis le **27/07** (~7 j), jours-cibles 18/07→17/08 (30 j), **+~6 600 lignes/jour, jamais
+purgées** (chaque run insère, n'écrase pas → ~10 runs empilés/série). Trajectoire
+~200 Mo/mois → palier gratuit Supabase tendu vers oct.-nov. `meteo_cache` = 632 l., snapshot
+(pas d'historique daté). Doublons de casse `spot_name` (`Gros Nem`/`Gros nem`).
+
+Design `previsions.html` : 961 Ko mais **chargement déjà optimisé** (defer, SRI, CSS/iframe
+lazy, preconnect) ; audit T01–T30 = 26/30, T18 (découpage) et T13 (token) en pause.
+
+**P1 livré** — rétention/compaction (pas P2, en attente : cf. `thib.md` §4) :
+- `ingestion/db_maintenance.py` : actions `compact-dry`/`compact`. Politique tiérée par
+  jour-cible : garder tous les runs < `COMPACT_KEEP_ALL_DAYS` (14 j), amincir à 1 run/série
+  (issued_at max) jusqu'à `COMPACT_PURGE_DAYS` (120 j), purger au-delà. Garde-fou :
+  PURGE_DAYS >= 30 (fenêtre vote fiabilité Journal). Groupage côté client (non exprimable en
+  un DELETE PostgREST) : fetch ids+issued_at (filtre `and=(date.gte,date.lt)`), DELETE par id
+  en lots de 100. Purge >120 j = un DELETE filtré direct.
+- `.github/workflows/db-compaction.yml` : hebdo (dimanche) + dispatch manuel (`compact-dry`
+  par défaut). Planifié = exécute.
+- Validé en **dry-run réel** (clé anon, 0 DELETE) : `KEEP_ALL_DAYS=3` → fenêtre 04/04-30/07
+  = 5 478 lignes / 1 476 séries → 4 002 runs redondants (-73 %), aucune donnée unique perdue.
+  `py_compile` OK. Non exécuté « pour de vrai » (nécessite service_role en CI).

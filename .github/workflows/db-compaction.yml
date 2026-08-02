@@ -1,0 +1,50 @@
+name: DB compaction (rétention model_forecast_cache)
+
+# RÉTENTION AUTOMATIQUE de model_forecast_cache. Le cron d'ingestion n'écrase
+# jamais un run (id suffixé par runTag) → la table grossit indéfiniment
+# (~6 600 lignes/jour mesuré le 03/08/2026, 0 purge). Ce job applique une
+# politique tiérée (cf. ingestion/db_maintenance.py) : garde tous les runs
+# récents, amincit à 1 run/série au-delà de COMPACT_KEEP_ALL_DAYS, purge au-delà
+# de COMPACT_PURGE_DAYS.
+#
+# Sûr par construction : l'amincissement ne supprime QUE des runs redondants
+# (il garde toujours le plus récent par série) ; la purge totale ne touche que
+# des jours-cibles > 120 j. Le run PLANIFIÉ exécute ; le déclenchement manuel
+# propose 'compact-dry' (rapport seul) par défaut — lance-le une fois pour voir
+# ce qui serait supprimé avant de laisser tourner l'automatique.
+on:
+  schedule:
+    - cron: '17 15 * * 0'   # dimanche 15:17 UTC ≈ lundi 02:17 en NC (UTC+11), hebdo
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "compact-dry (rapport seul) ou compact (exécute)"
+        required: true
+        default: compact-dry
+        type: choice
+        options:
+          - compact-dry
+          - compact
+
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Run compaction
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          # Sans input (déclenchement planifié) → 'compact' (exécute réellement).
+          MAINT_ACTION: ${{ github.event.inputs.action || 'compact' }}
+          # Garder TOUS les runs sur les 14 derniers jours (calibration + échéances) ;
+          # amincir à 1 run/jour/série ensuite ; purger au-delà de 120 j.
+          # COMPACT_PURGE_DAYS doit rester >= 30 (fenêtre du vote fiabilité du Journal).
+          COMPACT_KEEP_ALL_DAYS: '14'
+          COMPACT_PURGE_DAYS: '120'
+        run: python ingestion/db_maintenance.py
