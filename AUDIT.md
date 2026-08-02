@@ -3312,3 +3312,35 @@ même ligne, 0 erreur JS sur previsions/index/sorties).
    - **Reste à décider avec l'utilisateur** (touche schéma/UX) : champ
      « conditions observées au large » dédié (colonnes Supabase à ajouter) ;
      intégrer le vent au jugement des modèles dans le Journal.
+
+## Session du 02/08/2026 — fiabilité PAR VARIABLE dans le Journal
+
+Retour utilisateur décisif : « un modèle peut avoir la bonne taille/période mais
+pas la direction, un autre l'inverse ». La fiabilité n'est pas un scalaire — un
+vote unique « meilleur modèle » écrase cette info. Refonte additive :
+
+- **Vote par variable** : sous le tableau de fiabilité, section « affiner
+  (optionnel) : quel modèle a eu bon sur chaque aspect ? » avec 3 lignes de
+  chips — 🌊 Taille / ⏱ Période / 🧭 Direction — une tape par ligne (toggle).
+  Stocké dans `model_reliability.votedBy = {height,period,dir}` (JSON existant,
+  AUCUN changement de schéma Supabase). Le vote « modèle global » (votedModel)
+  reste l'action rapide ; ceci est l'affinage.
+- **Logique factorisée** : `_persistModelVote` (Supabase ou localStorage +
+  patch mémoire) et `_readPendingVote` partagés par `_castInlineModelVote` et le
+  nouveau `_castVarVote`. Le vote global ne remplace plus votedBy et vice-versa
+  (fusion préservée).
+- **Stats ④ « Fiabilité par variable »** : agrège `votedBy` sur toutes les
+  sessions → par aspect, le % de sessions où chaque modèle a été jugé le
+  meilleur. Paie enfin l'insight : « Direction → MARC 60% · Taille → GFS 45% »
+  devient visible avec l'accumulation.
+
+Cohérent aussi avec le refus des degrés : l'humain juge « qui a eu bon sur cet
+aspect » à l'œil (il voit les valeurs de chaque modèle dans le tableau + se
+souvient de sa session), il ne saisit AUCUN chiffre. Vérifié headless : 0
+erreur, fonctions définies. `node --check` OK.
+
+**Reste ouvert (décision utilisateur)** : intégrer le VENT (offshore/onshore
+calculé par le site depuis l'orientation de la passe) comme 4e variable —
+l'orientation est dans `shared_spots.scoreParams.windDirIdeal`, faisable ;
+et un champ « conditions observées » dédié (colonnes Supabase) si on veut une
+vérification absolue plutôt que relative.
