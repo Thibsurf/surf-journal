@@ -1032,8 +1032,16 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
              et c'est un ordinal directement exploitable pour mesurer le biais d'un modèle
              (moy(obs_delta) par modèle), contrairement à hs/period qui ne sont qu'une copie
              de la prévision tant qu'ils ne sont pas édités à la main. -->
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Houle — c'était comment par rapport à la prévision
+        <!-- En-tête de groupe (02/08/2026) : les 3 écarts (taille/période/vent) répétaient
+             chacun « c'était comment par rapport à la prévision » — regroupés sous un seul
+             titre, libellés raccourcis avec icônes cohérentes avec les chips du détail et
+             les blocs ②/④ des stats. -->
+        <div style="margin:6px 0 8px;">
+          <label class="form-label" style="margin-bottom:2px;">Écart à la prévision — c'était comment vs le forecast&nbsp;?</label>
+          <div style="font-size:10px;color:var(--text-muted);">Plus petit/court/mou… ou plus gros/long/fort que prévu, sur chaque grandeur. Signé, ça mesure le biais du modèle (bloc ② des stats). Facultatif.</div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label">🌊 Taille (Hs)
             <span id="obsdelta-ref-hs" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
           </label>
           <div id="f-obs-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
@@ -1056,8 +1064,8 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
              surfeur SENT la période (espacement/puissance des séries), donc c'est un ordinal
              fiable, contrairement à la direction en ° au large. Signé -2..+2 comme les 2
              autres → alimente le bloc ② « calibration du préremplissage » par variable. -->
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Période — c'était comment par rapport à la prévision
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label">⏱ Période
             <span id="obsdelta-ref-per" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
           </label>
           <div id="f-period-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
@@ -1073,8 +1081,8 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
               style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Longue</button>
           </div>
         </div>
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Vent — c'était comment par rapport à la prévision
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label">🌬 Vent
             <span id="obsdelta-ref-wind" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
           </label>
           <div id="f-wind-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
@@ -3314,7 +3322,11 @@ var DELTA_COLORS = {'-2':'#4fa3c7', '-1':'#7dd3fc', '0':'#3dba8a', '1':'#e8a057'
 function _paintDeltaBtns(cls, val) {
   document.querySelectorAll('.' + cls).forEach(function(b) {
     var v = b.getAttribute('data-delta');
-    if (+v === val) {
+    var on = (+v === val);
+    // aria-pressed : ces boutons sont sémantiquement des toggles (un seul actif) —
+    // sans ça, un lecteur d'écran n'annonce pas lequel est sélectionné (a11y).
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (on) {
       b.style.background = DELTA_COLORS[v]; b.style.color = '#fff'; b.style.borderColor = DELTA_COLORS[v];
     } else {
       b.style.background = 'transparent'; b.style.color = 'var(--text-muted)'; b.style.borderColor = 'var(--border)';

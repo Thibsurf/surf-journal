@@ -3481,3 +3481,15 @@ Passe de cohérence supplémentaire sur le flux session, 3 correctifs :
 Vérifié : `select('*')` sur tous les chargements de session qui alimentent stats/détail
 (1717/4376/4500/4524…) → `period_delta` bien chargé. `node --check` OK ; headless boot
 0 erreur ; chips testés (plein / vide / un seul écart). Toujours `index.html` seul.
+
+### 3ᵉ passe — UX + accessibilité des 3 écarts (2026-08-02)
+
+- **En-tête de groupe** « Écart à la prévision — c'était comment vs le forecast ? » +
+  **libellés raccourcis** : les 3 questions répétaient chacune « … c'était comment par
+  rapport à la prévision » → maintenant `🌊 Taille (Hs)` / `⏱ Période` / `🌬 Vent`, sous
+  un seul titre. Langage d'icônes unifié form / vote par variable / chips du détail /
+  blocs ②④ des stats (🌊⏱🧭🌬).
+- **`aria-pressed`** sur les boutons d'écart (via `_paintDeltaBtns`, couvre les 3
+  groupes) : un lecteur d'écran annonce désormais lequel est sélectionné.
+- Vérifié headless : en-tête + 3 libellés présents, plus aucun libellé verbeux (l'unique
+  occurrence restante est dans un commentaire), `aria-pressed` true/false correct, 0 erreur.
