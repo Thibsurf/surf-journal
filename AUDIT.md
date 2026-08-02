@@ -3398,3 +3398,64 @@ RLS contournée).
 - Bénéfice durable : moyen SÛR et contrôlé de faire des écritures/admin DB en
   autonomie (via ce job manuel) sans jamais exposer la clé — réutilisable si un
   autre nettoyage ponctuel est nécessaire.
+
+---
+
+## Refonte « évaluation de la qualité des prévisions » du Journal — FAIT (2026-08-02)
+
+Sur demande utilisateur (« tous les modèles sont proposés ? les questions mou sont
+tjs utiles ? tu ne m'avais pas parlé de période/direction ? »). Audit du flux
+formulaire → sauvegarde → figures stats (`index.html`), puis correctifs.
+
+**Constat.** Le formulaire avait accumulé 3 instruments qui se chevauchaient, avec
+une couverture de variables incohérente :
+- `forecast_accuracy` (scalaire 1-5, libellé « meteo.nc/GFS ») : global, NON signé,
+  sans modèle — doublon flou de l'écart signé, et le libellé ne nommait que 2
+  modèles quand le vote en compare 8.
+- Écarts ressentis signés : **taille** (`obs_delta`, → bloc ②) et **vent**
+  (`wind_delta`, → RIEN, morte : collectée + CSV mais aucune figure ne la lisait).
+- Vote par modèle + **par variable** (`votedBy{height,period,dir,wind}`) : couvrait
+  déjà les 4 variables (→ bloc ④), mais rendu en texte %, pas en figure.
+- Asymétrie : **période et direction n'avaient AUCUN écart ressenti** alors que ce
+  sont les 2 variables les plus décisives sur une passe NC.
+- Bloc ② « Erreur mesurée » sur-vendait : `fcst_model` ne vaut jamais que `nc`/`gfs`
+  (`_autoFillConditions`), donc ② ne peut calibrer QUE le modèle de préremplissage.
+
+**Décisions utilisateur (2 forks).** (1) **Retirer** le scalaire 1-5. (2) Ajouter
+l'écart **Période** ressenti + transformer ④ en **figure** ; la direction reste
+jugée par le vote (pas « sentie » fiablement à un seul spot).
+
+**Livré (`index.html` uniquement).**
+- Question « Période — c'était comment » ≪Courte…≫Longue (`setPeriodDelta`, classe
+  `perd-btn`, réf `obsdelta-ref-per`), insérée entre Taille et Vent.
+- `forecast_accuracy` RETIRÉ : question du formulaire + carte 🎯 histogramme +
+  `setForecastAccuracy`/`ACCURACY_COLORS`/reset `.facc-btn`. **Colonne DB laissée**
+  (données historiques + CSV) mais plus alimentée (retirée du payload d'insert).
+- Bloc ② refait → « **Calibration du préremplissage** » : biais signé PAR VARIABLE
+  (taille/période/vent) par `fcst_model`, seuil de volume par (variable,modèle).
+  **Branche enfin `wind_delta` (était morte)** et `period_delta`. Libellé honnête
+  (« seul nc/gfs est mesurable ici »).
+- Bloc ④ → **figure** : une barre EMPILÉE par variable (taille/période/**direction**
+  /vent), segments colorés par modèle (couleurs partagées), meneur affiché à droite ;
+  les 4 variables toujours montrées (barre vide + « à voter » si aspect jamais jugé).
+- `period_delta` persisté en **feature-détection** (`_hasPeriodDeltaColumn`, miroir de
+  `_hasModelReliabilityColumnJournal`) : ajouté au payload SEULEMENT si la colonne
+  existe, sinon jamais d'échec d'insert. `.insert()` n'a aucun fallback colonne-inconnue,
+  donc l'inclure en dur casserait toutes les sauvegardes tant que la migration n'est
+  pas passée.
+
+**⚠ Action manuelle requise (sinon l'écart Période n'est pas persisté — le reste
+fonctionne) :** dans Supabase, `alter table sessions add column period_delta smallint;`
+
+**Vérifié (headless Edge, données réseau réelles + données synthétiques).**
+- Boot : 0 erreur JS ; `setPeriodDelta`=function, `setForecastAccuracy`=undefined,
+  `_hasPeriodDeltaColumn`=function ; DOM : `f-period-delta` présent (5 boutons),
+  `f-forecast-accuracy` absent (0 `.facc-btn`).
+- `renderStats` piloté avec 4 sessions synthétiques : ② exact (nc taille
+  (1+2+0)/3=+1.00, période −0.67, vent +0.67 ; gfs sur n=1), ③ MARC 67%/nc 33%,
+  ④ Taille→MARC 67%, Période→GFS 67%, **Direction→meteo.nc 100%**, Vent→BOM 50%.
+  Ancien « Erreur mesurée » et carte 🎯 bien absents.
+- `node --check` sur les 3 blocs `<script>` inline : OK.
+
+Non commité/poussé (à toi de vérifier puis push — repo sans CI). Pas de bump
+`CACHE_NAME` nécessaire (aucun fichier `assets/` touché, seulement `index.html`).

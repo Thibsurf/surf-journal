@@ -1049,6 +1049,30 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
               style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Gros</button>
           </div>
         </div>
+        <!-- Écart PÉRIODE à la prévision (02/08/2026) : la taille et le vent avaient leur
+             écart ressenti, PAS la période — alors que sur une passe de récif NC c'est
+             souvent la variable la plus décisive (une houle plus longue que prévu réveille
+             un spot mou ; ton propre comparatif la traite comme « la plus décisive »). Le
+             surfeur SENT la période (espacement/puissance des séries), donc c'est un ordinal
+             fiable, contrairement à la direction en ° au large. Signé -2..+2 comme les 2
+             autres → alimente le bloc ② « calibration du préremplissage » par variable. -->
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">Période — c'était comment par rapport à la prévision
+            <span id="obsdelta-ref-per" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
+          </label>
+          <div id="f-period-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
+            <button type="button" onclick="setPeriodDelta(-2)" data-delta="-2" class="perd-btn" title="Nettement plus courte / molle que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Courte</button>
+            <button type="button" onclick="setPeriodDelta(-1)" data-delta="-1" class="perd-btn" title="Plus courte que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Courte</button>
+            <button type="button" onclick="setPeriodDelta(0)" data-delta="0" class="perd-btn" title="Conforme à la prévision"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
+            <button type="button" onclick="setPeriodDelta(1)" data-delta="1" class="perd-btn" title="Plus longue que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Longue</button>
+            <button type="button" onclick="setPeriodDelta(2)" data-delta="2" class="perd-btn" title="Nettement plus longue / creuse que prévu"
+              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Longue</button>
+          </div>
+        </div>
         <div class="form-group" style="margin-bottom:10px;">
           <label class="form-label">Vent — c'était comment par rapport à la prévision
             <span id="obsdelta-ref-wind" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
@@ -1126,23 +1150,12 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
         <span onclick="setStars(5)">★</span>
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Fiabilité des prévisions meteo.nc/GFS
-        <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:4px;">par rapport au réel</span>
-      </label>
-      <div id="f-forecast-accuracy" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
-        <button type="button" onclick="setForecastAccuracy(1)" data-acc="1" class="facc-btn" title="Écart important"
-          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">😴 Nul</button>
-        <button type="button" onclick="setForecastAccuracy(2)" data-acc="2" class="facc-btn"
-          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">😔 Moyen</button>
-        <button type="button" onclick="setForecastAccuracy(3)" data-acc="3" class="facc-btn"
-          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">🙂 Bien</button>
-        <button type="button" onclick="setForecastAccuracy(4)" data-acc="4" class="facc-btn"
-          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">😊 Très bien</button>
-        <button type="button" onclick="setForecastAccuracy(5)" data-acc="5" class="facc-btn"
-          style="flex:1;padding:6px 4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">🎯 Top</button>
-      </div>
-    </div>
+    <!-- « Fiabilité meteo.nc/GFS » 1-5 RETIRÉE (02/08/2026) : doublon flou et NON signé
+         de l'écart taille/période/vent (bloc ② des stats), et son libellé ne nommait que
+         2 modèles quand le vote ci-dessous en compare 8. Le signal utile vient du biais
+         signé (écarts) + du vote par modèle. La colonne sessions.forecast_accuracy est
+         laissée en base (données historiques préservées, encore exportées en CSV) mais
+         n'est plus alimentée. -->
     <div class="form-group" id="f-model-reliability-wrap" style="display:none;"></div>
     <div class="form-group">
       <label class="form-label">Manœuvres & highlights</label>
@@ -2095,8 +2108,7 @@ function openAddSession() {
   });
   // Init widget marée
   tideRanges = [];
-  selectedForecastAccuracy = 0;
-  setObsDelta(null); setWindDelta(null);
+  setObsDelta(null); setWindDelta(null); setPeriodDelta(null);
   window._lastFcstModel = null;
   // Reset forecast strip
   _forecastStripCache = null;
@@ -2124,10 +2136,6 @@ function openAddSession() {
   // Port selon launch point
   var tportEl = document.getElementById('tide-port');
   if (tportEl) tportEl.value = 'noumea';
-  // Reset btn accuracy
-  document.querySelectorAll('.facc-btn').forEach(function(b) {
-    b.style.background = 'transparent'; b.style.color = 'var(--text-muted)'; b.style.borderColor = 'var(--border)';
-  });
   setTimeout(function() {
     setupTideCanvas();
     renderTideWidget();
@@ -2914,13 +2922,10 @@ function editSession() {
   });
   _bindConditionsManualFlag();
   updateFuelEstimate();
-  // Fiabilité prévisions
-  if (s.forecast_accuracy) setForecastAccuracy(s.forecast_accuracy);
-  else { selectedForecastAccuracy = 0;
-    document.querySelectorAll('.facc-btn').forEach(function(b){ b.style.background='transparent'; b.style.color='var(--text-muted)'; b.style.borderColor='var(--border)'; });
-  }
+  // Écarts ressentis à la prévision (taille / période / vent)
   setObsDelta(s.obs_delta != null ? s.obs_delta : null);
   setWindDelta(s.wind_delta != null ? s.wind_delta : null);
+  setPeriodDelta(s.period_delta != null ? s.period_delta : null);
   window._lastFcstModel = s.fcst_model || null;
   _updateObsDeltaRef();
   // Directions
@@ -3286,31 +3291,16 @@ function setupTideCanvas() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// JAUGE QUALITÉ PRÉVISIONS
+// ÉCART RESSENTI À LA PRÉVISION (biais signé par variable)
 // ═══════════════════════════════════════════════════════════════
-var selectedForecastAccuracy = 0;
-var ACCURACY_COLORS = {1:'#e05c5c', 2:'#e8a057', 3:'#4fa3c7', 4:'#3dba8a', 5:'#7b6cf6'};
-
-function setForecastAccuracy(val) {
-  selectedForecastAccuracy = val;
-  document.querySelectorAll('.facc-btn').forEach(function(b) {
-    var v = +b.getAttribute('data-acc');
-    if (v === val) {
-      b.style.background = ACCURACY_COLORS[val];
-      b.style.color = '#fff';
-      b.style.borderColor = ACCURACY_COLORS[val];
-    } else {
-      b.style.background = 'transparent';
-      b.style.color = 'var(--text-muted)';
-      b.style.borderColor = 'var(--border)';
-    }
-  });
-}
-
-// Écart à la prévision (AUDIT-previsions.md §11.3) : ordinal signé -2..+2, pas une
-// valeur absolue — capture le biais d'un modèle (moy(obs_delta)), ce que
-// forecast_accuracy (satisfaction globale, non signée) ne permet pas.
-var selectedObsDelta = null, selectedWindDelta = null;
+// Écart ressenti à la prévision (AUDIT-previsions.md §11.3) : ordinal signé -2..+2,
+// pas une valeur absolue — capture le BIAIS d'un modèle (moy(delta) par variable),
+// ce qu'un scalaire de satisfaction globale (l'ancien forecast_accuracy 1-5, retiré
+// le 02/08/2026) ne permettait pas. Trois grandeurs que le surfeur SENT vraiment :
+// taille, période (espacement/puissance des séries) et vent. La direction, elle,
+// ne se « sent » pas fiablement à un seul spot → jugée par le vote par modèle
+// (bloc ④ des stats), pas par un écart ressenti ici.
+var selectedObsDelta = null, selectedWindDelta = null, selectedPeriodDelta = null;
 var DELTA_COLORS = {'-2':'#4fa3c7', '-1':'#7dd3fc', '0':'#3dba8a', '1':'#e8a057', '2':'#e05c5c'};
 function _paintDeltaBtns(cls, val) {
   document.querySelectorAll('.' + cls).forEach(function(b) {
@@ -3324,6 +3314,7 @@ function _paintDeltaBtns(cls, val) {
 }
 function setObsDelta(val) { selectedObsDelta = val; _paintDeltaBtns('obsd-btn', val); }
 function setWindDelta(val) { selectedWindDelta = val; _paintDeltaBtns('windd-btn', val); }
+function setPeriodDelta(val) { selectedPeriodDelta = val; _paintDeltaBtns('perd-btn', val); }
 
 // Affiche la prévision de référence dans le libellé de la question ("... par rapport
 // à la prévision (1.4m 12s)") — contamination par l'ancrage (§11.7 point 3) acceptée
@@ -3331,7 +3322,9 @@ function setWindDelta(val) { selectedWindDelta = val; _paintDeltaBtns('windd-btn
 function _updateObsDeltaRef() {
   var hsEl = document.getElementById('f-hs'), perEl = document.getElementById('f-period'), wEl = document.getElementById('f-wind');
   var hsRef = document.getElementById('obsdelta-ref-hs'), windRef = document.getElementById('obsdelta-ref-wind');
+  var perRef = document.getElementById('obsdelta-ref-per');
   if (hsRef) hsRef.textContent = (hsEl && hsEl.value) ? '(' + (+hsEl.value).toFixed(1) + 'm' + (perEl && perEl.value ? ' · ' + Math.round(+perEl.value) + 's' : '') + ')' : '';
+  if (perRef) perRef.textContent = (perEl && perEl.value) ? '(' + Math.round(+perEl.value) + 's)' : '';
   if (windRef) windRef.textContent = (wEl && wEl.value) ? '(' + Math.round(+wEl.value) + ' nds)' : '';
 }
 
@@ -3369,7 +3362,6 @@ async function saveSession() {
       shared_with: sharedWith,
       is_shared: sharedWith.length > 0,
       observations: document.getElementById('f-obs').value.trim() || null,
-      forecast_accuracy: selectedForecastAccuracy || null,
       tide_ranges: tideRanges.length > 0 ? tideRanges : null,
       tide_port: document.getElementById('tide-port') ? (document.getElementById('tide-port').value || null) : null,
       // Sans l'heure, impossible d'apparier rétroactivement une session à la bonne
@@ -3377,9 +3369,13 @@ async function saveSession() {
       // en 6h) — le sélecteur existe et sert déjà au préremplissage mais n'était
       // jamais sauvé (AUDIT-previsions.md §11.4, "meilleur rapport valeur/effort").
       session_hour: (function(){ var e = document.getElementById('f-session-hour'); var v = e ? parseInt(e.value, 10) : NaN; return isNaN(v) ? null : v; })(),
-      // Écart ordinal à la prévision (AUDIT-previsions.md §11.3) + modèle ayant fourni
-      // le préremplissage (capturé au fetch par _autoFillConditions, §11.2) — permet de
-      // calculer moy(obs_delta) PAR MODÈLE une fois ~30 sessions accumulées (§11.6).
+      // Écart ordinal ressenti à la prévision (AUDIT-previsions.md §11.3) + modèle ayant
+      // fourni le préremplissage (capturé au fetch par _autoFillConditions, §11.2) —
+      // permet de calculer moy(delta) PAR MODÈLE (taille/période/vent) une fois assez de
+      // sessions accumulées (bloc ② des stats). NB : period_delta n'est PAS mis ici, sa
+      // colonne peut être absente en prod (migration manuelle) → ajoutée au payload plus
+      // bas UNIQUEMENT si elle existe, sinon l'insert entier échouerait (pas de fallback
+      // colonne-inconnue sur .insert()).
       obs_delta: selectedObsDelta,
       wind_delta: selectedWindDelta,
       fcst_model: window._lastFcstModel || null,
@@ -3398,6 +3394,14 @@ async function saveSession() {
         showToast(negFields[nfi][1] + ' ne peut pas être négatif', 'error');
         return;
       }
+    }
+    // period_delta : n'entre au payload QUE si la colonne existe en base (cf. le
+    // commentaire du payload). Tant que la migration `alter table sessions add column
+    // period_delta int` n'est pas passée, la valeur est simplement ignorée à la
+    // sauvegarde (l'écart période reste utilisable en local pour l'UI, mais n'est pas
+    // persisté) — jamais d'échec d'insert. Une fois la colonne créée, ça persiste tout seul.
+    if (selectedPeriodDelta != null && await _hasPeriodDeltaColumn()) {
+      payload.period_delta = selectedPeriodDelta;
     }
     console.log('[saveSession] payload:', JSON.stringify(payload).slice(0, 300));
     if (btn) { btn.textContent = '…'; btn.disabled = true; }
@@ -3573,6 +3577,23 @@ async function _hasModelReliabilityColumnJournal() {
   try {
     var r = await sb.from('sessions').select('model_reliability').limit(1);
     if (!r.error) { _modelRelColOkJournal = true; return true; }
+  } catch (e) {}
+  return false;
+}
+// Colonne period_delta (écart ressenti de période) : ajoutée APRÈS obs_delta/wind_delta,
+// donc potentiellement absente en prod tant que la migration manuelle n'est pas passée
+// (l'ALTER TABLE via la clé anon est refusé, cf. AUDIT.md). Feature-détectée comme
+// model_reliability pour ne JAMAIS casser une sauvegarde de session. On ne mémorise que
+// le positif (un échec réseau ponctuel ne doit pas éteindre la détection pour toute la
+// session, même raison qu'ailleurs). Migration à passer une fois dans Supabase :
+//   alter table sessions add column period_delta smallint;
+var _periodDeltaColOk = null;
+async function _hasPeriodDeltaColumn() {
+  if (_periodDeltaColOk === true) return true;
+  if (!sb) return false;
+  try {
+    var r = await sb.from('sessions').select('period_delta').limit(1);
+    if (!r.error) { _periodDeltaColOk = true; return true; }
   } catch (e) {}
   return false;
 }
@@ -4655,32 +4676,10 @@ function renderStats(sessions, el) {
         }).join('')
         +'</tbody></table></div>';
     })()}
-    ${(function(){
-      // Fiabilité des prévisions
-      var accSessions = sessions.filter(function(s){return s.forecast_accuracy;});
-      if (accSessions.length < 3) return '';
-      var counts = {1:0,2:0,3:0,4:0,5:0};
-      accSessions.forEach(function(s){ counts[s.forecast_accuracy]++; });
-      var avg = accSessions.reduce(function(a,s){return a+s.forecast_accuracy;},0) / accSessions.length;
-      var labels = {1:'😴 Nul',2:'😔 Moyen',3:'🙂 Bien',4:'😊 Très bien',5:'🎯 Top'};
-      var colors = {1:'#e05c5c',2:'#e8a057',3:'#4fa3c7',4:'#3dba8a',5:'#7b6cf6'};
-      var total = accSessions.length;
-      var bars = [1,2,3,4,5].map(function(v){
-        var pct = (counts[v]/total*100);
-        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">'
-          +'<span style="min-width:90px;color:var(--text-muted);">'+labels[v]+'</span>'
-          +'<div style="flex:1;height:14px;background:var(--glass);border-radius:3px;overflow:hidden;">'
-          +'<div style="height:100%;width:'+pct+'%;background:'+colors[v]+';"></div>'
-          +'</div>'
-          +'<span style="min-width:40px;text-align:right;font-size:10px;color:var(--text-muted);">'+counts[v]+' ('+Math.round(pct)+'%)</span>'
-          +'</div>';
-      }).join('');
-      return '<div class="card" style="margin-top:14px;">'
-        +'<div class="section-title" style="margin-bottom:4px;">🎯 Fiabilité des prévisions</div>'
-        +'<div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">Sur '+total+' sessions évaluées · Moyenne: <b style="color:var(--accent);">'+avg.toFixed(1)+'/5</b></div>'
-        +bars
-        +'</div>';
-    })()}
+    ${/* 🎯 « Fiabilité des prévisions » (histogramme du scalaire 1-5) RETIRÉE le
+         02/08/2026 avec la question du formulaire : métrique globale, non signée et
+         sans modèle. Remplacée par les blocs ② (biais signé par variable, par modèle
+         de préremplissage) et ④ (fiabilité par modèle ET par aspect) ci-dessous. */ ''}
     ${(function(){
       // Remplace la barre "modèle le plus voté" par 3 blocs dégradés selon les données
       // disponibles (AUDIT-previsions.md §11.11-§11.13) : une part de vote à un tour
@@ -4705,8 +4704,10 @@ function renderStats(sessions, el) {
         if (getModelReliability(s)) return;
         if (s.hs && _isRecentForModelVote(s.date)) eligibleUnvoted++; else notEligible++;
       });
-      var obsDeltaSessions = sessions.filter(function(s){ return s.obs_delta != null && s.fcst_model; });
-      if (!votes.length && !obsDeltaSessions.length) return '';
+      // Sessions exploitables pour la calibration du modèle de préremplissage : au moins
+      // un écart ressenti renseigné (taille / période / vent) ET le modèle qui a pré-rempli.
+      var deltaSessions = sessions.filter(function(s){ return s.fcst_model && (s.obs_delta != null || s.period_delta != null || s.wind_delta != null); });
+      if (!votes.length && !deltaSessions.length) return '';
 
       // ① Calibration relative : écart signé (en m) de chaque modèle à celui élu comme
       // le plus proche du réel, moyenné sur tous les votes — biais en mètres, actionnable,
@@ -4762,26 +4763,53 @@ function renderStats(sessions, el) {
         + '</div>'
       );
 
-      // ② Erreur mesurée : biais ordinal moyen(obs_delta) par modèle (fcst_model) — la
-      // vraie mesure d'erreur, mais nécessite le volume minimal pour séparer un modèle
-      // biaisé d'un modèle calibré (§11.6).
+      // ② Calibration du modèle de préremplissage : biais ordinal signé moyen PAR VARIABLE
+      // (taille / période / vent) pour le modèle qui a pré-rempli le formulaire — fcst_model
+      // ne vaut jamais que 'nc' ou 'gfs' (cf. _autoFillConditions), c'est donc le SEUL modèle
+      // mesurable ainsi, puisque c'est lui qu'on compare au ressenti. Les autres modèles ne
+      // sont jugés que par le vote (blocs ①③④). Avant le 02/08/2026 : seule la TAILLE
+      // (obs_delta) était exploitée ici ; wind_delta était collectée mais MORTE (aucune
+      // figure ne la lisait) et la période n'était même pas demandée. Les 3 sont désormais
+      // des biais signés homogènes, chacun avec son propre seuil de volume.
       var OBS_DELTA_MIN = 15;
+      var DELTA_VARS = [
+        { key: 'obs_delta',    lbl: '🌊 Taille'  },
+        { key: 'period_delta', lbl: '⏱ Période' },
+        { key: 'wind_delta',   lbl: '🌬 Vent'    }
+      ];
+      var dAgg = { obs_delta: {}, period_delta: {}, wind_delta: {} };
+      deltaSessions.forEach(function(s) {
+        DELTA_VARS.forEach(function(dv) {
+          if (s[dv.key] == null) return;
+          var m = s.fcst_model;
+          dAgg[dv.key][m] = dAgg[dv.key][m] || { sum: 0, n: 0 };
+          dAgg[dv.key][m].sum += s[dv.key]; dAgg[dv.key][m].n++;
+        });
+      });
       var block2 = '<div style="margin-bottom:12px;">'
         + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
-        + '<span style="font-size:11px;font-weight:600;color:var(--text);">② Erreur mesurée</span>'
-        + '<span style="font-size:10px;color:var(--text-muted);">' + obsDeltaSessions.length + ' session(s) · ' + (obsDeltaSessions.length >= OBS_DELTA_MIN ? '✅ dispo' : '⏳ à partir de ' + OBS_DELTA_MIN) + '</span>'
+        + '<span style="font-size:11px;font-weight:600;color:var(--text);">② Calibration du préremplissage</span>'
+        + '<span style="font-size:10px;color:var(--text-muted);">' + deltaSessions.length + ' session(s)</span>'
         + '</div>';
-      if (obsDeltaSessions.length >= OBS_DELTA_MIN) {
-        var accD = {};
-        obsDeltaSessions.forEach(function(s) { accD[s.fcst_model] = accD[s.fcst_model] || { sum: 0, n: 0 }; accD[s.fcst_model].sum += s.obs_delta; accD[s.fcst_model].n++; });
-        block2 += Object.keys(accD).map(function(k) {
-          var info = MODEL_RELIABILITY_LABELS[k] || { label: k, col: '#7a94aa' };
-          var avg = accD[k].sum / accD[k].n;
-          return '<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;"><span style="color:' + info.col + ';font-weight:600;">' + info.label + '</span> — biais ordinal ' + (avg >= 0 ? '+' : '') + avg.toFixed(2) + ' (n=' + accD[k].n + ')</div>';
-        }).join('');
+      var _anyDelta = DELTA_VARS.some(function(dv) { return Object.keys(dAgg[dv.key]).length; });
+      if (!_anyDelta) {
+        block2 += '<div style="font-size:10px;color:var(--text-muted);">nécessite les questions d\'écart à la prévision (taille / période / vent)</div>';
       } else {
-        block2 += '<div style="font-size:10px;color:var(--text-muted);">nécessite la question d\'écart à la prévision (n/' + OBS_DELTA_MIN + ')</div>';
+        block2 += DELTA_VARS.map(function(dv) {
+          var models = Object.keys(dAgg[dv.key]);
+          if (!models.length) return '';
+          var cells = models.map(function(m) {
+            var info = MODEL_RELIABILITY_LABELS[m] || { label: m, col: '#7a94aa' };
+            var a = dAgg[dv.key][m], avg = a.sum / a.n, enough = a.n >= OBS_DELTA_MIN;
+            return '<span style="color:' + info.col + ';font-weight:600;">' + info.label + '</span> '
+              + (avg >= 0 ? '+' : '') + avg.toFixed(2)
+              + ' <span style="opacity:.55;">(n=' + a.n + (enough ? '' : '/' + OBS_DELTA_MIN) + ')</span>';
+          }).join(' · ');
+          return '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px;font-size:11px;">'
+            + '<span style="min-width:74px;color:var(--text-muted);">' + dv.lbl + '</span><span>' + cells + '</span></div>';
+        }).join('');
       }
+      block2 += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">biais ressenti moyen : <b>+</b> = réel au-dessus de la prévision (le modèle sous-estime), <b>−</b> = en dessous (il surestime). n &lt; ' + OBS_DELTA_MIN + ' = tendance, pas encore fiable.</div>';
       block2 += '</div>';
 
       // ③ Préférence déclarée — conservée mais déclassée et étiquetée pour ce qu'elle
@@ -4826,23 +4854,36 @@ function renderStats(sessions, el) {
         });
       });
       var hasVarData = varAgg._tot.height + varAgg._tot.period + varAgg._tot.dir + varAgg._tot.wind > 0;
+      // Figure ④ (02/08/2026, remplace le texte en %) : une barre EMPILÉE par variable
+      // (taille / période / direction / vent), chaque segment = part d'un modèle, largeur
+      // ∝ %, couleur = couleur du modèle (mêmes partout). Rend lisible d'un coup d'œil QUI
+      // est fiable sur QUOI — en particulier la période et la DIRECTION, qui n'ont pas
+      // d'écart ressenti (la direction ne se juge fiablement QUE par le vote, à un seul
+      // spot). Les 4 variables sont toujours affichées, même à 0 vote (barre vide +
+      // « à voter ») : montrer le trou incite à compléter plutôt que de le cacher.
       var block4 = !hasVarData ? '' : (
         '<div style="margin-top:12px;">'
-        + '<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:5px;">④ Fiabilité par variable</div>'
+        + '<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px;">④ Fiabilité par variable</div>'
         + Object.keys(VARLBL).map(function(vk) {
             var tot = varAgg._tot[vk];
-            if (!tot) return '';
             var ranked = Object.keys(varAgg[vk]).map(function(m) { return { m: m, n: varAgg[vk][m] }; })
               .sort(function(a, b) { return b.n - a.n; });
-            return '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px;font-size:11px;">'
+            var barInner = !tot ? '' : ranked.map(function(r) {
+                var info = MODEL_RELIABILITY_LABELS[r.m] || { label: r.m, col: '#7a94aa' };
+                var pct = r.n / tot * 100;
+                return '<div title="' + info.label + ' ' + Math.round(pct) + '% (' + r.n + '/' + tot + ')" style="width:' + pct + '%;background:' + info.col + ';"></div>';
+              }).join('');
+            var lead = !tot
+              ? '<span style="color:var(--text-faint);font-style:italic;">à voter</span>'
+              : (function() { var info = MODEL_RELIABILITY_LABELS[ranked[0].m] || { label: ranked[0].m, col: '#7a94aa' }; return '<span style="color:' + info.col + ';font-weight:700;">' + info.label + '</span> ' + Math.round(ranked[0].n / tot * 100) + '%'; })();
+            return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px;">'
               + '<span style="min-width:74px;color:var(--text-muted);">' + VARLBL[vk] + '</span>'
-              + '<span>' + ranked.map(function(r) {
-                  var info = MODEL_RELIABILITY_LABELS[r.m] || { label: r.m, col: '#7a94aa' };
-                  return '<span style="color:' + info.col + ';font-weight:600;">' + info.label + '</span> ' + Math.round(r.n / tot * 100) + '%';
-                }).join(' · ') + '</span>'
+              + '<div style="flex:1;height:14px;border-radius:3px;overflow:hidden;display:flex;background:var(--glass);">' + barInner + '</div>'
+              + '<span style="min-width:84px;text-align:right;">' + lead + '</span>'
+              + '<span style="min-width:24px;text-align:right;font-size:9px;color:var(--text-faint);">n=' + tot + '</span>'
               + '</div>';
           }).join('')
-        + '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">qui a eu bon sur chaque aspect, à l\'œil (jugement par session)</div>'
+        + '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">qui a eu bon sur chaque aspect (jugement à l\'œil). Barre = répartition des votes par modèle ; à droite, le meneur.</div>'
         + '</div>'
       );
 
