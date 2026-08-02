@@ -3378,3 +3378,23 @@ colonnes Supabase dédiées (nécessite un ALTER TABLE, impossible via la clé a
 + RLS). SQL fourni à l'utilisateur. Alternative sans schéma (stockage dans le
 JSON model_reliability) volontairement NON ajoutée pour ne pas créer un 3e
 mécanisme redondant avec le vote par variable déjà en place.
+
+## Session du 02/08/2026 — job de maintenance DB (purge lignes de test)
+
+L'utilisateur a signalé que le secret repo pour les droits d'écriture Supabase
+existait. Vérifié : il s'appelle **`SUPABASE_KEY`** (pas `SUPABASE_SERVICE_KEY`),
+et le test a confirmé que **c'est bien la clé service_role** (droits d'écriture,
+RLS contournée).
+
+- Nouveau `.github/workflows/db-maintenance.yml` (workflow_dispatch UNIQUEMENT,
+  jamais planifié) + `ingestion/db_maintenance.py` : purge les lignes
+  `model_forecast_cache` dont `spot_name LIKE 'TEST %'` (match exact du préfixe,
+  aucune heuristique large — pas de suppression « orphelins par coordonnées »
+  qui risquerait de sur-supprimer). Dry-run par défaut ; clé lue depuis l'env
+  (`secrets.SUPABASE_KEY`), jamais en dur ni dans le chat.
+- Exécuté : dry-run → 83 lignes `TEST Océan Vide` détectées ; purge-test → 83
+  supprimées, 0 restante (vérifié indépendamment via la clé anon : `[]`). Le
+  ménage cosmétique en attente depuis le 28/07 est fait.
+- Bénéfice durable : moyen SÛR et contrôlé de faire des écritures/admin DB en
+  autonomie (via ce job manuel) sans jamais exposer la clé — réutilisable si un
+  autre nettoyage ponctuel est nécessaire.
