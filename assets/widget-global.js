@@ -354,11 +354,35 @@ function _gwIsNC() {
 
 // Groupe les points horaires par jour calendaire NC (clé sur les champs getUTC*
 // qui représentent l'heure locale NC — même convention que dates[] dans _fcastData).
+//
+// N'inclut QUE les jours >= aujourd'hui (NC). ══ Bug corrigé le 04/08/2026 ══
+// AVANT, days[0] = premier jour PRÉSENT dans la donnée du modèle. Or les modèles ne
+// commencent pas tous au même jour : meteo.nc/BOM démarrent aujourd'hui, mais GFS/
+// MFWAM/MARC archivent J-1 et LOTUS jusqu'à J-3 (cf. fetch_*.py, start_datetime =
+// now-1j ou plus, pour garder un peu de passé récent). Deux symptômes signalés :
+//  1) « changer de modèle change parfois de jour » : `_gwDayIdx` est un INDEX dans
+//     `days`, MAIS il sert aussi d'offset-jour partagé avec l'onglet Marée
+//     (`tideDayOffset`, 0=aujourd'hui) — équivalence qui n'est vraie QUE si days[0]
+//     est toujours aujourd'hui. Avec days[0]=J-3 pour LOTUS et J-1 pour GFS/MF/MARC,
+//     l'index 2 tombait sur un jour différent selon le modèle → le jour affiché
+//     « sautait » à chaque changement de source.
+//  2) « LOTUS s'arrête à mercredi » : la bande de navigation montre 5 jours À PARTIR
+//     de days[0]. days[0]=J-3 pour LOTUS → 3 boutons gaspillés sur du passé (Ven/Sam/
+//     Dim), l'horizon visible s'arrêtait à J+1 (mercredi). En calant days[0] sur
+//     aujourd'hui, les 9 modèles montrent le même jour au même index et la bande
+//     couvre aujourd'hui→J+4 partout (LOTUS a des données jusqu'à J+6).
+// Le graphe d'ensemble (_gwDrawOverview) lit d.dates directement et garde donc, lui,
+// le passé récent (trait « maintenant » à sa place) — ce filtre ne touche que la
+// bande de jours et la grille détaillée, qui sont de la PRÉVISION.
 function _gwGroupDays(d) {
   var days = [], byKey = {};
   if (!d || !d.dates) return days;
+  var nowNC = new Date(Date.now() + 11 * 3600000);
+  var todayMs = Date.UTC(nowNC.getUTCFullYear(), nowNC.getUTCMonth(), nowNC.getUTCDate());
   d.dates.forEach(function(dt, i) {
     if (!dt) return;
+    var dMs = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+    if (dMs < todayMs) return; // jour passé — le widget est un outil de prévision
     var key = dt.getUTCFullYear()+'-'+dt.getUTCMonth()+'-'+dt.getUTCDate();
     if (!byKey[key]) { byKey[key] = { key:key, dateObj:dt, indices:[] }; days.push(byKey[key]); }
     byKey[key].indices.push(i);
