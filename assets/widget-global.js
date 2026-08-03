@@ -187,7 +187,7 @@ function _gwBuildModelFcast(key) {
       out.sw5h.push(null); out.sw5t.push(null); out.sw5d.push(null);
     }
     out.wSpd.push(p.windKt!=null ? p.windKt : null); // MFWAM: toujours null, pas de vent dans cette API
-    out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale dispo ; MFWAM: rafale ARPEGE
+    out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale ; MFWAM: aucun vent du tout (produit houle Copernicus, cf. bouton)
     out.wDir.push(p.windDir!=null ? p.windDir : null);
     var _sw1h = out.sw1h[out.sw1h.length-1], _sw1t = out.sw1t[out.sw1t.length-1];
     out.pwr.push((_sw1h && _sw1t) ? +(0.5*_sw1h*_sw1h*_sw1t).toFixed(2) : null);
@@ -217,8 +217,9 @@ function _gwBuildModelFcast(key) {
 // - Vent (vitesse/rafale/direction) : meteo.nc > BOM (14km, vent propre au
 //   modèle) > MARC (vent = forçage ECMWF 9km réel du run WW3, confirmé via
 //   l'attribut global forcing_wind="wind_ecmwf_op", regrillé sur la maille MARC
-//   5,5km — pas une vraie donnée à 5,5km, d'où son rang après BOM) > GFS (28km)
-//   > MFWAM (vent ARPEGE, résolution non documentée ici).
+//   5,5km — pas une vraie donnée à 5,5km, d'où son rang après BOM) > GFS (28km).
+//   MFWAM ne fournit PAS de vent (produit houle Copernicus, aucun champ de vent —
+//   vérifié sur le catalogue le 04/08/2026), il ne contribue donc jamais au vent du Mix.
 // Base temporelle = meteo.nc si disponible (pas horaire, le plus fin), sinon GFS.
 function _gwBuildBestMix() {
   var base = _ncFcastData || _omFcastData || _fcastData;
@@ -397,7 +398,7 @@ var GW_SRC_BTNS_DEF = [
   { key:'nc',   lbl:'🛰 meteo.nc' },
   { key:'om',   lbl:'🌐 GFS' },
   { key:'bom',  lbl:'🇦🇺 BOM' },
-  { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France globale (résolution non communiquée par Open-Meteo) + vent ARPEGE (résolution non documentée ici).' },
+  { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France (Copernicus Marine, ~9 km) avec partitions directionnelles (mer du vent / houle 1 / houle 2). Modèle de VAGUES seul : le produit Copernicus ne contient aucun champ de vent — pas de vent MFWAM ici (voir meteo.nc / AROME / BOM pour le vent).' },
   { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Lu depuis un cache rafraîchi 3x/jour (ingestion/fetch_marc.py) ; repli sur une requête directe Ifremer (~3s) si le cache est vide pour ce spot.' },
   { key:'lotus', lbl:'🏄 LOTUS', title:'Surfline — modèle propriétaire LOTUS (WW3 + assimilation satellite + forecasters), houle en trains directionnels + vent (avec rafale). Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa G+D/Boulari) : indisponible pour les autres spots. Cache rafraîchi 3x/jour (ingestion/fetch_surfline.py).' },
   { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km/BOM 14km/MFWAM en repli. Vent : meteo.nc > BOM 14km > MARC (ECMWF ~9km) > GFS 28km > MFWAM (ARPEGE). Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
