@@ -3685,3 +3685,24 @@ bucket toujours PAS par délai. Prochaine étape naturelle une fois quelques jou
 tagués accumulés : segmenter le biais par tranche de délai (ex. J-1/J-3/J-5) plutôt qu'une
 seule moyenne globale. Pas construit maintenant : zéro donnée tant que les prochains runs
 n'ont pas tourné, inutile de coder une vue vide.
+
+### Suite (2026-08-03, même jour) — bloc ⑤ en figure (barres divergentes)
+
+Demande : rendre le bloc ⑤ visuel plutôt que texte. Remplacé les lignes texte par un
+graphique Chart.js barres horizontales, divergent autour de 0, groupé par station,
+coloré par modèle — forme choisie via le skill dataviz (jeu skill "Pick the form") :
+biais SIGNÉ → magnitude + polarité → barres divergentes, pas une autre forme. Couleurs
+= **réutilisation** de `MODEL_STYLE`/`MODEL_RELIABILITY_LABELS` déjà établies ailleurs
+dans le fichier (aro `#7b6cf6`, ecmwf `#a99ff8`, aifs `#e06bb0`) — pas une palette
+réinventée pour ce bloc, cohérence d'identité modèle sur toute la page. Validateur du
+skill (`validate_palette.js`) non exécutable ici (Node 12 du poste, script requiert
+ES2020+ : `??=`) — vérification visuelle à la place (capture d'écran zoomée, les 3
+barres par groupe restent distinguables).
+
+**Vérifié en conditions réelles** (pas de mock) : page copiée en `__test.html`, `<div
+id="wind-truth-block">` injecté hors du flux normal (pas besoin de login/onglet Stats
+pour atteindre `_renderWindTruthBlock`), appelée directement, canvas mesuré via
+`getImageData` → **3199 px non transparents** (le tracé existe vraiment, pas juste un
+canvas vide), 0 erreur JS. Capture d'écran (452×260, carte isolée) : 3 barres/station
+bien distinctes, légende lisible, aucun chevauchement de label. `__test.html` supprimé
+après chaque vérification.
