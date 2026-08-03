@@ -4989,7 +4989,11 @@ function renderStats(sessions, el) {
 // station — cf. commentaires INVARIANT côté fetch_arome.py).
 var WIND_TRUTH_STATIONS = ['Phare Amédée', 'Bourake (Boulouparis)'];
 var WIND_TRUTH_MODELS = ['aro', 'ecmwf', 'aifs'];
-var WIND_TRUTH_LABELS = { aro: '🇫🇷 AROME', ecmwf: '🌐 ECMWF', aifs: '🤖 AIFS' };
+// Mêmes couleurs que MODEL_STYLE (previsions.html) / MODEL_RELIABILITY_LABELS
+// (plus haut dans ce fichier) — identité de modèle cohérente sur tout le site,
+// pas une palette réinventée pour ce bloc.
+var WIND_TRUTH_LABELS = { aro: 'AROME', ecmwf: 'ECMWF', aifs: 'AIFS' };
+var WIND_TRUTH_COLORS = { aro: '#7b6cf6', ecmwf: '#a99ff8', aifs: '#e06bb0' };
 async function _renderWindTruthBlock() {
   var el = document.getElementById('wind-truth-block');
   if (!el || !sb) return;
@@ -5046,16 +5050,46 @@ async function _renderWindTruthBlock() {
       el.innerHTML = '<span style="color:var(--text-faint);font-style:italic;">pas encore de recouvrement prévision/mesure</span>';
       return;
     }
-    el.innerHTML = aggKeys.map(function(k) {
-      var parts = k.split('|'), m = parts[0], station = parts[1], a = agg[k], avg = a.sum / a.n;
-      return '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px;">'
-        + '<span style="min-width:80px;color:var(--text-muted);">' + (WIND_TRUTH_LABELS[m] || m) + '</span>'
-        + '<span style="min-width:110px;font-size:10px;color:var(--text-faint);">' + station + '</span>'
-        + '<span>' + (avg >= 0 ? '+' : '') + avg.toFixed(1) + ' nds</span>'
-        + '<span style="opacity:.55;font-size:9px;">(n=' + a.n + ')</span>'
-        + '</div>';
-    }).join('')
-    + '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">+ = le modèle surestime le vent réel, − = il sous-estime. Échantillon encore faible (ingestion démarrée le 03/08/2026) : tendance, pas encore fiable.</div>';
+    // Barres horizontales divergentes autour de 0 : la forme la plus directe pour
+    // un biais SIGNÉ (+ surestime / − sous-estime) — largeur = amplitude, sens =
+    // signe, un coup d'œil suffit. Groupées par station (2), colorées par modèle
+    // (3, couleurs fixes ci-dessus) : jamais de couleur recyclée pour autre chose.
+    el.innerHTML = '<div style="position:relative;height:150px;"><canvas id="wind-truth-chart"></canvas></div>'
+      + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">+ = le modèle surestime le vent réel, − = il sous-estime. Échantillon encore faible (ingestion démarrée le 03/08/2026) : tendance, pas encore fiable.</div>';
+    var datasets = WIND_TRUTH_MODELS.map(function(m) {
+      var ns = WIND_TRUTH_STATIONS.map(function(st) { var a = agg[m + '|' + st]; return a ? a.n : 0; });
+      return {
+        label: WIND_TRUTH_LABELS[m] || m,
+        data: WIND_TRUTH_STATIONS.map(function(st) { var a = agg[m + '|' + st]; return a ? +(a.sum / a.n).toFixed(2) : null; }),
+        backgroundColor: WIND_TRUTH_COLORS[m] || '#7a94aa',
+        borderRadius: 4,
+        _n: ns,
+      };
+    });
+    var canvas = document.getElementById('wind-truth-chart');
+    if (canvas) {
+      try { var prevChart = Chart.getChart(canvas); if (prevChart) prevChart.destroy(); } catch (_) {}
+      new Chart(canvas, {
+        type: 'bar',
+        data: { labels: WIND_TRUTH_STATIONS, datasets: datasets },
+        options: {
+          indexAxis: 'y',
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#7a94aa', font: { size: 10 }, boxWidth: 10, padding: 10 } },
+            tooltip: { callbacks: { label: function(ctx) {
+              var n = ctx.dataset._n[ctx.dataIndex], v = ctx.parsed.x;
+              return ctx.dataset.label + ' : ' + (v >= 0 ? '+' : '') + v + ' nds (n=' + n + ')';
+            } } },
+          },
+          scales: {
+            x: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' },
+                 title: { display: true, text: 'biais (nds)', color: '#7a94aa', font: { size: 10 } } },
+            y: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { display: false } },
+          },
+        },
+      });
+    }
   } catch (e) {
     var el2 = document.getElementById('wind-truth-block');
     if (el2) el2.innerHTML = '<span style="color:var(--text-faint);font-style:italic;">erreur de chargement</span>';
