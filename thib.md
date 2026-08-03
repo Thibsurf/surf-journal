@@ -114,7 +114,12 @@ Google Fonts encore bloquante (mitigée `display=swap`), 1 215 `style=` inline.
       03/08/2026, fast-forward sur `main`, poussé (déploiement Cloudflare Pages).
 - [ ] **Lancer `db-compaction` en `compact-dry`** (Actions) pour voir le rapport réel, puis
       laisser l'hebdo tourner.
-- [ ] **Décider P2** (historique d'observations) — cf. §4.
+- [x] **Décider P2** (historique d'observations) — décidé le 03/08/2026 : **vent seul**
+      (la houle n'est pas mesurable via meteo.nc, cf. correction dans AUDIT.md — §4
+      ci-dessous était optimiste sur les champs dispo). Implémenté :
+      `ingestion/fetch_observations.py` + `cache-observations.yml` (1×/jour). **Migration
+      SQL à passer par toi** (`create table observations_history...`, cf. AUDIT.md du
+      03/08 pour le DDL complet) avant que les données commencent à persister.
 - [x] ~~Optionnel : dédoublonner "Gros Nem"/"Gros nem" à l'ingestion~~ — investigué le
       03/08/2026 : pas un doublon actif, `shared_spots` ne contient plus ce point depuis le
       30/07/2026, rien à coder. Détails dans `AUDIT.md` (section du 03/08). Les lignes

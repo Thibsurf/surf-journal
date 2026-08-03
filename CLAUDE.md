@@ -61,9 +61,11 @@ observation `wind_speed` en m/s → `×1.944`. Une seule conversion par chemin.
 ## Backend
 
 Supabase `tiiptlozingmgzcnexpu.supabase.co` (clé anon côté client) + Worker Cloudflare
-(proxy meteo.nc, endpoints `/token`, `/forecast`, `/tide`, `/arome`, `/enso`, `/proxy`).
-Tables : `sessions`, `meteo_cache`, `model_forecast_cache`, `shared_tokens`, `spots`,
-`shared_spots`.
+(proxy meteo.nc, endpoints `/token`, `/forecast`, `/tide`, `/history`, `/arome`, `/enso`,
+`/proxy`). `/history` = `observation/history` (vent/météo horaire, stations meteo.nc,
+fenêtre glissante ~5 j — PAS de houle, aucun champ Hs/période/direction, vérifié le
+03/08/2026). Tables : `sessions`, `meteo_cache`, `model_forecast_cache`, `shared_tokens`,
+`spots`, `shared_spots`, `observations_history` (migration à passer, cf. AUDIT.md 03/08).
 
 Ingestion : `ingestion/fetch_arome.py` (GRIB2 Météo-France), `ingestion/fetch_marc.py`
 (MARC-WW3 Ifremer via OPeNDAP), `ingestion/fetch_mfwam.py` (MFWAM via Copernicus
@@ -73,6 +75,10 @@ Data — IFS-HRES + AIFS-single, `ecmwf-opendata`, gratuit sans clé), planifié
 `.github/workflows/cache-model-forecasts.yml`, 3×/jour. Idem GFS/BOM via
 `.github/scripts/cache-model-forecasts.mjs`, même planning (MF et ECMWF/AIFS n'y
 sont plus depuis le 30/07/2026, chacun son script Python isolé désormais).
+`ingestion/fetch_observations.py` (P2, vérité terrain **vent seul** — Phare Amédée +
+Bourake via `/history` du Worker, pas de houle mesurée dispo) → `observations_history`,
+`.github/workflows/cache-observations.yml`, 1×/jour (fenêtre source glissante ~5 j, pas
+besoin d'un rythme plus serré).
 
 Le Worker (`worker_cloudflare/worker.js`) a son propre cron (`*/5 * * * *`, token
 meteo.nc) qui piggyback aussi, depuis le 28/07/2026, le **préchauffage du cache edge

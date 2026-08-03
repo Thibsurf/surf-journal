@@ -1,0 +1,26 @@
+name: Cache observations (vérité terrain vent)
+
+# P2 (cf. thib.md/AUDIT.md, décidé le 03/08/2026) : archive le vent RÉELLEMENT
+# MESURÉ (Phare Amédée + Bourake, via meteo.nc/observation/history) pour
+# calculer plus tard l'erreur objective de chaque modèle de vent, sans dépendre
+# du vote du Journal. Portée = vent seul (pas de houle mesurée disponible, cf.
+# docstring de fetch_observations.py). La fenêtre source est glissante sur
+# ~5 jours horaires : un passage 1x/jour suffit largement, pas besoin du rythme
+# 3x/jour des autres jobs d'ingestion (rien n'expire aussi vite qu'un run modèle).
+on:
+  schedule:
+    - cron: '23 14 * * *'   # 14:23 UTC ≈ 01:23 NC (UTC+11), quotidien
+  workflow_dispatch: {}
+
+jobs:
+  observations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Fetch + archive observations vent (Phare Amédée + Bourake)
+        run: python ingestion/fetch_observations.py

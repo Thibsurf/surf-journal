@@ -3536,3 +3536,57 @@ lignes `model_forecast_cache` sous 5 variantes nom+coordonnées (dérive de quel
 a été retiré/renommé sur la carte ce jour-là et jamais réintroduit. Décision : les laisser
 au job de compaction P1 (ci-dessus), qui les purgera automatiquement une fois `date`
 passée `COMPACT_PURGE_DAYS` (120 j) — aucun code à changer, aucune purge manuelle.
+
+### P2 livré (2026-08-03) — observations vent, portée réduite au vent après mesure réelle
+
+`thib.md` §4 supposait Phare Amédée/Bourake capables de fournir Hs/période/direction
+houle. **Faux, vérifié empiriquement** : appel direct de `/history` du Worker
+(`meteo-proxy-worker.thibault-dlh.workers.dev/history?lat=…&lon=…&id=98818002`, aucune
+auth requise côté appelant — le Worker gère le token meteo.nc) pour Phare Amédée →
+123 relevés, fenêtre glissante **~5 jours** (29/07 03:14→03/08 02:14 UTC), **PAS 48h**
+comme l'affiche à tort le tooltip carte de previsions.html (`_fetchObsWind`). 22 champs
+dans la réponse, tous vent/météo : `wind_speed`, `wind_speed_gust`, `wind_direction`, `T`,
+`P_sea`, humidité, précipitations (`total_precipitation_1h/3h/6h/12h/24h`), nébulosité,
+visibilité — **aucun champ houle** (pas de `Hs`/`wave_height`/`period`/`swell_direction`).
+Ces stations sont météo terrestres/lagon (type aéroport), pas des bouées de houle.
+Décision utilisateur : implémenter P2 **vent seul**, horaire (déjà la granularité native
+de la source), 2 stations (Phare Amédée + Bourake), 1×/jour.
+
+**Livré :**
+- `ingestion/fetch_observations.py` — nouveau, appelle `/history` du Worker (jamais
+  directement rpcache.meteo.nc), regroupe par date NC-locale (+11h, même convention que
+  `build_rows_for_point` de `fetch_arome.py`), upsert `observations_history` (merge-
+  duplicates, mêmes en-têtes/clé anon que les autres scripts `fetch_*.py`). Filtre les
+  relevés sans vent (`wind_speed is None`) plutôt que d'écrire des trous.
+- `.github/workflows/cache-observations.yml` — cron quotidien (`23 14 * * *` UTC ≈
+  01h23 NC), `workflow_dispatch` manuel. `pip install requests` seul (pas
+  `requirements.txt` : aucune dépendance lourde ici, contrairement aux autres scripts).
+- **Vérifié en conditions réelles** (pas de mock) : `fetch_history`/`build_rows` testés en
+  direct contre le Worker pour les 2 stations → 123 relevés bruts chacune, 6 lignes/jours
+  calendaires NC, valeurs cohérentes (12-20 nds, rafales 18-28 nds, dir 110-150° = alizés
+  SE typiques). `py_compile` OK.
+
+**Migration Supabase À PASSER par l'utilisateur** (comme `period_delta` le 02/08 — la clé
+anon ne peut pas faire de DDL) :
+```sql
+create table observations_history (
+  id text primary key,
+  date date not null,
+  station_id text not null,
+  station_name text not null,
+  lat double precision not null,
+  lon double precision not null,
+  hours jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table observations_history enable row level security;
+create policy "Public read observations" on observations_history for select using (true);
+create policy "Public write observations" on observations_history for insert with check (true);
+create policy "Public update observations" on observations_history for update using (true);
+```
+Tant que la table n'existe pas : le job tourne quand même (fetch + build_rows ne dépendent
+pas de Supabase), seul l'upsert échoue et log un warning (`upsert()` n'échoue jamais fort,
+même convention que `fetch_arome.py`) — aucun risque de casser le cron existant en
+attendant. Comparaison prévu/mesuré (jointure avec `model_forecast_cache` par date+heure)
+: pas encore construite côté UI — prochaine étape une fois quelques jours de données
+accumulées.
