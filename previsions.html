@@ -7173,7 +7173,8 @@ function _tideStateAt(t, tideSeries, tMin, tMax) {
   var span = (tMax - tMin) || 1;
   return {
     level01: Math.max(0, Math.min(1, (h - tMin) / span)),
-    phase: interp(t + 1800000) >= h ? 'rising' : 'falling'
+    phase: interp(t + 1800000) >= h ? 'rising' : 'falling',
+    height: h  // niveau d'eau réel (m) — jusqu'ici calculé puis jeté, cf. _tideLabel
   };
 }
 
@@ -7356,9 +7357,14 @@ function _describeSession(s) {
   return {
     spot: s.spotName, spotIdx: s.spotIdx, startMs: s.startMs,
     jour: jour, creneau: h1 + 'h–' + h2 + 'h',
-    taille: (p.hs != null ? p.hs.toFixed(1) + 'm' : '—'),
+    // Période ajoutée (03/08/2026, retour utilisateur) : la taille seule ne dit
+    // rien de la puissance réelle (1,2m/8s ≠ 1,2m/14s) — déjà utilisée par le
+    // scoring (p.T) mais jusque-là jamais montrée à côté de la hauteur.
+    taille: (p.hs != null ? p.hs.toFixed(1) + 'm' + (p.T ? ' · ' + Math.round(p.T) + 's' : '') : '—'),
     vent: (p.ws != null ? Math.round(p.ws) + 'nds ' + (typeof compass === 'function' ? compass(p.wDir) : '') : '—'),
-    maree: p.tide ? (Math.round(p.tide.level01 * 100) + '% ' + (p.tide.phase === 'rising' ? '↑' : '↓')) : '—',
+    // Objet plutôt qu'une chaîne formatée-puis-re-parsée (l'ancien format
+    // "42% ↑" perdait le niveau d'eau réel en route) — cf. _tideStateAt.
+    maree: p.tide ? { level01: p.tide.level01, phase: p.tide.phase, height: p.tide.height } : null,
     score: Math.round(s.mean * 10) / 10,
     note: limite,
     calibrated: isCalibrated
@@ -7405,15 +7411,21 @@ function _buildFcObject(spot, fcast, tideCache) {
 // ── Rendu de l'encart BSF ───────────────────────────────────────────────────
 var _bsfRunning = false;
 
-// Convertit level01 + phase en label lisible
-function _tideLabel(level01, phase) {
+// Convertit level01 + phase en label lisible. `height` (m, optionnel — cf.
+// _tideStateAt) affiché entre parenthèses : "BM" seul ne dit pas si c'est une
+// grande ou petite marée basse, alors que la passe réagit très différemment
+// selon le niveau réel (retour utilisateur 03/08/2026, "marée extrême : quel
+// niveau d'eau ?" — le chiffre était calculé dans _tideStateAt mais jamais
+// remonté jusqu'à l'affichage).
+function _tideLabel(level01, phase, height) {
   if (level01 == null) return '—';
   var arr = phase === 'rising' ? '↑' : '↓';
-  if (level01 < 0.18) return 'BM';
-  if (level01 > 0.82) return 'PM';
-  if (level01 < 0.42) return 'Mi-marée ' + arr;
-  if (level01 > 0.58) return 'Mi-marée ' + arr;
-  return 'Pleine mi-marée ' + arr;
+  var hStr = (height != null) ? ' (' + height.toFixed(2) + 'm)' : '';
+  if (level01 < 0.18) return 'BM' + hStr;
+  if (level01 > 0.82) return 'PM' + hStr;
+  if (level01 < 0.42) return 'Mi-marée ' + arr + hStr;
+  if (level01 > 0.58) return 'Mi-marée ' + arr + hStr;
+  return 'Pleine mi-marée ' + arr + hStr;
 }
 
 function renderBestSessions(sessions) {
@@ -7432,10 +7444,7 @@ function renderBestSessions(sessions) {
     var col = cols[sc], lbl = labels[sc];
     var dots = '';
     for (var i = 0; i < 5; i++) dots += '<span style="color:' + (i < sc ? col : 'var(--border)') + ';font-size:11px;">●</span>';
-    var tideL = s.maree !== '—' ? _tideLabel(
-      parseFloat(s.maree) / 100,
-      s.maree.indexOf('↑') >= 0 ? 'rising' : 'falling'
-    ) : '—';
+    var tideL = s.maree ? _tideLabel(s.maree.level01, s.maree.phase, s.maree.height) : '—';
     var isLast = rank === sessions.length - 1;
     return '<div onclick="bsfSelectSpot(' + s.spotIdx + ',' + s.startMs + ')" '
       + 'role="button" tabindex="0" aria-label="Voir ' + escapeHtml(s.spot || '') + '" '
