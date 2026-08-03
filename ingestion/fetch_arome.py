@@ -49,6 +49,7 @@ Vérifié empiriquement le 2026-07-24 (pas dans la doc meteofetch) :
 
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -125,10 +126,24 @@ def dedup_points(points):
     return list(seen.values())
 
 
+def _run_tag(run_iso):
+    """Tag de run à partir de l'ISO du run (YYYYMMDDHH) — même granularité que
+    runTag() côté cache-model-forecasts.mjs (GFS/BOM). Ajouté le 03/08/2026 :
+    l'id était jusque-là déterministe (sans tag), donc CHAQUE run écrasait le
+    précédent pour la même date-cible — impossible de mesurer "la prévision
+    dégrade-t-elle avec le délai ?" (question posée par l'utilisateur), la
+    seule ligne survivante étant celle du dernier run à avoir encore touché
+    cette date avant qu'elle sorte de l'horizon 49h. Avec le tag, chaque run
+    garde sa propre ligne ; P1 (db-compaction, déjà en place) gère la
+    croissance qui en résulte, exactement le schéma pour lequel il a été conçu."""
+    return re.sub(r"[^0-9]", "", run_iso)[:10]
+
+
 def build_rows_for_point(point, series, run_iso):
     """Regroupe les séries horaires d'un point en lignes model_forecast_cache,
     une ligne par date NC-locale (+11h), même convention que toRows() dans
     cache-model-forecasts.mjs."""
+    tag = _run_tag(run_iso)
     by_date = {}
     for t, vals in series.items():
         # t = timestamp UTC (pandas Timestamp) ; +11h = date/heure NC-locale
@@ -155,7 +170,7 @@ def build_rows_for_point(point, series, run_iso):
     for ds, hours in by_date.items():
         hours.sort(key=lambda h: h["h"])
         rows.append({
-            "id": f"{ds}_{lat_s}_{lon_s}_aro_wind",
+            "id": f"{ds}_{lat_s}_{lon_s}_aro_wind_{tag}",
             "date": ds,
             "spot_name": point["name"],
             "lat": point["lat"],
@@ -163,6 +178,7 @@ def build_rows_for_point(point, series, run_iso):
             "model": "aro",
             "kind": "wind",
             "hours": hours,
+            "issued_at": run_iso,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         })
     return rows

@@ -54,6 +54,7 @@ possible ici, à la différence de MARC/MFWAM).
 import concurrent.futures
 import json
 import logging
+import re
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -189,7 +190,16 @@ def local_hour_date(np_time):
     return local.strftime("%Y-%m-%d"), local.hour + local.minute / 60.0
 
 
-def build_wave_rows(cache_key, point, pt_ds):
+def _run_tag(run_iso):
+    """Tag de run (YYYYMMDDHH) — cf. docstring équivalente dans fetch_arome.py :
+    l'id était déterministe (sans tag) jusqu'au 03/08/2026, donc chaque run
+    écrasait le précédent pour la même date-cible, rendant impossible toute
+    analyse "la prévision dégrade-t-elle avec le délai ?". P1 (db-compaction)
+    gère déjà la croissance que le tag introduit."""
+    return re.sub(r"[^0-9]", "", run_iso)[:10]
+
+
+def build_wave_rows(cache_key, point, pt_ds, run_iso, tag):
     # cfgrib décode un fichier multi-step en dimension `step` (pas `time`, qui
     # reste l'instant scalaire d'INIT du run) — `valid_time` (indexé par step)
     # donne l'instant RÉEL de chaque échéance (vérifié empiriquement 30/07/2026).
@@ -224,15 +234,16 @@ def build_wave_rows(cache_key, point, pt_ds):
     for ds_key, hours in by_date.items():
         hours.sort(key=lambda h: h["hour"])
         rows.append({
-            "id": f"{ds_key}_{lat_s}_{lon_s}_{cache_key}_wave",
+            "id": f"{ds_key}_{lat_s}_{lon_s}_{cache_key}_wave_{tag}",
             "date": ds_key, "spot_name": point["name"], "lat": point["lat"], "lon": point["lon"],
             "model": cache_key, "kind": "wave", "hours": hours,
+            "issued_at": run_iso,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         })
     return rows
 
 
-def build_wind_rows(cache_key, point, pt_ds):
+def build_wind_rows(cache_key, point, pt_ds, run_iso, tag):
     times = pt_ds["valid_time"].values
     by_date = {}
     for i in range(len(times)):
@@ -252,9 +263,10 @@ def build_wind_rows(cache_key, point, pt_ds):
     for ds_key, hours in by_date.items():
         hours.sort(key=lambda h: h["hour"])
         rows.append({
-            "id": f"{ds_key}_{lat_s}_{lon_s}_{cache_key}_wind",
+            "id": f"{ds_key}_{lat_s}_{lon_s}_{cache_key}_wind_{tag}",
             "date": ds_key, "spot_name": point["name"], "lat": point["lat"], "lon": point["lon"],
             "model": cache_key, "kind": "wind", "hours": hours,
+            "issued_at": run_iso,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         })
     return rows
@@ -288,7 +300,9 @@ def upsert(rows):
 def fetch_model(ecmwf_model, cache_key, spots, stations):
     client = Client(source="ecmwf", model=ecmwf_model)
     run_dt = client.latest(stream="wave", type="fc")
-    logger.info("[%s] run retenu: %s", cache_key, run_dt.isoformat())
+    run_iso = run_dt.isoformat()
+    tag = _run_tag(run_iso)
+    logger.info("[%s] run retenu: %s", cache_key, run_iso)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         wave_path = Path(tmpdir) / f"{cache_key}_wave.grib2"
@@ -306,13 +320,13 @@ def fetch_model(ecmwf_model, cache_key, spots, stations):
         for point in spots:
             try:
                 pt = sample_point(wave_ds, point["lat"], point["lon"], "swh")
-                all_rows.extend(build_wave_rows(cache_key, point, pt))
+                all_rows.extend(build_wave_rows(cache_key, point, pt, run_iso, tag))
             except Exception as e:
                 logger.warning("[%s] houle: échec pour %s: %s", cache_key, point["name"], e)
         for point in spots + stations:
             try:
                 pt = sample_point(wind_ds, point["lat"], point["lon"], "u10")
-                all_rows.extend(build_wind_rows(cache_key, point, pt))
+                all_rows.extend(build_wind_rows(cache_key, point, pt, run_iso, tag))
             except Exception as e:
                 logger.warning("[%s] vent: échec pour %s: %s", cache_key, point["name"], e)
 

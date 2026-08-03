@@ -3635,3 +3635,53 @@ nds n=7). La cohérence de signe/magnitude entre 3 systèmes indépendants (dont
 plutôt qu'un artefact — mais échantillon encore petit (7-42 relevés, quelques jours), donc
 affiché comme tendance, pas conclusion, avec le libellé « expérimental » et l'avertissement
 en bas du bloc. À revoir dans quelques semaines avec plus de recul.
+
+### Suite (2026-08-03, même jour) — tag de run sur aro/ecmwf/aifs (question utilisateur)
+
+Question posée : la comparaison ⑤ tient-elle compte du délai de prévision (« plus c'est
+proche de l'échéance, plus c'est précis ») ? **Non, et ça ne pouvait pas** : les ids
+`model_forecast_cache` d'AROME/ECMWF/AIFS sont DÉTERMINISTES
+(`{date}_{lat}_{lon}_{modèle}_{kind}`, sans tag de run) — chaque nouveau run **écrase**
+la ligne précédente pour la même date-cible via l'upsert `merge-duplicates`. Vérifié
+concrètement : `aro/Phare Amédée/2026-08-01` = **1 seule ligne** en base, `issued_at`
+du 30/07 (probablement figé par un `default now()` au tout premier insert — l'upsert ne
+réécrit QUE les colonnes présentes dans le payload, et ni `fetch_arome.py` ni
+`fetch_ecmwf.py` n'envoyaient `issued_at` avant ce chantier). Les prévisions plus
+anciennes/plus lointaines pour cette même date sont donc **perdues**, pas juste inutilisées.
+
+Par contraste, GFS/BOM (`cache-model-forecasts.mjs`) taguent déjà chaque run
+(`runTag()`, granularité horaire) → plusieurs lignes coexistent par date-cible. C'est
+d'ailleurs la cause du volume qui a motivé P1 (compaction) plus haut — mais GFS/BOM ne
+sont pas archivés aux 2 stations, donc inutilisables pour le comparatif vent de toute façon.
+
+**Décision utilisateur : aligner aro/ecmwf/aifs sur le même principe que GFS/BOM.**
+Livré :
+- `_run_tag(run_iso)` (nouveau, dupliqué dans `fetch_arome.py` ET `fetch_ecmwf.py` — même
+  raison d'isolement que le reste du dossier `ingestion/`) : `YYYYMMDDHH`, même granularité
+  que `runTag()` JS. Id : `..._{modèle}_{kind}_{tag}` (suffixe ajouté, ne collisionne PAS
+  avec les anciens ids déterministes déjà en base — purement additif, aucune migration).
+- `issued_at` désormais envoyé EXPLICITEMENT dans le payload des 2 scripts (absent
+  auparavant, cf. plus haut) — fiabilise le champ pour tout code qui s'y fie (dont le bloc
+  ⑤ lui-même).
+- `fetch_ecmwf.py` : `run_iso`/`tag` calculés une fois dans `fetch_model()` (déjà là :
+  `run_dt = client.latest(...)`) et enfilés dans `build_wave_rows`/`build_wind_rows`
+  (signature changée, 2 params en plus).
+- Vérifié : `_run_tag('2026-08-02T06:00:00+00:00')` → `'2026080206'`. Logique
+  `build_rows_for_point` rejouée sur données synthétiques (import direct impossible ici,
+  `meteofetch`/`ecmwf-opendata` ne sont installés qu'en CI) — id/`issued_at` corrects.
+  `py_compile` OK sur les 2 fichiers.
+
+**Effet de bord positif** : P1 (déjà en place, pas modifié) gère nativement la croissance
+que le tag introduit pour aro/ecmwf/aifs — c'est exactement le schéma de croissance pour
+lequel il a été construit. Fenêtre `COMPACT_KEEP_ALL_DAYS=14` : tous les runs d'une
+date-cible sont préservés pendant 14 jours avant amincissement à 1/série, largement assez
+pour couvrir même l'horizon ECMWF Open Data (~10 j) en entier.
+
+**Pas encore fait** (pas de données à date : le tag n'entrera en vigueur qu'au PROCHAIN
+run planifié — les scripts n'ont pas encore tourné depuis ce commit) : le bloc ⑤ dans
+`index.html` garde sa dédup « ligne la plus fraîche par (modèle,spot,date) », qui devient
+maintenant réellement utile (avant, no-op car 1 seule ligne possible) — mais il ne
+bucket toujours PAS par délai. Prochaine étape naturelle une fois quelques jours de runs
+tagués accumulés : segmenter le biais par tranche de délai (ex. J-1/J-3/J-5) plutôt qu'une
+seule moyenne globale. Pas construit maintenant : zéro donnée tant que les prochains runs
+n'ont pas tourné, inutile de coder une vue vide.
