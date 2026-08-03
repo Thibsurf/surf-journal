@@ -14899,10 +14899,18 @@ async function _renderCachedModelsBlock(spot, date) {
     // existe entre l'écriture et cette lecture (même cause que la fenêtre de
     // tolérance élargie côté index.html:_fetchModelTableRows, cf. son
     // commentaire pour la mesure faite sur Ilot Ténia le 29/07).
+    // .order('issued_at' desc) ajouté le 03/08/2026 (même famille de bug que
+    // index.html:_fetchModelTableRows) : model_forecast_cache accumule ~30 runs
+    // par (spot,modèle,kind) sans purge, et Supabase plafonne toute réponse à 1000
+    // lignes. Sans tri, la ligne survivante au plafond était arbitraire et pouvait
+    // OMETTRE un modèle entier au spot ; en triant du plus récent au plus ancien, le
+    // run le plus frais de chaque (modèle,kind) est toujours dans les 1000 renvoyées,
+    // et la déduplication « plus frais par clé » ci-dessous en tire le bon.
     var res = await _tokenSbClient.from('model_forecast_cache')
       .select('model,kind,hours,issued_at,lat,lon').eq('date', date)
       .gte('lat', spot.lat - 0.05).lte('lat', spot.lat + 0.05)
-      .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05);
+      .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05)
+      .order('issued_at', { ascending: false });
     if (!res || !res.data || !res.data.length) return '';
     // Échantillon = heure de session du spot (ou 7h) pour chaque modèle/kind.
     var targetH = spot.sessionHour || 7;

@@ -3762,8 +3762,29 @@ function _modelTrains(model, byKind, targetH) {
       if (p && p.h != null) raw.push({ h: p.h, t: p.t, dir: p.dir, hasDir: p.dir != null });
     }
   } else if (model === 'ecmwf' || model === 'aifs') {
+    // ECMWF/AIFS : le spectre PARTITIONNÉ directionnel (swh1/mwd1…) appartient au
+    // catalogue temps réel payant d'ECMWF (cf. CLAUDE.md) — indisponible via l'Open
+    // Data gratuit. MAIS une direction EXISTE quand même : swell_primary porte une
+    // direction moyenne (mwd) pour ECMWF, et le spectre de bandes (kind=wave) expose
+    // une direction moyenne totale `totDir` pour les deux modèles.
+    // AVANT (bug signalé le 03/08/2026, « pourquoi pas de direction pour ECMWF ? ») :
+    // ce bloc lisait `wave.val` et FORÇAIT dir:null → l'utilisateur voyait « sans dir »
+    // sur ECMWF/AIFS alors que la direction était disponible. On la récupère donc,
+    // et on traite ECMWF/AIFS comme les autres modèles à trains (primaire + secondaire
+    // quand ils existent), au lieu d'un unique train sans direction.
     var wb = _trainNearestHour(byKind.wave, targetH);
-    if (wb && wb.val != null) raw.push({ h: wb.val, t: wb.period, dir: null, hasDir: false });
+    var totDir = (wb && wb.totDir != null) ? wb.totDir : null;
+    var sp = _trainNearestHour(byKind.swell_primary, targetH);
+    if (sp && sp.val != null) {
+      var d1 = sp.dir != null ? sp.dir : totDir; // ECMWF: mwd ; AIFS: repli sur totDir du spectre
+      raw.push({ h: sp.val, t: sp.period, dir: d1, hasDir: d1 != null });
+      var ss = _trainNearestHour(byKind.swell_secondary, targetH);
+      if (ss && ss.val != null) raw.push({ h: ss.val, t: ss.period, dir: ss.dir, hasDir: ss.dir != null });
+    } else if (wb && wb.val != null) {
+      // Pas de swell_primary résolu au spot (rare) → repli sur le spectre de bandes,
+      // avec sa direction moyenne totale plutôt que rien.
+      raw.push({ h: wb.val, t: wb.period, dir: totDir, hasDir: totDir != null });
+    }
   } else {
     var sp = _trainNearestHour(byKind.swell_primary, targetH);
     if (sp && sp.val != null) raw.push({ h: sp.val, t: sp.period, dir: sp.dir, hasDir: sp.dir != null });
@@ -3854,18 +3875,49 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
     // `swell_secondary` la houle 2 de GFS — indispensables pour le vote au
     // "meilleur train" (cf. _modelTrains). swell_primary reste la base présente
     // pour tous les modèles (cron) : train par défaut nc/bom/gfs + série du graphe.
-    // 'wind' ajouté (02/08/2026) : le vent est LE critère décisif sur les passes
-    // NC (retour utilisateur) — on l'affiche par modèle dans le tableau pour que
-    // « quel modèle a eu le bon vent » soit une variable jugeable comme la houle.
-    var r = await sb.from('model_forecast_cache').select('model,kind,lat,lon,hours,issued_at').eq('date', dateVal).in('kind', ['swell_primary', 'swell_secondary', 'wave', 'wind']);
-    if (r.error || !r.data || !r.data.length) return null;
-    // Tolérance 0,05° (~5,5km) : les coordonnées archivées DÉRIVENT d'un run à
-    // l'autre pour un même spot logique (cron shared_spots arrondi vs écriture
-    // client précise, spot repositionné…). Vérifié le 29/07 : pour Ilot Ténia un
-    // point pré-correctif MARC tombait à 0,0202° de la position canonique — à
-    // peine hors d'une fenêtre 0,02°. Aucun spot du dépôt n'est assez proche d'un
-    // autre pour qu'un rayon de 0,05° en confonde deux (vérifié sur les 7 spots).
-    var near = r.data.filter(function(row) {
+    // 'wind' ajouté (02/08/2026) : le vent est LE critère décisif sur les passes NC.
+    //
+    // ══ BUG « je n'ai que 4 modèles » corrigé le 03/08/2026 ══
+    // AVANT : la requête ne filtrait QUE par date et laissait le tri géographique
+    // au client (`near` ci-dessous). Or model_forecast_cache dépasse ~5000 lignes
+    // POUR UNE SEULE DATE (tous les spots × 9 modèles × 4 kinds × ~30 runs archivés,
+    // aucune purge encore active — cf. AUDIT.md P1 compaction). Supabase PLAFONNE
+    // toute réponse à 1000 lignes : le client ne recevait donc qu'un sous-ensemble
+    // ARBITRAIRE des lignes (les 1000 premières par ordre interne), et le filtre
+    // `near` n'y retrouvait qu'une poignée de modèles au hasard — symptôme signalé
+    // « il manque MARC, LOTUS… on n'a que 4 modèles » alors que les 9 sont bien
+    // archivés au spot (vérifié sur données réelles le 03/08 : 8-9 modèles présents
+    // dans un rayon de 0,05° d'Ilot Ténia, mais 2 seulement remontaient).
+    // CORRECTION : on borne lat/lon CÔTÉ SERVEUR (±0,06° > la tolérance client 0,05°
+    // pour ne rien perdre au bord) — ce qui fait fondre le volume — ET on trie par
+    // issued_at DÉCROISSANT + on pagine, pour que le run le PLUS FRAIS de CHAQUE
+    // (modèle,kind) soit toujours renvoyé même si le total dépasse encore 1000
+    // lignes (vieux runs empilés). La déduplication « plus frais par (modèle,kind) »
+    // juste en dessous reste la garde finale.
+    var latLo = station.lat - 0.06, latHi = station.lat + 0.06;
+    var lonLo = station.lon - 0.06, lonHi = station.lon + 0.06;
+    var rawRows = [];
+    var _PAGE = 1000, _MAX_PAGES = 5; // 5000 lignes = borne large (un spot/date ~1700 aujourd'hui)
+    for (var _pg = 0; _pg < _MAX_PAGES; _pg++) {
+      var rr = await sb.from('model_forecast_cache')
+        .select('model,kind,lat,lon,hours,issued_at').eq('date', dateVal)
+        .in('kind', ['swell_primary', 'swell_secondary', 'wave', 'wind'])
+        .gte('lat', latLo).lte('lat', latHi).gte('lon', lonLo).lte('lon', lonHi)
+        .order('issued_at', { ascending: false })
+        .range(_pg * _PAGE, _pg * _PAGE + _PAGE - 1);
+      if (rr.error) { if (_pg === 0) return null; break; }
+      if (!rr.data || !rr.data.length) break;
+      rawRows = rawRows.concat(rr.data);
+      if (rr.data.length < _PAGE) break; // dernière page atteinte
+    }
+    if (!rawRows.length) return null;
+    // Tolérance 0,05° (~5,5km) appliquée au client, plus stricte que le bornage
+    // serveur : les coordonnées archivées DÉRIVENT d'un run à l'autre pour un même
+    // spot logique (cron shared_spots arrondi vs écriture client précise, spot
+    // repositionné…). Vérifié le 29/07 : pour Ilot Ténia un point pré-correctif
+    // MARC tombait à 0,0202° de la position canonique. Aucun spot du dépôt n'est
+    // assez proche d'un autre pour qu'un rayon de 0,05° en confonde deux.
+    var near = rawRows.filter(function(row) {
       return Math.abs(row.lat - station.lat) < 0.05 && Math.abs(row.lon - station.lon) < 0.05;
     });
     if (!near.length) return null;
@@ -3979,11 +4031,19 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote, win
     bestByModel[k] = bt;
     if (observed && bt && isFinite(bt.dist) && bt.dist < suggDist) { suggDist = bt.dist; suggested = k; }
   });
-  function _trainLine(t, starred) {
-    var dirTxt = t.hasDir ? ((_degToCardinal(t.dir) || '') + ' ' + Math.round(t.dir) + '°')
-      : '<span style="opacity:.55;font-style:italic;">sans dir</span>';
-    return '<div style="font-size:11.5px;line-height:1.5;' + (starred ? 'font-weight:700;color:var(--accent);' : 'color:var(--text);') + '">'
+  // Libellé H1/H2/H3 = houle primaire / secondaire / tertiaire (retour utilisateur :
+  // « on n'a pas accès à la houle primaire, secondaire, tertiaire »). idx 0 = train
+  // dominant (le plus haut du modèle), 1 = suivant, etc. — les trains sont déjà triés
+  // par hauteur décroissante dans _modelTrains. « sans dir » n'apparaît plus que pour
+  // un modèle qui ne fournit VRAIMENT pas de direction à ce point (rare depuis qu'on
+  // récupère la dir d'ECMWF/AIFS) : on l'explique au survol plutôt que de le laisser nu.
+  function _trainLine(t, starred, idx) {
+    var dirTxt = t.hasDir ? ('<b style="font-weight:600;">' + (_degToCardinal(t.dir) || '') + '</b> ' + Math.round(t.dir) + '°')
+      : '<span style="opacity:.55;font-style:italic;" title="Ce modèle ne fournit pas de direction de houle à ce point">sans dir</span>';
+    var lbl = 'H' + (idx + 1);
+    return '<div style="font-size:11.5px;line-height:1.55;' + (starred ? 'font-weight:700;color:var(--accent);' : 'color:var(--text);') + '">'
       + (starred ? '★ ' : '<span style="opacity:.3;">•</span> ')
+      + '<span style="opacity:.55;font-size:9px;font-weight:700;letter-spacing:.02em;vertical-align:1px;" title="Houle ' + (idx === 0 ? 'primaire' : (idx === 1 ? 'secondaire' : 'tertiaire')) + '">' + lbl + '</span> '
       + (t.h != null ? t.h.toFixed(1) + 'm' : '—')
       + ' · ' + (t.t != null ? Math.round(t.t) + 's' : '—')
       + ' · ' + dirTxt + '</div>';
@@ -3994,7 +4054,7 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote, win
     var trains = r.trains || [{ h: r.val, t: r.period, dir: r.dir, hasDir: r.dir != null }];
     var bestIdx = (bestByModel[k] && bestByModel[k].train) ? bestByModel[k].idx : -1;
     var isSugg = (k === suggested);
-    var trainCells = trains.map(function(t, i) { return _trainLine(t, i === bestIdx); }).join('');
+    var trainCells = trains.map(function(t, i) { return _trainLine(t, i === bestIdx, i); }).join('');
     // Ligne vent du modèle (💨 vitesse + direction + rafale) sous les trains :
     // rend « qui a eu le bon vent » jugeable dans le même tableau que la houle.
     if (r.wind && r.wind.kt != null) {
@@ -4016,6 +4076,24 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote, win
       + '<td style="padding:6px 4px;text-align:center;vertical-align:top;"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:1.5px solid ' + (isSugg ? 'var(--accent)' : 'var(--border)') + ';"></span></td>'
       + '</tr>';
   }).join('');
+  // Modèles CONFIGURÉS mais SANS donnée à ce spot/cette date : affichés en ligne
+  // grisée avec la raison, au lieu d'être silencieusement omis (retour utilisateur :
+  // « il n'y a pas MARC, il n'y a pas LOTUS… on n'a que 4 modèles »). Depuis le
+  // correctif de pagination, la plupart des modèles remontent ; ceux qui restent
+  // absents le sont pour une VRAIE raison (LOTUS/Surfline ne couvre que le Grand
+  // Nouméa ; un modèle dont le run n'a pas encore archivé ce spot) — la nommer est
+  // plus honnête et rassurant que de faire disparaître le modèle. Non cliquables.
+  var absent = MODEL_RELIABILITY_ORDER.filter(function(k) { return !rows[k]; });
+  var absentRows = absent.map(function(k) {
+    var info = MODEL_RELIABILITY_LABELS[k];
+    var reason = (k === 'lotus') ? 'Surfline — Grand Nouméa uniquement' : 'pas de donnée archivée ici';
+    return '<tr style="border-bottom:1px solid var(--border);opacity:.42;">'
+      + '<td style="padding:6px 4px;color:' + info.col + ';font-weight:600;font-size:12px;white-space:nowrap;vertical-align:top;">' + info.label + '</td>'
+      + '<td style="padding:6px 4px;font-size:10.5px;color:var(--text-muted);font-style:italic;">' + reason + '</td>'
+      + '<td style="padding:6px 4px;text-align:center;vertical-align:top;color:var(--text-faint);">—</td>'
+      + '</tr>';
+  }).join('');
+  trs += absentRows;
   // Transparence (02/08/2026) : le ★ compare aux champs hs/période/dir de la
   // session — qui sont PRÉ-REMPLIS depuis la prévision nc/gfs et seulement
   // éditables. Si tu ne les corriges pas avec ce que tu as VU au large, le ★
@@ -4050,7 +4128,7 @@ function _modelTableHTML(rows, sessionHour, voteUrl, observed, existingVote, win
     + '<table style="width:100%;border-collapse:collapse;">'
     + '<thead><tr style="border-bottom:1px solid var(--border);">'
     + '<th style="text-align:left;padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Modèle</th>'
-    + '<th style="text-align:left;padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Houle(s) — haut. · période · dir</th>'
+    + '<th style="text-align:left;padding:4px;font-size:9.5px;color:var(--text-muted);font-weight:500;">Houles (H1 primaire · H2/H3…) — haut. · période · dir</th>'
     + '<th style="padding:4px;"></th>'
     + '</tr></thead><tbody>' + trs + '</tbody></table>'
     + '<div onclick="_castInlineModelVote(null)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" style="cursor:pointer;text-align:center;padding:6px;font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);margin-top:2px;">Aucun modèle fiable pour cette session</div>'

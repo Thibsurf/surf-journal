@@ -3798,3 +3798,61 @@ chaque modif : **0 erreur JS**, `__test.html` supprimé à chaque fois.
 utilisateurs dès le prochain calcul. Les spots déjà calibrés automatiquement seront
 recalculés au prochain passage de `calibrateFromJournal` — sauf champs réglés à la main
 dans ⚙ (protégés par `_auto.fields`, mécanisme inchangé).
+
+---
+
+## Bug « je n'ai que 4 modèles dans le Journal » — corrigé (2026-08-03, soir)
+
+**Symptôme utilisateur** : dans le vote « quel modèle de houle a été le plus fiable »
+(formulaire d'ajout de session ET détail), seuls ~2-4 modèles apparaissaient, jamais
+MARC/LOTUS/MFWAM, sans houle secondaire/tertiaire, et « sans dir » sur ECMWF/AIFS —
+alors que l'UI est prévue pour 8 modèles (`MODEL_RELIABILITY_ORDER`) avec trains
+multi-partitions et directions. « Tu l'avais déjà pris en charge, pourquoi je ne le
+vois pas ? »
+
+**Cause racine (mesurée sur la base de prod, pas supposée)** — DEUX bugs :
+
+1. **Plafond 1000 lignes de Supabase.** `_fetchModelTableRows` (index.html) requêtait
+   `model_forecast_cache` **par date seule**, sans filtre géographique ni `limit`, et
+   filtrait lat/lon *côté client*. Or la table dépasse **5099 lignes pour la seule date
+   du 03/08** (tous spots × 9 modèles × 4 kinds × ~30 runs empilés, aucune purge active
+   — cf. P1 compaction). PostgREST plafonne toute réponse à **1000 lignes** : le client
+   ne recevait qu'une tranche arbitraire, et le filtre `near` n'y retrouvait qu'une
+   poignée de modèles. Reproduit : à Ilot Ténia, **2 modèles remontaient (bom, aifs)**
+   sur les **8** réellement archivés dans un rayon de 0,05°.
+   → **Correctif** : bornage lat/lon **côté serveur** (±0,06°) + `order(issued_at desc)`
+   + **pagination** `.range()`. Le run le plus frais de chaque (modèle,kind) est
+   toujours renvoyé. Même famille de bug atténuée côté `previsions.html` (comparatif
+   archivé, ajout d'`order(issued_at desc)`).
+
+2. **Direction ECMWF/AIFS jetée.** `_modelTrains` lisait le kind `wave` (bandes de
+   période) pour ecmwf/aifs et **forçait `dir:null`** → « sans dir ». Or, mesuré sur la
+   base : ECMWF `swell_primary` porte **`dir` (ex. 188°)** et le spectre de bandes porte
+   **`totDir`** (ECMWF+AIFS). → **Correctif** : ecmwf/aifs utilisent désormais
+   `swell_primary` (+`swell_secondary`) avec sa direction, repli sur `wave.totDir` quand
+   `swell_primary.dir` est absent (AIFS).
+
+**Présentation** (retour « houle primaire/secondaire/tertiaire ») : chaque train est
+libellé **H1/H2/H3** (primaire/secondaire/tertiaire, tooltip), direction en gras
+cardinal + degrés ; les modèles **configurés mais sans donnée au spot** sont désormais
+affichés en **ligne grisée avec la raison** (LOTUS = « Surfline, Grand Nouméa
+uniquement » ; sinon « pas de donnée archivée ici ») au lieu d'être silencieusement
+omis — le surfeur voit que MARC/LOTUS existent.
+
+**Vérifié end-to-end** (vrai code d'index.html chargé en **headless Edge** sur la base
+de prod, pas seulement un portage) :
+- avant : `n=2` (bom, aifs « nodir ») ; après : **`n=8`** nc/gfs/bom/mf/ecmwf/aifs/marc/lotus,
+  **toutes directions présentes**, mf en **3 trains** (H1/H2/H3), ECMWF 188°.
+- rendu `_modelTableHTML` : 8 lignes modèles + en-tête, labels H1 présents, directions
+  affichées. `node --check` OK sur index.html et previsions.html. `__test.html` supprimé.
+
+**Reste à faire (non fait ce soir, hors périmètre client)** :
+- *Ingestion* : le spectre partitionné directionnel (`kind=wave`) n'est écrit qu'en **1
+  point** (~Passe de Dumbéa), pas rééchantillonné à chaque spot → hors de ce point, les
+  modèles retombent sur `swell_primary` (1-2 trains). Pour des houles 3+ partout, il
+  faudrait que `fetch_marc.py`/`fetch_mfwam.py`/Surfline écrivent le spectre au point de
+  chaque spot. AIFS `swell_primary.dir` est parfois `null` (extraction `mwd` à ajouter
+  côté `fetch_ecmwf.py`).
+- *Données* : activer la **compaction P1** (`db-compaction.yml`) supprimerait la cause
+  profonde du plafond 1000 (5099 lignes/date → ~quelques centaines). Action DB, laissée
+  à la décision de l'utilisateur.
