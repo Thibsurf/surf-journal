@@ -3706,3 +3706,95 @@ pour atteindre `_renderWindTruthBlock`), appelée directement, canvas mesuré vi
 canvas vide), 0 erreur JS. Capture d'écran (452×260, carte isolée) : 3 barres/station
 bien distinctes, légende lisible, aucun chevauchement de label. `__test.html` supprimé
 après chaque vérification.
+
+### Suite (2026-08-03) — MARC dans ⑤, Meilleurs créneaux, scoring vent recalibré
+
+**Questions utilisateur traitées, réponses MESURÉES (pas supposées) :**
+
+1. *« Quid des vents des autres modèles ? »* — inventaire fait sur le code et la base :
+   - `gfs`/`bom`/`nc` (`cache-model-forecasts.mjs`) : produisent bien `kind='wind'`, mais
+     **aux spots seulement**, jamais aux 2 stations d'observation → inutilisables pour ⑤
+     tant que le script n'ajoute pas les stations à sa liste de points. Non fait (touche
+     un script d'ingestion partagé, décision utilisateur : plus tard).
+   - `marc` : vent **déjà présent aux stations** (`fetch_marc.py` fait `spots + STATIONS`),
+     mais rangé autrement — PAS de ligne `kind='wind'`, les champs `windKt`/`windDir` sont
+     embarqués DANS les lignes `kind='wave'`. **Ajouté à ⑤** : 2 requêtes ciblées (ne pas
+     ramener toutes les lignes wave d'aro/ecmwf/aifs pour rien) + extraction généralisée
+     (`mh.val != null ? mh.val : mh.windKt`, et `h`/`hour` déjà géré). Vérifié headless :
+     canvas passe de 3199 à **3750 px** non transparents (la barre MARC est bien dessinée).
+   - `mfwam` : **aucun vent, jamais** — dataset Copernicus Marine 100 % houle (déjà noté
+     dans sa docstring). Rien à faire.
+
+2. *« Les réglages des spots sont communs à tous les users ? »* — **OUI, entièrement
+   globaux**. `previsions.html`/`index.html` ne lisent/écrivent qu'une seule ligne
+   `shared_spots` (`id='default'`) ; aucune notion d'utilisateur. Modifier `windCalmKt`
+   sur un spot change le score de TOUT LE MONDE. (La table `spots` au singulier existe
+   dans le schéma mais n'est référencée nulle part dans le code — morte.) À garder en
+   tête avant toute modif de seuil : c'est un réglage partagé, pas une préférence perso.
+
+**« Meilleurs créneaux » — lisibilité** (`renderBestSessions`/`_describeSession`) :
+- **Période affichée** à côté de la taille (`1.2m · 11s`) : elle pilotait déjà le score
+  (`p.T`) mais n'était jamais montrée — `1,2 m / 8 s` et `1,2 m / 14 s` s'affichaient
+  identiques alors que ça n'a rien à voir.
+- **Niveau d'eau réel en mètres** sur la marée (`BM (0.35m)` au lieu de `BM` seul) :
+  demandé explicitement (« marée extrême : quel niveau d'eau ? »). La hauteur était
+  **calculée dans `_tideStateAt` puis jetée** — il suffisait de la remonter (`height`) et
+  de l'accepter en 3ᵉ argument de `_tideLabel` (optionnel : l'autre appelant, ligne ~7660,
+  n'a pas de hauteur et continue de marcher).
+- `maree` passe de chaîne formatée-puis-RE-PARSÉE (`"42% ↑"` → `parseFloat`/`indexOf('↑')`)
+  à un objet `{level01, phase, height}`. Un seul appelant, aucun risque.
+
+**Scoring vent trop optimiste — DEUX causes distinctes, les deux corrigées :**
+
+*(a) Logique directionnelle.* Le malus « vent fort » (`windMalusKt`) n'avait d'effet
+significatif qu'en **onshore** ; le **sideshore était explicitement neutre quelle que
+soit la force** (commentaire « Sideshore : neutre »), et le seuil offshore était **figé
+en dur à 20 nds**, ignorant le réglage du spot. Un jour de houle excellente + 16 nds
+sideshore restait « Très bien ». Corrigé : malus sideshore symétrique, seuil offshore
+aligné sur `windMalusKt` du spot, et `>=` au lieu de `>` (à vent PILE au seuil, rien ne
+se déclenchait — 16 > 16 = faux).
+
+*(b) Les seuils eux-mêmes, recalibrés SUR DONNÉES.* Retour utilisateur : « pas que
+16 nds, déjà 12 — calibre avec données ». Mesure sur les **73 sessions réelles** du
+journal (clé anon, REST) :
+
+| tranche vent | n | qualité moyenne |
+|---|---|---|
+| 0-8 nds | 44 | **3,11** |
+| 8-10 nds | 10 | 2,90 |
+| 10-12 nds | 3 | **2,33** |
+| 12-14 nds | 7 | 2,57 |
+| 16-18 nds | 2 | 2,50 |
+
+p75 des sessions RÉUSSIES (★≥3) = **8 nds** (3 sur 4 se font sous 8 nds), p90 = 12 nds,
+et **UNE SEULE session sur 73 dépasse 16 nds**. Or `_calibSpotFromSessions` calculait
+`windCalmKt = p75 + 2` et `windMalusKt = p90 + 5` → **10 et 17 nds sur ces mêmes
+données**, c.-à-d. des seuils placés au-dessus de TOUT ce qui a jamais été surfé, le
+`+5` extrapolant dans une zone sans aucune mesure. **Marges supprimées** (on colle aux
+quantiles observés) ; défauts `_DEFAULT_SCORE` passés de **13/22 → 8/12** (gust 30 → 25).
+
+*(c) « Moins y'a de vent, mieux c'est ».* Le seul bonus vent existant exigeait
+`ws >= 5` **ET** une direction offshore : une matinée glassy à 2 nds n'était **jamais**
+récompensée, alors que c'est la meilleure condition mesurée (tranche 0-8 nds = qualité
+la plus haute du journal). Ajout d'un bonus **indépendant de la direction** sous 5 nds
+(libellé « Glassy » sous 2 nds), et bonus offshore passé à `> 5` pour ne pas compter
+deux fois le même point.
+
+**Vérifié** (headless, `SCORE_PARAMS` réels) — le score est désormais **monotone
+décroissant** avec le vent, ce qu'il n'était pas :
+
+| vent | side | off | on |
+|---|---|---|---|
+| 0-5 nds | 5 | 5 | 5 |
+| 6-8 nds | 4 | 5 | 5 |
+| 10 nds | 3 | 4 | 3 |
+| 12-20 nds | 1 | 2 | 1 |
+| 25 nds | 0 | 1 | 0 |
+
+(avant : 16 nds sideshore = « Très bien »). Page complète rechargée en headless après
+chaque modif : **0 erreur JS**, `__test.html` supprimé à chaque fois.
+
+⚠️ Ces seuils étant **globaux** (cf. point 2), le changement s'applique à tous les
+utilisateurs dès le prochain calcul. Les spots déjà calibrés automatiquement seront
+recalculés au prochain passage de `calibrateFromJournal` — sauf champs réglés à la main
+dans ⚙ (protégés par `_auto.fields`, mécanisme inchangé).

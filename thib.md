@@ -130,4 +130,34 @@ Google Fonts encore bloquante (mitigée `display=swap`), 1 215 `style=` inline.
       compaction P1 ci-dessus.
 - [ ] Optionnel design : auto-héberger les 2 polices ; rouvrir T18 si tu veux.
 
-bisous
+---
+
+## 7. SESSION DU 03/08/2026 — suite (pendant que tu partais)
+
+Tout est **commité ET poussé** sur `main` (déployé). Détail complet dans `AUDIT.md`.
+
+- **Délai de prévision** : les ids `aro`/`ecmwf`/`aifs` étaient déterministes → chaque run
+  ÉCRASAIT le précédent, donc impossible de mesurer « plus c'est proche, plus c'est
+  précis ». Tag de run ajouté (comme GFS/BOM le faisaient déjà). Effectif au **prochain
+  run planifié** ; la compaction P1 gère la croissance. Une fois quelques jours accumulés,
+  on pourra segmenter le biais par délai (J-1/J-3/J-5) — pas codé, zéro donnée aujourd'hui.
+- **Bloc ⑤ en figure** : barres divergentes autour de 0, couleurs par modèle (celles déjà
+  utilisées partout ailleurs). **MARC ajouté** (son vent existe aux 2 stations, juste rangé
+  dans `kind='wave'` avec `windKt`). GFS/BOM/meteo.nc pas étendus aux stations (touche un
+  script d'ingestion partagé — à décider). MFWAM n'a pas de vent du tout.
+- **Réponse à ta question** : oui, les réglages de spots sont **communs à tous les
+  utilisateurs** (une seule ligne `shared_spots`, pas de notion d'user).
+- **Meilleurs créneaux** : période affichée à côté de la taille, et **niveau d'eau réel en
+  mètres** sur la marée (`BM (0.35m)`) — la valeur était calculée puis jetée.
+- **Scoring vent recalibré sur tes 73 sessions** : la qualité chute dès 8-10 nds (p75 des
+  sessions réussies = 8 nds, une seule session > 16 nds sur 73). Les seuils par défaut
+  passent de 13/22 à **8/12 nds**, les marges arbitraires de la calibration auto
+  (`p75+2`, `p90+5`) sont supprimées, et un **bonus vent faible/glassy ≤5 nds** est ajouté
+  (avant, une matinée à 2 nds n'était jamais récompensée). Le score est maintenant
+  monotone : 5/5 sous 5 nds, 3-4 à 10 nds, 1-2 dès 12 nds (avant : 16 nds = « Très bien »).
+  ⚠️ Réglage global → s'applique à tout le monde.
+
+**Reste à faire par toi** : lancer `db-compaction` en `compact-dry` (Actions) — je n'ai
+pas de `gh` CLI sur ce poste.
+
+bisous — eau de coco 🥥
