@@ -8204,11 +8204,14 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
   // bateau, le vent dégrade tout — navigation, moutons dans le lagon, clapot
   // sur la vague. Deux paliers : moutons (windCalmKt, ~13kt) puis vent fort
   // (windMalusKt). S'additionne aux effets directionnels ci-dessous.
+  // >= au lieu de > (03/08/2026, retour utilisateur "16nds trop de vent") :
+  // à vent PILE au seuil, le malus ne se déclenchait pas (16 > 16 = faux) —
+  // un écart d'1nds suffisait à afficher "Très bien" un jour trop venté.
   var _calmKt = SCORE_PARAMS.windCalmKt || 13;
   if(ws && ws > _calmKt) {
     score = Math.max(0, score - 1);
     details.push('Moutons/clapot ('+Math.round(ws)+'nds &gt; '+_calmKt+'nds)');
-    if(ws > SCORE_PARAMS.windMalusKt) {
+    if(ws >= SCORE_PARAMS.windMalusKt) {
       score = Math.max(0, score - 1);
       details.push('Vent fort — nav difficile');
     }
@@ -8226,7 +8229,7 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
 
     if(angleDiff < SCORE_PARAMS.onshoreLimit) {
       // Onshore: malus selon force
-      if(ws > SCORE_PARAMS.windMalusKt) {
+      if(ws >= SCORE_PARAMS.windMalusKt) {
         score = Math.max(0, score - 2);
         details.push('Onshore fort ('+Math.round(ws)+'nds, '+Math.round(angleDiff)+'°)');
       } else if(ws > 8) {
@@ -8235,16 +8238,28 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
       }
     } else if(angleDiff > SCORE_PARAMS.offshoreMin) {
       // Offshore: bonus seulement si le plan d'eau reste propre (≤ seuil
-      // moutons) — offshore fort = vague peignée mais lagon/navigation dégradés
+      // moutons) — offshore fort = vague peignée mais lagon/navigation dégradés.
+      // Seuil aligné sur windMalusKt du spot (03/08/2026) — était fixé en dur à
+      // 20nds, indépendant du réglage par spot : un vent offshore fort restait
+      // sans malus directionnel jusqu'à 20nds même sur un spot réglé à 14-16nds.
       if(ws >= 5 && ws <= _calmKt) {
         score = Math.min(5, score + 1);
         details.push('Offshore idéal ('+Math.round(ws)+'nds)');
-      } else if(ws > 20) {
+      } else if(ws >= SCORE_PARAMS.windMalusKt) {
         score = Math.max(0, score - 1);
         details.push('Offshore trop fort ('+Math.round(ws)+'nds)');
       }
+    } else {
+      // Sideshore (entre 45 et 135°, 03/08/2026 — retour utilisateur) : jusqu'ici
+      // totalement neutre quelle que soit la force, seul le malus universel
+      // moutons/vent fort ci-dessus s'appliquait (-2 max) — un vent fort
+      // sideshore restait sous-pénalisé par rapport à onshore (-4) et offshore
+      // (-3 depuis la ligne au-dessus). Même seuil que offshore pour cohérence.
+      if(ws >= SCORE_PARAMS.windMalusKt) {
+        score = Math.max(0, score - 1);
+        details.push('Sideshore fort ('+Math.round(ws)+'nds)');
+      }
     }
-    // Sideshore (entre 45 et 135°): neutre
   }
 
   // Rafales excessives
