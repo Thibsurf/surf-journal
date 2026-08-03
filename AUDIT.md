@@ -3856,3 +3856,57 @@ de prod, pas seulement un portage) :
 - *Données* : activer la **compaction P1** (`db-compaction.yml`) supprimerait la cause
   profonde du plafond 1000 (5099 lignes/date → ~quelques centaines). Action DB, laissée
   à la décision de l'utilisateur.
+
+---
+
+## Widget « jour qui saute » + LOTUS « mercredi » + MFWAM vent + issued_at (04/08/2026)
+
+Trois retours utilisateur en une nuit, tous traités.
+
+### 1. Bande de jours du widget — bug de cohérence (assets/widget-global.js)
+Symptômes : (a) « changer de modèle change parfois de jour » ; (b) « LOTUS s'arrête à
+mercredi ». **Une seule cause** : `_gwGroupDays` incluait les jours PASSÉS présents
+dans la donnée. Or les modèles ne commencent pas au même jour — mesuré headless le
+04/08 (aujourd'hui NC = 8-4) : days[0] = nc 8-4 / bom 8-4 / **gfs 8-3 / mf 8-3 /
+marc 8-3 / lotus 8-1**. `_gwDayIdx` est un INDEX dans `days` mais sert AUSSI d'offset-
+jour partagé avec l'onglet Marée (`tideDayOffset`, 0=aujourd'hui) — l'équivalence n'est
+vraie que si days[0]=aujourd'hui. Donc l'index 2 tombait sur un jour différent selon la
+source (saut), et la bande de 5 jours de LOTUS partait de J-3 → 3 boutons gaspillés sur
+le passé, horizon visible bloqué à J+1 (« mercredi »).
+**Fix** : `_gwGroupDays` ne garde que les jours >= aujourd'hui NC. Vérifié headless :
+après, TOUS les modèles à days[0]=8-4 → même jour au même index, bande aujourd'hui→J+4
+partout (LOTUS a pourtant des données jusqu'à J+6). Le graphe d'ensemble lit d.dates et
+garde le passé récent (trait « maintenant » inchangé). Commit d2ccdeaf, sw v54→v55.
+
+### 2. issued_at figé pour MFWAM/LOTUS (ingestion/fetch_mfwam.py, fetch_surfline.py)
+fetch_mfwam/fetch_surfline upsertent à id DÉTERMINISTE (pas de tag de run) → chaque run
+réécrit la même ligne. La colonne issued_at (DEFAULT now()) n'est posée qu'à l'INSERT :
+absente du payload, elle restait FIGÉE à la première écriture. Mesuré : LOTUS
+updated_at=03/08 (données fraîches) mais issued_at bloqué au 01/08. Côté Journal, le tri
+`order(issued_at desc)` de _fetchModelTableRows classait donc MFWAM/LOTUS comme vieux
+(fragile au plafond 1000). **Fix** : issued_at inclus au payload (LOTUS : run_init si
+connu, sinon archivage ; MFWAM : archivage). Vérifié SUR LA VRAIE BASE que merge-
+duplicates met bien à jour issued_at sur conflit (upsert 1999 puis 2026, relecture=2026).
+py_compile OK. Commit 31536ec1. NB : la vérif a laissé 1 ligne de sonde inerte
+(id 1999-01-01_0.000_0.000_mf_wave, spot_name `TEST probe-issued-at-cleanup`) — anon ne
+peut pas DELETE (RLS), mais elle est purgeable par db_maintenance `purge-test` et par la
+compaction (date≪120j). Jamais requêtée (coords 0,0 / date 1999).
+
+### 3. MFWAM n'a pas de vent — CONFIRMÉ (limite de source, pas un bug)
+`cm.describe('cmems_mod_glo_wav_anfc_0.083deg_PT3H-i')` (04/08) : le produit ne contient
+AUCUN champ de vent (VSDX/VSDY = dérive de Stokes ; *_WW = partition mer-du-vent, pas du
+vent). Le widget affichait déjà correctement wSpd=null, mais le bouton source annonçait
+« + vent ARPEGE » (faux) et le Mix listait MFWAM en repli de vent (jamais utilisé).
+Libellés corrigés (honnêteté), zéro changement de comportement. Commit f53e834e, sw v55→v56.
+
+### Écartés / reportés (ingestion non testable sans secrets CI, actions à superviser)
+- **AIFS direction** : DÉJÀ réglé par le correctif client d'hier — fetch_ecmwf écrit
+  `totDir`(=mwd) sur le kind `wave` d'AIFS, et _modelTrains le récupère (AIFS montre bien
+  une direction au Journal). Rien à changer en ingestion.
+- **MARC spectre `wave` clairsemé** : fetch_marc.py boucle pourtant tous les spots — la
+  rareté (1 point archivé) vient de la fiabilité du cron/OPeNDAP Ifremer (cases masquées,
+  lenteur), non diagnosticable sans les logs Actions. MFWAM fournit déjà des partitions
+  directionnelles (houle 1/2) à TOUS les spots, donc le besoin « houle 2/3 » du Journal
+  est couvert. À creuser côté workflow cache-marc.yml quand supervisable.
+- **Compaction P1** (db-compaction.yml) : toujours en attente, action DB à lancer par
+  l'utilisateur — supprimerait la cause profonde du plafond 1000.
