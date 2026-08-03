@@ -3517,3 +3517,22 @@ lazy, preconnect) ; audit T01–T30 = 26/30, T18 (découpage) et T13 (token) en 
 - Validé en **dry-run réel** (clé anon, 0 DELETE) : `KEEP_ALL_DAYS=3` → fenêtre 04/04-30/07
   = 5 478 lignes / 1 476 séries → 4 002 runs redondants (-73 %), aucune donnée unique perdue.
   `py_compile` OK. Non exécuté « pour de vrai » (nécessite service_role en CI).
+
+### Suite (2026-08-03) — merge de la branche + faux doublon « Gros Nem »/« Gros nem »
+
+Branche `feat/journal-eval-fiabilite-refonte` relue commit par commit (diff `index.html`
++ `db_maintenance.py` + workflow) puis **mergée sur `main` en fast-forward et poussée**
+(déploiement Cloudflare Pages).
+
+Item optionnel de `thib.md` §6 (« dédoublonner Gros Nem/Gros nem à l'ingestion ») **écarté
+après mesure** : ce n'est pas un doublon actif. `shared_spots` (7 points réels, interrogé
+en direct) ne contient **aucun point nommé « Gros Nem »** aujourd'hui — seulement le
+libellé `Gros nem` (minuscule) dans le `surfSpots` d'Ilot Ténia, un regroupement d'affichage
+pour le Journal, sans lien avec l'ingestion. Aucun script Python ne code ce nom en dur (ni
+`SPOTS` de `surfline_client.py`) : les noms viennent tous dynamiquement de `shared_spots`,
+donc rien ne peut plus produire de nouvelle ligne `spot_name = "Gros Nem"`. Les ~1 000
+lignes `model_forecast_cache` sous 5 variantes nom+coordonnées (dérive de quelques mètres
+à chaque déplacement du pin) sont mortes : la plus récente date du **30/07/2026** — le spot
+a été retiré/renommé sur la carte ce jour-là et jamais réintroduit. Décision : les laisser
+au job de compaction P1 (ci-dessus), qui les purgera automatiquement une fois `date`
+passée `COMPACT_PURGE_DAYS` (120 j) — aucun code à changer, aucune purge manuelle.

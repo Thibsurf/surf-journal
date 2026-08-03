@@ -110,12 +110,16 @@ Google Fonts encore bloquante (mitigée `display=swap`), 1 215 `style=` inline.
 
 ## 6. PROCHAINES ÉTAPES
 
-- [ ] **Merger / déployer** la branche `feat/journal-eval-fiabilite-refonte` (ou ouvrir la
-      PR) une fois relue. `gh pr create` possible.
+- [x] **Merger / déployer** la branche `feat/journal-eval-fiabilite-refonte` — fait le
+      03/08/2026, fast-forward sur `main`, poussé (déploiement Cloudflare Pages).
 - [ ] **Lancer `db-compaction` en `compact-dry`** (Actions) pour voir le rapport réel, puis
       laisser l'hebdo tourner.
 - [ ] **Décider P2** (historique d'observations) — cf. §4.
-- [ ] Optionnel : dédoublonner `"Gros Nem"`/`"Gros nem"` à l'ingestion (normaliser `spot_name`).
+- [x] ~~Optionnel : dédoublonner "Gros Nem"/"Gros nem" à l'ingestion~~ — investigué le
+      03/08/2026 : pas un doublon actif, `shared_spots` ne contient plus ce point depuis le
+      30/07/2026, rien à coder. Détails dans `AUDIT.md` (section du 03/08). Les lignes
+      résiduelles de `model_forecast_cache` seront purgées automatiquement par la
+      compaction P1 ci-dessus.
 - [ ] Optionnel design : auto-héberger les 2 polices ; rouvrir T18 si tu veux.
 
 bisous
