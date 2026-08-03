@@ -4982,39 +4982,46 @@ function renderStats(sessions, el) {
 
 // Biais objectif prévu/mesuré du VENT (P2, 03/08/2026 — cf. AUDIT.md pour le
 // pourquoi de la portée réduite au vent, aucune houle mesurée disponible).
-// Seuls aro/ecmwf/aifs sont archivés AUX coordonnées exactes des 2 stations
+// aro/ecmwf/aifs/marc sont archivés AUX coordonnées exactes des 2 stations
 // d'observation (spot_name = nom de la station, écrit par les scripts Python
-// eux-mêmes) — gfs/bom/marc/mfwam n'ont pas ce mode "à la station" côté
-// ingestion (INVARIANT vent : houle toujours au spot, vent parfois à la
-// station — cf. commentaires INVARIANT côté fetch_arome.py).
+// eux-mêmes) — gfs/bom/mfwam n'ont pas ce mode "à la station" côté ingestion
+// (INVARIANT vent : houle toujours au spot, vent parfois à la station — cf.
+// commentaires INVARIANT côté fetch_arome.py).
 var WIND_TRUTH_STATIONS = ['Phare Amédée', 'Bourake (Boulouparis)'];
-var WIND_TRUTH_MODELS = ['aro', 'ecmwf', 'aifs'];
+var WIND_TRUTH_MODELS = ['aro', 'ecmwf', 'aifs', 'marc'];
 // Mêmes couleurs que MODEL_STYLE (previsions.html) / MODEL_RELIABILITY_LABELS
 // (plus haut dans ce fichier) — identité de modèle cohérente sur tout le site,
 // pas une palette réinventée pour ce bloc.
-var WIND_TRUTH_LABELS = { aro: 'AROME', ecmwf: 'ECMWF', aifs: 'AIFS' };
-var WIND_TRUTH_COLORS = { aro: '#7b6cf6', ecmwf: '#a99ff8', aifs: '#e06bb0' };
+var WIND_TRUTH_LABELS = { aro: 'AROME', ecmwf: 'ECMWF', aifs: 'AIFS', marc: 'MARC' };
+var WIND_TRUTH_COLORS = { aro: '#7b6cf6', ecmwf: '#a99ff8', aifs: '#e06bb0', marc: '#7dd3fc' };
 async function _renderWindTruthBlock() {
   var el = document.getElementById('wind-truth-block');
   if (!el || !sb) return;
   try {
-    var fc = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
-      .eq('kind', 'wind').in('model', WIND_TRUTH_MODELS).in('spot_name', WIND_TRUTH_STATIONS);
+    // MARC n'écrit PAS de ligne kind='wind' séparée : son vent (windKt/windDir)
+    // est embarqué DANS les lignes kind='wave' (fetch_marc.py) — 2 requêtes,
+    // pas une, pour ne pas ramener toutes les lignes wave d'aro/ecmwf/aifs
+    // pour rien (03/08/2026, ajout MARC).
+    var fcWind = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
+      .eq('kind', 'wind').in('model', ['aro', 'ecmwf', 'aifs']).in('spot_name', WIND_TRUTH_STATIONS);
+    var fcMarc = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
+      .eq('kind', 'wave').eq('model', 'marc').in('spot_name', WIND_TRUTH_STATIONS);
     var oh = await sb.from('observations_history').select('station_name,date,hours')
       .in('station_name', WIND_TRUTH_STATIONS);
     el = document.getElementById('wind-truth-block');  // re-lu : le panel a pu être redessiné pendant l'await
     if (!el) return;
-    if (fc.error || oh.error || !oh.data || !oh.data.length) {
+    if (fcWind.error || fcMarc.error || oh.error || !oh.data || !oh.data.length) {
       el.innerHTML = '<span style="color:var(--text-faint);font-style:italic;">pas encore assez de données (ingestion démarrée le 03/08/2026)</span>';
       return;
     }
+    var fcData = (fcWind.data || []).concat(fcMarc.data || []);
     var obsByKey = {};
     oh.data.forEach(function(r) { obsByKey[r.station_name + '|' + r.date] = r.hours || []; });
     // Garde la ligne la plus FRAÎCHE (issued_at) par (modèle, station, date) —
     // même raison que _fetchModelTableRows plus haut : le cron n'écrase jamais
     // un run, plusieurs lignes coexistent pour la même cible.
     var freshest = {};
-    (fc.data || []).forEach(function(row) {
+    fcData.forEach(function(row) {
       var key = row.model + '|' + row.spot_name + '|' + row.date;
       var prev = freshest[key];
       if (!prev || (row.issued_at || '') > (prev.issued_at || '')) freshest[key] = row;
@@ -5027,8 +5034,9 @@ async function _renderWindTruthBlock() {
       var obsHours = obsByKey[row.spot_name + '|' + row.date];
       if (!obsHours || !obsHours.length) return;
       (row.hours || []).forEach(function(mh) {
-        var h = mh.h != null ? mh.h : mh.hour;  // AROME écrit 'h', ECMWF/AIFS écrivent 'hour'
-        if (h == null || mh.val == null) return;
+        var h = mh.h != null ? mh.h : mh.hour;  // AROME écrit 'h', ECMWF/AIFS/MARC écrivent 'hour'
+        var val = mh.val != null ? mh.val : mh.windKt;  // MARC écrit 'windKt' (pas 'val')
+        if (h == null || val == null) return;
         var best = null, bestDiff = 1.01;  // tolérance ±1h (obs horaire, ECMWF/AIFS ~6h)
         obsHours.forEach(function(o) {
           var d = Math.abs(o.h - h);
@@ -5037,7 +5045,7 @@ async function _renderWindTruthBlock() {
         if (!best || best.wind_kt == null) return;
         var aggKey = row.model + '|' + row.spot_name;
         agg[aggKey] = agg[aggKey] || { sum: 0, n: 0 };
-        agg[aggKey].sum += (mh.val - best.wind_kt);
+        agg[aggKey].sum += (val - best.wind_kt);
         agg[aggKey].n++;
       });
     });
