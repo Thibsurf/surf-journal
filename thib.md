@@ -117,9 +117,12 @@ Google Fonts encore bloquante (mitigée `display=swap`), 1 215 `style=` inline.
 - [x] **Décider P2** (historique d'observations) — décidé le 03/08/2026 : **vent seul**
       (la houle n'est pas mesurable via meteo.nc, cf. correction dans AUDIT.md — §4
       ci-dessous était optimiste sur les champs dispo). Implémenté :
-      `ingestion/fetch_observations.py` + `cache-observations.yml` (1×/jour). **Migration
-      SQL à passer par toi** (`create table observations_history...`, cf. AUDIT.md du
-      03/08 pour le DDL complet) avant que les données commencent à persister.
+      `ingestion/fetch_observations.py` + `cache-observations.yml` (1×/jour). Migration SQL
+      **passée par toi**, ingestion lancée manuellement (12 lignes, 29/07→03/08). Comparaison
+      prévu/mesuré **livrée** : bloc `⑤ Vérité terrain — vent mesuré` dans les stats du
+      Journal (index.html). Premier résultat : biais systématique cohérent entre 3 modèles
+      à chaque station (Bourake sous-estimé ~-6 nds, Phare Amédée surestimé ~+4 nds) —
+      tendance intéressante mais échantillon encore petit, détails dans AUDIT.md du 03/08.
 - [x] ~~Optionnel : dédoublonner "Gros Nem"/"Gros nem" à l'ingestion~~ — investigué le
       03/08/2026 : pas un doublon actif, `shared_spots` ne contient plus ce point depuis le
       30/07/2026, rien à coder. Détails dans `AUDIT.md` (section du 03/08). Les lignes

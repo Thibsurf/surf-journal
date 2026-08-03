@@ -3590,3 +3590,48 @@ même convention que `fetch_arome.py`) — aucun risque de casser le cron exista
 attendant. Comparaison prévu/mesuré (jointure avec `model_forecast_cache` par date+heure)
 : pas encore construite côté UI — prochaine étape une fois quelques jours de données
 accumulées.
+
+### Suite (2026-08-03, même jour) — migration passée, comparaison prévu/mesuré livrée
+
+Migration exécutée par l'utilisateur, vérifiée (`select id from observations_history` →
+`[]`, HTTP 200, pas d'erreur). Ingestion lancée manuellement (pas d'attente du cron de
+nuit) : 12 lignes archivées (6 jours calendaires NC × 2 stations, 29/07→03/08, 126 relevés
+bruts/station).
+
+**Recouvrement réel mesuré** avant de construire l'UI (`Ne rien inventer sur les données`) :
+seuls `aro`/`ecmwf`/`aifs` sont archivés aux coordonnées EXACTES des 2 stations
+(`spot_name` = nom de station, écrit tel quel par les scripts Python eux-mêmes — pas de
+dérive comme pour les spots utilisateur) ; `gfs`/`bom`/`marc`/`mfwam` n'ont pas ce mode
+« à la station » côté ingestion, donc hors de portée pour l'instant. 4-5 jours de
+chevauchement dispo dès le premier jour.
+
+**Livré** : nouveau bloc `⑤ Vérité terrain — vent mesuré (expérimental)` dans les stats du
+Journal (`index.html`, `renderStats`) — carte + `<div id="wind-truth-block">` permanent,
+peuplé async par `_renderWindTruthBlock()` (requête Supabase indépendante des sessions,
+jointure `model_forecast_cache`×`observations_history` par station+date, tolérance ±1h sur
+l'heure — ECMWF/AIFS ne publient qu'un point toutes les ~6h, contre horaire pour AROME et
+les observations). Biais signé (prévu − mesuré), même convention que le bloc ②.
+
+**Piège trouvé en vérifiant** (cross-check Python de la logique JS sur les vraies données,
+pas de mock) : le champ heure diffère selon le script — AROME écrit `hours[].h`,
+ECMWF/AIFS écrivent `hours[].hour` — code lit les deux (`mh.h != null ? mh.h : mh.hour`).
+Chaque `id` de `model_forecast_cache` est déterministe (`{date}_{lat}_{lon}_{model}_wind`,
+vérifié aro ET ecmwf/aifs) → une seule ligne par (date, modèle, spot), jamais plusieurs
+runs qui coexistent pour aro/ecmwf/aifs (contrairement à d'autres séries de la table, cf.
+P1 plus haut) : la ligne archivée pour une date ancienne est donc un instantané figé par le
+DERNIER run dont l'horizon a encore touché cette date — pour AROME (horizon 49h), une date
+de plus de ~2j peut n'avoir survécu qu'avec 1 seule heure (la toute fin de l'horizon d'un
+vieux run), pas la journée complète. Vérifié : `aro/Phare Amédée/2026-08-01` = 1 ligne,
+`issued_at` du 30/07, `hours` = `[{h:23}]` seulement. Pas corrigé (pas de seconde ligne à
+choisir : il n'y en a qu'une) — mélange journées complètes (dates récentes) et éclats d'1h
+(dates anciennes) dans la moyenne, à garder en tête tant que l'échantillon reste petit.
+
+**Résultat mesuré** (03/08/2026, cross-check Python indépendant du JS, mêmes chiffres) :
+biais SYSTÉMATIQUE et cohérent entre les 3 modèles indépendants à chaque station — tous
+sous-estiment le vent à Bourake (aro -6,1 nds n=42, ecmwf -5,7 nds n=10, aifs -5,5 nds n=7)
+et tous le surestiment à Phare Amédée (aro +3,7 nds n=42, ecmwf +4,8 nds n=10, aifs +4,0
+nds n=7). La cohérence de signe/magnitude entre 3 systèmes indépendants (dont un
+2,5 km et deux ~28 km) suggère un vrai biais local (terrain/thermique mal résolu par tous)
+plutôt qu'un artefact — mais échantillon encore petit (7-42 relevés, quelques jours), donc
+affiché comme tendance, pas conclusion, avec le libellé « expérimental » et l'avertissement
+en bas du bloc. À revoir dans quelques semaines avec plus de recul.
