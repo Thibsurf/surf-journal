@@ -3762,28 +3762,32 @@ function _modelTrains(model, byKind, targetH) {
       if (p && p.h != null) raw.push({ h: p.h, t: p.t, dir: p.dir, hasDir: p.dir != null });
     }
   } else if (model === 'ecmwf' || model === 'aifs') {
-    // ECMWF/AIFS : le spectre PARTITIONNÉ directionnel (swh1/mwd1…) appartient au
-    // catalogue temps réel payant d'ECMWF (cf. CLAUDE.md) — indisponible via l'Open
-    // Data gratuit. MAIS une direction EXISTE quand même : swell_primary porte une
-    // direction moyenne (mwd) pour ECMWF, et le spectre de bandes (kind=wave) expose
-    // une direction moyenne totale `totDir` pour les deux modèles.
-    // AVANT (bug signalé le 03/08/2026, « pourquoi pas de direction pour ECMWF ? ») :
-    // ce bloc lisait `wave.val` et FORÇAIT dir:null → l'utilisateur voyait « sans dir »
-    // sur ECMWF/AIFS alors que la direction était disponible. On la récupère donc,
-    // et on traite ECMWF/AIFS comme les autres modèles à trains (primaire + secondaire
-    // quand ils existent), au lieu d'un unique train sans direction.
+    // ECMWF/AIFS Open Data : le spectre PARTITIONNÉ directionnel (swh1/mwd1…) est dans
+    // le catalogue payant d'ECMWF (cf. CLAUDE.md), indisponible en gratuit. La source
+    // FRAÎCHE et directionnelle ici est le kind `wave` (fetch_ecmwf.py) : mer totale
+    // swh/mwp/mwd = totH/totT/totDir + 6 bandes de période, archivé par le cron 3×/j.
+    //
+    // ══ Correctif du 04/08/2026 — on N'utilise PLUS swell_primary pour ces 2 modèles ══
+    // AVANT (fix du 03/08) on lisait `swell_primary` en priorité. Mais audit du 05/08 :
+    // le cron (cache-model-forecasts.mjs) n'écrit swell_primary QUE pour nc/gfs/bom/marc —
+    // JAMAIS pour ecmwf/aifs. Leur swell_primary n'est donc archivé qu'OPPORTUNISTE-ment
+    // par les visites de previsions.html : frais aux spots populaires (Dumbéa/Ténia),
+    // mais PÉRIMÉ de 18 à 131 h aux spots rares (Mato/Maître/Ste-Marie, mesuré). On lisait
+    // donc parfois une prévision ECMWF vieille de 5 jours. On lit maintenant le spectre
+    // `wave` (toujours frais, direction moyenne mwd incluse) — ce qui rend AUSSI le Journal
+    // COHÉRENT avec le comparatif de previsions.html, qui utilise déjà totH/totT/totDir
+    // pour ces modèles. swell_primary ne sert plus que de repli si `wave` manque au spot.
     var wb = _trainNearestHour(byKind.wave, targetH);
-    var totDir = (wb && wb.totDir != null) ? wb.totDir : null;
-    var sp = _trainNearestHour(byKind.swell_primary, targetH);
-    if (sp && sp.val != null) {
-      var d1 = sp.dir != null ? sp.dir : totDir; // ECMWF: mwd ; AIFS: repli sur totDir du spectre
-      raw.push({ h: sp.val, t: sp.period, dir: d1, hasDir: d1 != null });
-      var ss = _trainNearestHour(byKind.swell_secondary, targetH);
-      if (ss && ss.val != null) raw.push({ h: ss.val, t: ss.period, dir: ss.dir, hasDir: ss.dir != null });
-    } else if (wb && wb.val != null) {
-      // Pas de swell_primary résolu au spot (rare) → repli sur le spectre de bandes,
-      // avec sa direction moyenne totale plutôt que rien.
-      raw.push({ h: wb.val, t: wb.period, dir: totDir, hasDir: totDir != null });
+    var wTotH = wb ? (wb.totH != null ? wb.totH : wb.val) : null;
+    if (wb && wTotH != null) {
+      var wTotT = wb.totT != null ? wb.totT : wb.period;
+      var wTotDir = wb.totDir != null ? wb.totDir : null;
+      raw.push({ h: wTotH, t: wTotT, dir: wTotDir, hasDir: wTotDir != null });
+    } else {
+      // Pas de spectre `wave` à ce spot → repli sur swell_primary (même s'il peut être
+      // moins frais), pour ne pas faire disparaître le modèle du tableau.
+      var sp = _trainNearestHour(byKind.swell_primary, targetH);
+      if (sp && sp.val != null) raw.push({ h: sp.val, t: sp.period, dir: sp.dir, hasDir: sp.dir != null });
     }
   } else {
     var sp = _trainNearestHour(byKind.swell_primary, targetH);

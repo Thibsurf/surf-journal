@@ -14937,11 +14937,17 @@ async function _renderCachedModelsBlock(spot, date) {
       var p = pick(row.hours);
       if (!p) return;
       byModel[row.model] = byModel[row.model] || {};
-      if (row.kind === 'swell_primary') byModel[row.model].swell = { val: p.val, period: p.period, dir: p.dir };
-      // kind='wave' (MARC/MF, cf. fetch_marc.py/fetch_mfwam.py) : houle totale
-      // totH/totT/totDir plutôt que val/period/dir — ex. MF depuis le 30/07/2026
-      // (remplace le relais Open-Meteo qui écrivait en 'swell_primary').
-      else if (row.kind === 'wave') byModel[row.model].swell = { val: p.totH, period: p.totT, dir: p.totDir };
+      // PRIORITÉ au kind `wave` sur `swell_primary` (correctif 04/08/2026) : pour les
+      // modèles qui ont les deux (ecmwf/aifs/mf/marc/lotus), `wave` est la source
+      // FRAÎCHE écrite par le cron (fetch_*.py 3×/j), tandis que leur `swell_primary`
+      // n'est archivé qu'OPPORTUNISTE-ment par les visites de previsions.html — périmé
+      // de plusieurs JOURS aux spots peu visités (audit 05/08 : ecmwf/mf à J-5 à Mato/
+      // Maître/Ste-Marie). Sans priorité explicite, l'ordre d'itération arbitraire
+      // laissait parfois swell_primary (périmé) écraser wave (frais). Le flag _waveSet
+      // rend le choix indépendant de l'ordre : wave gagne toujours quand il existe.
+      if (row.kind === 'swell_primary') { if (!byModel[row.model]._waveSet) byModel[row.model].swell = { val: p.val, period: p.period, dir: p.dir }; }
+      // kind='wave' (MARC/MF/ECMWF/AIFS/LOTUS) : houle totale totH/totT/totDir.
+      else if (row.kind === 'wave') { byModel[row.model].swell = { val: p.totH, period: p.totT, dir: p.totDir }; byModel[row.model]._waveSet = true; }
       else if (row.kind === 'wind') byModel[row.model].wind = { val: p.val, dir: p.dir };
       byModelIssued[key] = row.issued_at;
     });
