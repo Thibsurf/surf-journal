@@ -7781,9 +7781,16 @@ function _calibSpotFromSessions(spot, allSessions) {
   var winds = base.filter(function(s){ return s.wind_kts != null && isFinite(+s.wind_kts); })
                   .map(function(s){ return +s.wind_kts; }).sort(function(a,b){return a-b;});
   if (winds.length >= 4) {
+    // Marges supprimées le 03/08/2026 (retour utilisateur + mesure) : les
+    // formules étaient `p75 + 2` et `p90 + 5`, donc les seuils tombaient
+    // systématiquement AU-DESSUS de tout ce qui a réellement été surfé — sur
+    // les 73 sessions du journal ça donnait 10/17 nds alors que le p90 est à
+    // 12 et qu'UNE SEULE session dépasse 16 nds. Le `+5` extrapolait dans une
+    // zone sans aucune donnée, d'où un score trop optimiste par grand vent.
+    // On colle désormais aux quantiles observés, sans marge inventée.
     var p75 = _quantSorted(winds, 0.75), p90 = _quantSorted(winds, 0.90);
-    sugg.windCalmKt  = Math.max(8, Math.min(18, Math.round(p75 + 2)));
-    sugg.windMalusKt = Math.max(sugg.windCalmKt + 6, Math.min(30, Math.round(p90 + 5)));
+    sugg.windCalmKt  = Math.max(6, Math.min(16, Math.round(p75)));
+    sugg.windMalusKt = Math.max(sugg.windCalmKt + 3, Math.min(24, Math.round(p90)));
     stats.wind = { med: _quantSorted(winds, 0.5), p90: p90 };
   }
 
@@ -8124,9 +8131,15 @@ var _DEFAULT_SCORE = {
   onshoreLimit: 45, offshoreMin: 135,
   // Spots à accès bateau : peu de vent est un critère en soi (navigation,
   // moutons dans le lagon, clapot sur le plan d'eau), quelle que soit la
-  // direction. windCalmKt = seuil d'apparition des moutons (~12-14kt).
-  windCalmKt: 13,
-  windMalusKt: 22, gustMalusKt: 30,  // NC : alizé 18-20kt normal → seuils relevés
+  // direction. Seuils RECALIBRÉS sur données réelles le 03/08/2026 (73 sessions
+  // du journal, retour utilisateur "à 16 nds trop de vent, déjà 12") : la
+  // qualité moyenne chute dès 8-10 nds (3,11 sous 8 nds → 2,90 à 8-10 →
+  // 2,33 à 10-12), et le p75 des sessions RÉUSSIES (★≥3) est à 8 nds — 3
+  // sessions correctes sur 4 se font sous 8 nds. Une seule session sur 73
+  // dépasse 16 nds : les anciens seuils (13/22) étaient extrapolés bien
+  // au-delà de ce que les données couvrent.
+  windCalmKt: 8,
+  windMalusKt: 12, gustMalusKt: 25,
   // Préférence de marée du spot (chantier 10, §10.5 priorité 3). Elle vivait
   // dans `spot.tidePref`, que RIEN n'écrivait : `_tideAdj()` renvoyait donc
   // toujours 0 et la marée ne pesait rien dans le score, alors que le code
@@ -8207,7 +8220,7 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
   // >= au lieu de > (03/08/2026, retour utilisateur "16nds trop de vent") :
   // à vent PILE au seuil, le malus ne se déclenchait pas (16 > 16 = faux) —
   // un écart d'1nds suffisait à afficher "Très bien" un jour trop venté.
-  var _calmKt = SCORE_PARAMS.windCalmKt || 13;
+  var _calmKt = SCORE_PARAMS.windCalmKt || 8;
   if(ws && ws > _calmKt) {
     score = Math.max(0, score - 1);
     details.push('Moutons/clapot ('+Math.round(ws)+'nds &gt; '+_calmKt+'nds)');
@@ -8215,6 +8228,18 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
       score = Math.max(0, score - 1);
       details.push('Vent fort — nav difficile');
     }
+  }
+
+  // Bonus VENT NUL / très faible, indépendant de la direction (03/08/2026,
+  // "moins y'a de vent, mieux c'est"). Le seul bonus vent existant exigeait
+  // `ws >= 5` ET une direction offshore : une matinée glassy à 2 nds n'était
+  // donc JAMAIS récompensée, alors que c'est la meilleure condition possible
+  // sur ces passes (mesuré : qualité moyenne 3,11 sous 8 nds, la tranche la
+  // plus élevée du journal). Posé ici pour s'appliquer quelle que soit
+  // l'orientation, avant les effets directionnels ci-dessous.
+  if(ws != null && ws <= 5) {
+    score = Math.min(5, score + 1);
+    details.push(ws < 2 ? 'Glassy (vent nul)' : 'Vent très faible ('+Math.round(ws)+'nds)');
   }
 
   // Effet du vent (onshore/offshore relatif à la houle)
@@ -8242,7 +8267,9 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
       // Seuil aligné sur windMalusKt du spot (03/08/2026) — était fixé en dur à
       // 20nds, indépendant du réglage par spot : un vent offshore fort restait
       // sans malus directionnel jusqu'à 20nds même sur un spot réglé à 14-16nds.
-      if(ws >= 5 && ws <= _calmKt) {
+      // `> 5` (et non `>= 5`) : à 5 nds pile le bonus "vent très faible"
+      // ci-dessus s'applique déjà, inutile de compter deux fois le même point.
+      if(ws > 5 && ws <= _calmKt) {
         score = Math.min(5, score + 1);
         details.push('Offshore idéal ('+Math.round(ws)+'nds)');
       } else if(ws >= SCORE_PARAMS.windMalusKt) {
