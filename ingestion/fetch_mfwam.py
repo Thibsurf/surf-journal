@@ -190,13 +190,25 @@ def build_rows_for_point(point, pt_ds):
 
     rows = []
     lat_s, lon_s = f"{point['lat']:.3f}", f"{point['lon']:.3f}"
+    # issued_at posé EXPLICITEMENT (04/08/2026) : l'id est déterministe (pas de
+    # tag de run, contrairement à fetch_ecmwf/arome) → chaque run UPSERT la même
+    # ligne. Or la colonne issued_at a un DEFAULT now() qui ne s'applique qu'à
+    # l'INSERT, jamais au merge-duplicates : sans l'inclure au payload, issued_at
+    # restait figé à la PREMIÈRE écriture (mesuré : lignes MFWAM/LOTUS rafraîchies
+    # chaque jour mais issued_at bloqué ~3 jours en arrière). Conséquence côté
+    # Journal : la requête `order(issued_at desc)` de _fetchModelTableRows classait
+    # MFWAM/LOTUS comme « vieux » (risque de troncature au plafond 1000 lignes) et
+    # affichait une heure de run fausse. On aligne donc issued_at sur l'instant
+    # d'archivage (≈ updated_at) — la fraîcheur RELATIVE entre runs redevient juste.
+    now_iso = datetime.now(timezone.utc).isoformat()
     for ds_key, hours in by_date.items():
         hours.sort(key=lambda h: h["hour"])
         rows.append({
             "id": f"{ds_key}_{lat_s}_{lon_s}_mf_wave",
             "date": ds_key, "spot_name": point["name"], "lat": point["lat"], "lon": point["lon"],
             "model": "mf", "kind": "wave", "hours": hours,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "issued_at": now_iso,
+            "updated_at": now_iso,
         })
     return rows
 

@@ -146,22 +146,36 @@ def build_rows(spot_name, spot_id):
 
     lat_s, lon_s = f"{lat:.3f}", f"{lon:.3f}"
     now_iso = datetime.now(timezone.utc).isoformat()
+    # issued_at posé EXPLICITEMENT (04/08/2026) — même raison que fetch_mfwam.py :
+    # id déterministe + merge-duplicates → le DEFAULT now() de issued_at ne joue
+    # qu'au premier INSERT, donc issued_at restait figé à la première écriture
+    # (mesuré : LOTUS rafraîchi chaque jour, updated_at à jour, mais issued_at
+    # bloqué au 01/08). On préfère l'instant de run LOTUS quand il est connu
+    # (run_initialization, epoch s), sinon l'instant d'archivage — la fraîcheur
+    # relative entre runs redevient correcte pour le tri du Journal.
+    run_ts = swells.get("run_initialization")
+    try:
+        issued_iso = datetime.fromtimestamp(run_ts, tz=timezone.utc).isoformat() if run_ts else now_iso
+    except (TypeError, ValueError, OSError):
+        issued_iso = now_iso
     wave_rows, wind_rows = [], []
     for ds, hours in by_date_wave.items():
         hours.sort(key=lambda h: h["hour"])
         wave_rows.append({
             "id": f"{ds}_{lat_s}_{lon_s}_lotus_wave",
             "date": ds, "spot_name": spot_name, "lat": lat, "lon": lon,
-            "model": "lotus", "kind": "wave", "hours": hours, "updated_at": now_iso,
+            "model": "lotus", "kind": "wave", "hours": hours,
+            "issued_at": issued_iso, "updated_at": now_iso,
         })
     for ds, hours in by_date_wind.items():
         hours.sort(key=lambda h: h["hour"])
         wind_rows.append({
             "id": f"{ds}_{lat_s}_{lon_s}_lotus_wind",
             "date": ds, "spot_name": spot_name, "lat": lat, "lon": lon,
-            "model": "lotus", "kind": "wind", "hours": hours, "updated_at": now_iso,
+            "model": "lotus", "kind": "wind", "hours": hours,
+            "issued_at": issued_iso, "updated_at": now_iso,
         })
-    return wave_rows, wind_rows, swells.get("run_initialization")
+    return wave_rows, wind_rows, run_ts
 
 
 def upsert(rows):
