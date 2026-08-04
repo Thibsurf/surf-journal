@@ -4593,3 +4593,54 @@ modèle (`tidePointsForDate`), mais le nécessaire est là si on veut l'y branch
 sw v61→v62 : `assets/` est inchangé, mais la structure de chargement d'une page l'est,
 et un précache refait garantit que `tide-harmonics.js` accompagne bien le nouveau
 `previsions.html`.
+
+---
+
+# 04/08/2026 — Classement des modèles, par confrontation directe
+
+Demande : « un classement pour ces prévisions vs mesures, pour mieux comprendre ».
+
+## Pourquoi PAS un classement sur les moyennes
+Mesuré avant de concevoir : les modèles ne couvrent ni les mêmes volumes (AROME 166 h
+contre 22-26 h aux autres) **ni les mêmes échéances** — AROME n'a rien au-delà de 24 h,
+MARC rien en deçà. Classer sur des moyennes calculées sur des créneaux différents
+reviendrait à comparer des choses différentes, et donnerait mécaniquement l'avantage
+au modèle qui n'est évalué que sur les échéances faciles.
+
+## Ce qui a été fait
+Classement par **duels à créneau identique** : deux modèles ne sont comparés que sur
+les créneaux qu'ils ont TOUS DEUX prévus (même station, même date, même heure) ; sur
+chacun, le plus proche de la mesure marque. Un modèle ne peut plus gagner en étant
+absent des cas difficiles. Égalité stricte = aucun point (pas de demi-point qui
+laisserait croire à un départage).
+
+Recouvrement mesuré : 108 créneaux, dont **32 avec au moins deux modèles et 12 avec
+les quatre** — assez pour arbitrer, trop peu pour trancher, ce que le bloc dit.
+
+Résultats au 04/08/2026 :
+
+| | Vitesse | | Direction | |
+|---|---|---|---|---|
+| 1 | AROME 62 % (jugé à +7 h) | 5,8 nds | ECMWF 64 % | 31° |
+| 2 | AIFS 57 % (+68 h) | 6,1 nds | AIFS 61 % | 29° |
+| 3 | MARC 50 % (+100 h) | 4,9 nds | AROME 55 % | 49° |
+| 4 | ECMWF 28 % (+59 h) | 6,4 nds | MARC 17 % | 75° |
+
+## Deux pièges signalés dans l'UI plutôt que masqués
+1. **La colonne « échéance »** dit à quelle distance chaque modèle a été jugé. AROME
+   est 1er en vitesse mais jugé à +7 h de moyenne, quand MARC fait 50 % à **+100 h** —
+   à pourcentages voisins, celui jugé le plus loin est le meilleur. Sans cette colonne
+   le podium serait trompeur.
+2. **Le cumul peut mentir** : AROME finit 1er en vitesse tout en PERDANT son face-à-face
+   contre MARC (10-12), chacun n'affrontant pas les mêmes adversaires selon les créneaux
+   qu'il couvre. Le détail des confrontations est donc accessible en infobulle sur
+   chaque nom, et la légende le dit explicitement.
+
+Rendu volontairement sobre (barre + %, repère à 50 %) : avec quelques dizaines de
+duels, un podium coloré donnerait à un écart de bruit l'allure d'un verdict. Les
+effectifs faibles restent en orangé. Pas de classement sur l'onglet Rafales — un seul
+modèle publie des rafales, il n'y a personne à affronter (la fonction renvoie une
+chaîne vide d'elle-même sous 2 modèles).
+
+Vérifié : cohérence victoires ≤ duels (99 ≤ 100, une égalité), 4 infobulles de
+face-à-face, 0 erreur JS.

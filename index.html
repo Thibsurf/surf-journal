@@ -5451,7 +5451,11 @@ async function _windTruthBuildPairs() {
       });
       if (!best) return;
       pairs.push({
+        // slot = créneau visé (station + date + heure). C'est la clé qui permet de
+        // comparer les modèles À DONNÉE COMPARABLE : sans elle on ne pourrait que
+        // confronter des moyennes calculées sur des créneaux différents.
         model: row.model, station: row.spot_name, lead: lead,
+        slot: row.spot_name + '|' + row.date + '|' + h,
         dSpeed: (val != null && best.wind_kt != null) ? (val - best.wind_kt) : null,
         dDir:   (mdir != null && best.wind_dir != null) ? Math.abs(_angDiff(mdir, best.wind_dir)) : null,
         // Écart SIGNÉ conservé à part : l'absolu dit de combien le modèle se trompe,
@@ -5466,6 +5470,120 @@ async function _windTruthBuildPairs() {
   });
   _windTruthPairs = pairs;
   return pairs;
+}
+
+// ── Classement des modèles ──────────────────────────────────────────────────
+// Par CONFRONTATION DIRECTE, et non par moyenne globale. Raison mesurée sur les
+// données réelles (04/08/2026) : les modèles ne couvrent ni les mêmes volumes
+// (AROME 166 h contre 22-26 h aux autres) ni les mêmes échéances (AROME n'a rien
+// au-delà de 24 h, MARC rien en deçà). Classer sur des moyennes calculées sur des
+// créneaux différents reviendrait à comparer des choses différentes — et donnerait
+// mécaniquement l'avantage à celui qui n'est évalué que sur les échéances faciles.
+//
+// Ici, on ne compare deux modèles que sur les créneaux où TOUS DEUX ont prévu
+// (même station, même date, même heure) : sur chacun, le plus proche de la mesure
+// gagne. Un modèle ne peut donc plus gagner en étant absent des cas difficiles.
+// Mesuré : 108 créneaux, dont 32 avec au moins deux modèles et 12 avec les quatre.
+function _windTruthRanking(pairs, field) {
+  var bySlot = {};
+  pairs.forEach(function(p) {
+    if (p[field] == null) return;
+    (bySlot[p.slot] = bySlot[p.slot] || {})[p.model] = p;
+  });
+  var duel = {};   // 'a|b' -> {aWin, bWin}
+  var stat = {};   // model -> {win, n, errSum, leadSum}
+  function st(m) { return stat[m] = stat[m] || { win: 0, n: 0, errSum: 0, leadSum: 0, slots: 0 }; }
+  Object.keys(bySlot).forEach(function(k) {
+    var ms = Object.keys(bySlot[k]);
+    ms.forEach(function(m) {
+      var r = st(m); r.errSum += Math.abs(bySlot[k][m][field]); r.leadSum += bySlot[k][m].lead; r.slots++;
+    });
+    if (ms.length < 2) return;                      // un créneau à un seul modèle n'arbitre rien
+    for (var i = 0; i < ms.length; i++) {
+      for (var j = i + 1; j < ms.length; j++) {
+        var A = ms[i], B = ms[j];
+        var ea = Math.abs(bySlot[k][A][field]), eb = Math.abs(bySlot[k][B][field]);
+        st(A).n++; st(B).n++;
+        var key = A < B ? A + '|' + B : B + '|' + A;
+        duel[key] = duel[key] || { a: (A < B ? A : B), b: (A < B ? B : A), aWin: 0, bWin: 0, n: 0 };
+        duel[key].n++;
+        // Égalité stricte : aucun point, plutôt qu'un demi-point qui laisserait croire
+        // à une départage là où les deux modèles ont fait exactement pareil.
+        if (ea < eb) { st(A).win++; if (A === duel[key].a) duel[key].aWin++; else duel[key].bWin++; }
+        else if (eb < ea) { st(B).win++; if (B === duel[key].a) duel[key].aWin++; else duel[key].bWin++; }
+      }
+    }
+  });
+  var rows = Object.keys(stat).map(function(m) {
+    var r = stat[m];
+    return {
+      model: m, win: r.win, n: r.n,
+      pct: r.n ? r.win / r.n * 100 : null,
+      err: r.slots ? r.errSum / r.slots : null,
+      lead: r.slots ? r.leadSum / r.slots : null,
+      slots: r.slots
+    };
+  }).filter(function(r) { return r.n > 0; });
+  rows.sort(function(x, y) { return (y.pct - x.pct) || (x.err - y.err); });
+  return { rows: rows, duels: Object.keys(duel).map(function(k) { return duel[k]; }) };
+}
+
+// Rendu du classement. Volontairement sobre : avec des effectifs de cet ordre
+// (quelques dizaines de duels), un podium coloré donnerait à un écart de bruit
+// l'allure d'un verdict.
+function _windTruthRankHTML(pairs, field, unit) {
+  var R = _windTruthRanking(pairs, field);
+  if (R.rows.length < 2) return '';
+  // Détail des confrontations, en infobulle sur chaque ligne. Le total peut mentir :
+  // un modèle peut finir 1er au cumul tout en PERDANT son face-à-face contre un autre
+  // (mesuré le 04/08/2026 : AROME 1er en vitesse, mais battu 12-10 par MARC en duel
+  // direct — chacun affronte des adversaires différents selon les créneaux qu'il
+  // couvre). Le détail doit rester atteignable pour que le podium ne fasse pas foi.
+  function duelsOf(m) {
+    var parts = R.duels.filter(function(d) { return d.a === m || d.b === m; }).map(function(d) {
+      var other = d.a === m ? d.b : d.a;
+      var mine = d.a === m ? d.aWin : d.bWin, his = d.a === m ? d.bWin : d.aWin;
+      return (WIND_TRUTH_LABELS[other] || other) + ' ' + mine + '-' + his;
+    });
+    return parts.length ? 'Face à face — ' + parts.join(' · ') : '';
+  }
+  var body = R.rows.map(function(r, i) {
+    var col = WIND_TRUTH_COLORS[r.model] || '#7a94aa';
+    var weak = r.n < 10;
+    var dt = duelsOf(r.model);
+    return '<div style="display:contents;">'
+      + '<span style="color:var(--text-faint);font-size:11px;text-align:right;">' + (i + 1) + '</span>'
+      + '<span title="' + escapeHtml(dt) + '" style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap;cursor:help;border-bottom:1px dotted rgba(255,255,255,.2);">'
+        + '<span style="width:8px;height:8px;border-radius:2px;background:' + col + ';flex-shrink:0;"></span>'
+        + (WIND_TRUTH_LABELS[r.model] || r.model) + '</span>'
+      + '<div style="position:relative;height:10px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;">'
+        + '<div style="height:100%;width:' + Math.max(2, r.pct) + '%;background:' + col + (weak ? '88' : '') + ';border-radius:3px;"></div>'
+        + '<div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.25);"></div></div>'
+      + '<span style="font-size:11px;font-weight:600;text-align:right;white-space:nowrap;">' + Math.round(r.pct) + '%</span>'
+      + '<span style="font-size:9px;color:' + (weak ? 'var(--accent-warm)' : 'var(--text-faint)') + ';text-align:right;white-space:nowrap;" title="'
+        + r.win + ' duels gagnés sur ' + r.n + '">' + r.win + '/' + r.n + '</span>'
+      + '<span style="font-size:10px;color:var(--text-muted);text-align:right;white-space:nowrap;" title="Erreur absolue moyenne sur ses '
+        + r.slots + ' créneaux">' + (r.err != null ? (unit === '°' ? Math.round(r.err) : r.err.toFixed(1)) + unit : '—') + '</span>'
+      + '<span style="font-size:9px;color:var(--text-faint);text-align:right;white-space:nowrap;" title="Échéance moyenne à laquelle ce modèle a été jugé">'
+        + (r.lead != null ? '+' + Math.round(r.lead) + ' h' : '—') + '</span>'
+      + '</div>';
+  }).join('');
+  return '<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px;">🏆 Classement — duels à créneau identique</div>'
+    + '<div style="display:grid;grid-template-columns:auto auto 1fr auto auto auto auto;gap:5px 8px;align-items:center;">'
+    + '<span></span><span></span>'
+    + '<span style="font-size:9px;color:var(--text-faint);">duels gagnés</span>'
+    + '<span style="font-size:9px;color:var(--text-faint);text-align:right;">%</span>'
+    + '<span style="font-size:9px;color:var(--text-faint);text-align:right;">n</span>'
+    + '<span style="font-size:9px;color:var(--text-faint);text-align:right;">erreur moy.</span>'
+    + '<span style="font-size:9px;color:var(--text-faint);text-align:right;">échéance</span>'
+    + body + '</div>'
+    + '<div style="font-size:9px;color:var(--text-faint);margin-top:8px;line-height:1.45;">'
+    + 'Chaque duel oppose deux modèles sur un créneau qu\'ils ont TOUS DEUX prévu (même station, même heure) : le plus proche de la mesure marque. '
+    + 'Une moyenne globale aurait avantagé le modèle absent des cas difficiles. '
+    + 'La colonne « échéance » dit à quelle distance il a été jugé en moyenne — un modèle jugé à +6 h a une tâche plus facile qu\'à +48 h : à % voisins, celui jugé le plus loin est le meilleur. '
+    + 'Survole un nom pour ses face-à-face : le cumul peut placer en tête un modèle battu en duel direct, chacun n\'affrontant pas les mêmes adversaires.'
+    + '</div></div>';
 }
 
 function setWindTruthMetric(m) { _windTruthMetric = m; _renderWindTruthBlock(); }
@@ -5621,6 +5739,7 @@ async function _renderWindTruthBlock() {
       }).join('');
 
       el.innerHTML = head
+        + _windTruthRankHTML(use, 'dDir', '°')
         + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:9px;">' + blocks + '</div>'
         + '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:9px;color:var(--text-faint);margin-top:8px;">'
           + '<span><span style="display:inline-block;width:2px;height:10px;background:rgba(61,186,138,.8);vertical-align:-1px;"></span> repère 20° : en deçà, la direction est exploitable</span>'
@@ -5639,6 +5758,7 @@ async function _renderWindTruthBlock() {
     // l'erreur se dégrade quand on prévoit plus loin — la question posée.
     var h = Math.max(120, buckets.length * 34 + 46);
     el.innerHTML = head
+      + _windTruthRankHTML(use, field, WIND_TRUTH_METRICS[_windTruthMetric].unit)
       + '<div style="position:relative;height:' + h + 'px;"><canvas id="wind-truth-chart"></canvas></div>'
       + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">' + metric.hint
       + ' Échéance = temps entre le run du modèle et l\'heure prévue'
