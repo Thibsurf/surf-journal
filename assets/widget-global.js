@@ -139,9 +139,56 @@ function _gwBuildModelFcast(key) {
     sec.forEach(function(p){ var df = Math.abs(p.ms-ms); if (df < bd) { bd = df; best = p; } });
     return best;
   }
+  // ── Vent de MFWAM : emprunté au forçage ECMWF de MARC (04/08/2026) ──────────
+  // Le produit Copernicus GLOBAL_ANALYSISFORECAST_WAV_001_027 ne contient AUCUN
+  // champ de vent (cm.describe : 19 variables, VSDX/VSDY = dérive de Stokes,
+  // *_WW = partition mer-du-vent). Mais MFWAM est FORCÉ par les vents IFS-ECMWF
+  // (doc du produit : « 6-hourly analysis and 3-hourly forecasted winds from the
+  // IFS-ECMWF atmospheric system ») — et ce vent-là, on l'a déjà : uwnd/vwnd de
+  // MARC EST le forçage ECMWF opérationnel de son run WW3
+  // (NC_GLOBAL.forcing_wind="wind_ecmwf_op", vérifié le 27/07 sur le .das), à sa
+  // résolution native ~9 km. MARC et MFWAM partagent donc le MÊME forçage
+  // atmosphérique : ce n'est pas un vent approché, c'est celui qui a généré cette
+  // mer du vent.
+  // Pourquoi pas notre propre ingestion ECMWF (fetch_ecmwf.py) : elle plafonne à
+  // 0,25°/~28 km (paquet ecmwf-opendata : seules résolutions 0p25 / 0p4-beta,
+  // vérifié 04/08/2026), l'IFS natif ~9 km étant sous licence. Et CMEMS ne publie
+  // AUCUN vent de prévision — uniquement des analyses satellite 0,125° dont la
+  // borne max s'arrête la veille (WIND_GLO_PHY_L4_NRT_012_004, vérifié au
+  // catalogue le 04/08/2026), donc inutilisable ici.
+  // Contrepartie ASSUMÉE : MFWAM et MARC affichent le même vent. Ce n'est pas un
+  // second avis, c'est le forçage commun — dit explicitement dans l'infobulle du
+  // bouton MFWAM pour ne pas laisser croire à deux sources indépendantes.
+  // Deuxième limite MESURÉE (headless, Ilot Ténia, 04/08) : MFWAM sort 84 pas de
+  // temps (~10 j) contre 46 pour MARC (~5,5 j, fenêtre de fetch_marc.py) — au-delà,
+  // la houle continue mais la courbe de vent s'arrête, faute de forçage archivé.
+  // C'est voulu : mieux vaut une courbe qui s'interrompt qu'un vent extrapolé.
+  var mfWindPts = null;
+  if (key === 'mf') {
+    var _marcEntry = (typeof _swellCache !== 'undefined' && _swellCache) ? _swellCache.marc : null;
+    if (_marcEntry && _marcEntry.primary && _marcEntry.primary.length) mfWindPts = _marcEntry.primary;
+  }
+  function nearestMarcWind(ms) {
+    if (!mfWindPts) return null;
+    // MÊME convention de temps des deux côtés : p.ms est un vrai epoch UTC pour
+    // MARC comme pour MFWAM (cf. _fetchMarcWave/_fetchMarcArchive et
+    // _fetchMeteoFranceWave). Comparaison directe, surtout PAS de +11h ici — le
+    // décalage n'est appliqué qu'à out.dates. Piège classique du projet.
+    var best = null, bd = 5400000;
+    for (var k = 0; k < mfWindPts.length; k++) {
+      var q = mfWindPts[k];
+      if (q.windKt == null) continue;
+      var df = Math.abs(q.ms - ms);
+      if (df < bd) { bd = df; best = q; }
+    }
+    return best;
+  }
   var out = { dates:[], sw1h:[], sw1t:[], sw1d:[], sw2h:[], sw2t:[], sw2d:[], sw2NativeArr:[], wndH:[], totH:[],
     sw3h:[], sw3t:[], sw3d:[], sw4h:[], sw4t:[], sw4d:[], sw5h:[], sw5t:[], sw5d:[], // trains de houle 3/4/5 (MARC seul, cf. spectre)
     wSpd:[], wGst:[], wDir:[], sst:[], pwr:[], cld:[], rain:[], cldL:[], cldM:[], cldH:[], tAir:[],
+    // Vent emprunté (MFWAM ← forçage ECMWF de MARC) : marqué pour que l'UI puisse
+    // le dire sans avoir à redeviner la provenance.
+    windBorrowedFrom: null,
     sw2Native: (key === 'marc' || key === 'lotus') ? true : sec.length > 0 };
   entry.primary.forEach(function(p){
     out.dates.push(new Date(p.ms + 11*3600000)); // même convention que partout : UTC+11 lu en getUTC*
@@ -186,9 +233,15 @@ function _gwBuildModelFcast(key) {
       out.sw4h.push(null); out.sw4t.push(null); out.sw4d.push(null);
       out.sw5h.push(null); out.sw5t.push(null); out.sw5d.push(null);
     }
-    out.wSpd.push(p.windKt!=null ? p.windKt : null); // MFWAM: toujours null, pas de vent dans cette API
-    out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale ; MFWAM: aucun vent du tout (produit houle Copernicus, cf. bouton)
-    out.wDir.push(p.windDir!=null ? p.windDir : null);
+    // MFWAM n'a jamais de vent propre -> repli sur le forçage ECMWF de MARC au
+    // pas de temps le plus proche (cf. bloc nearestMarcWind ci-dessus). Le test
+    // `p.windKt == null` garde la priorité au vent natif si un jour la source en
+    // publiait un : l'emprunt est un repli, pas un écrasement.
+    var _bw = (key === 'mf' && p.windKt == null) ? nearestMarcWind(p.ms) : null;
+    if (_bw) out.windBorrowedFrom = 'marc-ecmwf';
+    out.wSpd.push(p.windKt!=null ? p.windKt : (_bw ? _bw.windKt : null));
+    out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale ; le forçage ECMWF de MARC n'en a pas non plus (vent moyen 10m)
+    out.wDir.push(p.windDir!=null ? p.windDir : (_bw ? _bw.windDir : null));
     var _sw1h = out.sw1h[out.sw1h.length-1], _sw1t = out.sw1t[out.sw1t.length-1];
     out.pwr.push((_sw1h && _sw1t) ? +(0.5*_sw1h*_sw1h*_sw1t).toFixed(2) : null);
     var oi = nearestOmIdx(p.ms);
@@ -218,8 +271,11 @@ function _gwBuildModelFcast(key) {
 //   modèle) > MARC (vent = forçage ECMWF 9km réel du run WW3, confirmé via
 //   l'attribut global forcing_wind="wind_ecmwf_op", regrillé sur la maille MARC
 //   5,5km — pas une vraie donnée à 5,5km, d'où son rang après BOM) > GFS (28km).
-//   MFWAM ne fournit PAS de vent (produit houle Copernicus, aucun champ de vent —
-//   vérifié sur le catalogue le 04/08/2026), il ne contribue donc jamais au vent du Mix.
+//   MFWAM ferme la liste mais reste INERTE pour le vent : le produit Copernicus
+//   n'a aucun champ de vent (vérifié au catalogue le 04/08/2026) et le vent qu'on
+//   lui affiche depuis le 04/08 est justement emprunté à MARC (forçage IFS commun,
+//   cf. _gwBuildModelFcast). Il ne peut donc rien apporter que MARC, placé avant,
+//   n'ait déjà fourni — l'entrée est gardée par cohérence de forme, pas par effet.
 // Base temporelle = meteo.nc si disponible (pas horaire, le plus fin), sinon GFS.
 function _gwBuildBestMix() {
   var base = _ncFcastData || _omFcastData || _fcastData;
@@ -398,10 +454,10 @@ var GW_SRC_BTNS_DEF = [
   { key:'nc',   lbl:'🛰 meteo.nc' },
   { key:'om',   lbl:'🌐 GFS' },
   { key:'bom',  lbl:'🇦🇺 BOM' },
-  { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France (Copernicus Marine, ~9 km) avec partitions directionnelles (mer du vent / houle 1 / houle 2). Modèle de VAGUES seul : le produit Copernicus ne contient aucun champ de vent — pas de vent MFWAM ici (voir meteo.nc / AROME / BOM pour le vent).' },
+  { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France (Copernicus Marine, ~9 km) avec partitions directionnelles (mer du vent / houle 1 / houle 2). Le produit Copernicus est un modèle de VAGUES seul, sans aucun champ de vent : le vent affiché ici est le forçage ECMWF IFS (~9 km) qui pilote MFWAM, récupéré via MARC dont c\'est le forçage du run WW3 — même vent que l\'onglet MARC, pas un second avis. Pas de rafale (vent moyen 10 m), et le vent s\'arrête au bout de la fenêtre MARC (~5,5 j) alors que la houle MFWAM va plus loin (~10 j).' },
   { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Lu depuis un cache rafraîchi 3x/jour (ingestion/fetch_marc.py) ; repli sur une requête directe Ifremer (~3s) si le cache est vide pour ce spot.' },
   { key:'lotus', lbl:'🏄 LOTUS', title:'Surfline — modèle propriétaire LOTUS (WW3 + assimilation satellite + forecasters), houle en trains directionnels + vent (avec rafale). Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa G+D/Boulari) : indisponible pour les autres spots. Cache rafraîchi 3x/jour (ingestion/fetch_surfline.py).' },
-  { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km > BOM 14km > MFWAM ~9km, en repli créneau par créneau. Vent : meteo.nc > BOM 14km > MARC (= forçage ECMWF réel du run, ~9km regrillé) > GFS 28km. MFWAM ne fournit AUCUN vent (produit houle Copernicus) : il ne contribue jamais au vent du Mix. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
+  { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km > BOM 14km > MFWAM ~9km, en repli créneau par créneau. Vent : meteo.nc > BOM 14km > MARC (= forçage ECMWF IFS réel du run, ~9km regrillé) > GFS 28km. MFWAM ferme la liste mais n\'y apporte jamais rien de neuf : son vent EST celui de MARC (forçage commun), déjà servi plus haut. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
 ];
 function _gwResSuffix(key) {
   var res = (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE[key]) ? MODEL_STYLE[key].res : null;

@@ -3974,3 +3974,29 @@ réglages : aujourd'hui pèse 5 204 lignes et elles sont TOUTES dans la fenêtre
 que par le correctif client `c7294cb3` (bornage lat/lon serveur + pagination). La
 compaction ne mordra qu'à partir de mi-août (quand la donnée dépassera 14 j d'âge) ;
 elle borne la croissance à long terme, elle ne dégonfle pas les jours récents.
+
+### Branché : vent IFS ~9 km sous MFWAM, emprunté au forçage de MARC
+Décision prise après les 3 vérifications ci-dessus (option « vent MARC 9 km »).
+`_gwBuildModelFcast` remplit désormais `wSpd`/`wDir` de la série `mf` depuis
+`_swellCache.marc.primary` au pas de temps le plus proche (±90 min), UNIQUEMENT en
+repli (`p.windKt == null`) pour ne pas écraser un vent natif si la source en publiait
+un un jour. `wGst` reste vide : le forçage ECMWF est un vent moyen 10 m, sans rafale.
+Drapeau `out.windBorrowedFrom = 'marc-ecmwf'` posé pour que l'UI puisse le dire.
+
+Comparaison des `ms` faite SANS décalage (les deux séries sont en vrai epoch UTC, le
++11h n'est appliqué qu'à `out.dates`) — le piège habituel du projet, évité et vérifié.
+
+**Vérifié en headless sur la vraie base (Ilot Ténia)** :
+`cache mf=84 marc=46 | mf wSpd_nonnull=46 wDir_nonnull=46 borrowed=marc-ecmwf |
+wGst_nonnull=0 | compare mf vs marc: n=46 ecart_max=0.00 nds`. L'écart nul prouve
+l'alignement temporel exact. Capture d'écran (rafThrottle → dump-dom insuffisant,
+cf. conventions) : courbe de vent tracée, lignes VENT/DIR remplies (22→17 nds),
+résumé « vent 19 nds ESE 106° » et rose de la carte — MFWAM n'affichait rien avant.
+
+Limite mesurée et assumée : MFWAM sort 84 pas de temps (~10 j), MARC 46 (~5,5 j,
+fenêtre de fetch_marc.py) → au-delà la houle continue sans vent. Peu visible en
+pratique (la bande du widget ne montre que 5 jours). Choix : courbe qui s'interrompt
+plutôt que vent extrapolé. Libellés du bouton MFWAM et du Mix mis à jour en
+conséquence (le Mix garde `mf` en fin de `VENT_PRIORITY` mais l'entrée est désormais
+inerte PAR CONSTRUCTION : son vent EST celui de MARC, déjà servi plus haut).
+sw v57→v58.
