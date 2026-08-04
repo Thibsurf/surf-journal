@@ -4098,3 +4098,130 @@ avec la date (04/08 6h → 0,46 m ; 11/08 6h → 1,18 m, quasi en opposition —
 rendait les deux identiques) ; canvas réellement tracé (67 200 pixels non transparents) ;
 libellé de date présent et mention « approx. » sur Bourail ; tableau « conditions idéales »
 désormais dispersé sur 0,62 → 1,31 m au lieu de 8 cm. sw v58→v59 + `ASSETS` complété.
+
+---
+
+# 04/08/2026 (suite) — Marées RÉELLES meteo.nc : 14 stations, pas 2
+
+**Correction d'une conclusion du même jour.** Le chantier précédent affirmait que
+seules deux stations de marée étaient disponibles (Nouméa 9881852, Bourail 9880352),
+d'où un modèle harmonique « Nouméa pour tout le monde » et un `lagHours: 0.5` inventé
+pour Bourail. C'était faux, et le `lagHours` était une invention pure — exactement ce
+que la règle « ne rien inventer sur les données » interdit.
+
+## Ce que l'API expose réellement (vérifié en direct)
+Les 3 ids de marée connus du projet finissent tous par `52`. En balayant `988XX52`
+(XX = 00..39) contre `/tide`, **14 stations** répondent :
+
+| id | station | id | station |
+|---|---|---|---|
+| 9880352 | Bourail | 9881852 | Nouméa |
+| 9880752 | Hienghène | 9882052 | Wadrilla (Ouvéa) |
+| 9880952 | Kuto (Île des Pins) | 9882652 | Baie de Banaré |
+| 9881152 | Foué (Koné) | 9882952 | **Thio** |
+| 9881252 | Paagoumène (Koumac) | 9883052 | **Touho** |
+| 9881452 | Chépénéhé (Lifou) | 9883252 | Baie de Ouinné |
+| 9881552 | La Roche (Maré) | 9881752 | **Baie du Prony** |
+
+Tout autre id répond `tide: []`. Couverture temporelle mesurée : l'année civile en
+cours (2026-01-01 → 2026-12-25 OK, 2025-08-04 et 2025-11-20 → `tide: []`).
+
+**À noter pour previsions.html** : il n'exploite que 2 de ces 14 stations et rattache
+Thio, Touho, Baie du Prony, Canala, Ponérihouen à Nouméa (ou Bourail) alors qu'elles
+ont leur propre station. Gain de précision à récupérer là-bas aussi — pas fait ici
+(autre fichier, autre chantier).
+
+## Ce qui est branché côté Journal
+`assets/tide-harmonics.js` lit désormais la vraie marée `/tide?id=…&date=…` de la
+station du port, interpole entre extrema par demi-cosinusoïde (exact aux extremums,
+dérivée nulle — le continu de la « règle des douzièmes »), et **retombe sur le modèle
+harmonique** si le réseau manque ou si la date sort de la couverture. Chargement
+asynchrone : le widget s'affiche tout de suite avec le modèle, la vraie courbe le
+remplace à l'arrivée. J-1/J/J+1 sont chargés pour encadrer 00h et 24h — couverture
+mesurée : **49/49 points** sur 24 h, aucun repli.
+
+Le sélecteur passe de 4 à 15 entrées (les 4 clés historiques `noumea/tomo/bourail/thio`
+sont conservées telles quelles : elles sont déjà en base dans `sessions.tide_port`).
+`thio` pointe maintenant sur SA station (9882952) et non plus sur Nouméa.
+Le widget affiche la provenance : « meteo.nc Bourail », « meteo.nc Nouméa (pas de
+station propre) » pour Tomo/Dumbéa, ou « modèle harmonique (réf. Nouméa) » en repli.
+
+## Le piège du suffixe Z, et un critère d'arbitrage revu deux fois
+meteo.nc pose un `Z` tantôt véritable, tantôt abusif sur une heure déjà locale NC
+(documenté §6.6). L'arbitrage se fait contre le modèle harmonique — mais **la première
+version, comparant les hauteurs API↔modèle en absolu, était fausse** : le modèle étant
+ajusté sur Nouméa, l'erreur de base sur Bourail (marnage plus faible, 0,13 m d'écart
+structurel) noyait le signal. Résultat mesuré : arbitrage erroné un jour sur trois,
+produisant **90 cm d'écart Nouméa/Bourail à 0h** là où les extrema réels ne diffèrent
+que de **2 minutes**.
+
+Corrigé en comparant le modèle **à lui-même** (de combien le modèle s'écarte, à
+l'instant donné, de son propre extremum le plus proche) : la mesure devient
+indépendante de l'amplitude de la station, donc valable pour les 14. Vérifié : coûts
+identiques à 0,001 m près entre Nouméa et Bourail, décision cohérente sur 6 cas
+(3 jours × 2 stations), et écart Nouméa/Bourail ramené à **4-13 cm** — cohérent avec
+des marnages de 1,03 m et 0,96 m.
+
+Une variante mesurant l'écart **temporel** a été essayée puis écartée : contre-intuitivement
+elle sépare moins bien (marge ×1,5 contre ×3), l'inégalité diurne rapprochant
+l'hypothèse fausse d'un extremum voisin. Marge retenue : ×3, stable sur les 6 cas.
+
+**Vérifié en headless avec le vrai réseau** : `realData(bourail)=true`,
+label « 04/08 · meteo.nc Bourail », Bourail 6h = 0,371 m vs Nouméa 0,430 m (5,9 cm) ;
+date 2020 → repli annoncé « modèle harmonique » ; 0 erreur JS ; canvas tracé.
+
+---
+
+# 04/08/2026 (suite) — Reliquat de l'audit index.html
+
+## ✗ XSS stocké : noms de spots et de surfeurs injectés bruts
+8 points d'injection sans `escapeHtml`, tous alimentés par de la **saisie libre
+partagée entre membres du groupe** : bouton de sélection de spot et **titre H2 de la
+page détail spot** (les deux plus exposés), `topSpot[0]` et initiales des cartes crew,
+en-têtes du tableau croisé, nom + initiale dans le profil d'un co-navigateur,
+`swell_dir` et `context` dans `_fmtMeta`/le détail. Le commentaire du code montrait
+que l'encodage de l'attribut `onclick` avait été traité — mais pas le texte affiché.
+Vérifié après correctif : un nom de spot `<img src=x onerror=…>` ne produit plus
+aucune balise (0 `<img>` injectée) et n'exécute rien.
+
+## ✗ `.delete()` d'alias sans `.select()`
+RLS bloquant → 0 ligne supprimée, aucune erreur remontée (supabase-js ne throw pas),
+et l'`insert` qui suit recrée le doublon que ce delete existe justement pour éviter.
+`.select('alias_text')` ajouté. Le cas « 0 ligne » restant normal au premier
+enregistrement, il n'est volontairement pas signalé à l'utilisateur.
+
+## ✗ Modales : ni Échap, ni bouton retour
+4 modales, aucune gestion clavier, et `display:standalone` au manifest : en PWA
+installée, le retour Android **quittait l'application** depuis le formulaire de
+session, perdant toute la saisie. Ajout d'Échap (`closeTopModal`, la plus haute
+d'abord, `#alias-modal` inclus) et d'une entrée d'historique poussée à l'ouverture,
+consommée par le retour. Une seule entrée à la fois, retirée à la fermeture — sinon
+il aurait fallu plusieurs appuis. Les modales s'ouvrant par classe depuis une
+douzaine d'endroits, la synchro passe par un `MutationObserver` sur `class` plutôt
+que par l'instrumentation de chaque appel.
+
+## ⚠ `select('*')` rejoué à chaque navigation
+`showPage()` relance un chargement à chaque clic d'onglet, et Groupe / Spots /
+Classement / Stats-groupe font chacun leur propre `select('*')` sur la table entière :
+naviguer entre 4 onglets retéléchargeait 4 fois le même jeu. Cache mémoire TTL 45 s
+(`_cachedQuery`), invalidé par `_bumpData()` sur les **7 écritures** de `sessions` et
+`boats` — donc jamais de donnée périmée après un ajout/suppression/modification, seuls
+moments où l'affichage doit changer. TTL court volontaire : les sessions du groupe
+sont multi-utilisateur. Vérifié : 2 appels → 1 fetch, puis écriture → refetch.
+
+## ⚠ `SPOT_SLOPES` : des estimations présentées comme des mesures
+10 pentes de récif en dur, sans source, et un `|| 8` silencieux pour tout spot ajouté
+par un utilisateur — le tout affiché en « ξ moy = 1.36 · plongeant (tube!) », soit
+deux décimales et un verdict. Les valeurs sont conservées (elles classent correctement
+les spots entre eux, seul usage qu'on en fait) mais **documentées comme estimations à
+vue** et l'UI distingue désormais « (estimée) » de « (défaut — spot non renseigné) ».
+Le `|| 8` devient un `hasOwnProperty` : une pente à 0 serait sinon passée au défaut
+sans qu'on le sache (même piège que les zéros du formulaire).
+
+## ⚠ Accessibilité : 39 `<label>` pour 1 seul `for=`
+Les libellés étaient de simples frères des champs, sans association : lecteurs d'écran
+muets, et cliquer un libellé ne donnait pas le focus. Tous les champs ayant déjà un
+`id`, l'association était mécanique : **31 labels reliés, 0 `for=` orphelin** (vérifié
+en runtime, chaque cible résolue par `getElementById`).
+
+Contrôle final : 0 erreur JS sur les 7 pages + la modale. sw v59→v60.

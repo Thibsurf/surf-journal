@@ -552,11 +552,11 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
     <div class="auth-sub">Le journal de surf de la bande 🤙</div>
     <div id="auth-form-login">
       <div class="form-group">
-        <label class="form-label">Email</label>
+        <label class="form-label" for="auth-email">Email</label>
         <input type="email" class="form-input" id="auth-email" placeholder="ton@email.com" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div class="form-group">
-        <label class="form-label">Mot de passe</label>
+        <label class="form-label" for="auth-password">Mot de passe</label>
         <input type="password" class="form-input" id="auth-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
@@ -587,15 +587,15 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
     </div>
     <div id="auth-form-signup" style="display:none">
       <div class="form-group">
-        <label class="form-label">Pseudo (affiché aux autres)</label>
+        <label class="form-label" for="auth-username">Pseudo (affiché aux autres)</label>
         <input type="text" class="form-input" id="auth-username" placeholder="ex: Lucas">
       </div>
       <div class="form-group">
-        <label class="form-label">Email</label>
+        <label class="form-label" for="auth-email-2">Email</label>
         <input type="email" class="form-input" id="auth-email-2" placeholder="ton@email.com">
       </div>
       <div class="form-group">
-        <label class="form-label">Mot de passe</label>
+        <label class="form-label" for="auth-password-2">Mot de passe</label>
         <input type="password" class="form-input" id="auth-password-2" placeholder="min. 6 caractères">
       </div>
       <button class="btn btn-primary btn-full" onclick="doSignup()">Créer mon compte</button>
@@ -683,7 +683,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Pseudo</label>
+        <label class="form-label" for="profile-username-input">Pseudo</label>
         <input type="text" class="form-input" id="profile-username-input" placeholder="Ton pseudo">
       </div>
       <button class="btn btn-primary" onclick="saveProfile()">Enregistrer</button>
@@ -869,18 +869,18 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
       <button onclick="closeModal('modal-boat')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">&times;</button>
     </div>
     <input type="hidden" id="boat-edit-id">
-    <div class="form-group"><label class="form-label">Nom du bateau</label><input type="text" class="form-input" id="boat-name" placeholder="ex: Cool Breeze"></div>
-    <div class="form-group"><label class="form-label">Propri&eacute;taire / alias</label><input type="text" class="form-input" id="boat-alias" placeholder="ex: Raph"></div>
+    <div class="form-group"><label class="form-label" for="boat-name">Nom du bateau</label><input type="text" class="form-input" id="boat-name" placeholder="ex: Cool Breeze"></div>
+    <div class="form-group"><label class="form-label" for="boat-alias">Propri&eacute;taire / alias</label><input type="text" class="form-input" id="boat-alias" placeholder="ex: Raph"></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Conso (L/h)</label><input type="number" class="form-input" id="boat-conso" placeholder="35" step="1" min="0"></div>
-      <div class="form-group"><label class="form-label">R&eacute;servoir (L)</label><input type="number" class="form-input" id="boat-tank" placeholder="200" step="10" min="0"></div>
+      <div class="form-group"><label class="form-label" for="boat-conso">Conso (L/h)</label><input type="number" class="form-input" id="boat-conso" placeholder="35" step="1" min="0"></div>
+      <div class="form-group"><label class="form-label" for="boat-tank">R&eacute;servoir (L)</label><input type="number" class="form-input" id="boat-tank" placeholder="200" step="10" min="0"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Places &agrave; bord</label><input type="number" class="form-input" id="boat-places" placeholder="6" min="1" max="20"></div>
-      <div class="form-group"><label class="form-label">Carburant</label><select class="form-select" id="boat-fuel"><option value="essence">Essence</option><option value="diesel">Diesel</option><option value="electrique">&Eacute;lectrique</option></select></div>
+      <div class="form-group"><label class="form-label" for="boat-places">Places &agrave; bord</label><input type="number" class="form-input" id="boat-places" placeholder="6" min="1" max="20"></div>
+      <div class="form-group"><label class="form-label" for="boat-fuel">Carburant</label><select class="form-select" id="boat-fuel"><option value="essence">Essence</option><option value="diesel">Diesel</option><option value="electrique">&Eacute;lectrique</option></select></div>
     </div>
-    <div class="form-group"><label class="form-label">Prix carburant (CFP/L)</label><input type="number" class="form-input" id="boat-fuel-price" placeholder="185" step="5" min="0"></div>
-    <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="boat-notes" style="min-height:60px;"></textarea></div>
+    <div class="form-group"><label class="form-label" for="boat-fuel-price">Prix carburant (CFP/L)</label><input type="number" class="form-input" id="boat-fuel-price" placeholder="185" step="5" min="0"></div>
+    <div class="form-group"><label class="form-label" for="boat-notes">Notes</label><textarea class="form-textarea" id="boat-notes" style="min-height:60px;"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:.5rem;">
       <button class="btn btn-secondary" onclick="closeModal('modal-boat')">Annuler</button>
       <button class="btn btn-primary" onclick="saveBoat()">Enregistrer</button>
@@ -900,15 +900,15 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
     <!-- ── Bloc 1 : Logistique ── -->
     <div class="form-row-3">
       <div class="form-group">
-        <label class="form-label">Date</label>
+        <label class="form-label" for="f-date">Date</label>
         <input type="date" class="form-input" id="f-date" onchange="updateShomLink()">
       </div>
       <div class="form-group">
-        <label class="form-label">Heure</label>
+        <label class="form-label" for="f-session-hour">Heure</label>
         <select class="form-select" id="f-session-hour"></select>
       </div>
       <div class="form-group">
-        <label class="form-label">Durée (h)</label>
+        <label class="form-label" for="f-duration">Durée (h)</label>
         <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12" oninput="updateFuelEstimate()">
       </div>
     </div>
@@ -918,7 +918,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
       ci-dessous (plus précis) — sinon, saisie manuelle.
     </div>
     <div class="form-group">
-      <label class="form-label">Spot</label>
+      <label class="form-label" for="f-spot">Spot</label>
       <select class="form-select" id="f-spot" onchange="handleSpotChange(this)">
         <option value="">— Choisir —</option>
         <option value="Ilot Ténia">Ilot Ténia</option>
@@ -954,7 +954,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Bateau</label>
+      <label class="form-label" for="f-boat-id">Bateau</label>
       <select class="form-select" id="f-boat-id" onchange="updateFuelEstimate()">
         <option value="">-- Choisir --</option>
       </select>
@@ -962,17 +962,17 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
     <div id="fuel-estimate" style="font-size:12px;color:var(--accent);margin:-4px 0 8px;min-height:16px;"></div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Mise à l'eau</label>
+        <label class="form-label" for="f-launch">Mise à l'eau</label>
         <input type="text" class="form-input" id="f-launch" placeholder="ex: Tomo, Port Ouenghi">
       </div>
       <div class="form-group">
-        <label class="form-label">Distance A/R (nm)</label>
+        <label class="form-label" for="f-distance">Distance A/R (nm)</label>
         <input type="number" class="form-input" id="f-distance" placeholder="12" step="0.5" min="0" oninput="updateFuelEstimate()">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Contexte</label>
+        <label class="form-label" for="f-context">Contexte</label>
         <select class="form-select" id="f-context">
           <option value="">—</option>
           <option value="WE">Week-end</option>
@@ -982,7 +982,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Nb surfeurs</label>
+        <label class="form-label" for="f-nb-surfers">Nb surfeurs</label>
         <input type="number" class="form-input" id="f-nb-surfers" placeholder="3" step="1" min="1" max="12" oninput="updateFuelEstimate()">
       </div>
     </div>
@@ -1005,7 +1005,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 
           </div>
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">Période (s)</label>
+            <label class="form-label" for="f-period">Période (s)</label>
             <input type="number" class="form-input" id="f-period" placeholder="14" step="0.5" min="0">
           </div>
           <div class="form-group" style="margin-bottom:10px;">
@@ -1025,7 +1025,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
         </div>
         <div class="form-row-3">
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">Vent (nds)</label>
+            <label class="form-label" for="f-wind">Vent (nds)</label>
             <input type="number" class="form-input" id="f-wind" placeholder="5" step="1" min="0">
           </div>
           <div class="form-group" style="margin-bottom:10px;">
@@ -1181,12 +1181,12 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 
     <!-- ── Bloc 3 : Surf ── -->
     <div class="form-group">
-      <label class="form-label">Planche</label>
+      <label class="form-label" for="f-board">Planche</label>
       <input type="text" class="form-input" id="f-board" placeholder="ex: Pukas, Pyzel…" list="boards-list">
       <datalist id="boards-list"></datalist>
     </div>
     <div class="form-group">
-      <label class="form-label">Prix bateau (CFP)</label>
+      <label class="form-label" for="f-price">Prix bateau (CFP)</label>
       <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
     </div>
     <div class="form-group">
@@ -1228,11 +1228,11 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Session partagée avec</label>
+      <label class="form-label" for="f-shared-with">Session partagée avec</label>
       <input type="text" class="form-input" id="f-shared-with" placeholder="ex: Lucas, Raph (séparé par virgule)">
     </div>
     <div class="form-group">
-      <label class="form-label">Observations</label>
+      <label class="form-label" for="f-obs">Observations</label>
       <textarea class="form-textarea" id="f-obs" placeholder="Conditions, anecdotes, ressenti…"></textarea>
     </div>
     <!-- Barre d'actions COLLANTE (29/07/2026) : le formulaire fait ~3400 px de
@@ -1776,6 +1776,27 @@ async function onLogin(user) {
 }
 
 // ══ SESSIONS ══
+// ── Cache des lectures « toutes sessions » ───────────────────────────────────
+// showPage() relance un chargement à CHAQUE clic d'onglet, et Groupe / Spots /
+// Classement / Stats-groupe font chacun leur propre `select('*')` sur la table
+// entière : naviguer entre quatre onglets retéléchargeait quatre fois le même
+// jeu de données. On mémorise la réponse quelques secondes, invalidée dès la
+// moindre écriture (_bumpData) — donc jamais de donnée périmée après un ajout,
+// une suppression ou une modification, qui sont les seuls moments où l'affichage
+// DOIT changer. TTL court volontairement : le multi-utilisateur (sessions du
+// groupe) doit rester vivant.
+var _dataVersion = 0;
+var _queryCache = {};
+function _bumpData() { _dataVersion++; _queryCache = {}; }
+function _cachedQuery(key, ttlMs, fetcher) {
+  var hit = _queryCache[key];
+  if (hit && hit.v === _dataVersion && (Date.now() - hit.t) < ttlMs) return Promise.resolve(hit.d);
+  return Promise.resolve(fetcher()).then(function (d) {
+    _queryCache[key] = { d: d, t: Date.now(), v: _dataVersion };
+    return d;
+  });
+}
+
 async function loadMySessions() {
   if (!sb || !currentUser) { renderSessionsList([]); renderDashStats([]); return; }
   try {
@@ -1870,7 +1891,7 @@ function renderCrewView() {
     var looksLikeSpot = typeof _lookupSpotStation === 'function' && !!_lookupSpotStation(name);
     html += '<div class="card crew-card" data-name="'+escapeHtml(name)+'" style="cursor:pointer;transition:all .2s;'+(looksLikeSpot?'border-color:rgba(232,160,87,.5);':'')+'">'
       + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
-      + '<div style="width:38px;height:38px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:hsl('+hue+',60%,70%);flex-shrink:0;">'+initials+'</div>'
+      + '<div style="width:38px;height:38px;border-radius:50%;background:hsl('+hue+',45%,25%);border:1.5px solid hsl('+hue+',50%,40%);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:hsl('+hue+',60%,70%);flex-shrink:0;">'+escapeHtml(initials)+'</div>'
       + '<div><div style="font-weight:600;font-size:14px;">'+escapeHtml(name)+(looksLikeSpot?' <span title="Ce nom correspond à un spot connu — erreur de saisie possible (champ Surfeurs au lieu du champ Spot) ?" style="cursor:help;font-size:11px;">⚠️</span>':'')+'</div>'
       + '<div style="font-size:10px;color:var(--text-muted);">Dernière session : '+lastStr+'</div></div></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;">'
@@ -1880,7 +1901,7 @@ function renderCrewView() {
       + '</div>'
       + '<div style="margin-top:8px;font-size:10px;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap;">'
       + '<span>⏱ '+hh+'h'+(mm>0?mm:'')+'</span>'
-      + (topSpot ? '<span>📍 '+topSpot[0]+'</span>' : '')
+      + (topSpot ? '<span>📍 '+escapeHtml(topSpot[0])+'</span>' : '')
       + '</div></div>';
   });
   html += '</div>';
@@ -1892,7 +1913,7 @@ function renderCrewView() {
     html += '<tr><th style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);"></th>';
     names.forEach(function(n){
       var initials2 = n.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
-      html += '<th style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);color:var(--text-muted);">'+initials2+'</th>';
+      html += '<th style="padding:6px 8px;background:var(--mid);border:1px solid var(--border);color:var(--text-muted);">'+escapeHtml(initials2)+'</th>';
     });
     html += '</tr>';
     names.forEach(function(a) {
@@ -1952,6 +1973,7 @@ async function _sessionSharedWithUpdate(sessionId, mutate) {
   // bloque silencieusement (0 ligne modifiée) — sans ça, renameCrewMember/
   // removeCrewMember pouvaient afficher "renommé ✓" sans rien avoir écrit.
   var res = await sb.from('sessions').update({ shared_with: next }).eq('id', sessionId).select('id');
+  _bumpData();
   if (res && res.error) return { error: res.error };
   if (!res.data || !res.data.length) return { error: { message: 'Aucune ligne modifiée (droits insuffisants ou session introuvable)' } };
   return { data: next };
@@ -3564,10 +3586,12 @@ async function saveSession() {
       // retour, un update qui n'a RIEN écrit semblait quand même réussi (même
       // piège déjà corrigé sur saveProfileData/saveModelReliabilityFromJournal).
       var updRes = await sb.from('sessions').update(payload).eq('id', editingSessionId).select('id');
+      _bumpData();   // toute lecture « toutes sessions » doit repartir du serveur
       error = updRes.error;
       if (!error && (!updRes.data || !updRes.data.length)) error = { message: 'Aucune ligne modifiée (droits insuffisants ou session introuvable)' };
     } else {
       ({ error } = await sb.from('sessions').insert(payload));
+      _bumpData();
     }
     if (btn) { btn.textContent = 'Enregistrer'; btn.disabled = false; }
     if (error) {
@@ -3748,7 +3772,7 @@ async function saveModelReliabilityFromJournal(sessionId, vote) {
   if (sb && await _hasModelReliabilityColumnJournal()) {
     // .select() pour vérifier qu'une ligne a bien été modifiée — supabase-js
     // ne remonte pas d'erreur sur un update RLS-bloqué à 0 ligne affectée.
-    try { var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sessionId).select('id'); if (!r.error && r.data && r.data.length) return true; } catch (e) {}
+    try { var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sessionId).select('id'); if (!r.error && r.data && r.data.length) { _bumpData(); return true; } } catch (e) {}
   }
   try {
     var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
@@ -3784,7 +3808,7 @@ async function _migrateLocalVotesToSupabase() {
     // Déjà en base (voté depuis un autre appareil entre-temps) : on ne réécrase pas.
     if (sess.model_reliability) { continue; }
     var ok = false;
-    try { var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sid).select('id'); ok = !r.error && r.data && r.data.length; } catch (e) {}
+    try { var r = await sb.from('sessions').update({ model_reliability: vote }).eq('id', sid).select('id'); ok = !r.error && r.data && r.data.length; if (ok) _bumpData(); } catch (e) {}
     if (ok) { sess.model_reliability = vote; migrated++; }
     else { remaining[sid] = vote; } // échec (RLS/réseau) → garder le repli local
   }
@@ -4637,7 +4661,7 @@ async function openDetail(id) {
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
       <span style="font-size:1.1rem;color:var(--star);">${stars}</span>
       ${s.duration_h ? `<span class="badge badge-accent">${s.duration_h}h à l'eau</span>` : ''}
-      ${s.context ? `<span class="badge" style="background:var(--glass);color:var(--text-muted);">${s.context}</span>` : ''}
+      ${s.context ? `<span class="badge" style="background:var(--glass);color:var(--text-muted);">${escapeHtml(s.context)}</span>` : ''}
       ${s.is_shared ? `<span class="badge badge-tube">partagée</span>` : ''}
     </div>
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem;">${dateStr}</div>
@@ -4715,6 +4739,7 @@ async function deleteSession(id) {
     // bloquée par la RLS renvoie 0 ligne supprimée SANS erreur — sans ça,
     // "Session supprimée" pouvait s'afficher alors qu'elle existe toujours.
     const { error, data } = await sb.from('sessions').delete().eq('id', id).select('id');
+    _bumpData();
     if (error) { showToast('Erreur : ' + error.message, 'error'); return; }
     if (!data || !data.length) { showToast('Suppression refusée (droits insuffisants ?)', 'error'); return; }
     closeModal('modal-detail');
@@ -4726,7 +4751,9 @@ async function deleteSession(id) {
 // ══ GROUP SESSIONS ══
 async function loadGroupSessions() {
   if (!sb) { document.getElementById('group-list').innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Configure Supabase d\'abord</div></div>'; return; }
-  const { data } = await sb.from('sessions').select('*').eq('is_shared', true).order('date', { ascending: false });
+  const data = await _cachedQuery('group', 45000, function () {
+    return sb.from('sessions').select('*').eq('is_shared', true).order('date', { ascending: false }).then(function (r) { return r.data; });
+  });
   const sessions = data || [];
   const el = document.getElementById('group-list');
   if (!sessions.length) {
@@ -4750,8 +4777,9 @@ async function loadStats(mode) {
   if (mode === 'me') {
     sessions = allSessions;
   } else {
-    const { data } = await sb.from('sessions').select('*').order('date', { ascending: false });
-    sessions = data || [];
+    sessions = (await _cachedQuery('allSessionsOrdered', 45000, function () {
+      return sb.from('sessions').select('*').order('date', { ascending: false }).then(function (r) { return r.data; });
+    })) || [];
   }
   renderStats(sessions, el);
 }
@@ -5463,7 +5491,12 @@ async function applyAlias(text, userId) {
   // Même correctif que sorties.html::addAlias.
   if (sb) {
     try {
-      var delRes = await sb.from('aliases').delete().eq('alias_text', text);
+      // .select() indispensable : sans lui, un delete bloqué par RLS n'affecte
+      // 0 ligne et ne lève AUCUNE erreur (supabase-js ne throw pas) — l'ancien
+      // alias survivait alors en base et le insert qui suit créait le doublon que
+      // ce delete est justement là pour éviter. Le cas « 0 ligne » est normal au
+      // premier enregistrement d'un alias : on ne le signale donc pas.
+      var delRes = await sb.from('aliases').delete().eq('alias_text', text).select('alias_text');
       if (delRes && delRes.error) { console.warn('[alias] delete refusé:', delRes.error.message); }
       var insRes = await sb.from('aliases').insert({ alias_text: text, user_id: userId, created_by: currentUser.id });
       if (insRes && insRes.error) {
@@ -5766,8 +5799,8 @@ async function openUserProfile(userId) {
   modal.innerHTML = '<div style="background:var(--deep);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;margin-top:4vh;">'
     // Entête
     +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">'
-    +'<div style="width:52px;height:52px;border-radius:50%;background:var(--mid);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:var(--accent);">'+name[0].toUpperCase()+'</div>'
-    +'<div><div style="font-size:1.15rem;font-weight:600;">'+name+'</div>'
+    +'<div style="width:52px;height:52px;border-radius:50%;background:var(--mid);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:var(--accent);">'+escapeHtml(name[0].toUpperCase())+'</div>'
+    +'<div><div style="font-size:1.15rem;font-weight:600;">'+escapeHtml(name)+'</div>'
     +'<div style="font-size:11px;color:var(--text-muted);">'+sessions.length+' session'+(sessions.length>1?'s':'')+' partagée'+(sessions.length>1?'s':'')+'</div></div>'
     +'<button class="upm-close" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:22px;padding:0 4px;">×</button>'
     +'</div>'
@@ -6316,6 +6349,62 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
 });
 
+// ── Fermeture des modales : Échap + bouton retour Android ────────────────────
+// La modale « Ajouter session » est le formulaire le plus long de l'app, et le
+// manifest déclare display:standalone : sans rien pour intercepter le retour, un
+// appui sur le bouton retour Android QUITTAIT la PWA et perdait toute la saisie.
+// On pousse donc une entrée d'historique à l'ouverture, et le retour la consomme
+// pour ne fermer que la modale. Échap fait la même chose au clavier.
+function _topOpenModal() {
+  var alias = document.getElementById('alias-modal');   // créée à la volée par showAliasTool
+  if (alias) return alias;
+  var open = document.querySelectorAll('.modal-overlay.open');
+  return open.length ? open[open.length - 1] : null;    // la dernière ouverte = la plus haute
+}
+
+function closeTopModal() {
+  var m = _topOpenModal();
+  if (!m) return false;
+  if (m.id === 'alias-modal') m.remove(); else m.classList.remove('open');
+  return true;
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape' && e.key !== 'Esc') return;
+  // Ne pas voler Échap à un <select> déroulé ou à une saisie en cours de composition
+  // (claviers à composition : Échap y annule la saisie, pas la modale).
+  if (e.isComposing) return;
+  if (closeTopModal()) e.preventDefault();
+});
+
+// Une seule entrée d'historique à la fois, retirée dès que la modale se ferme —
+// sinon empiler pousserait l'utilisateur à appuyer plusieurs fois sur retour.
+var _modalHistoryPushed = false;
+function _syncModalHistory() {
+  var open = !!_topOpenModal();
+  if (open && !_modalHistoryPushed) {
+    try { history.pushState({ modal: true }, ''); _modalHistoryPushed = true; } catch (e) {}
+  } else if (!open && _modalHistoryPushed) {
+    _modalHistoryPushed = false;
+    try { history.back(); } catch (e) {}
+  }
+}
+window.addEventListener('popstate', function () {
+  // L'entrée vient d'être consommée par le retour : ne pas la retirer une 2e fois.
+  if (_modalHistoryPushed) { _modalHistoryPushed = false; closeTopModal(); }
+});
+// Les modales s'ouvrent/ferment par classe depuis une douzaine d'endroits : plutôt
+// que d'aller instrumenter chacun, on observe l'attribut class des overlays et
+// l'ajout/retrait de #alias-modal. Un seul point de vérité, rien à oublier ensuite.
+(function () {
+  if (typeof MutationObserver !== 'function') return;
+  var mo = new MutationObserver(function () { _syncModalHistory(); });
+  document.querySelectorAll('.modal-overlay').forEach(function (o) {
+    mo.observe(o, { attributes: true, attributeFilter: ['class'] });
+  });
+  if (document.body) mo.observe(document.body, { childList: true });
+})();
+
 
 // ══ SHOM LINK ══
 function updateShomLink() {
@@ -6679,11 +6768,21 @@ function _populateCustomSpots() {
 }
 
 // ══ SPOTS PAGE ══
+// Pente du tombant (β, degrés) par spot, pour le nombre d'Iribarren ξ affiché plus
+// bas. ⚠ Ces valeurs sont des ESTIMATIONS À VUE, pas des relevés bathymétriques :
+// aucune mesure ne les appuie, et rien dans le projet ne permet de les vérifier
+// aujourd'hui. Elles sont conservées parce qu'elles classent correctement les spots
+// entre eux (déferlement glissant ↔ plongeant), ce qui est le seul usage qu'on en
+// fait — mais ξ ne doit pas être lu comme une grandeur mesurée.
+// Les spots absents de cette table (tous ceux ajoutés par les utilisateurs) prennent
+// SPOT_SLOPE_DEFAULT : l'UI le signale désormais au lieu de présenter le résultat
+// avec la même assurance qu'un spot renseigné.
 const SPOT_SLOPES = {
   'Grand bac':6,'Petit U':9,'Gros nem':8,'Fausse passe Dumbéa':7,
   'Gauche de Dumbéa':10,'Droite de Dumbéa':8,'La roche percée':5,
   'Ouano':7,'Skatepark':8,'Trois cailloux':6
 };
+const SPOT_SLOPE_DEFAULT = 8;
 
 function calcXi(hs, T, beta) {
   if (!hs || !T || hs <= 0 || T <= 0) return null;
@@ -6695,8 +6794,9 @@ let spotsGroupData = [];
 
 async function loadSpotsPage() {
   if (sb) {
-    const { data } = await sb.from('sessions').select('*');
-    spotsGroupData = data || [];
+    spotsGroupData = (await _cachedQuery('allSessions', 45000, function () {
+      return sb.from('sessions').select('*').then(function (r) { return r.data; });
+    })) || [];
   } else {
     spotsGroupData = allSessions;
   }
@@ -6714,8 +6814,12 @@ async function loadSpotsPage() {
   window._spotNames = [...spots];
   document.getElementById('spots-selector').innerHTML =
     window._spotNames.map(function(sp, i) {
+      // escapeHtml sur le LIBELLÉ : passer par window._spotNames[i] protégeait déjà
+      // l'attribut onclick (c'était l'objet du commentaire ci-dessus), mais le texte
+      // du bouton, lui, était injecté brut. Les noms de spots sont en saisie libre et
+      // partagés entre membres du groupe : un nom piégé s'exécutait chez les autres.
       return '<button class="btn btn-sm btn-secondary" style="white-space:nowrap" ' +
-        'onclick="showSpotDetail(window._spotNames[' + i + '])">' + sp + '</button>';
+        'onclick="showSpotDetail(window._spotNames[' + i + '])">' + escapeHtml(sp) + '</button>';
     }).join('');
   document.getElementById('spots-content').innerHTML =
     '<div class="empty"><div class="empty-icon">📍</div><div class="empty-title">Sélectionne un spot ci-dessus</div></div>';
@@ -6740,7 +6844,10 @@ function showSpotDetail(spotName) {
     return;
   }
 
-  const beta = SPOT_SLOPES[spotName] || 8;
+  // hasOwnProperty et non `|| 8` : une pente renseignée à 0 aurait basculé sur le
+  // défaut sans qu'on le sache (même piège que les zéros du formulaire).
+  const betaKnown = Object.prototype.hasOwnProperty.call(SPOT_SLOPES, spotName);
+  const beta = betaKnown ? SPOT_SLOPES[spotName] : SPOT_SLOPE_DEFAULT;
   const n = sessions.length;
   const qSess = sessions.filter(s => s.quality);
   const avgQ = qSess.length ? (qSess.reduce((a,x) => a + x.quality, 0) / qSess.length).toFixed(1) : '—';
@@ -6765,8 +6872,13 @@ function showSpotDetail(spotName) {
 
   el.innerHTML =
     '<div style="margin-bottom:1rem;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
-      '<div><h2 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:4px;">' + spotName + '</h2>' +
-      '<span style="font-size:12px;color:var(--text-muted);">Pente β ≈ ' + beta + '° · ξ moy = ' + avgXi + ' · ' + deflType + '</span></div>' +
+      '<div><h2 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:4px;">' + escapeHtml(spotName) + '</h2>' +
+      // Dire d'où vient β : une pente estimée à vue et une pente par défaut ne
+      // valent pas une mesure, et ξ affiché à deux décimales le laissait croire.
+      '<span style="font-size:12px;color:var(--text-muted);">Pente β ≈ ' + beta + '° '
+        + (betaKnown ? '<span title="Pente estimée à vue, non mesurée">(estimée)</span>'
+                     : '<span title="Aucune pente renseignée pour ce spot : valeur par défaut" style="color:var(--accent-warm);">(défaut — spot non renseigné)</span>')
+        + ' · ξ moy = ' + avgXi + ' · ' + deflType + '</span></div>' +
     '</div>' +
     '<div class="stats-grid" style="margin-bottom:1.5rem;">' +
       '<div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value">' + n + '</div></div>' +
@@ -7225,7 +7337,7 @@ async function loadRanking() {
   if(!sb){el.innerHTML='<div class="empty"><div class="empty-title">Configure Supabase</div></div>';return;}
   el.innerHTML='<div class="loading-state"><div class="spinner"></div></div>';
   var allData=[],profileMap={};
-  try{var sr=await sb.from('sessions').select('*');allData=(sr&&sr.data)||[];}catch(e){console.warn(e);}
+  try{allData=(await _cachedQuery('allSessions',45000,function(){return sb.from('sessions').select('*').then(function(r){return r.data;});}))||[];}catch(e){console.warn(e);}
   try{var pr=await sb.from('profiles').select('id,username');
     if(pr&&pr.data)pr.data.forEach(function(p){profileMap[p.id]=p.username||p.id.slice(0,8);});
   }catch(e){console.warn('profiles RLS:',e);}
@@ -7309,11 +7421,11 @@ function _fmtMeta(s) {
   var parts = [];
   if (s.hs) parts.push('Hs ' + s.hs + 'm');
   if (s.period) parts.push(s.period + 's');
-  if (s.context) parts.push(s.context);
+  if (s.context) parts.push(escapeHtml(s.context));
   var txt = parts.join(' · ');
   var badges = '';
   if (s.swell_dir && s.swell_dir !== '?' && s.swell_dir !== '—') {
-    badges += ' <span style="font-size:10px;color:#4fa3c7;background:rgba(79,163,199,0.15);padding:1px 5px;border-radius:4px;">' + s.swell_dir + '</span>';
+    badges += ' <span style="font-size:10px;color:#4fa3c7;background:rgba(79,163,199,0.15);padding:1px 5px;border-radius:4px;">' + escapeHtml(s.swell_dir) + '</span>';
   }
   if (s.wind_kts) {
     var wc = s.wind_kts < 10 ? '#3dba8a' : s.wind_kts < 20 ? '#e8a057' : '#e05c5c';
@@ -7657,6 +7769,7 @@ async function saveBoat(){
   // .select() indispensable sur l'update : supabase-js ne lève pas d'erreur si
   // la RLS bloque silencieusement (0 ligne modifiée) — même piège que saveSession.
   var res=id?await sb.from('boats').update(payload).eq('id',id).select('id'):await sb.from('boats').insert(payload);
+  _bumpData();
   if(res.error){showToast('Erreur : '+res.error.message,'error');return;}
   if(id&&(!res.data||!res.data.length)){showToast('Aucune modification enregistrée (droits insuffisants ?)','error');return;}
   showToast(id?'Bateau mis à jour !':'Bateau ajouté !','success');
