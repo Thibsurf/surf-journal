@@ -95,7 +95,7 @@ nav {
   transition: all .2s; white-space: nowrap;
 }
 .nav-btn:hover { color: var(--text); background: var(--glass); }
-.nav-btn.active { color: var(--accent); }
+.nav-btn.active { color: var(--accent); background: rgba(79,163,199,.12); font-weight: 500; }
 .nav-btn.primary {
   background: var(--accent); color: var(--ocean);
   font-weight: 500; padding: 6px 14px;
@@ -432,16 +432,32 @@ nav {
   .stats-2col { grid-template-columns: 1fr; }
   nav { padding: 0 1rem; }
   .container, .container-wide { padding: 1.5rem 1rem; }
+  #nav-new-session-btn { display: none; }
+  /* « + Session » est masqué de la barre faute de place : le relayer DANS le menu
+     déroulant, sinon l'action principale de l'app devenait injoignable dès qu'on
+     n'était pas sur le dashboard (3 taps : menu → Mes sessions → + Ajouter). */
+  #nav-menu-newsession { display: block; }
+}
+
+/* Bascule en menu déroulant tant que la barre complète ne tient pas en largeur.
+   Mesuré au moment du correctif : la nav (logo + 9 entrées + « + Session » +
+   pastille token + avatar) réclame 1237 px. Le seuil hamburger était resté à
+   600 px, donc de 601 px à ~1250 px la barre débordait et faisait scroller
+   HORIZONTALEMENT toute la page (document.documentElement.scrollWidth 1237 vs
+   clientWidth 585 à 601 px) — tablettes, iPad et fenêtres non maximisées.
+   1280 laisse une marge sur les 1237 mesurés (la largeur dépend des polices
+   Google réellement chargées, qu'on ne veut pas voir décider du seuil). */
+@media (max-width: 1280px) {
   .nav-menu-btns {
     display: none; flex-direction: column; position: fixed;
     top: 56px; left: 0; right: 0; background: rgba(10,22,40,.98);
     border-bottom: 1px solid var(--border);
     padding: 8px; gap: 2px; z-index: 999;
+    max-height: calc(100vh - 56px); overflow-y: auto;
   }
   .nav-menu-btns.open { display: flex; }
   .nav-menu-btns .nav-btn { text-align: left; padding: 10px 12px; font-size: 13px; border-radius: var(--radius-sm); }
   .nav-hamburger-btn { display: flex !important; }
-  #nav-new-session-btn { display: none; }
 }
 .nav-hamburger-btn {
   display: none;
@@ -501,20 +517,23 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
     <span>Coups de surf <span>NC</span>
   </a>
   <a href="https://thibsurf.github.io/surf-journal/previsions.html" class="nav-quick-btn" title="Prévisions" aria-label="Prévisions">🌊</a>
-  <!-- Desktop nav buttons (masqués sur mobile) -->
+  <!-- Boutons de nav (repliés dans le menu ☰ sous 1280px, cf. la media query) -->
   <div class="nav-menu-btns" id="nav-menu-btns">
-    <button class="nav-btn" onclick="showPage('dashboard');closeIndexMenu()">Mes sessions</button>
-    <button class="nav-btn" onclick="showPage('group');closeIndexMenu()">Groupe</button>
-    <button class="nav-btn" onclick="showPage('spots');closeIndexMenu()">Spots</button>
-    <button class="nav-btn" onclick="showPage('ranking');closeIndexMenu()">Classement</button>
-    <button class="nav-btn" onclick="showPage('boats');closeIndexMenu()">Bateaux</button>
-    <button class="nav-btn" onclick="showPage('stats');closeIndexMenu()">Stats</button>
+    <button class="nav-btn" data-page="dashboard" onclick="showPage('dashboard');closeIndexMenu()">Mes sessions</button>
+    <button class="nav-btn" data-page="group" onclick="showPage('group');closeIndexMenu()">Groupe</button>
+    <button class="nav-btn" data-page="spots" onclick="showPage('spots');closeIndexMenu()">Spots</button>
+    <button class="nav-btn" data-page="ranking" onclick="showPage('ranking');closeIndexMenu()">Classement</button>
+    <button class="nav-btn" data-page="boats" onclick="showPage('boats');closeIndexMenu()">Bateaux</button>
+    <button class="nav-btn" data-page="stats" onclick="showPage('stats');closeIndexMenu()">Stats</button>
     <a href="https://thibsurf.github.io/surf-journal/previsions.html"
        class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">🌊 Prévisions</a>
     <a href="https://thibsurf.github.io/surf-journal/sorties.html"
        class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">🏄 Sorties</a>
     <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html"
        class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">⛽ Marine Fuel – Pro</a>
+    <!-- Relais de « + Session » quand la barre le masque (≤600px) — display:block
+         posé par la media query, sinon l'entrée ferait doublon sur desktop. -->
+    <button class="nav-btn primary" id="nav-menu-newsession" style="display:none;margin-top:4px;" onclick="closeIndexMenu();openAddSession()">+ Session</button>
   </div>
   <button class="nav-btn primary" id="nav-new-session-btn" onclick="openAddSession()">+ Session</button>
   <div id="nav-token-dot" title="Token meteo.nc : —" style="width:9px;height:9px;border-radius:50%;background:var(--border);flex-shrink:0;cursor:default;transition:background .3s;"></div>
@@ -1688,8 +1707,14 @@ async function onLogin(user) {
   const initials = (currentProfile.username || '?')[0].toUpperCase();
   document.getElementById('nav-avatar').textContent = initials;
 
-  // 🔥 Affichage dashboard (sans dépendre de showPage)
+  // 🔥 Affichage dashboard (sans dépendre de showPage : celui-ci relancerait
+  // loadMySessions alors que onLogin charge déjà tout plus bas)
   document.getElementById('page-dashboard').classList.add('active');
+  // …mais l'onglet actif, lui, doit quand même être marqué — sinon la nav
+  // n'indique rien tant qu'on n'a pas cliqué une première fois.
+  document.querySelectorAll('.nav-btn:not(.primary)').forEach(function(b){ b.classList.remove('active'); });
+  var _navDash = document.querySelector('.nav-btn[data-page="dashboard"]');
+  if (_navDash) _navDash.classList.add('active');
 
   // Charger données
   if (typeof loadBoats === "function") {
@@ -3349,6 +3374,20 @@ function _updateObsDeltaRef() {
   if (windRef) windRef.textContent = (wEl && wEl.value) ? '(' + Math.round(+wEl.value) + ' nds)' : '';
 }
 
+// Lit un champ numérique du formulaire en distinguant « 0 » de « vide ».
+// L'idiome précédent (parseFloat(el.value) || null) écrasait TOUTE valeur nulle :
+// un vent à 0 nds — le glassy, la condition qu'on cherche justement à retrouver
+// dans les stats — était enregistré comme « non renseigné », au même titre qu'une
+// hauteur 0, une distance 0 ou une sortie gratuite (0 CFP).
+function _numField(id, asInt) {
+  var el = document.getElementById(id);
+  if (!el) return null;
+  var raw = String(el.value == null ? '' : el.value).trim();
+  if (raw === '') return null;
+  var n = asInt ? parseInt(raw, 10) : parseFloat(raw);
+  return isNaN(n) ? null : n;
+}
+
 async function saveSession() {
   const btn = document.getElementById('btn-save-session');
   try {
@@ -3364,19 +3403,19 @@ async function saveSession() {
       date: dateVal,
       boat_id: document.getElementById('f-boat-id')?(document.getElementById('f-boat-id').value||null):null,
       spot: spotVal,
-      distance_nm: document.getElementById('f-distance')?(parseFloat(document.getElementById('f-distance').value)||null):null,
-      nb_surfers: document.getElementById('f-nb-surfers')?(parseInt(document.getElementById('f-nb-surfers').value)||null):null,
+      distance_nm: _numField('f-distance'),
+      nb_surfers: _numField('f-nb-surfers', true),
       launch_point: document.getElementById('f-launch').value.trim(),
       context: document.getElementById('f-context').value,
-      duration_h: parseFloat(document.getElementById('f-duration').value) || null,
-      hs: parseFloat(document.getElementById('f-hs').value) || null,
-      period: parseFloat(document.getElementById('f-period').value) || null,
+      duration_h: _numField('f-duration'),
+      hs: _numField('f-hs'),
+      period: _numField('f-period'),
       swell_dir: document.getElementById('f-swell-dir').value.trim() || null,
-      wind_kts: parseFloat(document.getElementById('f-wind').value) || null,
+      wind_kts: _numField('f-wind'),
       wind_dir: document.getElementById('f-wind-dir').value.trim() || null,
       tide: document.getElementById('f-tide').value.trim() || null,
       board: document.getElementById('f-board').value.trim() || null,
-      price_cfp: parseInt(document.getElementById('f-price').value) || null,
+      price_cfp: _numField('f-price', true),
       quality: selectedQuality || null,
       moves: selectedMoves,
       tube_count: selectedMoves.includes('tube') ? (selectedTubeCount || 1) : 0,
@@ -5049,7 +5088,13 @@ function renderStats(sessions, el) {
       data:{labels:spotsSorted.map(([s])=>s.length>14?s.slice(0,13)+'…':s),datasets:[{data:spotsSorted.map(([,v])=>v.count),backgroundColor:'#7b6cf6aa',borderRadius:4}]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',stepSize:1},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#7a94aa',font:{size:11}}}}}
     });
-    const qualSessions = sessions.filter(s=>s.quality).slice(-30);
+    // `sessions` arrive trié date DESC (loadMySessions / loadStats : .order('date',
+    // {ascending:false})) — un .slice(-30) prenait donc la QUEUE du tableau, c'est-à-dire
+    // les 30 sessions les plus ANCIENNES, et les traçait de récent à ancien. Sur 48
+    // sessions de test, tout juillet/août était invisible et la moyenne mobile
+    // (slice(i-4,i+1)) lissait vers le futur. slice(0,30) = les 30 dernières, .reverse()
+    // remet l'axe X dans le sens du temps, cohérent avec « Sessions par mois » juste à côté.
+    const qualSessions = sessions.filter(s=>s.quality).slice(0,30).reverse();
     try{var _e=Chart.getChart(document.getElementById('stat-qual-chart'));if(_e)_e.destroy();}catch(_){}
     new Chart(document.getElementById('stat-qual-chart'), {
       type:'line',
@@ -5057,7 +5102,12 @@ function renderStats(sessions, el) {
         {data:qualSessions.map(s=>s.quality),borderColor:'#4fa3c7',backgroundColor:'rgba(79,163,199,0.07)',borderWidth:1.5,pointRadius:3,pointBackgroundColor:qualSessions.map(s=>['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'][s.quality||0]),fill:true,tension:.3},
         {data:qualSessions.map((_,i,a)=>{const sl=a.slice(Math.max(0,i-4),i+1);return +(sl.reduce((s,x)=>s+x.quality,0)/sl.length).toFixed(2);}),borderColor:'#e8a057',borderWidth:2,borderDash:[5,3],pointRadius:0,fill:false,tension:.4}
       ]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',font:{size:10},maxRotation:45,autoSkip:true,maxTicksLimit:8}},y:{min:.5,max:5.5,ticks:{stepSize:1,color:'#7a94aa',callback:v=>Math.round(v)+'★'},grid:{color:'rgba(255,255,255,0.05)'}}}}
+      // afterBuildTicks : avec min .5 / max 5.5, Chart.js posait ses graduations sur
+      // 0.5, 1.5 … 5.5, que le callback arrondissait en 1★…6★ — d'où un « 6★ » sur une
+      // note /5, et surtout un décalage d'un demi-cran de TOUTES les graduations (un
+      // point à 3★ tombait entre les libellés 3★ et 4★). Les bornes .5/5.5 sont gardées
+      // (elles donnent de l'air au tracé), mais les graduations sont imposées aux entiers.
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7a94aa',font:{size:10},maxRotation:45,autoSkip:true,maxTicksLimit:8}},y:{min:.5,max:5.5,afterBuildTicks:function(axis){axis.ticks=[1,2,3,4,5].map(function(v){return {value:v};});},ticks:{color:'#7a94aa',callback:v=>v+'★'},grid:{color:'rgba(255,255,255,0.05)'}}}}
     });
   }, 300);
 }
@@ -6133,9 +6183,17 @@ document.addEventListener('click', function(e) {
 });
 
 function showPage(name) {
+  var pageEl = document.getElementById('page-' + name);
+  if (!pageEl) { console.warn('[showPage] page inconnue :', name); return; }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
+  pageEl.classList.add('active');
+  // .nav-btn.active existe en CSS (couleur accent) mais n'était jamais POSÉ : le code
+  // se contentait de le retirer, donc aucune des 9 entrées n'indiquait jamais où on
+  // se trouvait. data-page relie chaque bouton à sa page (le libellé ne suffit pas :
+  // « Mes sessions » ≠ 'dashboard').
   document.querySelectorAll('.nav-btn:not(.primary)').forEach(b => b.classList.remove('active'));
+  var navBtn = document.querySelector('.nav-btn[data-page="' + name + '"]');
+  if (navBtn) navBtn.classList.add('active');
   if (name === 'dashboard') { loadMySessions(); }
   if (name === 'group') { loadGroupSessions(); }
   if (name === 'stats') { loadStats('me'); }
@@ -7497,9 +7555,10 @@ async function saveBoat(){
   var payload={
     name:name,
     alias:document.getElementById('boat-alias').value.trim()||null,
-    conso_l_h:parseFloat(document.getElementById('boat-conso').value)||null,
-    tank_l:parseFloat(document.getElementById('boat-tank').value)||null,
-    nb_places:parseInt(document.getElementById('boat-places').value)||null,
+    // même distinction 0 / vide que le formulaire de session, cf. _numField
+    conso_l_h:_numField('boat-conso'),
+    tank_l:_numField('boat-tank'),
+    nb_places:_numField('boat-places', true),
     fuel_type:document.getElementById('boat-fuel').value,
     notes:document.getElementById('boat-notes').value.trim()||null,
   };
