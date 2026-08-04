@@ -5539,27 +5539,116 @@ async function _renderWindTruthBlock() {
       return;
     }
 
+    // ── DIRECTION : sous-figures par modèle, en HTML (pas Chart.js) ──────────
+    // Un radar avait été essayé (04/08/2026) puis retiré : sur une matrice CREUSE
+    // 4 modèles × 5 échéances il produisait trois non-sens à l'écran —
+    //  1. un modèle n'ayant de données que sur deux échéances non voisines (MARC :
+    //     seulement 1-2 j et 2 j +) voyait ses deux points reliés par un trait qui
+    //     traversait la figure sans rien signifier ;
+    //  2. le contour se refermait entre « 2 j + » et « 0-6 h », suggérant une
+    //     continuité entre l'échéance la plus longue et la plus courte alors que
+    //     l'échéance n'est pas cyclique ;
+    //  3. quatre séries remplies se superposaient au centre, exactement là où les
+    //     valeurs sont les plus proches et où il faudrait le plus de lisibilité.
+    // Une petite figure PAR MODÈLE règle les trois : aucune superposition, les
+    // trous restent des trous (affichés « pas de donnée »), et l'échelle commune
+    // permet quand même de comparer les modèles entre eux d'un coup d'œil.
+    if (_windTruthMetric === 'dir') {
+      // Échelle commune à tous les modèles, sinon comparer deux sous-figures n'a
+      // aucun sens. Bornée à 180° (l'erreur ne peut pas dépasser un demi-tour).
+      var maxErr = 0;
+      models.forEach(function(m) {
+        buckets.forEach(function(b) { var a = agg[m][b]; if (a) maxErr = Math.max(maxErr, a.sum / a.n); });
+      });
+      var scaleMax = Math.min(180, Math.max(60, Math.ceil(maxErr / 30) * 30));
+      // Repères de lecture : sous ~20° la prévision est exploitable pour choisir un
+      // spot (on sent la différence entre onshore et cross-shore), au-delà de ~45°
+      // elle ne dit plus de quel côté vient le vent.
+      // Repères posés DANS la piste de chaque barre et non en fond du bloc : l'échelle
+      // ne vaut que sur la colonne de la barre, une bande couvrant aussi les colonnes
+      // « libellé » et « valeur » aurait désigné des positions qui ne veulent rien dire.
+      var marks = '<div style="position:absolute;left:' + (20 / scaleMax * 100) + '%;top:0;bottom:0;width:1px;background:rgba(61,186,138,.55);"></div>'
+        + (45 < scaleMax ? '<div style="position:absolute;left:' + (45 / scaleMax * 100) + '%;top:0;bottom:0;width:1px;background:rgba(224,92,92,.5);"></div>' : '');
+
+      var blocks = models.map(function(m) {
+        var col = WIND_TRUTH_COLORS[m] || '#7a94aa';
+        var nTot = buckets.reduce(function(t, b) { var a = agg[m][b]; return t + (a ? a.n : 0); }, 0);
+        var rows = buckets.map(function(b) {
+          var a = agg[m][b];
+          var lbl = WIND_TRUTH_LEADS[b].label;
+          if (!a) {
+            return '<div style="display:contents;">'
+              + '<span style="color:var(--text-faint);font-size:10px;">' + lbl + '</span>'
+              + '<span style="grid-column:2 / -1;color:var(--text-faint);font-size:10px;font-style:italic;">pas de donnée</span>'
+              + '</div>';
+          }
+          var v = a.sum / a.n;
+          var w = Math.max(1.5, Math.min(100, v / scaleMax * 100));
+          // Biais signé (moyenne vectorielle) : de quel côté, pas seulement combien.
+          var bias = (a.sx != null) ? Math.atan2(a.sx, a.cx) * 180 / Math.PI : null;
+          var biasTxt = '';
+          if (bias != null && Math.abs(bias) >= 3) {
+            biasTxt = '<span title="Le modèle place le vent ' + (bias > 0 ? 'à droite' : 'à gauche')
+              + ' du vent réel, en moyenne" style="color:' + col + ';">'
+              + (bias > 0 ? '▸' : '◂') + ' ' + Math.abs(Math.round(bias)) + '°</span>';
+          } else if (bias != null) {
+            biasTxt = '<span title="Erreur sans côté privilégié : bruit, pas décalage" style="color:var(--text-faint);">≈</span>';
+          }
+          // n faible = moyenne instable : la barre est hachurée plutôt que pleine,
+          // pour qu'on ne lise pas une valeur fragile comme un résultat établi.
+          var weak = a.n < 10;
+          var fill = weak
+            ? 'repeating-linear-gradient(45deg,' + col + ',' + col + ' 3px,transparent 3px,transparent 6px)'
+            : col;
+          return '<div style="display:contents;">'
+            + '<span style="color:var(--text-muted);font-size:10px;white-space:nowrap;">' + lbl + '</span>'
+            + '<div style="position:relative;height:12px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;">'
+              + '<div style="height:100%;width:' + w + '%;background:' + fill + ';border-radius:3px;"></div>' + marks + '</div>'
+            + '<span style="font-size:11px;font-weight:600;text-align:right;white-space:nowrap;">' + Math.round(v) + '°</span>'
+            + '<span style="font-size:10px;text-align:right;white-space:nowrap;">' + biasTxt + '</span>'
+            + '<span style="font-size:9px;color:' + (weak ? 'var(--accent-warm)' : 'var(--text-faint)') + ';text-align:right;white-space:nowrap;" title="'
+              + a.n + ' heures comparées' + (weak ? ' — trop peu pour conclure' : '') + '">n=' + a.n + '</span>'
+            + '</div>';
+        }).join('');
+        return '<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:9px 11px;">'
+          + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">'
+            + '<span style="width:9px;height:9px;border-radius:2px;background:' + col + ';flex-shrink:0;"></span>'
+            + '<span style="font-size:12px;font-weight:600;">' + (WIND_TRUTH_LABELS[m] || m) + '</span>'
+            + '<span style="font-size:9px;color:var(--text-faint);margin-left:auto;">' + nTot + ' h comparées</span>'
+          + '</div>'
+          + '<div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:4px 7px;align-items:center;">'
+          + rows + '</div></div>';
+      }).join('');
+
+      el.innerHTML = head
+        + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:9px;">' + blocks + '</div>'
+        + '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:9px;color:var(--text-faint);margin-top:8px;">'
+          + '<span><span style="display:inline-block;width:2px;height:10px;background:rgba(61,186,138,.8);vertical-align:-1px;"></span> repère 20° : en deçà, la direction est exploitable</span>'
+          + '<span><span style="display:inline-block;width:2px;height:10px;background:rgba(224,92,92,.8);vertical-align:-1px;"></span> repère 45° : au-delà, elle ne dit plus d\'où vient le vent</span>'
+          + '<span>▸/◂ = de quel côté le modèle décale le vent · ≈ = pas de côté privilégié</span>'
+          + '<span>barre hachurée et n orangé = moins de 10 mesures</span>'
+        + '</div>'
+        + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">' + metric.hint
+        + ' Échelle commune 0→' + scaleMax + '° pour que les modèles se comparent.'
+        + ' Échéance = temps entre le run du modèle et l\'heure prévue (AROME donne son run exact ; pour les autres on utilise l\'heure d\'archivage, donc une échéance plutôt sur-estimée).'
+        + ' Ingestion démarrée le 03/08/2026 : tendance, pas encore une note.</div>';
+      return;
+    }
+
     // Une ligne par échéance, une barre par modèle : on lit d'un coup d'œil comment
     // l'erreur se dégrade quand on prévoit plus loin — la question posée.
-    var h = (_windTruthMetric === 'dir') ? 300 : Math.max(120, buckets.length * 34 + 46);
+    var h = Math.max(120, buckets.length * 34 + 46);
     el.innerHTML = head
       + '<div style="position:relative;height:' + h + 'px;"><canvas id="wind-truth-chart"></canvas></div>'
       + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">' + metric.hint
       + ' Échéance = temps entre le run du modèle et l\'heure prévue'
       + (_windTruthMetric === 'gust' ? '' : ' (AROME donne son run exact ; pour les autres on utilise l\'heure d\'archivage, donc une échéance plutôt sur-estimée)')
       + '. n = nombre d\'heures comparées.'
-      + (_windTruthMetric === 'dir' ? ' Chaque branche est une échéance : plus le contour est proche du centre, plus le modèle vise juste. Survole un point pour savoir de quel côté il se trompe.' : '')
       + ' Ingestion démarrée le 03/08/2026 : tendance, pas encore une note.</div>';
 
-    // La direction passe en RADAR : un axe par échéance autour du cercle, une
-    // polyligne par modèle. Ce n'est pas la cyclicité des angles qui le justifie
-    // (dDir est une erreur ABSOLUE dans [0,180] : 0 = parfait, 180 = à contresens,
-    // deux extrêmes et non deux points confondus) mais la lecture de FORME —
-    // « le modèle se dégrade-t-il régulièrement, ou décroche-t-il à une échéance
-    // précise ? » se voit mieux sur un contour fermé que sur 5 barres séparées.
-    // Vitesse et rafale restent en barres : ce sont des biais SIGNÉS, et un rayon
-    // ne peut pas être négatif.
-    var isRadar = _windTruthMetric === 'dir';
+    // Ici on n'a plus que vitesse et rafale : des biais SIGNÉS, donc des barres
+    // divergentes autour de 0 (la direction, erreur absolue sur matrice creuse, est
+    // rendue plus haut en sous-figures HTML).
     var datasets = models.map(function(m) {
       var col = WIND_TRUTH_COLORS[m] || '#7a94aa';
       var base = {
@@ -5573,13 +5662,7 @@ async function _renderWindTruthBlock() {
           return +(Math.atan2(a.sx, a.cx) * 180 / Math.PI).toFixed(0);
         })
       };
-      if (!isRadar) { base.backgroundColor = col; base.borderRadius = 4; return base; }
-      base.borderColor = col;
-      base.backgroundColor = col + '22';   // remplissage très léger : 4 contours superposés doivent rester lisibles
-      base.pointBackgroundColor = col;
-      base.borderWidth = 2;
-      base.pointRadius = 3;
-      base.spanGaps = true;                // une échéance sans donnée ne coupe pas la ligne
+      base.backgroundColor = col; base.borderRadius = 4;
       return base;
     });
     var canvas = document.getElementById('wind-truth-chart');
@@ -5587,44 +5670,25 @@ async function _renderWindTruthBlock() {
     try { var prev = Chart.getChart(canvas); if (prev) prev.destroy(); } catch (_) {}
     var tooltipLabel = function(ctx) {
       var n = ctx.dataset._n[ctx.dataIndex];
-      var v = isRadar ? ctx.parsed.r : ctx.parsed.x;
+      var v = ctx.parsed.x;
       if (v == null) return ctx.dataset.label + ' : —';
       var txt = ctx.dataset.label + ' : ' + (v > 0 && _windTruthMetric !== 'dir' ? '+' : '') + v + ' '
         + WIND_TRUTH_METRICS[_windTruthMetric].unit;
-      // Sur la direction, l'erreur absolue ne dit pas de quel CÔTÉ : on ajoute le
-      // biais signé, seul capable de distinguer « bruité » de « décalé et donc
-      // corrigeable ».
-      if (isRadar) {
-        var bi = ctx.dataset._bias[ctx.dataIndex];
-        if (bi != null && Math.abs(bi) >= 3) txt += ' — tourne ' + Math.abs(bi) + '° ' + (bi > 0 ? 'à droite' : 'à gauche') + ' du réel';
-        else if (bi != null) txt += ' — sans côté marqué';
-      }
       // n petit = moyenne instable : le dire plutôt que de laisser lire un point
       // comme un résultat établi.
       return txt + ' (n=' + n + (n < 10 ? ' — trop peu' : '') + ')';
     };
     new Chart(canvas, {
-      type: isRadar ? 'radar' : 'bar',
+      type: 'bar',
       data: { labels: buckets.map(function(b) { return WIND_TRUTH_LEADS[b].label; }), datasets: datasets },
       options: {
-        indexAxis: isRadar ? undefined : 'y',
+        indexAxis: 'y',
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { position: 'bottom', labels: { color: '#7a94aa', font: { size: 10 }, boxWidth: 10, padding: 10 } },
           tooltip: { callbacks: { label: tooltipLabel } }
         },
-        scales: isRadar ? {
-          r: {
-            beginAtZero: true,
-            angleLines: { color: 'rgba(255,255,255,0.07)' },
-            grid: { color: 'rgba(255,255,255,0.07)' },
-            pointLabels: { color: '#7a94aa', font: { size: 10 } },
-            // Graduations sur fond sombre : le halo évite qu'elles se perdent dans
-            // les polylignes qui passent dessous.
-            ticks: { color: '#7a94aa', font: { size: 9 }, backdropColor: 'transparent',
-                     callback: function(v) { return v + '°'; } }
-          }
-        } : {
+        scales: {
           x: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' },
                beginAtZero: true,
                title: { display: true, text: metric.axis, color: '#7a94aa', font: { size: 10 } } },

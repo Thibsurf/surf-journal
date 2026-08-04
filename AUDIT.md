@@ -4514,3 +4514,44 @@ donnée (ex. 1-2 j, souvent creuse) n'interrompe pas la ligne.
 Vérifié en headless : `type=radar`, 5 axes (les 5 tranches d'échéance), 4 séries,
 biais signés cohérents avec les données (ex. AROME −7°/+3°/+12° selon l'échéance),
 infobulle correcte, et les deux autres onglets restés en `bar`. 0 erreur JS.
+
+---
+
+# 04/08/2026 — Direction : radar retiré, sous-figures par modèle
+
+Le radar livré plus haut a été jugé illisible à l'usage (capture à l'appui). Constat
+partagé après examen : sur une matrice **creuse** 4 modèles × 5 échéances, il
+produisait trois non-sens à l'écran.
+
+1. **Traits dans le vide.** MARC n'a de données que sur « 1-2 j » et « 2 j + » ;
+   `spanGaps:true` reliait ces deux sommets par un segment traversant la figure, qui
+   ne correspondait à rien.
+2. **Contour refermé.** Le polygone se bouclait entre « 2 j + » et « 0-6 h »,
+   suggérant une continuité entre l'échéance la plus longue et la plus courte, alors
+   que l'échéance n'est pas cyclique — le défaut même que j'avais identifié en analyse
+   avant de livrer quand même la forme demandée.
+3. **Superposition centrale.** Quatre séries remplies s'écrasaient près du centre,
+   exactement là où les valeurs sont les plus proches et demandent le plus de finesse.
+
+→ remplacé par **une sous-figure par modèle**, en HTML/CSS (plus de Chart.js pour cet
+onglet) : une ligne par échéance, barre = erreur moyenne, échelle **commune** à tous
+les modèles pour qu'ils restent comparables. Aucune superposition, et surtout les
+**trous restent des trous** : « pas de donnée » est écrit (7 cases sur 20), là où le
+radar les masquait en interpolant.
+
+Deux défauts de ma première version des sous-figures, corrigés dans la foulée :
+- les bandes de qualité 20°/45° étaient posées en fond du bloc entier, donc s'étendaient
+  aussi sous les colonnes « libellé » et « valeur » où l'échelle ne veut rien dire →
+  remplacées par des repères verticaux **dans la piste** de chaque barre ;
+- le `⚠` accolé à l'effectif se lisait « .5 » à 9 px (« n=4⚠ » lu « n=4.5 ») →
+  supprimé, l'effectif faible est signalé par la couleur (orangé) et la barre hachurée.
+
+Ce que la figure donne à lire immédiatement, ce que le radar ne montrait pas : AROME
+est le **seul modèle avec un volume exploitable** (166 h contre 22-26 h), et ses
+erreurs de direction (42°/35°/60°) dépassent toutes le repère des 20° ; ECMWF et AIFS
+sont presque intégralement hachurés (n = 2 à 14), donc non concluants ; MARC n'a rien
+en deçà de 24 h puis se trompe de 102°.
+
+Vitesse et rafales restent en barres Chart.js : ce sont des biais SIGNÉS, la forme
+divergente autour de 0 leur convient. Vérifié : 0 canvas sur l'onglet Direction,
+4 sous-figures, 7 mentions « pas de donnée », 7 barres hachurées, 0 erreur JS.
