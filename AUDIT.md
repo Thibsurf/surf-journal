@@ -4225,3 +4225,97 @@ muets, et cliquer un libellé ne donnait pas le focus. Tous les champs ayant dé
 en runtime, chaque cible résolue par `getElementById`).
 
 Contrôle final : 0 erreur JS sur les 7 pages + la modale. sw v59→v60.
+
+---
+
+# 04/08/2026 (fin) — Derniers points de l'audit index.html
+
+## ✗ `#page-auth` : la cause racine, enfin corrigée
+`#page-auth { display:flex }` (spécificité d'ID, 1,0,0) écrasait `.page { display:none }`
+(0,1,0) : **retirer la classe `active` ne masquait pas l'écran de connexion**. Le
+symptôme avait été compensé par trois `style.display` inline dispersés dans
+`doLogin`/`onLogin`/`doLogout` (annotés « 🔥 FIX PRINCIPAL », « 🔥 RESET UI COMPLET »),
+jamais la cause. Entre-temps le dashboard se rendait **empilé sous** le formulaire,
+avec 100vh de vide au-dessus (reproduit en headless lors de l'audit).
+→ `#page-auth.active`, et les trois patchs inline supprimés. Vérifié : sans la classe
+`active`, `display` vaut `none` et `style.display` inline est **vide**.
+
+## ✗ Double chargement des données à chaque connexion
+`doLogin` appelait `showPage('dashboard')` (donc `loadMySessions`) alors que
+`signInWithPassword` déclenche `SIGNED_IN` → `onLogin`, qui bascule sur le dashboard
+ET charge tout. Deux passes complètes sur `sessions` + le cache profils à chaque
+connexion. `showPage` retiré de `doLogin` ; la nav reste affichée immédiatement pour
+ne pas laisser l'écran nu pendant l'aller-retour d'`onLogin`.
+
+## ✗ Formats de date incohérents (et un XSS de plus)
+- « Meilleure session » affichait la date en **ISO brut** (`2026-06-29`) sur la page
+  détail spot, là où tout le reste est en français.
+- La carte crew faisait `new Date(c.lastDate)` **sans** `'T00:00:00'`, contrairement
+  aux autres sites d'appel : parsé en UTC → **la veille** dans tout fuseau à l'ouest
+  de Greenwich.
+- Au passage : `best.observations` (champ texte libre) était injecté **non échappé**
+  juste à côté — 9ᵉ point d'injection, manqué au premier passage.
+→ Helper unique `_fmtDateFR(dateStr, opts)` qui porte le `'T00:00:00'`, + escapeHtml.
+
+## ✗ Unité `kt` au lieu de `nds`
+Les deux hints d'autofill du formulaire affichaient `'Vent … kt'`. La valeur était
+juste (`wind_speed_unit=kn`), seule l'étiquette violait la convention. 0 occurrence
+restante dans le fichier.
+
+## ✗ Canvas marée flou sur mobile
+Figé à 600×112 px et étiré en CSS : net sur desktop, **flou sur mobile (DPR 2-3)**,
+c'est-à-dire là où le widget sert le plus. Tous les autres panneaux du site passent
+par `panelSetup` (charts-core.js) qui gère le DPR ; celui-ci était le seul en dehors.
+→ `_tideCanvasSetup` aligne le buffer sur la taille CSS × DPR (plafonné à 3) et met
+le contexte à l'échelle, donc **aucun calcul de tracé n'a eu à changer**.
+Mesuré avec `--force-device-scale-factor=3` : buffer **1257 px pour 419 px CSS
+(ratio 3.00)**, 422 352 pixels non transparents tracés. Un `ResizeObserver` rejoue le
+rendu quand le canvas obtient enfin un layout (piège `clientWidth = 0` du projet).
+
+## ✗ `showToast` : le minuteur du toast précédent masquait le suivant
+`setTimeout` sans `clearTimeout` : un 2ᵉ toast affiché 2,5 s après le 1er était masqué
+0,5 s plus tard par le minuteur du 1er, au lieu de rester 3 s. Vérifié après
+correctif : le 2ᵉ toast est toujours visible 0,7 s après son affichage.
+
+## ✗ Race sur les graphes de la page Spots
+Le rendu est différé (les canvas viennent d'être injectés et n'ont pas de layout) :
+deux clics rapides sur deux spots faisaient courir **deux rendus différés sur les
+mêmes ids de canvas**, le premier créant ses `Chart` après le reset de `spotCharts`
+par le second → « Canvas is already in use » et graphes du spot précédent survivants.
+→ jeton de génération (`showSpotDetail._gen`) qui annule le rendu obsolète.
+
+## ⚠ Accessibilité (complément)
+- `#toast` : `role="status"` + `aria-live="polite"` — succès **et** erreurs y passent,
+  sans annonce un utilisateur de lecteur d'écran ne savait pas si son enregistrement
+  avait abouti. « polite » et non « assertive » : ne pas couper une lecture en cours
+  pour un message qui reste 3 s.
+- Les 4 modales : `role="dialog"` + `aria-modal="true"` + `aria-labelledby` pointant
+  sur leur titre (un `id` a été ajouté au titre de `modal-setup`, seul à en manquer).
+  Vérifié : 4 dialogues, 4 `aria-labelledby` résolus.
+
+## ⚠ Duplication de la config Supabase
+`_pushNcTokenToSupabase` recopiait l'URL et la clé anon à l'identique des constantes
+du fichier : deux endroits à corriger le jour d'une rotation de clé, dont un facile à
+oublier. → réutilise `SUPABASE_URL`/`SUPABASE_KEY` (1 seule occurrence en dur).
+
+## ξ (Iribarren) — décision : laissé tel quel
+`SPOT_SLOPES` n'a **qu'un seul point d'usage** dans toute l'app : `calcXi`, dont le
+résultat s'affiche dans le bandeau de la page détail spot. β n'est **pas mesurable**
+avec ce dont dispose le projet (il faudrait une bathymétrie du tombant).
+Conséquence à garder en tête, et qui corrige une justification écrite plus tôt dans
+ce même audit : comme ξ = tan(β)/√(Hs/L0), **comparer le ξ de deux spots revient à
+comparer leurs β**, c'est-à-dire deux chiffres estimés — le classement inter-spots ne
+s'appuie sur aucune donnée. Ce qui reste fondé, c'est la variation de ξ **sur un même
+spot** (β constant, Hs et période réellement mesurés). Affichage conservé sur décision
+explicite, commentaire du code rectifié.
+
+## Restant, non traité (choix assumés)
+- **Recherche / filtre / pagination** sur la liste des sessions : c'est une
+  fonctionnalité, pas un correctif — à décider, pas à glisser dans un lot de fixes.
+- **`assets/forecast.js` et `assets/spots.js`** : orphelins (chargés par aucune page,
+  absents du `sw.js`). Signalés, pas supprimés — hors périmètre d'un audit d'index.html.
+- **Dépendance aux 2 CDN** (jsdelivr/Supabase, cdnjs/Chart.js) : si l'un est
+  injoignable au 1er lancement, `sb` reste `null`. Vendorer les deux dans `assets/`
+  est un chantier à part entière.
+
+Contrôle final : 0 erreur JS sur les 7 pages + la modale.

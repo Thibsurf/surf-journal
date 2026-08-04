@@ -127,7 +127,14 @@ nav {
 .container-wide { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; z-index: 1; }
 
 /* ── AUTH ── */
-#page-auth {
+/* `#page-auth.active` et non `#page-auth` : avec un sélecteur d'ID (spécificité
+   1,0,0) le `display:flex` écrasait `.page { display:none }` (0,1,0), si bien que
+   retirer la classe `active` NE MASQUAIT PAS l'écran de connexion. Le symptôme a
+   été compensé pendant un temps par trois `style.display` inline dispersés dans
+   doLogin/onLogin/doLogout (annotés « 🔥 FIX ») ; entre-temps le dashboard se
+   rendait EMPILÉ SOUS le formulaire, avec 100vh de vide au-dessus. Cause corrigée
+   ici, patchs retirés. */
+#page-auth.active {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
   padding: 2rem;
@@ -511,7 +518,11 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 </script>
 
 <!-- TOAST -->
-<div id="toast"></div>
+<!-- role=status + aria-live : les confirmations ET les erreurs passent par ce
+     toast ; sans annonce, un utilisateur de lecteur d'écran ne savait pas si son
+     enregistrement avait abouti. « polite » et non « assertive » : ne pas couper
+     la lecture en cours pour un message qui reste 3 s à l'écran. -->
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- NAV -->
 <nav id="main-nav" style="display:none">
@@ -862,7 +873,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
   </div>
 </div>
 
-<div class="modal-overlay" id="modal-boat">
+<div class="modal-overlay" id="modal-boat" role="dialog" aria-modal="true" aria-labelledby="modal-boat-title">
   <div class="modal" style="max-width:440px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
       <div class="modal-title" id="modal-boat-title">Bateau</div>
@@ -889,7 +900,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 </div>
 
 <!-- ══ MODAL ADD SESSION ══ -->
-<div class="modal-overlay" id="modal-add">
+<div class="modal-overlay" id="modal-add" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
   <div class="modal" style="max-width:560px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
       <div class="modal-title" id="modal-add-title">Nouvelle session</div>
@@ -1252,7 +1263,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 </div>
 
 <!-- ══ MODAL SESSION DETAIL ══ -->
-<div class="modal-overlay" id="modal-detail">
+<div class="modal-overlay" id="modal-detail" role="dialog" aria-modal="true" aria-labelledby="detail-title">
   <div class="modal" style="max-width:600px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
       <div class="modal-title" id="detail-title">Session</div>
@@ -1286,10 +1297,10 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 </div>
 
 <!-- ══ MODAL SETUP GUIDE ══ -->
-<div class="modal-overlay" id="modal-setup">
+<div class="modal-overlay" id="modal-setup" role="dialog" aria-modal="true" aria-labelledby="modal-setup-title">
   <div class="modal" style="max-width:600px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
-      <div class="modal-title">Guide d'installation</div>
+      <div class="modal-title" id="modal-setup-title">Guide d'installation</div>
       <button onclick="closeModal('modal-setup')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">✕</button>
     </div>
     <div style="font-size:14px;line-height:1.8;color:var(--text-muted);">
@@ -1543,10 +1554,13 @@ async function doLogin() {
       sessionStorage.setItem('surf-session-only', '1');
     }
 
-    // 🔥 FIX PRINCIPAL
-    document.getElementById('page-auth').classList.remove('active');
+    // Pas de showPage('dashboard') ici : signInWithPassword déclenche l'événement
+    // SIGNED_IN, donc onLogin(), qui bascule sur le dashboard ET charge les données.
+    // Le faire aussi depuis ici rejouait loadMySessions + le cache profils une
+    // seconde fois à chaque connexion (deux passes complètes sur `sessions`).
+    // La nav est affichée tout de suite pour ne pas laisser l'écran nu pendant
+    // l'aller-retour réseau d'onLogin.
     document.getElementById('main-nav').style.display = 'flex';
-    showPage('dashboard');
 
     showToast('Connecté 🤙', 'success');
 
@@ -1595,12 +1609,9 @@ async function doSignup() {
 async function doLogout() {
   await sb.auth.signOut();
 
-  // 🔥 RESET UI COMPLET
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-
-  const auth = document.getElementById('page-auth');
- auth.style.display = 'flex';
- auth.classList.add('active');
+  // showPage suffit désormais : #page-auth.active porte le display:flex, il n'y a
+  // plus de style inline à poser ni à défaire (cf. le commentaire du bloc CSS).
+  showPage('auth');
   
 
   document.getElementById('main-nav').style.display = 'none';
@@ -1687,9 +1698,7 @@ async function onLogin(user) {
   console.log("👤 onLogin appelé pour:", user.email);
   currentUser = user;
 
-  // 🔥 RESET UI COMPLET (anti bug affichage)
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-auth').style.display = 'none';
   document.getElementById('main-nav').style.display = 'flex';
 
   // Charger ou créer le profil
@@ -1882,7 +1891,7 @@ function renderCrewView() {
     var topSpot = Object.entries(c.spots).sort(function(a,b){return b[1]-a[1];})[0];
     var totalH = c.totalH;
     var hh = Math.floor(totalH), mm = Math.round((totalH-hh)*60);
-    var lastStr = c.lastDate ? new Date(c.lastDate).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}) : '—';
+    var lastStr = _fmtDateFR(c.lastDate);
     // Initiales pour l'avatar
     var initials = name.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
     // Couleur avatar déterministe
@@ -2059,6 +2068,19 @@ function renderSessionsList(sessions) {
     return;
   }
   el.innerHTML = sessions.map(s => sessionCardHTML(s)).join('');
+}
+
+// Formatage d'une date de session ('YYYY-MM-DD') en français.
+// Le suffixe 'T00:00:00' est ce qui force le parsing en heure LOCALE : `new
+// Date('2026-08-04')` nu serait lu en UTC et afficherait LA VEILLE dans tout fuseau
+// à l'ouest de Greenwich. Le pattern était déjà appliqué à la plupart des sites
+// d'appel mais oublié à d'autres (cartes crew), et une date restait affichée en ISO
+// brut (« 2026-06-29 ») sur la page détail spot — d'où ce point unique.
+function _fmtDateFR(dateStr, opts) {
+  if (!dateStr) return '—';
+  var d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return String(dateStr);
+  return d.toLocaleDateString('fr-FR', opts || { day: 'numeric', month: 'short' });
 }
 
 function sessionCardHTML(s, opts) {
@@ -2822,7 +2844,7 @@ async function _autoFillConditions(targetDate) {
     var parts = [];
     if (data.hs != null) parts.push('Hs ' + (+data.hs).toFixed(1) + 'm');
     if (data.period != null) parts.push(Math.round(data.period) + 's');
-    if (data.windKt != null) parts.push('Vent ' + Math.round(data.windKt) + 'kt');
+    if (data.windKt != null) parts.push('Vent ' + Math.round(data.windKt) + ' nds');
     hint.textContent = sourceLabel + (parts.length ? ' · ' + parts.join(' · ') : '');
     hint.style.color = (_isHistory || data.source === 'gfs') ? 'var(--accent-warm)' : 'var(--success)';
   }
@@ -2904,7 +2926,7 @@ function _refreshForecastStrip() {
     var parts = [];
     if (hs != null) parts.push('Hs ' + (+hs).toFixed(1) + 'm');
     if (per != null) parts.push(Math.round(per) + 's');
-    if (ws != null) parts.push('Vent ' + Math.round(ws) + 'kt');
+    if (ws != null) parts.push('Vent ' + Math.round(ws) + ' nds');
     if (dir != null) parts.push(degToCard(dir));
     hintEl.textContent = '📊 ' + String(sessionHour).padStart(2,'0') + 'h · GFS · ' + parts.join(' · ');
     hintEl.style.color = 'var(--text-muted)';
@@ -3118,11 +3140,35 @@ function _tideLoadReal(dateStr, port) {
   }).catch(function () { _tideLoadReal._busy = null; });
 }
 
+// Aligne la résolution du canvas sur celle de l'écran. Le canvas était figé à
+// 600×112 px et étiré en CSS à 100 % : net sur un écran classique, FLOU sur mobile
+// (DPR 2 à 3), c'est-à-dire là où le widget sert le plus. Tous les autres panneaux
+// du site passent par panelSetup (charts-core.js) qui gère déjà le DPR ; ce widget
+// était le seul resté en dehors.
+// Le contexte est remis à l'échelle, donc TOUT le tracé continue de raisonner en
+// coordonnées CSS (W/H ci-dessous) — aucun calcul de dessin n'a eu à changer.
+function _tideCanvasSetup(cv) {
+  var rect = cv.getBoundingClientRect();
+  // clientWidth vaut 0 tant que l'élément n'a pas de layout (modale encore masquée) :
+  // dans ce cas on garde les dimensions d'attribut, et le prochain rendu — déclenché
+  // à l'ouverture de la modale — appliquera la bonne échelle.
+  var cssW = rect.width || cv.width, cssH = rect.height || cv.height;
+  var dpr = Math.min(window.devicePixelRatio || 1, 3);   // au-delà de 3, coût mémoire inutile
+  var needW = Math.round(cssW * dpr), needH = Math.round(cssH * dpr);
+  if (cv.width !== needW || cv.height !== needH) { cv.width = needW; cv.height = needH; }
+  var ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx: ctx, W: cssW, H: cssH };
+}
+
 function renderTideWidget() {
   var cv = document.getElementById('tide-canvas');
   if (!cv) return;
-  var ctx = cv.getContext('2d');
-  var W = cv.width, H = cv.height;
+  var _setup = _tideCanvasSetup(cv);
+  var ctx = _setup.ctx;
+  // W/H en pixels CSS (et non cv.width/height, désormais multipliés par le DPR) :
+  // le contexte est déjà mis à l'échelle, tout le tracé ci-dessous reste inchangé.
+  var W = _setup.W, H = _setup.H;
   var port = document.getElementById('tide-port').value;
   // Une seule lecture de la date pour tout le tracé : le widget doit décrire UN jour,
   // pas mélanger deux jours si la saisie change pendant le rendu.
@@ -3384,6 +3430,17 @@ function setupTideCanvas() {
   var cv = document.getElementById('tide-canvas');
   if (!cv || cv._bound) return;
   cv._bound = true;
+
+  // La résolution interne dépend maintenant de la taille CSS (DPR) : sans ça, une
+  // rotation d'écran ou l'ouverture de la modale — qui donne enfin un layout au
+  // canvas — laissait un tracé calé sur l'ancienne largeur. Piège connu du projet
+  // (clientWidth = 0 hors layout) : on rejoue au lieu de calculer une fois.
+  if (typeof ResizeObserver === 'function') {
+    var ro = new ResizeObserver(function () {
+      if (cv.getBoundingClientRect().width > 0) renderTideWidget();
+    });
+    ro.observe(cv);
+  }
 
   function hourFromEvent(e) {
     var rect = cv.getBoundingClientRect();
@@ -6095,9 +6152,11 @@ function applyManualToken() {
 
 function _pushNcTokenToSupabase(token) {
   if (!token || token.length < 30) return;
-  // Même base Supabase que previsions.html — table shared_tokens
-  var SB_URL = 'https://tiiptlozingmgzcnexpu.supabase.co';
-  var SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0';
+  // Même base que le client `sb` — on réutilise les constantes du fichier plutôt
+  // que de recopier l'URL et la clé anon (elles l'étaient à l'identique juste ici :
+  // deux endroits à corriger le jour d'une rotation de clé, dont un facile à oublier).
+  var SB_URL = SUPABASE_URL;
+  var SB_ANON = SUPABASE_KEY;
   var payload = JSON.stringify({ id: 'meteo-nc', token: token, updated_at: new Date().toISOString() });
   fetch(SB_URL + '/rest/v1/shared_tokens?on_conflict=id', {
     method: 'POST',
@@ -6341,7 +6400,11 @@ function showSetupGuide() { document.getElementById('modal-setup').classList.add
 function showToast(msg, type = '') {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'show ' + type;
-  setTimeout(() => t.classList.remove('show'), 3000);
+  // Annuler le minuteur précédent : deux toasts rapprochés (ex. « Session
+  // enregistrée » puis un avertissement) et le premier minuteur masquait le SECOND
+  // avant la fin de ses 3 s.
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
 // ══ CLOSE MODAL ON OVERLAY CLICK ══
@@ -6769,11 +6832,17 @@ function _populateCustomSpots() {
 
 // ══ SPOTS PAGE ══
 // Pente du tombant (β, degrés) par spot, pour le nombre d'Iribarren ξ affiché plus
-// bas. ⚠ Ces valeurs sont des ESTIMATIONS À VUE, pas des relevés bathymétriques :
-// aucune mesure ne les appuie, et rien dans le projet ne permet de les vérifier
-// aujourd'hui. Elles sont conservées parce qu'elles classent correctement les spots
-// entre eux (déferlement glissant ↔ plongeant), ce qui est le seul usage qu'on en
-// fait — mais ξ ne doit pas être lu comme une grandeur mesurée.
+// bas — seul usage de cette table dans toute l'app (calcXi, bandeau de la page
+// détail spot).
+// ⚠ Ces valeurs sont des ESTIMATIONS À VUE, pas des relevés bathymétriques, et
+// elles ne SONT PAS mesurables avec ce dont dispose le projet : il faudrait une
+// bathymétrie du tombant, qu'aucune source du site ne fournit.
+// Conséquence à garder en tête : comme ξ = tan(β)/√(Hs/L0), COMPARER le ξ de deux
+// spots revient à comparer leurs β, c'est-à-dire deux chiffres estimés — le
+// classement inter-spots ne s'appuie sur aucune donnée. Ce qui reste fondé, c'est
+// la variation de ξ SUR UN MÊME spot (β constant, Hs et période réellement
+// mesurés) : là, ξ distingue bien les houles creuses des houles molles.
+// Affichage conservé tel quel (choix du 04/08/2026), avec la mention « estimée ».
 // Les spots absents de cette table (tous ceux ajoutés par les utilisateurs) prennent
 // SPOT_SLOPE_DEFAULT : l'UI le signale désormais au lieu de présenter le résultat
 // avec la même assurance qu'un spot renseigné.
@@ -6828,6 +6897,7 @@ async function loadSpotsPage() {
 let spotCharts = [];
 
 function showSpotDetail(spotName) {
+  showSpotDetail._gen = (showSpotDetail._gen || 0);
   spotCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
   spotCharts = [];
 
@@ -6894,8 +6964,8 @@ function showSpotDetail(spotName) {
     '</div>' : '') +
     (best ? '<div class="card" style="margin-bottom:1rem;">' +
       '<div class="section-title" style="margin-bottom:8px;">Meilleure session</div>' +
-      '<div style="font-size:13px;">' + best.date + ' — <strong>' + '★'.repeat(best.quality) + '</strong>' +
-      (best.observations ? ' — ' + best.observations.slice(0, 80) + '…' : '') + '</div>' +
+      '<div style="font-size:13px;">' + _fmtDateFR(best.date, {day:'numeric',month:'long',year:'numeric'}) + ' — <strong>' + '★'.repeat(best.quality) + '</strong>' +
+      (best.observations ? ' — ' + escapeHtml(best.observations.slice(0, 80)) + '…' : '') + '</div>' +
     '</div>' : '') +
 
     // Rose des houles
@@ -6948,7 +7018,16 @@ function showSpotDetail(spotName) {
 
   window._roseSessions = sessions;
 
-  setTimeout(function() {
+  // Le rendu des graphes est différé (les canvas viennent d'être injectés en
+  // innerHTML et n'ont pas encore de layout). Deux clics rapides sur deux spots
+  // faisaient donc courir DEUX rendus différés sur les mêmes ids de canvas, le
+  // premier créant ses Chart après le reset de spotCharts par le second — d'où un
+  // « Canvas is already in use » et des graphes du spot précédent qui survivaient.
+  // Un jeton de génération annule le rendu obsolète.
+  var _spotGen = ++showSpotDetail._gen;
+  clearTimeout(showSpotDetail._t);
+  showSpotDetail._t = setTimeout(function() {
+    if (_spotGen !== showSpotDetail._gen) return;
     redrawRose();
     redrawHeatmap();
 
