@@ -5454,6 +5454,12 @@ async function _windTruthBuildPairs() {
         model: row.model, station: row.spot_name, lead: lead,
         dSpeed: (val != null && best.wind_kt != null) ? (val - best.wind_kt) : null,
         dDir:   (mdir != null && best.wind_dir != null) ? Math.abs(_angDiff(mdir, best.wind_dir)) : null,
+        // Écart SIGNÉ conservé à part : l'absolu dit de combien le modèle se trompe,
+        // le signé dit s'il se trompe TOUJOURS DU MÊME CÔTÉ (+ = il fait tourner le
+        // vent vers la droite / horaire par rapport au réel). Un modèle à ±40°
+        // d'erreur mais sans biais est bruité ; à +40° systématiques, il est
+        // corrigeable — l'absolu seul ne permettait pas de faire la différence.
+        dDirS:  (mdir != null && best.wind_dir != null) ? _angDiff(mdir, best.wind_dir) : null,
         dGust:  (mgust != null && best.gust_kt != null) ? (mgust - best.gust_kt) : null
       });
     });
@@ -5493,6 +5499,13 @@ async function _renderWindTruthBlock() {
       (agg[p.model][b] = agg[p.model][b] || { sum: 0, n: 0 });
       agg[p.model][b].sum += p[field];
       agg[p.model][b].n++;
+      // Moyenne VECTORIELLE pour le biais directionnel (somme des sin/cos puis
+      // atan2) et non arithmétique : sur des angles, moyenner +170° et −170°
+      // donnerait 0° alors que les deux pointent dans la même direction.
+      if (p.dDirS != null) {
+        agg[p.model][b].sx = (agg[p.model][b].sx || 0) + Math.sin(p.dDirS * Math.PI / 180);
+        agg[p.model][b].cx = (agg[p.model][b].cx || 0) + Math.cos(p.dDirS * Math.PI / 180);
+      }
       modelsSeen[p.model] = 1; leadsSeen[b] = 1;
     });
     var models = WIND_TRUTH_MODELS.filter(function(m) { return modelsSeen[m]; });
@@ -5528,44 +5541,90 @@ async function _renderWindTruthBlock() {
 
     // Une ligne par échéance, une barre par modèle : on lit d'un coup d'œil comment
     // l'erreur se dégrade quand on prévoit plus loin — la question posée.
-    var h = Math.max(120, buckets.length * 34 + 46);
+    var h = (_windTruthMetric === 'dir') ? 300 : Math.max(120, buckets.length * 34 + 46);
     el.innerHTML = head
       + '<div style="position:relative;height:' + h + 'px;"><canvas id="wind-truth-chart"></canvas></div>'
       + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">' + metric.hint
       + ' Échéance = temps entre le run du modèle et l\'heure prévue'
       + (_windTruthMetric === 'gust' ? '' : ' (AROME donne son run exact ; pour les autres on utilise l\'heure d\'archivage, donc une échéance plutôt sur-estimée)')
-      + '. n = nombre d\'heures comparées. Ingestion démarrée le 03/08/2026 : tendance, pas encore une note.</div>';
+      + '. n = nombre d\'heures comparées.'
+      + (_windTruthMetric === 'dir' ? ' Chaque branche est une échéance : plus le contour est proche du centre, plus le modèle vise juste. Survole un point pour savoir de quel côté il se trompe.' : '')
+      + ' Ingestion démarrée le 03/08/2026 : tendance, pas encore une note.</div>';
 
+    // La direction passe en RADAR : un axe par échéance autour du cercle, une
+    // polyligne par modèle. Ce n'est pas la cyclicité des angles qui le justifie
+    // (dDir est une erreur ABSOLUE dans [0,180] : 0 = parfait, 180 = à contresens,
+    // deux extrêmes et non deux points confondus) mais la lecture de FORME —
+    // « le modèle se dégrade-t-il régulièrement, ou décroche-t-il à une échéance
+    // précise ? » se voit mieux sur un contour fermé que sur 5 barres séparées.
+    // Vitesse et rafale restent en barres : ce sont des biais SIGNÉS, et un rayon
+    // ne peut pas être négatif.
+    var isRadar = _windTruthMetric === 'dir';
     var datasets = models.map(function(m) {
-      return {
+      var col = WIND_TRUTH_COLORS[m] || '#7a94aa';
+      var base = {
         label: WIND_TRUTH_LABELS[m] || m,
         data: buckets.map(function(b) { var a = agg[m][b]; return a ? +(a.sum / a.n).toFixed(2) : null; }),
-        backgroundColor: WIND_TRUTH_COLORS[m] || '#7a94aa',
-        borderRadius: 4,
-        _n: buckets.map(function(b) { var a = agg[m][b]; return a ? a.n : 0; })
+        _n: buckets.map(function(b) { var a = agg[m][b]; return a ? a.n : 0; }),
+        // Biais directionnel signé (moyenne vectorielle), pour l'infobulle.
+        _bias: buckets.map(function(b) {
+          var a = agg[m][b];
+          if (!a || a.sx == null) return null;
+          return +(Math.atan2(a.sx, a.cx) * 180 / Math.PI).toFixed(0);
+        })
       };
+      if (!isRadar) { base.backgroundColor = col; base.borderRadius = 4; return base; }
+      base.borderColor = col;
+      base.backgroundColor = col + '22';   // remplissage très léger : 4 contours superposés doivent rester lisibles
+      base.pointBackgroundColor = col;
+      base.borderWidth = 2;
+      base.pointRadius = 3;
+      base.spanGaps = true;                // une échéance sans donnée ne coupe pas la ligne
+      return base;
     });
     var canvas = document.getElementById('wind-truth-chart');
     if (!canvas) return;
     try { var prev = Chart.getChart(canvas); if (prev) prev.destroy(); } catch (_) {}
+    var tooltipLabel = function(ctx) {
+      var n = ctx.dataset._n[ctx.dataIndex];
+      var v = isRadar ? ctx.parsed.r : ctx.parsed.x;
+      if (v == null) return ctx.dataset.label + ' : —';
+      var txt = ctx.dataset.label + ' : ' + (v > 0 && _windTruthMetric !== 'dir' ? '+' : '') + v + ' '
+        + WIND_TRUTH_METRICS[_windTruthMetric].unit;
+      // Sur la direction, l'erreur absolue ne dit pas de quel CÔTÉ : on ajoute le
+      // biais signé, seul capable de distinguer « bruité » de « décalé et donc
+      // corrigeable ».
+      if (isRadar) {
+        var bi = ctx.dataset._bias[ctx.dataIndex];
+        if (bi != null && Math.abs(bi) >= 3) txt += ' — tourne ' + Math.abs(bi) + '° ' + (bi > 0 ? 'à droite' : 'à gauche') + ' du réel';
+        else if (bi != null) txt += ' — sans côté marqué';
+      }
+      // n petit = moyenne instable : le dire plutôt que de laisser lire un point
+      // comme un résultat établi.
+      return txt + ' (n=' + n + (n < 10 ? ' — trop peu' : '') + ')';
+    };
     new Chart(canvas, {
-      type: 'bar',
+      type: isRadar ? 'radar' : 'bar',
       data: { labels: buckets.map(function(b) { return WIND_TRUTH_LEADS[b].label; }), datasets: datasets },
       options: {
-        indexAxis: 'y',
+        indexAxis: isRadar ? undefined : 'y',
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { position: 'bottom', labels: { color: '#7a94aa', font: { size: 10 }, boxWidth: 10, padding: 10 } },
-          tooltip: { callbacks: { label: function(ctx) {
-            var n = ctx.dataset._n[ctx.dataIndex], v = ctx.parsed.x;
-            if (v == null) return ctx.dataset.label + ' : —';
-            // n petit = moyenne instable : le dire dans l'infobulle plutôt que de
-            // laisser lire une barre courte comme un résultat établi.
-            return ctx.dataset.label + ' : ' + (v > 0 && _windTruthMetric !== 'dir' ? '+' : '') + v + ' '
-              + WIND_TRUTH_METRICS[_windTruthMetric].unit + ' (n=' + n + (n < 10 ? ' — trop peu' : '') + ')';
-          } } }
+          tooltip: { callbacks: { label: tooltipLabel } }
         },
-        scales: {
+        scales: isRadar ? {
+          r: {
+            beginAtZero: true,
+            angleLines: { color: 'rgba(255,255,255,0.07)' },
+            grid: { color: 'rgba(255,255,255,0.07)' },
+            pointLabels: { color: '#7a94aa', font: { size: 10 } },
+            // Graduations sur fond sombre : le halo évite qu'elles se perdent dans
+            // les polylignes qui passent dessous.
+            ticks: { color: '#7a94aa', font: { size: 9 }, backdropColor: 'transparent',
+                     callback: function(v) { return v + '°'; } }
+          }
+        } : {
           x: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' },
                beginAtZero: true,
                title: { display: true, text: metric.axis, color: '#7a94aa', font: { size: 10 } } },
