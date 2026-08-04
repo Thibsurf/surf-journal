@@ -4479,3 +4479,38 @@ l'échéance — exactement le genre d'information que le bloc existe pour produ
 Mesuré après réécriture : **238 paires** prévision/mesure, échéances de 0 à 128 h,
 réparties 94 / 52 / 36 / 8 / 48 sur les cinq tranches ; direction sur les 238,
 rafales sur 114 (AROME). 0 erreur JS.
+
+---
+
+# 04/08/2026 — Direction en radar, sur demande de l'utilisateur
+
+Demande : diagramme circulaire (radar Chart.js) pour l'erreur de direction, motivée
+par le caractère « cyclique » de l'angle (0°/360°).
+
+**Point de méthode corrigé avant d'implémenter** : `dDir` n'est pas cyclique. C'est
+`|_angDiff(prévu, mesuré)|`, une erreur ABSOLUE dans [0°, 180°] — 0° = parfait, 180° =
+vent à contresens, ce sont deux extrêmes opposés, pas deux points confondus comme le
+seraient 0°/360° sur une vraie boussole. Le radar demandé est donc justifié pour une
+autre raison que celle avancée : pas la cyclicité, mais la lecture de FORME — voir sur
+un contour fermé si un modèle se dégrade régulièrement avec l'échéance ou décroche
+d'un coup, plutôt que comparer 5 barres séparées.
+
+Ce que l'angle cyclique cache en revanche, et qui manquait réellement : DE QUEL CÔTÉ
+le modèle se trompe. Un modèle à ±40° d'erreur mais sans côté marqué est bruité ; à
++40° systématiques (toujours vers la droite du vent réel), il est décalé et donc
+CORRIGEABLE — l'absolu seul ne distingue pas les deux cas, qui appellent des
+conclusions opposées.
+
+→ conservé `dDirS` (écart signé, avant la valeur absolue) en plus de `dDir`, agrégé
+par MOYENNE VECTORIELLE (Σsin, Σcos puis atan2) et non arithmétique — moyenner +170°
+et −170° donnerait à tort 0° alors que les deux pointent du même côté. Affiché dans
+l'infobulle du radar : « tourne 7° à gauche du réel » plutôt qu'un simple chiffre.
+
+Radar réservé à l'onglet Direction (`type: isRadar ? 'radar' : 'bar'`) : vitesse et
+rafale restent en barres, ce sont des biais SIGNÉS et un rayon ne peut pas être
+négatif — les y forcer casserait la lecture. `spanGaps:true` pour qu'une échéance sans
+donnée (ex. 1-2 j, souvent creuse) n'interrompe pas la ligne.
+
+Vérifié en headless : `type=radar`, 5 axes (les 5 tranches d'échéance), 4 séries,
+biais signés cohérents avec les données (ex. AROME −7°/+3°/+12° selon l'échéance),
+infobulle correcte, et les deux autres onglets restés en `bar`. 0 erreur JS.
