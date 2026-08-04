@@ -4319,3 +4319,82 @@ explicite, commentaire du code rectifié.
   est un chantier à part entière.
 
 Contrôle final : 0 erreur JS sur les 7 pages + la modale.
+
+---
+
+# 04/08/2026 (soir) — Marées previsions.html, menu ☰, profil, vendoring
+
+## ✗ previsions.html : 10 ports sur 13 interrogeaient la mauvaise station
+Suite directe de la découverte des 14 stations. Le commentaire du code disait
+« IDs confirmés: Nouméa, Bourail — les autres partagent l'ID du port le plus proche
+confirmé » : un pis-aller faute de connaître les autres ids, pas un choix.
+Distances mesurées (port → station interrogée, puis → sa vraie station) :
+
+| port | avant | après | | port | avant | après |
+|---|---|---|---|---|---|---|
+| Touho | 210 km | **1 km** | | Poum | 215 km | **2 km** (Banaré) |
+| Ponérihouen | 172 km | 38 km (Touho) | | Koumac | 168 km | **15 km** (Paagoumène) |
+| Hienghène | 118 km | **1 km** | | Koné | 87 km | **9 km** (Foué) |
+| Canala | 99 km | 32 km (Thio) | | Ouaco | 88 km | 29 km (Foué) |
+| Thio | 80 km | **4 km** | | Baie de Prony | 42 km | **4 km** |
+
+Ce n'est pas qu'une affaire de distance : les côtes est et ouest n'ont ni la même
+amplitude ni la même phase. Mesuré le 04/08 — pleine mer à **12:45Z à Nouméa** contre
+**10:34Z à Touho**, soit **2 h 11 d'écart**. Lire Touho sur Nouméa, c'est traverser
+l'île. Canala, Ouaco, Port Ouenghi et Poum n'ont pas de station homonyme : ils gardent
+la plus proche RÉELLE, et non plus « Nouméa ou Bourail par défaut ».
+Vérifié en runtime : **9 stations distinctes** au lieu de 2, 0 erreur JS ; les 7
+nouveaux ids répondent tous avec des données réelles.
+
+### Les SPOTS de surf, eux, étaient bien rattachés — sauf un
+Remarque de l'utilisateur, vérifiée et exacte : les spots sont tous dans le sud-ouest,
+donc légitimement sur Nouméa/Bourail. La mesure le confirme (gain nul ou < 6 km),
+**sauf Passe de Ouano** : `tideName` annonçait déjà « Bourake » alors que `tideId`
+pointait sur Nouméa — incohérence de recopie. Bourail est à 44 km, Nouméa à 83 km.
+Corrigé. À noter : la distance euclidienne n'est PAS un bon critère seule (elle
+« traverse » la Grande Terre) — Ilot Ténia sort « plus proche de Thio » alors que les
+deux sont sur des façades opposées ; le rattachement doit rester par façade côtière.
+
+## ✗ index.html : le bandeau de navigation, refait sur le modèle de previsions.html
+Le correctif précédent (breakpoint hamburger à 1280 px) traitait le symptôme : une
+rangée de 9 onglets ne tient pas dans un bandeau, et un menu qui n'apparaît que sous
+un seuil oblige à maintenir deux mises en page. Adopté le parti pris de
+previsions.html — un **popover ☰ unique, à toutes les largeurs** : bandeau réduit à
+logo + page courante + pastille token + avatar + ☰ ; menu en grille 2 colonnes
+(1 sur mobile), icônes, séparateurs, état actif à barre latérale, « + Ajouter une
+session » en tête (l'action principale ne dépend plus d'un breakpoint).
+Supprimé au passage : `.nav-menu-btns`, `#nav-new-session-btn`, `#nav-menu-newsession`,
+la media query 1280 et `.nav-quick-btn` — tous devenus morts.
+Vérifié de 500 à 1400 px : `OVERFLOW_H=false`, 1 seule entrée active, suffixe de page
+correct, fermeture au clic extérieur et transition complète.
+
+## ✗ Modale profil (clic sur un nom) : camemberts illisibles
+Signalé par l'utilisateur (« on voit des stats, mais pas facile à voir »). Rendu avec
+des données réelles pour voir le vrai défaut : la répartition par spot donne
+typiquement **19/16/16/16/16/16 %** — six parts quasi égales, qu'un camembert rend
+strictement illisibles (ni ordre ni comparaison possibles), en imposant en plus un
+aller-retour couleur ↔ légende, avec des libellés tronqués (« Firewire Seasi… »).
+C'est l'anti-pattern « donut/pie pour comparer des valeurs proches ».
+→ **barres horizontales** triées, libellé complet, compte brut + %, teinte
+**séquentielle** unique (l'accent du site) et non six teintes catégorielles : ici la
+couleur n'a pas d'identité à porter, seulement une magnitude. Largeur relative au max
+pour que les écarts restent visibles. Plus de légende du tout.
+Aussi : « Dernières sessions » passait par `justify-content:space-between`, donc
+aucune colonne n'était alignée d'une ligne à l'autre → grille 3 colonnes ; et le nom
+de spot y était injecté sans échappement.
+
+## ⚠ Vendoring des bibliothèques (fin de la dépendance CDN)
+Supabase et Chart.js étaient chargés depuis jsdelivr/cdnjs : injoignables (réseau
+d'entreprise, coupure), `sb` restait `null` et l'app affichait « configuration
+requise » — pour une PWA censée marcher hors-ligne, la contradiction était totale.
+→ `assets/vendor/`, **vérifiés bit à bit contre les hashes SRI qui étaient déjà
+déclarés** (sha384 identiques, donc strictement les mêmes fichiers), et précachés par
+le service worker. Les 4 pages basculées (index, previsions, sorties, marine_fuel_pro).
+**Prouvé** en rejouant les 4 pages avec `--host-resolver-rules="MAP cdn.jsdelivr.net
+127.0.0.1, MAP cdnjs.cloudflare.com 127.0.0.1"` : `supabase=object`, `Chart=function`,
+0 erreur partout. Leaflet (previsions) est laissé au CDN : plus lourd, et seule la
+carte en dépend. Mise à jour d'une lib = re-télécharger + rebumper `CACHE_NAME`.
+
+## Nettoyage
+`assets/forecast.js` et `assets/spots.js` supprimés : 0 référence dans tout le dépôt
+(html, js, json), absents du `sw.js`. sw v60→v61.

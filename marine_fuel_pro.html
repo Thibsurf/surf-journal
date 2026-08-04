@@ -25,8 +25,14 @@
 <meta name="twitter:description" content="Suivi carburant et coûts partagés pour copropriétaires de bateau : pleins, consommation réelle, répartition automatique des coûts.">
 <meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8" integrity="sha384-Tve8O+C6PBzsIMK/IRCwHbi8fyEzXIlIs6OfVBZHubplwYhaQF/4Mzxqgg+pp/oy" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
+<!-- Servi depuis le dépôt et non depuis un CDN : la PWA doit démarrer même quand
+     jsdelivr/cdnjs est injoignable (réseau d'entreprise, coupure) — sans Supabase,
+     `sb` restait null et la page affichait la bannière « configuration requise ».
+     Le service worker précache ces deux fichiers, donc le 1er lancement hors-ligne
+     fonctionne aussi. Fichiers vérifiés identiques aux hashes SRI qui étaient
+     déclarés ici (sha384). Mise à jour = re-télécharger + rebumper CACHE_NAME. -->
+<script src="assets/vendor/supabase-js-2.110.8.min.js"></script>
+<script src="assets/vendor/chart-4.4.1.umd.js"></script>
 <!-- Cœur pur testable : soldes, bidons event-sourcés, FOB (voir test_fuel.html) -->
 <script src="assets/fuel-core.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">

@@ -29,8 +29,14 @@
 <meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8" integrity="sha384-Tve8O+C6PBzsIMK/IRCwHbi8fyEzXIlIs6OfVBZHubplwYhaQF/4Mzxqgg+pp/oy" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
+<!-- Servi depuis le dépôt et non depuis un CDN : la PWA doit démarrer même quand
+     jsdelivr/cdnjs est injoignable (réseau d'entreprise, coupure) — sans Supabase,
+     `sb` restait null et la page affichait la bannière « configuration requise ».
+     Le service worker précache ces deux fichiers, donc le 1er lancement hors-ligne
+     fonctionne aussi. Fichiers vérifiés identiques aux hashes SRI qui étaient
+     déclarés ici (sha384). Mise à jour = re-télécharger + rebumper CACHE_NAME. -->
+<script src="assets/vendor/supabase-js-2.110.8.min.js"></script>
+<script src="assets/vendor/chart-4.4.1.umd.js"></script>
 <!-- Modèle harmonique de marée (SHOM) — chargé SANS defer : tideHeightAt() doit
      exister au premier renderTideWidget(), qui part d'un setTimeout de 50 ms. -->
 <script src="assets/tide-harmonics.js"></script>

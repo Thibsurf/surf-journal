@@ -48,7 +48,7 @@ try {
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"/>
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
+<script defer src="assets/vendor/chart-4.4.1.umd.js"></script>
 <!-- html2canvas (180 Ko) : chargé À LA DEMANDE par generateMeteogram/_gwCapture
      (elles ont chacune leur injection+retry intégrés). Plotly (3,6 Mo !) :
      chargé À LA DEMANDE à l'ouverture de l'onglet ENSO — le télécharger au boot
@@ -2057,7 +2057,13 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 </div>
 </div>
 
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8" integrity="sha384-Tve8O+C6PBzsIMK/IRCwHbi8fyEzXIlIs6OfVBZHubplwYhaQF/4Mzxqgg+pp/oy" crossorigin="anonymous"></script>
+<!-- Servi depuis le dépôt et non depuis un CDN : la PWA doit démarrer même quand
+     jsdelivr/cdnjs est injoignable (réseau d'entreprise, coupure) — sans Supabase,
+     `sb` restait null et la page affichait la bannière « configuration requise ».
+     Le service worker précache ces deux fichiers, donc le 1er lancement hors-ligne
+     fonctionne aussi. Fichiers vérifiés identiques aux hashes SRI qui étaient
+     déclarés ici (sha384). Mise à jour = re-télécharger + rebumper CACHE_NAME. -->
+<script defer src="assets/vendor/supabase-js-2.110.8.min.js"></script>
 <!-- Token meteo.nc partagé (classique, doit charger avant le script principal) -->
 <script src="assets/nc-token.js"></script>
 <script src="assets/app-cache.js"></script>

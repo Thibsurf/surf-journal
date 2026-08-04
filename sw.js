@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v60';
+const CACHE_NAME = 'surf-nc-v61';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -20,6 +20,11 @@ const ASSETS = [
   // tide-harmonics.js : le widget marée du Journal en dépend pour tracer la courbe
   // du jour — sans précache, le formulaire de session serait cassé hors-ligne.
   '/surf-journal/assets/tide-harmonics.js',
+  // Bibliothèques servies depuis le dépôt (plus depuis jsdelivr/cdnjs) : sans elles
+  // en cache, le 1er lancement hors-ligne laissait `sb` à null et Chart.js absent —
+  // donc pas d'app du tout, alors que le reste était précaché.
+  '/surf-journal/assets/vendor/supabase-js-2.110.8.min.js',
+  '/surf-journal/assets/vendor/chart-4.4.1.umd.js',
   '/surf-journal/favicon.ico',
   '/surf-journal/favicon.png',
   // Favicons référencés dans le <head> de chaque page (petits, complètent le
