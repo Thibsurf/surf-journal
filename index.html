@@ -91,19 +91,66 @@ nav {
   display: flex; align-items: center; gap: 8px;
 }
 .nav-logo span { color: var(--accent); }
-.nav-btn {
-  background: none; border: none; cursor: pointer;
+/* Suffixe « — <page courante> » : le bandeau ne portant plus les onglets, c'est lui
+   qui dit où l'on est (l'entrée correspondante est aussi surlignée dans le menu). */
+.logo-suffix { color: var(--text-muted); font-weight: 400; font-size: .95rem; }
+
+/* ─── BOUTON MENU ☰ — point d'entrée UNIQUE de toute la navigation ───────────
+   Même parti pris que previsions.html : une rangée d'onglets dans le bandeau ne
+   tient pas à 9 entrées (elle débordait ici de 601 à ~1250 px, faisant scroller
+   toute la page horizontalement), et un menu qui n'apparaît qu'en dessous d'un
+   breakpoint oblige à maintenir deux mises en page. Le ☰ est donc affiché à
+   TOUTES les largeurs, et le bandeau reste léger. */
+.nav-hamburger-btn {
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border);
   color: var(--text-muted); font-family: var(--font-body);
-  font-size: 13px; padding: 6px 12px; border-radius: var(--radius-sm);
-  transition: all .2s; white-space: nowrap;
+  font-size: 15px; line-height: 1; padding: 6px 11px;
+  border-radius: var(--radius-sm); cursor: pointer; flex-shrink: 0;
+  transition: color .15s, border-color .15s, background .15s;
 }
-.nav-btn:hover { color: var(--text); background: var(--glass); }
-.nav-btn.active { color: var(--accent); background: rgba(79,163,199,.12); font-weight: 500; }
-.nav-btn.primary {
-  background: var(--accent); color: var(--ocean);
-  font-weight: 500; padding: 6px 14px;
+.nav-hamburger-btn:hover { color: var(--text); border-color: var(--border-hover); background: var(--glass); }
+.nav-hamburger-btn.open { color: var(--accent); border-color: var(--accent); background: var(--glass); }
+
+/* ─── POPOVER DE NAVIGATION ─────────────────────────────────────────────────
+   visibility+opacity plutôt que display:none → l'apparition s'anime réellement. */
+#main-menu {
+  position: fixed; top: 60px; right: 12px; z-index: 1001;
+  width: min(320px, calc(100vw - 24px));
+  background: rgba(10,22,40,.98); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border); border-radius: 16px; padding: 10px;
+  box-shadow: 0 16px 44px rgba(0,0,0,.42), 0 3px 10px rgba(0,0,0,.28);
+  max-height: calc(100vh - 72px); overflow-y: auto;
+  visibility: hidden; opacity: 0; transform: translateY(-8px) scale(.97); transform-origin: top right;
+  transition: opacity .16s ease, transform .16s ease, visibility 0s .16s; pointer-events: none;
 }
-.nav-btn.primary:hover { opacity: .85; color: var(--ocean); }
+#main-menu.open {
+  visibility: visible; opacity: 1; transform: none; pointer-events: auto;
+  transition: opacity .16s ease, transform .16s ease;
+}
+.mm-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--text-faint); font-weight: 700; padding: 4px 8px 5px;
+}
+.mm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.mm-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; box-sizing: border-box;
+  background: none; border: none; border-radius: 10px; color: var(--text);
+  font-family: var(--font-body); font-size: 13px; padding: 9px 10px;
+  cursor: pointer; text-align: left; text-decoration: none; white-space: nowrap;
+  transition: background .13s, color .13s;
+}
+.mm-item:hover { background: var(--glass); }
+.mm-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.mm-item.active {
+  background: var(--glass); color: var(--accent); font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.mm-ic { font-size: 15px; width: 20px; text-align: center; flex: 0 0 auto; line-height: 1; }
+.mm-sep { height: 1px; background: var(--border); margin: 8px 6px; }
+.mm-item.mm-primary { background: var(--accent); color: var(--ocean); font-weight: 600; justify-content: center; }
+.mm-item.mm-primary:hover { opacity: .88; background: var(--accent); }
+.mm-item.mm-fuel { color: #e8c44a; }
 .nav-avatar {
   width: 32px; height: 32px; border-radius: 50%;
   background: var(--mid); border: 1px solid var(--border);
@@ -111,15 +158,6 @@ nav {
   font-size: 12px; font-weight: 500; color: var(--accent);
   cursor: pointer;
 }
-.nav-quick-btn {
-  width: 32px; height: 32px; border-radius: 50%;
-  background: rgba(79,163,199,0.15); border: 1px solid rgba(79,163,199,0.3);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 15px; text-decoration: none; flex-shrink: 0;
-  transition: all .2s;
-}
-.nav-quick-btn:hover { background: rgba(79,163,199,0.3); }
-
 /* ── LAYOUT ── */
 .page { display: none; }
 .page.active { display: block; }
@@ -415,10 +453,6 @@ nav {
 .comment-meta { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
 
 /* ── RESPONSIVE ── */
-/* Hamburger mobile */
-.nav-menu-btns {
-  display: contents; /* sur desktop : les boutons s'insèrent directement dans le flex du nav */
-}
 @media (max-width: 600px) {
   .form-row, .form-row-3, .detail-grid { grid-template-columns: 1fr; }
   /* #csv-export-btns : grid 3 colonnes fixe non couverte par une classe
@@ -442,38 +476,11 @@ nav {
   .stats-2col { grid-template-columns: 1fr; }
   nav { padding: 0 1rem; }
   .container, .container-wide { padding: 1.5rem 1rem; }
-  #nav-new-session-btn { display: none; }
-  /* « + Session » est masqué de la barre faute de place : le relayer DANS le menu
-     déroulant, sinon l'action principale de l'app devenait injoignable dès qu'on
-     n'était pas sur le dashboard (3 taps : menu → Mes sessions → + Ajouter). */
-  #nav-menu-newsession { display: block; }
-}
-
-/* Bascule en menu déroulant tant que la barre complète ne tient pas en largeur.
-   Mesuré au moment du correctif : la nav (logo + 9 entrées + « + Session » +
-   pastille token + avatar) réclame 1237 px. Le seuil hamburger était resté à
-   600 px, donc de 601 px à ~1250 px la barre débordait et faisait scroller
-   HORIZONTALEMENT toute la page (document.documentElement.scrollWidth 1237 vs
-   clientWidth 585 à 601 px) — tablettes, iPad et fenêtres non maximisées.
-   1280 laisse une marge sur les 1237 mesurés (la largeur dépend des polices
-   Google réellement chargées, qu'on ne veut pas voir décider du seuil). */
-@media (max-width: 1280px) {
-  .nav-menu-btns {
-    display: none; flex-direction: column; position: fixed;
-    top: 56px; left: 0; right: 0; background: rgba(10,22,40,.98);
-    border-bottom: 1px solid var(--border);
-    padding: 8px; gap: 2px; z-index: 999;
-    max-height: calc(100vh - 56px); overflow-y: auto;
-  }
-  .nav-menu-btns.open { display: flex; }
-  .nav-menu-btns .nav-btn { text-align: left; padding: 10px 12px; font-size: 13px; border-radius: var(--radius-sm); }
-  .nav-hamburger-btn { display: flex !important; }
-}
-.nav-hamburger-btn {
-  display: none;
-  background: none; border: 1px solid var(--border);
-  color: var(--text-muted); font-size: 18px; line-height: 1;
-  padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer;
+  /* Menu ☰ ancré aux deux bords et sur une seule colonne : plus lisible qu'une
+     grille 2 colonnes sur téléphone. */
+  #main-menu { top: 58px; right: 8px; left: 8px; width: auto; }
+  .mm-grid { grid-template-columns: 1fr; }
+  .logo-suffix { display: none; }   /* la page courante est surlignée dans le menu */
 }
 
 /* ── SETUP BANNER ── */
@@ -526,34 +533,39 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 
 <!-- NAV -->
 <nav id="main-nav" style="display:none">
-  <a href="#" class="nav-logo" onclick="showPage('dashboard')">
+  <a href="#" class="nav-logo" onclick="showPage('dashboard');return false;">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c2-4 5-7 10-7s8 3 10 7c-2 4-5 7-10 7s-8-3-10-7z"/><path d="M20 12C17 8 14 5 9 5"/></svg>
-    <span>Coups de surf <span>NC</span>
+    <span>Coups de surf <span>NC</span></span><span class="logo-suffix" id="nav-current"> — Mes sessions</span>
   </a>
-  <a href="https://thibsurf.github.io/surf-journal/previsions.html" class="nav-quick-btn" title="Prévisions" aria-label="Prévisions">🌊</a>
-  <!-- Boutons de nav (repliés dans le menu ☰ sous 1280px, cf. la media query) -->
-  <div class="nav-menu-btns" id="nav-menu-btns">
-    <button class="nav-btn" data-page="dashboard" onclick="showPage('dashboard');closeIndexMenu()">Mes sessions</button>
-    <button class="nav-btn" data-page="group" onclick="showPage('group');closeIndexMenu()">Groupe</button>
-    <button class="nav-btn" data-page="spots" onclick="showPage('spots');closeIndexMenu()">Spots</button>
-    <button class="nav-btn" data-page="ranking" onclick="showPage('ranking');closeIndexMenu()">Classement</button>
-    <button class="nav-btn" data-page="boats" onclick="showPage('boats');closeIndexMenu()">Bateaux</button>
-    <button class="nav-btn" data-page="stats" onclick="showPage('stats');closeIndexMenu()">Stats</button>
-    <a href="https://thibsurf.github.io/surf-journal/previsions.html"
-       class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">🌊 Prévisions</a>
-    <a href="https://thibsurf.github.io/surf-journal/sorties.html"
-       class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">🏄 Sorties</a>
-    <a href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html"
-       class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="closeIndexMenu()">⛽ Marine Fuel – Pro</a>
-    <!-- Relais de « + Session » quand la barre le masque (≤600px) — display:block
-         posé par la media query, sinon l'entrée ferait doublon sur desktop. -->
-    <button class="nav-btn primary" id="nav-menu-newsession" style="display:none;margin-top:4px;" onclick="closeIndexMenu();openAddSession()">+ Session</button>
-  </div>
-  <button class="nav-btn primary" id="nav-new-session-btn" onclick="openAddSession()">+ Session</button>
   <div id="nav-token-dot" title="Token meteo.nc : —" style="width:9px;height:9px;border-radius:50%;background:var(--border);flex-shrink:0;cursor:default;transition:background .3s;"></div>
   <div class="nav-avatar" id="nav-avatar" role="button" tabindex="0" aria-label="Mon profil" onclick="showPage('profile')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('profile');}">?</div>
-  <button class="nav-hamburger-btn" id="nav-hamburger-idx" onclick="toggleIndexMenu()" aria-label="Menu">☰</button>
+  <button class="nav-hamburger-btn" id="nav-hamburger-idx" onclick="toggleIndexMenu()" aria-label="Ouvrir le menu de navigation"
+    aria-haspopup="true" aria-expanded="false" aria-controls="main-menu">☰</button>
 </nav>
+
+<!-- Menu de navigation UNIQUE (☰) — même parti pris que previsions.html : toutes
+     les pages y vivent, à toutes les largeurs. Remplace la rangée de 9 onglets qui
+     saturait le bandeau (et le faisait déborder de 601 à ~1250 px). « + Session »
+     y est en tête : c'est l'action principale, elle ne dépend plus d'un breakpoint. -->
+<div id="main-menu" role="menu" aria-label="Navigation">
+  <button class="mm-item mm-primary" role="menuitem" onclick="closeIndexMenu();openAddSession()">+ Ajouter une session</button>
+  <div class="mm-sep"></div>
+  <div class="mm-label">Aller à</div>
+  <div class="mm-grid">
+    <button class="mm-item" role="menuitem" data-page="dashboard" onclick="showPage('dashboard');closeIndexMenu()"><span class="mm-ic">🏄</span>Mes sessions</button>
+    <button class="mm-item" role="menuitem" data-page="group" onclick="showPage('group');closeIndexMenu()"><span class="mm-ic">👥</span>Groupe</button>
+    <button class="mm-item" role="menuitem" data-page="spots" onclick="showPage('spots');closeIndexMenu()"><span class="mm-ic">📍</span>Spots</button>
+    <button class="mm-item" role="menuitem" data-page="ranking" onclick="showPage('ranking');closeIndexMenu()"><span class="mm-ic">🏆</span>Classement</button>
+    <button class="mm-item" role="menuitem" data-page="boats" onclick="showPage('boats');closeIndexMenu()"><span class="mm-ic">⛵</span>Bateaux</button>
+    <button class="mm-item" role="menuitem" data-page="stats" onclick="showPage('stats');closeIndexMenu()"><span class="mm-ic">📊</span>Stats</button>
+    <button class="mm-item" role="menuitem" data-page="profile" onclick="showPage('profile');closeIndexMenu()"><span class="mm-ic">👤</span>Mon profil</button>
+  </div>
+  <div class="mm-sep"></div>
+  <div class="mm-label">Autres pages</div>
+  <a class="mm-item" role="menuitem" href="https://thibsurf.github.io/surf-journal/previsions.html"><span class="mm-ic">🌊</span>Prévisions</a>
+  <a class="mm-item" role="menuitem" href="https://thibsurf.github.io/surf-journal/sorties.html"><span class="mm-ic">🏄</span>Sorties</a>
+  <a class="mm-item mm-fuel" role="menuitem" href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html"><span class="mm-ic">⛽</span>Fuel Pro</a>
+</div>
 
 
 <!-- ══ PAGE AUTH ══ -->
@@ -1744,8 +1756,8 @@ async function onLogin(user) {
   document.getElementById('page-dashboard').classList.add('active');
   // …mais l'onglet actif, lui, doit quand même être marqué — sinon la nav
   // n'indique rien tant qu'on n'a pas cliqué une première fois.
-  document.querySelectorAll('.nav-btn:not(.primary)').forEach(function(b){ b.classList.remove('active'); });
-  var _navDash = document.querySelector('.nav-btn[data-page="dashboard"]');
+  document.querySelectorAll('#main-menu .mm-item[data-page]').forEach(function(b){ b.classList.remove('active'); });
+  var _navDash = document.querySelector('#main-menu .mm-item[data-page="dashboard"]');
   if (_navDash) _navDash.classList.add('active');
 
   // Charger données
@@ -5808,48 +5820,50 @@ async function openUserProfile(userId) {
   modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.7);display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow-y:auto;';
 
   // Helper pour camembert SVG simple
-  function pieChart(data, colors) {
+  // Barres horizontales, et non plus un camembert. Mesuré sur des données réelles :
+  // la répartition par spot donne typiquement 19/16/16/16/16/16 % — six parts quasi
+  // égales, qu'un camembert rend strictement illisibles (on ne peut ni les ordonner
+  // ni les comparer à l'œil), en imposant en plus un aller-retour couleur ↔ légende.
+  // Une barre par ligne se lit dans l'ordre, sans légende, et le libellé tient en
+  // entier (« Firewire Seasi… » était tronqué).
+  // Teinte SÉQUENTIELLE unique (l'accent du site) plutôt qu'une couleur par
+  // catégorie : ici la couleur n'a pas à porter d'identité, seulement la magnitude —
+  // et six teintes catégorielles pour six valeurs proches n'aidaient personne.
+  function barList(data) {
     if (!data.length) return '';
     var total = data.reduce(function(a,e){return a+e[1];},0);
     if (total === 0) return '';
-    var cx = 60, cy = 60, r = 55;
-    var startAngle = -Math.PI/2;
-    var segs = '';
-    var legend = '';
-    data.forEach(function(e, i) {
-      var frac = e[1]/total;
-      var endAngle = startAngle + frac * 2 * Math.PI;
-      var large = frac > 0.5 ? 1 : 0;
-      var x1 = cx + r*Math.cos(startAngle);
-      var y1 = cy + r*Math.sin(startAngle);
-      var x2 = cx + r*Math.cos(endAngle);
-      var y2 = cy + r*Math.sin(endAngle);
-      var color = colors[i % colors.length];
-      segs += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + r + ',' + r + ' 0 ' + large + ',1 ' + x2 + ',' + y2 + ' Z" fill="' + color + '" stroke="#0d1f3c" stroke-width="1.5"/>';
-      var pct = Math.round(frac * 100);
-      var lbl = String(e[0]);
-      if (lbl.length > 16) lbl = lbl.slice(0,14) + '…';
-      legend += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:2px 0;"><span style="display:inline-block;width:10px;height:10px;background:' + color + ';border-radius:2px;flex-shrink:0;"></span><span style="color:var(--text);">' + lbl + '</span><span style="color:var(--text-muted);margin-left:auto;">' + pct + '%</span></div>';
-      startAngle = endAngle;
-    });
-    return '<div style="display:flex;align-items:center;gap:12px;">'
-      + '<svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0;">' + segs + '</svg>'
-      + '<div style="flex:1;min-width:0;">' + legend + '</div>'
+    var max = Math.max.apply(null, data.map(function(e){return e[1];}));
+    return '<div style="display:flex;flex-direction:column;gap:7px;">' + data.map(function(e, i) {
+      var pct = Math.round(e[1]/total*100);
+      var w = Math.max(2, Math.round(e[1]/max*100));   // largeur relative au MAX : les écarts restent visibles
+      // Dégradé d'opacité, pas de teinte : la 1re barre est la plus dense.
+      var op = (1 - i * 0.11).toFixed(2);
+      return '<div>'
+        + '<div style="display:flex;align-items:baseline;gap:8px;font-size:11px;margin-bottom:3px;">'
+          + '<span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(String(e[0])) + '</span>'
+          + '<span style="color:var(--text-muted);margin-left:auto;flex-shrink:0;font-variant-numeric:tabular-nums;">'
+            + e[1] + ' <span style="color:var(--text-faint);">· ' + pct + '%</span></span>'
+        + '</div>'
+        + '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;">'
+          + '<div style="height:100%;width:' + w + '%;background:var(--accent);opacity:' + op + ';border-radius:3px;"></div>'
+        + '</div>'
       + '</div>';
+    }).join('') + '</div>';
   }
 
-  var SPOT_COLORS   = ['#4fa3c7','#3dba8a','#e8a057','#7b6cf6','#e05c5c','#7a94aa'];
-  var BOARD_COLORS  = ['#7b6cf6','#4fa3c7','#e8a057','#3dba8a','#e05c5c','#7a94aa'];
-  var BOAT_COLORS   = ['#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
 
+
+  // Grille 3 colonnes plutôt que justify-content:space-between : les trois valeurs
+  // flottaient chacune à une position dépendant de la longueur du nom de spot, si
+  // bien qu'aucune colonne n'était alignée d'une ligne à l'autre. Le nom de spot
+  // était aussi injecté sans échappement (champ libre).
   var sessHtml = sessions.slice(0,5).map(function(s){
-    var d = new Date(s.date+'T00:00:00');
-    var dateStr = d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
     var stars = s.quality ? '★'.repeat(s.quality) : '—';
-    return '<div class="upm-sess" data-id="'+s.id+'" style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;">'
-      +'<span style="color:var(--text-muted);">'+dateStr+'</span>'
-      +'<span style="font-weight:500;">'+(s.spot||'—')+'</span>'
-      +'<span style="color:var(--star);">'+stars+'</span>'
+    return '<div class="upm-sess" data-id="'+escapeHtml(s.id)+'" style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:baseline;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;">'
+      +'<span style="color:var(--text-muted);white-space:nowrap;">'+_fmtDateFR(s.date)+'</span>'
+      +'<span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escapeHtml(s.spot||'—')+'</span>'
+      +'<span style="color:var(--star);white-space:nowrap;">'+stars+'</span>'
       +'</div>';
   }).join('');
 
@@ -5880,13 +5894,13 @@ async function openUserProfile(userId) {
     +'</div></div>'
 
     // Spots favoris
-    +(topSpots.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🏄 Spots</div>' + pieChart(topSpots, SPOT_COLORS) + '</div>' : '')
+    +(topSpots.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🏄 Spots</div>' + barList(topSpots) + '</div>' : '')
 
     // Planches
-    +(topBoards.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🛹 Planches</div>' + pieChart(topBoards, BOARD_COLORS) + '</div>' : '')
+    +(topBoards.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🛹 Planches</div>' + barList(topBoards) + '</div>' : '')
 
     // Bateaux
-    +(topBoats.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">⛵ Bateaux</div>' + pieChart(topBoats, BOAT_COLORS) + '</div>' : '')
+    +(topBoats.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">⛵ Bateaux</div>' + barList(topBoats) + '</div>' : '')
 
     // Dernières sessions
     +(sessions.length ? '<div><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Dernières sessions</div>' + sessHtml + '</div>' : '')
@@ -6343,23 +6357,28 @@ function _updateTubeDisplay() {
 
 // ── Hamburger mobile ──────────────────────────────────────────────────────
 function toggleIndexMenu() {
-  var g = document.getElementById('nav-menu-btns');
+  var m = document.getElementById('main-menu');
   var btn = document.getElementById('nav-hamburger-idx');
-  if (!g) return;
-  var isOpen = g.classList.toggle('open');
-  if (btn) btn.textContent = isOpen ? '✕' : '☰';
+  if (!m) return;
+  var open = m.classList.toggle('open');
+  if (btn) {
+    btn.classList.toggle('open', open);
+    btn.textContent = open ? '✕' : '☰';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
 }
 function closeIndexMenu() {
-  var g = document.getElementById('nav-menu-btns');
+  var m = document.getElementById('main-menu');
   var btn = document.getElementById('nav-hamburger-idx');
-  if (g) g.classList.remove('open');
-  if (btn) btn.textContent = '☰';
+  if (m) m.classList.remove('open');
+  if (btn) { btn.classList.remove('open'); btn.textContent = '☰'; btn.setAttribute('aria-expanded', 'false'); }
 }
+// Fermer en cliquant en dehors (le bouton se gère lui-même via son onclick).
 document.addEventListener('click', function(e) {
-  var g = document.getElementById('nav-menu-btns');
+  var m = document.getElementById('main-menu');
   var btn = document.getElementById('nav-hamburger-idx');
-  if (!g || !g.classList.contains('open')) return;
-  if (!g.contains(e.target) && e.target !== btn) closeIndexMenu();
+  if (!m || !m.classList.contains('open')) return;
+  if (!m.contains(e.target) && !(btn && btn.contains(e.target)) && e.target !== btn) closeIndexMenu();
 });
 
 function showPage(name) {
@@ -6367,13 +6386,21 @@ function showPage(name) {
   if (!pageEl) { console.warn('[showPage] page inconnue :', name); return; }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   pageEl.classList.add('active');
-  // .nav-btn.active existe en CSS (couleur accent) mais n'était jamais POSÉ : le code
-  // se contentait de le retirer, donc aucune des 9 entrées n'indiquait jamais où on
-  // se trouvait. data-page relie chaque bouton à sa page (le libellé ne suffit pas :
-  // « Mes sessions » ≠ 'dashboard').
-  document.querySelectorAll('.nav-btn:not(.primary)').forEach(b => b.classList.remove('active'));
-  var navBtn = document.querySelector('.nav-btn[data-page="' + name + '"]');
+  // Entrée de menu correspondante surlignée. data-page relie chaque entrée à sa page
+  // (le libellé ne suffit pas : « Mes sessions » ≠ 'dashboard'). Auparavant la classe
+  // .active était UNIQUEMENT retirée, jamais posée : rien n'indiquait où on était.
+  document.querySelectorAll('#main-menu .mm-item[data-page]').forEach(b => b.classList.remove('active'));
+  var navBtn = document.querySelector('#main-menu .mm-item[data-page="' + name + '"]');
   if (navBtn) navBtn.classList.add('active');
+  // Le bandeau ne portant plus d'onglets, il rappelle la page courante à côté du logo.
+  var _cur = document.getElementById('nav-current');
+  // lastChild et non textContent : celui-ci recollerait l'icône au libellé
+  // (« — 📍Spots »). L'icône est un <span class="mm-ic">, le libellé le nœud
+  // texte qui suit.
+  if (_cur) {
+    var _lbl = navBtn ? (navBtn.lastChild ? navBtn.lastChild.textContent : navBtn.textContent) : '';
+    _cur.textContent = _lbl ? ' — ' + _lbl.trim() : '';
+  }
   if (name === 'dashboard') { loadMySessions(); }
   if (name === 'group') { loadGroupSessions(); }
   if (name === 'stats') { loadStats('me'); }
