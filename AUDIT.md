@@ -4368,20 +4368,28 @@ la media query 1280 et `.nav-quick-btn` — tous devenus morts.
 Vérifié de 500 à 1400 px : `OVERFLOW_H=false`, 1 seule entrée active, suffixe de page
 correct, fermeture au clic extérieur et transition complète.
 
-## ✗ Modale profil (clic sur un nom) : camemberts illisibles
-Signalé par l'utilisateur (« on voit des stats, mais pas facile à voir »). Rendu avec
-des données réelles pour voir le vrai défaut : la répartition par spot donne
-typiquement **19/16/16/16/16/16 %** — six parts quasi égales, qu'un camembert rend
-strictement illisibles (ni ordre ni comparaison possibles), en imposant en plus un
-aller-retour couleur ↔ légende, avec des libellés tronqués (« Firewire Seasi… »).
-C'est l'anti-pattern « donut/pie pour comparer des valeurs proches ».
-→ **barres horizontales** triées, libellé complet, compte brut + %, teinte
-**séquentielle** unique (l'accent du site) et non six teintes catégorielles : ici la
-couleur n'a pas d'identité à porter, seulement une magnitude. Largeur relative au max
-pour que les écarts restent visibles. Plus de légende du tout.
-Aussi : « Dernières sessions » passait par `justify-content:space-between`, donc
-aucune colonne n'était alignée d'une ligne à l'autre → grille 3 colonnes ; et le nom
-de spot y était injecté sans échappement.
+## ✗ Profil d'un surfeur : la fonction était introuvable, pas illisible
+Signalé par l'utilisateur (« on voit des stats, mais pas facile à voir »).
+**Première lecture erronée de ma part** : j'ai compris « peu lisible » et remplacé les
+camemberts par des barres horizontales. L'utilisateur a rectifié — les camemberts lui
+convenaient ; ce qui manquait, c'est de **savoir qu'il faut cliquer sur un pseudo**
+pour ouvrir ces stats. Camemberts restaurés à l'identique.
+
+Le vrai défaut, une fois le bon problème posé : le pseudo de l'auteur était rendu en
+`font-size:10px`, `opacity:.8`, et pour toute affordance un `cursor:pointer` —
+c'est-à-dire **rien du tout sur mobile**, où il n'y a pas de survol. Il n'était pas
+non plus atteignable au clavier (ni `role`, ni `tabindex`, ni gestionnaire clavier).
+→ le pseudo devient une puce explicitement actionnable : soulignement pointillé
+(signal qui survit au tactile), chevron `↗`, fond au survol/focus, `role="button"` +
+`tabindex="0"` + activation Entrée/Espace, `title`/`aria-label` « Voir les stats de X »,
+et 11 px au lieu de 10 (à 10 px la puce se lisait comme une mention de bas de carte).
+La page Groupe porte en plus un indice explicite dans son sous-titre : « touche un
+pseudo 👤 pour voir ses stats ».
+
+Conservé du passage précédent (non contesté, ce sont des correctifs) : « Dernières
+sessions » passait par `justify-content:space-between`, donc aucune colonne n'était
+alignée d'une ligne à l'autre → grille 3 colonnes ; et le nom de spot y était injecté
+sans échappement.
 
 ## ⚠ Vendoring des bibliothèques (fin de la dépendance CDN)
 Supabase et Chart.js étaient chargés depuis jsdelivr/cdnjs : injoignables (réseau
@@ -4398,3 +4406,9 @@ carte en dépend. Mise à jour d'une lib = re-télécharger + rebumper `CACHE_NA
 ## Nettoyage
 `assets/forecast.js` et `assets/spots.js` supprimés : 0 référence dans tout le dépôt
 (html, js, json), absents du `sw.js`. sw v60→v61.
+
+## ⚠ marine_fuel_pro.html : garde `file:` manquante à l'enregistrement du SW
+Seule des 4 pages à ne pas tester `location.protocol !== 'file:'` avant
+`serviceWorker.register` → rejet non capturé (« URL protocol of the current origin
+('null') is not supported ») à chaque ouverture locale, ce qui parasitait les
+vérifications headless. Aligné sur les trois autres.

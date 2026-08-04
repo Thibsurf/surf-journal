@@ -4152,7 +4152,11 @@ function importBidonsFromCSV(){
 
 </script>
 <script>
-  if ('serviceWorker' in navigator) {
+  // Garde file: alignée sur les 3 autres pages — seule celle-ci ne l'avait pas, et
+  // l'enregistrement échouait en rejet non capturé (« URL protocol of the current
+  // origin ('null') is not supported ») dès qu'on ouvrait le fichier en local, ce
+  // qui parasitait les vérifications headless du projet.
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/surf-journal/sw.js');
     });

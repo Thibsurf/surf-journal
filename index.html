@@ -489,6 +489,27 @@ nav {
   .logo-suffix { display: none; }   /* la page courante est surlignée dans le menu */
 }
 
+/* ── PSEUDO CLIQUABLE (→ stats du surfeur) ──────────────────────────────────
+   Le nom de l'auteur ouvre son profil (répartition spots/planches, régularité…),
+   mais rien ne le disait : 10px, opacity .8, et pour toute affordance un
+   `cursor:pointer` — c'est-à-dire RIEN sur mobile, où il n'y a pas de survol.
+   On en fait une puce explicitement actionnable : soulignement pointillé (le
+   signal « ceci ouvre quelque chose » qui survit au tactile), chevron ↗, et un
+   fond au survol/focus. */
+.tap-author {
+  display: inline-flex; align-items: center; gap: 4px;
+  border-bottom: 1px dashed rgba(79,163,199,.5);
+  border-radius: 3px; padding: 1px 3px; margin-left: -3px;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.tap-author::after {
+  content: '↗'; font-size: .85em; opacity: .75;
+}
+.tap-author:hover, .tap-author:focus-visible {
+  background: rgba(79,163,199,.14); border-bottom-color: var(--accent); outline: none;
+}
+.tap-author:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* ── SETUP BANNER ── */
 .setup-banner {
   background: rgba(232,160,87,0.1); border: 1px solid rgba(232,160,87,0.3);
@@ -668,7 +689,8 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
   <div class="container">
     <div class="page-header">
       <div class="page-title">Sessions du groupe</div>
-      <div class="page-sub">Toutes les sorties partagées entre surfers</div>
+      <div class="page-sub">Toutes les sorties partagées entre surfers —
+        <span style="color:var(--accent);">touche un pseudo <span aria-hidden="true">👤</span> pour voir ses stats</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
         <button onclick="showAliasTool()" style="background:linear-gradient(135deg,rgba(79,163,199,.18),rgba(61,186,138,.12));border:1px solid rgba(79,163,199,.35);color:var(--accent);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">🔗 Alias &amp; Co-navigateurs</button>
         <span style="font-size:11px;color:var(--text-faint);font-style:italic;">Relie les surfeurs mentionnés avec des noms différents de leur pseudo</span>
@@ -1638,6 +1660,17 @@ async function doLogout() {
 }
 
 // ══ STARTUP ══
+// Entrée/Espace sur une puce pseudo : elle porte role="button" et tabindex=0, il
+// lui faut donc l'activation clavier correspondante (jusqu'ici seul le clic
+// ouvrait le profil, la puce était inatteignable sans souris ni doigt).
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var el = e.target.closest && e.target.closest('.tap-author');
+  if (!el) return;
+  e.preventDefault(); e.stopPropagation();
+  var uid = el.getAttribute('data-uid');
+  if (uid) openUserProfile(uid);
+});
 document.addEventListener('click', function(e) {
   var el = e.target.closest && e.target.closest('.tap-author');
   if (el) { e.stopPropagation(); var uid = el.getAttribute('data-uid'); if (uid) openUserProfile(uid); }
@@ -2129,11 +2162,19 @@ function sessionCardHTML(s, opts) {
         var isMe = window.currentUser && s.user_id === window.currentUser.id;
         // Toujours afficher dans vue groupe, seulement les autres dans "mes sessions"
         if (isMe && !opts.showAuthor) return '';
+        // opacity .8 retirée pour les autres : le pseudo est une commande, pas une
+        // mention de bas de carte. role/tabindex : il n'était atteignable qu'à la
+        // souris ou au doigt, jamais au clavier.
+        // 11px et non 10 pour l'auteur cliquable : à 10px la puce se lisait comme
+        // une mention de bas de carte, pas comme une commande.
         var style = isMe
           ? 'font-size:10px;color:var(--text-muted);margin-top:3px;'
-          : 'font-size:10px;color:var(--accent);margin-top:3px;opacity:.8;cursor:pointer;';
-        var cls = isMe ? '' : 'tap-author';
-        return '<div class="' + cls + '" ' + (isMe ? '' : 'data-uid="' + s.user_id + '"') + ' style="' + style + '">👤 ' + escapeHtml(name) + '</div>';
+          : 'font-size:11px;color:var(--accent);margin-top:3px;';
+        if (isMe) return '<div style="' + style + '">👤 ' + escapeHtml(name) + '</div>';
+        return '<div style="margin-top:3px;">'
+          + '<span class="tap-author" data-uid="' + escapeHtml(s.user_id) + '" role="button" tabindex="0"'
+          + ' title="Voir les stats de ' + escapeHtml(name) + '" aria-label="Voir les stats de ' + escapeHtml(name) + '"'
+          + ' style="' + style + '">👤 ' + escapeHtml(name) + '</span></div>';
       })()}
     </div>
     <div class="session-right">
@@ -5826,40 +5867,41 @@ async function openUserProfile(userId) {
   modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.7);display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow-y:auto;';
 
   // Helper pour camembert SVG simple
-  // Barres horizontales, et non plus un camembert. Mesuré sur des données réelles :
-  // la répartition par spot donne typiquement 19/16/16/16/16/16 % — six parts quasi
-  // égales, qu'un camembert rend strictement illisibles (on ne peut ni les ordonner
-  // ni les comparer à l'œil), en imposant en plus un aller-retour couleur ↔ légende.
-  // Une barre par ligne se lit dans l'ordre, sans légende, et le libellé tient en
-  // entier (« Firewire Seasi… » était tronqué).
-  // Teinte SÉQUENTIELLE unique (l'accent du site) plutôt qu'une couleur par
-  // catégorie : ici la couleur n'a pas à porter d'identité, seulement la magnitude —
-  // et six teintes catégorielles pour six valeurs proches n'aidaient personne.
-  function barList(data) {
+  function pieChart(data, colors) {
     if (!data.length) return '';
     var total = data.reduce(function(a,e){return a+e[1];},0);
     if (total === 0) return '';
-    var max = Math.max.apply(null, data.map(function(e){return e[1];}));
-    return '<div style="display:flex;flex-direction:column;gap:7px;">' + data.map(function(e, i) {
-      var pct = Math.round(e[1]/total*100);
-      var w = Math.max(2, Math.round(e[1]/max*100));   // largeur relative au MAX : les écarts restent visibles
-      // Dégradé d'opacité, pas de teinte : la 1re barre est la plus dense.
-      var op = (1 - i * 0.11).toFixed(2);
-      return '<div>'
-        + '<div style="display:flex;align-items:baseline;gap:8px;font-size:11px;margin-bottom:3px;">'
-          + '<span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(String(e[0])) + '</span>'
-          + '<span style="color:var(--text-muted);margin-left:auto;flex-shrink:0;font-variant-numeric:tabular-nums;">'
-            + e[1] + ' <span style="color:var(--text-faint);">· ' + pct + '%</span></span>'
-        + '</div>'
-        + '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;">'
-          + '<div style="height:100%;width:' + w + '%;background:var(--accent);opacity:' + op + ';border-radius:3px;"></div>'
-        + '</div>'
+    var cx = 60, cy = 60, r = 55;
+    var startAngle = -Math.PI/2;
+    var segs = '';
+    var legend = '';
+    data.forEach(function(e, i) {
+      var frac = e[1]/total;
+      var endAngle = startAngle + frac * 2 * Math.PI;
+      var large = frac > 0.5 ? 1 : 0;
+      var x1 = cx + r*Math.cos(startAngle);
+      var y1 = cy + r*Math.sin(startAngle);
+      var x2 = cx + r*Math.cos(endAngle);
+      var y2 = cy + r*Math.sin(endAngle);
+      var color = colors[i % colors.length];
+      segs += '<path d="M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + r + ',' + r + ' 0 ' + large + ',1 ' + x2 + ',' + y2 + ' Z" fill="' + color + '" stroke="#0d1f3c" stroke-width="1.5"/>';
+      var pct = Math.round(frac * 100);
+      var lbl = String(e[0]);
+      if (lbl.length > 16) lbl = lbl.slice(0,14) + '…';
+      legend += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:2px 0;"><span style="display:inline-block;width:10px;height:10px;background:' + color + ';border-radius:2px;flex-shrink:0;"></span><span style="color:var(--text);">' + lbl + '</span><span style="color:var(--text-muted);margin-left:auto;">' + pct + '%</span></div>';
+      startAngle = endAngle;
+    });
+    return '<div style="display:flex;align-items:center;gap:12px;">'
+      + '<svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0;">' + segs + '</svg>'
+      + '<div style="flex:1;min-width:0;">' + legend + '</div>'
       + '</div>';
-    }).join('') + '</div>';
   }
 
 
 
+  var SPOT_COLORS   = ['#4fa3c7','#3dba8a','#e8a057','#7b6cf6','#e05c5c','#7a94aa'];
+  var BOARD_COLORS  = ['#7b6cf6','#4fa3c7','#e8a057','#3dba8a','#e05c5c','#7a94aa'];
+  var BOAT_COLORS   = ['#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
   // Grille 3 colonnes plutôt que justify-content:space-between : les trois valeurs
   // flottaient chacune à une position dépendant de la longueur du nom de spot, si
   // bien qu'aucune colonne n'était alignée d'une ligne à l'autre. Le nom de spot
@@ -5900,13 +5942,13 @@ async function openUserProfile(userId) {
     +'</div></div>'
 
     // Spots favoris
-    +(topSpots.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🏄 Spots</div>' + barList(topSpots) + '</div>' : '')
+    +(topSpots.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🏄 Spots</div>' + pieChart(topSpots, SPOT_COLORS) + '</div>' : '')
 
     // Planches
-    +(topBoards.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🛹 Planches</div>' + barList(topBoards) + '</div>' : '')
+    +(topBoards.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">🛹 Planches</div>' + pieChart(topBoards, BOARD_COLORS) + '</div>' : '')
 
     // Bateaux
-    +(topBoats.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">⛵ Bateaux</div>' + barList(topBoats) + '</div>' : '')
+    +(topBoats.length ? '<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">⛵ Bateaux</div>' + pieChart(topBoats, BOAT_COLORS) + '</div>' : '')
 
     // Dernières sessions
     +(sessions.length ? '<div><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Dernières sessions</div>' + sessHtml + '</div>' : '')
