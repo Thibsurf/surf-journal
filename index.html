@@ -1045,7 +1045,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
             <input type="hidden" id="f-wind-dir">
           </div>
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">Marée</label>
+            <label class="form-label" for="f-tide">Marée</label>
             <input type="text" class="form-input" id="f-tide" placeholder="1.2→0.4">
           </div>
         </div>
@@ -1128,11 +1128,25 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
               <!-- Date décrite par la courbe : la marée dépend du jour (~50 min de
                    décalage quotidien), l'afficher évite de croire à une courbe générique. -->
               <span id="tide-date-label" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);"></span></span>
+            <!-- Les 4 premières valeurs sont HISTORIQUES (déjà en base dans
+                 sessions.tide_port) : ne jamais les renommer. Les suivantes sont les
+                 autres stations de marée meteo.nc (14 au total, cf. TIDE_STATIONS). -->
             <select id="tide-port" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="renderTideWidget()">
               <option value="noumea">Nouméa</option>
               <option value="tomo">Tomo (Dumbéa)</option>
               <option value="bourail">Bourail</option>
               <option value="thio">Thio</option>
+              <option value="prony">Baie du Prony</option>
+              <option value="ouinne">Baie de Ouinné</option>
+              <option value="kuto">Kuto (Île des Pins)</option>
+              <option value="touho">Touho</option>
+              <option value="hienghene">Hienghène</option>
+              <option value="banare">Baie de Banaré</option>
+              <option value="kone">Foué (Koné)</option>
+              <option value="koumac">Paagoumène (Koumac)</option>
+              <option value="lifou">Chépénéhé (Lifou)</option>
+              <option value="mare">La Roche (Maré)</option>
+              <option value="ouvea">Wadrilla (Ouvéa)</option>
             </select>
           </div>
           <div id="tide-chart-wrap" style="position:relative;height:120px;background:#0a1628;border-radius:6px;padding:4px;margin-bottom:8px;cursor:crosshair;user-select:none;">
@@ -1618,6 +1632,9 @@ async function init() {
   if (window._appInit) return; window._appInit=true;
   console.log("🚀 init() appelé");
   console.log("📡 sb initialisé ?", sb !== null);
+  // Le module marée ne suppose aucune URL (il reste utilisable sans réseau) : c'est
+  // la page qui lui donne l'endpoint du Worker, une fois WORKER_URL évalué.
+  if (typeof TIDE_API !== 'undefined' && typeof WORKER_URL !== 'undefined') TIDE_API.base = WORKER_URL;
   if (!sb) {
     document.getElementById('main-nav').style.display = 'flex';
     document.getElementById('setup-banner').style.display = 'block';
@@ -3034,14 +3051,49 @@ function tideLevel(hour, port, dateStr) {
   return v == null ? 0 : v;
 }
 
-// Déterminer le port par défaut selon le launch point
+// Déterminer le port par défaut selon le launch point.
+// Ordre volontaire : les mises à l'eau les plus fréquentes d'abord, et 'dumb'
+// avant les entrées côte est pour ne pas qu'un « Baie de … » générique l'emporte.
 function portFromLaunch(launchPoint) {
   if (!launchPoint) return 'noumea';
   var l = launchPoint.toLowerCase();
   if (l.includes('tomo') || l.includes('dumb')) return 'tomo';
-  if (l.includes('bourail') || l.includes('ouenghi')) return 'bourail';
+  if (l.includes('bourail') || l.includes('ouenghi') || l.includes('poe')) return 'bourail';
   if (l.includes('thio')) return 'thio';
+  if (l.includes('prony')) return 'prony';
+  if (l.includes('ouinn')) return 'ouinne';
+  if (l.includes('kuto') || l.includes('pins')) return 'kuto';
+  if (l.includes('touho')) return 'touho';
+  if (l.includes('hiengh')) return 'hienghene';
+  if (l.includes('banar')) return 'banare';
+  if (l.includes('kone') || l.includes('koné') || l.includes('foue')) return 'kone';
+  if (l.includes('koumac') || l.includes('paagoum')) return 'koumac';
+  if (l.includes('lifou') || l.includes('chépé') || l.includes('chepe')) return 'lifou';
+  if (l.includes('maré') || l.includes('la roche')) return 'mare';
+  if (l.includes('ouvéa') || l.includes('ouvea') || l.includes('wadrilla')) return 'ouvea';
   return 'noumea';
+}
+
+// Va chercher la vraie marée meteo.nc de la station du port, puis redessine.
+// Asynchrone et best-effort : le widget s'affiche IMMÉDIATEMENT avec le modèle
+// harmonique, la vraie courbe le remplace dès qu'elle arrive. Jamais d'attente ni
+// d'écran vide — et rien ne casse hors-ligne.
+var _tideLoadSeq = 0;
+function _tideLoadReal(dateStr, port) {
+  var key = dateStr + '|' + port;
+  if (_tideLoadReal._done === key || _tideLoadReal._busy === key) return;
+  _tideLoadReal._busy = key;
+  var seq = ++_tideLoadSeq;
+  tideEnsureDay(dateStr, port).then(function () {
+    _tideLoadReal._busy = null;
+    _tideLoadReal._done = key;
+    // Une saisie plus récente a pris la main pendant l'attente réseau → ne pas
+    // repeindre par-dessus (même garde que les autres fetchs de la page).
+    if (seq !== _tideLoadSeq) return;
+    var pEl = document.getElementById('tide-port'), dNow = _tideDateStr();
+    if (!pEl || pEl.value !== port || dNow !== dateStr) return;
+    renderTideWidget();
+  }).catch(function () { _tideLoadReal._busy = null; });
 }
 
 function renderTideWidget() {
@@ -3053,20 +3105,26 @@ function renderTideWidget() {
   // Une seule lecture de la date pour tout le tracé : le widget doit décrire UN jour,
   // pas mélanger deux jours si la saisie change pendant le rendu.
   var dateStr = _tideDateStr();
+  _tideLoadReal(dateStr, port);
   ctx.clearRect(0, 0, W, H);
 
   // Fond
   ctx.fillStyle = '#0a1628';
   ctx.fillRect(0, 0, W, H);
 
-  // Rappel de la date décrite + honnêteté sur le port : le modèle harmonique est
-  // ajusté sur Nouméa, donc Bourail (autre station SHOM, constantes non disponibles)
-  // est une approximation — autant l'écrire plutôt que de laisser croire à une mesure.
+  // Date décrite + PROVENANCE de la courbe. On distingue trois cas plutôt que de
+  // laisser croire à une mesure dans tous : marée meteo.nc de la station du port ;
+  // meteo.nc d'un port voisin (Tomo → Nouméa, pas de station propre) ; ou modèle
+  // harmonique, quand le réseau manque ou que la date sort de la couverture de l'API
+  // (elle répond `tide:[]` avant l'année courante).
   var lblEl = document.getElementById('tide-date-label');
   if (lblEl) {
     var dParts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-    lblEl.textContent = (dParts ? dParts[3] + '/' + dParts[2] : dateStr)
-      + (tidePortIsExact(port) ? '' : ' · approx. (réf. Nouméa)');
+    var src = tideHasRealData(dateStr, port)
+      ? (tidePortIsExact(port) ? ' · meteo.nc ' + tidePortName(port)
+                               : ' · meteo.nc ' + tidePortName(port) + ' (pas de station propre)')
+      : ' · modèle harmonique (réf. Nouméa)';
+    lblEl.textContent = (dParts ? dParts[3] + '/' + dParts[2] : dateStr) + src;
   }
 
   // Calculer les niveaux min/max
