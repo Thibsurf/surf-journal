@@ -4555,3 +4555,41 @@ en deçà de 24 h puis se trompe de 102°.
 Vitesse et rafales restent en barres Chart.js : ce sont des biais SIGNÉS, la forme
 divergente autour de 0 leur convient. Vérifié : 0 canvas sur l'onglet Direction,
 4 sous-figures, 7 mentions « pas de donnée », 7 barres hachurées, 0 erreur JS.
+
+---
+
+# 04/08/2026 — Modèle harmonique de marée : fin de la double copie
+
+Dette signalée deux fois dans ce journal, traitée ici. `TIDE_EPOCH`, `NOUMEA_MSL`,
+`NOUMEA_H` et `tideH()` existaient **en double** : dans `previsions.html` (copie
+d'origine) et dans `assets/tide-harmonics.js` (extrait le matin même pour le Journal).
+Deux jeux de constantes d'un même ajustement SHOM à tenir synchronisés à la main, pour
+une grandeur qui n'a aucune raison de diverger d'une page à l'autre.
+
+**Vérifié identiques avant de fusionner**, et non supposé : les 10 constituantes
+comparées valeur par valeur (nom, amplitude, phase, période) → identiques ;
+`NOUMEA_MSL` et `TIDE_EPOCH` → identiques ; `tideH()` → même formule (`forEach` d'un
+côté, boucle `for` de l'autre, calcul strictement équivalent).
+
+→ `previsions.html` charge désormais `assets/tide-harmonics.js` et sa copie locale est
+supprimée. Chargé **sans `defer`, avant le bloc inline**, pour la même raison que
+`charts-core.js` : `_tideNormalizeDay()` appelle `tideH()`/`TIDE_EPOCH` bien plus haut
+dans ce même bloc, ils doivent exister quand il s'exécute.
+
+**Contre-épreuve numérique** : `tideH()` de l'ancienne copie et celle du module
+évaluées sur 3 200 points (400 jours × 8 heures) → **0 écart supérieur à 1e-12,
+écart maximum exactement 0**. Aucune régression possible.
+
+Vérifié en runtime sur `previsions.html` : `tideH`, `TIDE_EPOCH`, `NOUMEA_H` (10
+constituantes), `tidePointsForDate` (481 points), `_tideNormalizeDay`,
+`findTideExtrema` et `PORTS_REF` (13 ports) tous présents, 0 erreur JS ; page Marée
+rendue, extrêmes affichés (0,42 m 05h36 · 1,29 m 11h33 · 0,48 m 17h26 · 1,44 m 23h45)
+conformes aux valeurs de l'API meteo.nc pour Nouméa ce jour-là.
+
+Effet de bord favorable : `previsions.html` reçoit au passage les 14 stations de marée
+et la lecture des marées réelles du module — il n'exploite pour l'instant que le
+modèle (`tidePointsForDate`), mais le nécessaire est là si on veut l'y brancher.
+
+sw v61→v62 : `assets/` est inchangé, mais la structure de chargement d'une page l'est,
+et un précache refait garantit que `tide-harmonics.js` accompagne bien le nouveau
+`previsions.html`.

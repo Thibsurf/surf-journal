@@ -2072,6 +2072,14 @@ html.widget-mode #gw-widget { margin-bottom:0; }
      AVANT le bloc inline (pas en defer) : PANEL_GEOM doit exister quel que soit le
      moment où un graphe est dessiné, y compris un tout premier rendu synchrone. -->
 <script src="assets/charts-core.js"></script>
+<!-- Modèle harmonique de marée. Même contrainte que charts-core.js : chargé SANS
+     defer, avant le bloc inline, car tideH()/TIDE_EPOCH sont appelés par
+     _tideNormalizeDay() bien plus haut dans ce même bloc — ils doivent exister au
+     moment où il s'exécute, pas seulement au premier dessin.
+     Source UNIQUE depuis le 04/08/2026 : les constantes étaient auparavant
+     recopiées ici ET dans assets/tide-harmonics.js (vérifiées identiques valeur par
+     valeur avant fusion). Le Journal l'utilisait déjà. -->
+<script src="assets/tide-harmonics.js"></script>
 <script>
 
 // SPOTS
@@ -12300,30 +12308,14 @@ function setWindy(layer,btn){
 // ---
 // MARÉE & PÊCHE
 // ---
-// ---- TIDE HARMONICS (least squares fit, 116 SHOM data points April 2026) ----
-// RMSE=1.5cm, max error=4cm, timing +/-20min. No drift: each constituent rotates at correct astronomical speed.
-var TIDE_EPOCH = new Date('2000-01-01T00:00:00Z');
-var NOUMEA_MSL = 0.9544;
-var NOUMEA_H = [
-  ['M2',  0.3927,  138.822, 12.4206],
-  ['S2',  0.1273,  -37.940, 12.0000],
-  ['N2',  0.0575, -119.043, 12.6584],
-  ['K2',  0.0810,  129.031, 11.9672],
-  ['K1',  0.1652,   19.297, 23.9345],
-  ['O1',  0.0809, -119.887, 25.8193],
-  ['P1',  0.0608,   40.175, 24.0659],
-  ['Q1',  0.0130,  -29.158, 26.8684],
-  ['Mf',  0.0199,  -84.203, 327.859],
-  ['MSf', 0.0150, -149.946, 354.367],
-];
-
-function tideH(t) {
-  var h = NOUMEA_MSL;
-  NOUMEA_H.forEach(function(c){
-    h += c[1] * Math.cos(2*Math.PI/c[3]*t - c[2]*Math.PI/180);
-  });
-  return h;
-}
+// ---- TIDE HARMONICS ----
+// TIDE_EPOCH / NOUMEA_MSL / NOUMEA_H / tideH() vivent désormais dans
+// assets/tide-harmonics.js (chargé dans le <head>, avant ce bloc), qui sert aussi le
+// Journal. Ils étaient recopiés ici à l'identique : deux jeux de constantes à tenir
+// synchronisés pour un ajustement qui n'a aucune raison de diverger d'une page à
+// l'autre. Le module apporte en prime les 14 stations de marée meteo.nc et la
+// lecture des marées réelles, dont previsions.html pourra se servir (il n'exploite
+// aujourd'hui que le modèle, via tidePointsForDate ci-dessous).
 
 // KEY FIX: use NC midnight correctly regardless of browser timezone
 // NC = UTC+11. Midnight NC on date Y-M-D = Y-M-D 00:00 UTC+11 = Y-M-(D-1) 13:00 UTC
