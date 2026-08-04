@@ -5358,110 +5358,222 @@ var WIND_TRUTH_MODELS = ['aro', 'ecmwf', 'aifs', 'marc'];
 // pas une palette réinventée pour ce bloc.
 var WIND_TRUTH_LABELS = { aro: 'AROME', ecmwf: 'ECMWF', aifs: 'AIFS', marc: 'MARC' };
 var WIND_TRUTH_COLORS = { aro: '#7b6cf6', ecmwf: '#a99ff8', aifs: '#e06bb0', marc: '#7dd3fc' };
+
+// ── Échéance (lead time) ────────────────────────────────────────────────────
+// Un modèle n'a pas UNE justesse : il en a une par échéance. Prévoir le vent dans
+// 3 h et dans 3 jours ne se compare pas, et c'est précisément ce que l'on veut
+// savoir (« à combien de jours peut-on lui faire confiance ? »).
+// Jusqu'au 04/08/2026 le bloc n'en tenait AUCUN compte : il ne gardait que la ligne
+// la plus fraîche par (modèle, station, date) puis moyennait toutes les heures
+// ensemble. Deux défauts : les échéances étaient mélangées, ET ne garder que le run
+// le plus récent sélectionnait surtout des courtes échéances — ce qui FLATTE les
+// modèles. On garde donc désormais TOUS les runs et on ventile.
+var WIND_TRUTH_LEADS = [
+  { max: 6,   label: '0-6 h'  },
+  { max: 12,  label: '6-12 h' },
+  { max: 24,  label: '12-24 h'},
+  { max: 48,  label: '1-2 j'  },
+  { max: 1e9, label: '2 j +'  }
+];
+function _leadBucket(hours) {
+  for (var i = 0; i < WIND_TRUTH_LEADS.length; i++) if (hours < WIND_TRUTH_LEADS[i].max) return i;
+  return WIND_TRUTH_LEADS.length - 1;
+}
+// Écart angulaire signé le plus court entre deux caps, dans [-180, 180].
+// Indispensable pour la direction : une prévision à 350° face à un vent mesuré à
+// 10° se trompe de 20°, pas de 340°.
+function _angDiff(a, b) {
+  var d = ((a - b) % 360 + 540) % 360 - 180;
+  return d;
+}
+// Les trois grandeurs comparables. `gust` n'est publié QUE par AROME (vérifié le
+// 04/08/2026 : 300 heures sur 375 pour aro, 0 pour ecmwf/aifs/marc), alors que la
+// rafale est mesurée à 100 % côté observations — d'où un onglet qui n'affiche
+// qu'un modèle, plutôt qu'une case vide pour les trois autres.
+var WIND_TRUTH_METRICS = {
+  speed: { label: 'Vitesse',   unit: 'nds', axis: 'biais (nds)',
+           hint: '+ = le modèle annonce plus de vent qu\'il n\'y en a eu, − = moins.' },
+  dir:   { label: 'Direction', unit: '°',   axis: 'erreur absolue (°)',
+           hint: 'Écart angulaire moyen entre direction prévue et mesurée (toujours positif : c\'est une erreur, pas un biais).' },
+  gust:  { label: 'Rafales',   unit: 'nds', axis: 'biais rafale (nds)',
+           hint: 'Seul AROME publie une rafale prévue — les autres modèles n\'en fournissent pas.' }
+};
+var _windTruthMetric = 'speed';
+var _windTruthStation = '__all__';
+// Cache des paires prévu/mesuré : les 3 requêtes ne sont refaites que si l'on
+// change d'onglet ou de station, pas à chaque redessin.
+var _windTruthPairs = null;
+
+// Construit la liste des appariements prévision ↔ observation, chacun portant son
+// échéance. Une PAIRE = une heure cible, un modèle, une station, un run.
+async function _windTruthBuildPairs() {
+  if (_windTruthPairs) return _windTruthPairs;
+  var fcWind = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
+    .eq('kind', 'wind').in('model', ['aro', 'ecmwf', 'aifs']).in('spot_name', WIND_TRUTH_STATIONS);
+  var fcMarc = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
+    .eq('kind', 'wave').eq('model', 'marc').in('spot_name', WIND_TRUTH_STATIONS);
+  var oh = await sb.from('observations_history').select('station_name,date,hours')
+    .in('station_name', WIND_TRUTH_STATIONS);
+  if (fcWind.error || fcMarc.error || oh.error || !oh.data || !oh.data.length) return null;
+
+  var obsByKey = {};
+  oh.data.forEach(function(r) { obsByKey[r.station_name + '|' + r.date] = r.hours || []; });
+
+  var pairs = [];
+  (fcWind.data || []).concat(fcMarc.data || []).forEach(function(row) {
+    var obsHours = obsByKey[row.spot_name + '|' + row.date];
+    if (!obsHours || !obsHours.length) return;
+    // Instant du run. AROME embarque le VRAI run du modèle dans chaque heure ;
+    // les autres ne publient rien de tel, on retombe sur issued_at — l'heure à
+    // laquelle NOTRE cron a écrit la ligne, donc une borne haute de l'échéance
+    // (le run réel est antérieur). Approximation assumée et signalée dans l'UI.
+    var rowIssued = row.issued_at ? Date.parse(row.issued_at) : NaN;
+    (row.hours || []).forEach(function(mh) {
+      var h = mh.h != null ? mh.h : mh.hour;   // AROME: 'h' — ECMWF/AIFS/MARC: 'hour'
+      if (h == null) return;
+      var val  = mh.val != null ? mh.val : mh.windKt;      // MARC: 'windKt'
+      var mdir = mh.dir != null ? mh.dir : mh.windDir;     // MARC: 'windDir'
+      var mgust = mh.gust;                                  // AROME seul
+      var runMs = mh.run ? Date.parse(mh.run) : rowIssued;
+      // Instant cible en ms RÉELLES : date+heure sont en heure NC (UTC+11).
+      var dm = /^(\d{4})-(\d{2})-(\d{2})/.exec(row.date);
+      if (!dm) return;
+      var targetMs = Date.UTC(+dm[1], +dm[2] - 1, +dm[3], h) - 11 * 3600000;
+      var lead = isNaN(runMs) ? null : (targetMs - runMs) / 3600000;
+      // Une échéance négative = le « run » est postérieur à l'instant prévu : ce
+      // n'est plus une prévision mais une analyse a posteriori. Écarté, sans quoi
+      // le modèle serait crédité d'une justesse qu'il n'a pas eu à produire.
+      if (lead == null || lead < 0) return;
+      var best = null, bestDiff = 1.01;   // tolérance ±1 h (obs horaire)
+      obsHours.forEach(function(o) {
+        var d = Math.abs(o.h - h);
+        if (d < bestDiff) { bestDiff = d; best = o; }
+      });
+      if (!best) return;
+      pairs.push({
+        model: row.model, station: row.spot_name, lead: lead,
+        dSpeed: (val != null && best.wind_kt != null) ? (val - best.wind_kt) : null,
+        dDir:   (mdir != null && best.wind_dir != null) ? Math.abs(_angDiff(mdir, best.wind_dir)) : null,
+        dGust:  (mgust != null && best.gust_kt != null) ? (mgust - best.gust_kt) : null
+      });
+    });
+  });
+  _windTruthPairs = pairs;
+  return pairs;
+}
+
+function setWindTruthMetric(m) { _windTruthMetric = m; _renderWindTruthBlock(); }
+function setWindTruthStation(v) { _windTruthStation = v; _renderWindTruthBlock(); }
+
 async function _renderWindTruthBlock() {
   var el = document.getElementById('wind-truth-block');
   if (!el || !sb) return;
   try {
-    // MARC n'écrit PAS de ligne kind='wind' séparée : son vent (windKt/windDir)
-    // est embarqué DANS les lignes kind='wave' (fetch_marc.py) — 2 requêtes,
-    // pas une, pour ne pas ramener toutes les lignes wave d'aro/ecmwf/aifs
-    // pour rien (03/08/2026, ajout MARC).
-    var fcWind = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
-      .eq('kind', 'wind').in('model', ['aro', 'ecmwf', 'aifs']).in('spot_name', WIND_TRUTH_STATIONS);
-    var fcMarc = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
-      .eq('kind', 'wave').eq('model', 'marc').in('spot_name', WIND_TRUTH_STATIONS);
-    var oh = await sb.from('observations_history').select('station_name,date,hours')
-      .in('station_name', WIND_TRUTH_STATIONS);
-    el = document.getElementById('wind-truth-block');  // re-lu : le panel a pu être redessiné pendant l'await
+    var pairs = await _windTruthBuildPairs();
+    el = document.getElementById('wind-truth-block');   // re-lu : le panel a pu être redessiné pendant l'await
     if (!el) return;
-    if (fcWind.error || fcMarc.error || oh.error || !oh.data || !oh.data.length) {
+    if (!pairs) {
       el.innerHTML = '<span style="color:var(--text-faint);font-style:italic;">pas encore assez de données (ingestion démarrée le 03/08/2026)</span>';
       return;
     }
-    var fcData = (fcWind.data || []).concat(fcMarc.data || []);
-    var obsByKey = {};
-    oh.data.forEach(function(r) { obsByKey[r.station_name + '|' + r.date] = r.hours || []; });
-    // Garde la ligne la plus FRAÎCHE (issued_at) par (modèle, station, date) —
-    // même raison que _fetchModelTableRows plus haut : le cron n'écrase jamais
-    // un run, plusieurs lignes coexistent pour la même cible.
-    var freshest = {};
-    fcData.forEach(function(row) {
-      var key = row.model + '|' + row.spot_name + '|' + row.date;
-      var prev = freshest[key];
-      if (!prev || (row.issued_at || '') > (prev.issued_at || '')) freshest[key] = row;
+    var metric = WIND_TRUTH_METRICS[_windTruthMetric];
+    var field = _windTruthMetric === 'speed' ? 'dSpeed' : (_windTruthMetric === 'dir' ? 'dDir' : 'dGust');
+
+    var use = pairs.filter(function(p) {
+      if (p[field] == null) return false;
+      if (_windTruthStation !== '__all__' && p.station !== _windTruthStation) return false;
+      return true;
     });
-    // biais = prévu − mesuré : + le modèle SURESTIME, − il SOUS-ESTIME (même
-    // convention de signe que le bloc ② calibration du préremplissage)
-    var agg = {};
-    Object.keys(freshest).forEach(function(key) {
-      var row = freshest[key];
-      var obsHours = obsByKey[row.spot_name + '|' + row.date];
-      if (!obsHours || !obsHours.length) return;
-      (row.hours || []).forEach(function(mh) {
-        var h = mh.h != null ? mh.h : mh.hour;  // AROME écrit 'h', ECMWF/AIFS/MARC écrivent 'hour'
-        var val = mh.val != null ? mh.val : mh.windKt;  // MARC écrit 'windKt' (pas 'val')
-        if (h == null || val == null) return;
-        var best = null, bestDiff = 1.01;  // tolérance ±1h (obs horaire, ECMWF/AIFS ~6h)
-        obsHours.forEach(function(o) {
-          var d = Math.abs(o.h - h);
-          if (d < bestDiff) { bestDiff = d; best = o; }
-        });
-        if (!best || best.wind_kt == null) return;
-        var aggKey = row.model + '|' + row.spot_name;
-        agg[aggKey] = agg[aggKey] || { sum: 0, n: 0 };
-        agg[aggKey].sum += (val - best.wind_kt);
-        agg[aggKey].n++;
-      });
+
+    // agg[model][bucket] = {sum, n}
+    var agg = {}, modelsSeen = {}, leadsSeen = {};
+    use.forEach(function(p) {
+      var b = _leadBucket(p.lead);
+      (agg[p.model] = agg[p.model] || {});
+      (agg[p.model][b] = agg[p.model][b] || { sum: 0, n: 0 });
+      agg[p.model][b].sum += p[field];
+      agg[p.model][b].n++;
+      modelsSeen[p.model] = 1; leadsSeen[b] = 1;
     });
-    var aggKeys = Object.keys(agg).sort(function(a, b) {
-      var pa = a.split('|'), pb = b.split('|');
-      var mi = WIND_TRUTH_MODELS.indexOf(pa[0]) - WIND_TRUTH_MODELS.indexOf(pb[0]);
-      return mi || (WIND_TRUTH_STATIONS.indexOf(pa[1]) - WIND_TRUTH_STATIONS.indexOf(pb[1]));
-    });
-    if (!aggKeys.length) {
-      el.innerHTML = '<span style="color:var(--text-faint);font-style:italic;">pas encore de recouvrement prévision/mesure</span>';
+    var models = WIND_TRUTH_MODELS.filter(function(m) { return modelsSeen[m]; });
+    var buckets = WIND_TRUTH_LEADS.map(function(_, i) { return i; }).filter(function(i) { return leadsSeen[i]; });
+
+    // Barre de contrôles : grandeur + station. Rendue à CHAQUE fois (le panel des
+    // stats est reconstruit en innerHTML, un gabarit posé une seule fois
+    // disparaîtrait — piège documenté du projet).
+    var tabs = Object.keys(WIND_TRUTH_METRICS).map(function(k) {
+      var on = k === _windTruthMetric;
+      return '<button onclick="setWindTruthMetric(\'' + k + '\')" style="background:' + (on ? 'rgba(79,163,199,.16)' : 'none')
+        + ';border:1px solid ' + (on ? 'var(--accent)' : 'var(--border)') + ';color:' + (on ? 'var(--accent)' : 'var(--text-muted)')
+        + ';border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:' + (on ? '600' : '400') + ';">'
+        + WIND_TRUTH_METRICS[k].label + '</button>';
+    }).join('');
+    var stOpts = ['<option value="__all__">Les 2 stations</option>'].concat(
+      WIND_TRUTH_STATIONS.map(function(st) {
+        return '<option value="' + escapeHtml(st) + '"' + (st === _windTruthStation ? ' selected' : '') + '>' + escapeHtml(st) + '</option>';
+      })).join('');
+
+    var head = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">' + tabs
+      + '<select onchange="setWindTruthStation(this.value)" style="margin-left:auto;background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:3px 8px;">'
+      + stOpts + '</select></div>';
+
+    if (!use.length) {
+      el.innerHTML = head + '<span style="color:var(--text-faint);font-style:italic;font-size:11px;">'
+        + (_windTruthMetric === 'gust'
+            ? 'Aucune rafale prévue à comparer : seul AROME en publie, et il n\'y a pas encore de recouvrement avec les mesures.'
+            : 'Pas encore de recouvrement prévision/mesure pour cette sélection.')
+        + '</span>';
       return;
     }
-    // Barres horizontales divergentes autour de 0 : la forme la plus directe pour
-    // un biais SIGNÉ (+ surestime / − sous-estime) — largeur = amplitude, sens =
-    // signe, un coup d'œil suffit. Groupées par station (2), colorées par modèle
-    // (3, couleurs fixes ci-dessus) : jamais de couleur recyclée pour autre chose.
-    el.innerHTML = '<div style="position:relative;height:150px;"><canvas id="wind-truth-chart"></canvas></div>'
-      + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">+ = le modèle surestime le vent réel, − = il sous-estime. Échantillon encore faible (ingestion démarrée le 03/08/2026) : tendance, pas encore fiable.</div>';
-    var datasets = WIND_TRUTH_MODELS.map(function(m) {
-      var ns = WIND_TRUTH_STATIONS.map(function(st) { var a = agg[m + '|' + st]; return a ? a.n : 0; });
+
+    // Une ligne par échéance, une barre par modèle : on lit d'un coup d'œil comment
+    // l'erreur se dégrade quand on prévoit plus loin — la question posée.
+    var h = Math.max(120, buckets.length * 34 + 46);
+    el.innerHTML = head
+      + '<div style="position:relative;height:' + h + 'px;"><canvas id="wind-truth-chart"></canvas></div>'
+      + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">' + metric.hint
+      + ' Échéance = temps entre le run du modèle et l\'heure prévue'
+      + (_windTruthMetric === 'gust' ? '' : ' (AROME donne son run exact ; pour les autres on utilise l\'heure d\'archivage, donc une échéance plutôt sur-estimée)')
+      + '. n = nombre d\'heures comparées. Ingestion démarrée le 03/08/2026 : tendance, pas encore une note.</div>';
+
+    var datasets = models.map(function(m) {
       return {
         label: WIND_TRUTH_LABELS[m] || m,
-        data: WIND_TRUTH_STATIONS.map(function(st) { var a = agg[m + '|' + st]; return a ? +(a.sum / a.n).toFixed(2) : null; }),
+        data: buckets.map(function(b) { var a = agg[m][b]; return a ? +(a.sum / a.n).toFixed(2) : null; }),
         backgroundColor: WIND_TRUTH_COLORS[m] || '#7a94aa',
         borderRadius: 4,
-        _n: ns,
+        _n: buckets.map(function(b) { var a = agg[m][b]; return a ? a.n : 0; })
       };
     });
     var canvas = document.getElementById('wind-truth-chart');
-    if (canvas) {
-      try { var prevChart = Chart.getChart(canvas); if (prevChart) prevChart.destroy(); } catch (_) {}
-      new Chart(canvas, {
-        type: 'bar',
-        data: { labels: WIND_TRUTH_STATIONS, datasets: datasets },
-        options: {
-          indexAxis: 'y',
-          responsive: true, maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom', labels: { color: '#7a94aa', font: { size: 10 }, boxWidth: 10, padding: 10 } },
-            tooltip: { callbacks: { label: function(ctx) {
-              var n = ctx.dataset._n[ctx.dataIndex], v = ctx.parsed.x;
-              return ctx.dataset.label + ' : ' + (v >= 0 ? '+' : '') + v + ' nds (n=' + n + ')';
-            } } },
-          },
-          scales: {
-            x: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' },
-                 title: { display: true, text: 'biais (nds)', color: '#7a94aa', font: { size: 10 } } },
-            y: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { display: false } },
-          },
+    if (!canvas) return;
+    try { var prev = Chart.getChart(canvas); if (prev) prev.destroy(); } catch (_) {}
+    new Chart(canvas, {
+      type: 'bar',
+      data: { labels: buckets.map(function(b) { return WIND_TRUTH_LEADS[b].label; }), datasets: datasets },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#7a94aa', font: { size: 10 }, boxWidth: 10, padding: 10 } },
+          tooltip: { callbacks: { label: function(ctx) {
+            var n = ctx.dataset._n[ctx.dataIndex], v = ctx.parsed.x;
+            if (v == null) return ctx.dataset.label + ' : —';
+            // n petit = moyenne instable : le dire dans l'infobulle plutôt que de
+            // laisser lire une barre courte comme un résultat établi.
+            return ctx.dataset.label + ' : ' + (v > 0 && _windTruthMetric !== 'dir' ? '+' : '') + v + ' '
+              + WIND_TRUTH_METRICS[_windTruthMetric].unit + ' (n=' + n + (n < 10 ? ' — trop peu' : '') + ')';
+          } } }
         },
-      });
-    }
+        scales: {
+          x: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' },
+               beginAtZero: true,
+               title: { display: true, text: metric.axis, color: '#7a94aa', font: { size: 10 } } },
+          y: { ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { display: false },
+               title: { display: true, text: 'échéance', color: '#7a94aa', font: { size: 10 } } }
+        }
+      }
+    });
   } catch (e) {
     var el2 = document.getElementById('wind-truth-block');
     if (el2) el2.innerHTML = '<span style="color:var(--text-faint);font-style:italic;">erreur de chargement</span>';

@@ -4412,3 +4412,70 @@ Seule des 4 pages à ne pas tester `location.protocol !== 'file:'` avant
 `serviceWorker.register` → rejet non capturé (« URL protocol of the current origin
 ('null') is not supported ») à chaque ouverture locale, ce qui parasitait les
 vérifications headless. Aligné sur les trois autres.
+
+---
+
+# 04/08/2026 — Vérité terrain : échéance, direction, rafales
+
+Trois questions de l'utilisateur sur le bloc « Vérité terrain — vent mesuré ».
+
+## ✗ L'échéance n'était pas gérée — et le tri la biaisait en faveur des modèles
+Question posée : « combien de temps à l'avance ? ça doit changer, comment fais-tu ? ».
+Réponse honnête sur l'état antérieur : **ce n'était pas géré du tout**. Le code
+gardait la ligne la plus fraîche par (modèle, station, date) via `issued_at`, puis
+moyennait TOUTES les heures ensemble. Deux défauts cumulés :
+1. une prévision à +3 h et une à +5 jours entraient dans la même moyenne ;
+2. ne garder que le run le plus récent sélectionnait surtout de COURTES échéances —
+   ce qui **flatte** les modèles, puisqu'on ne les jugeait presque jamais sur leurs
+   prévisions lointaines.
+
+→ tous les runs sont désormais conservés, et chaque heure porte son échéance :
+`lead = instant cible − instant du run`. L'instant cible est reconstruit en ms
+réelles depuis `date` + `h` en heure NC (`Date.UTC(...) - 11 h`, convention projet).
+Ventilation en 5 tranches (0-6 h, 6-12 h, 12-24 h, 1-2 j, 2 j +), une ligne par
+tranche dans le graphe : on lit directement la dégradation avec l'échéance.
+Les paires d'échéance négative (le « run » postérieur à l'instant prévu — donc une
+analyse, pas une prévision) sont écartées, sinon le modèle serait crédité d'une
+justesse qu'il n'a pas eu à produire.
+
+**Précision sur l'instant du run** : AROME publie son vrai run dans chaque heure
+(champ `run`, présent sur 374 des 375 heures mesurées). ECMWF, AIFS et MARC n'en
+publient aucun → repli sur `issued_at`, qui est l'heure d'écriture par notre cron,
+donc **postérieure** au run réel : l'échéance de ces trois modèles est plutôt
+sur-estimée. Approximation assumée et écrite dans la légende du bloc.
+
+## ✓ Direction : disponible partout, ajoutée
+Sondage des données réelles (04/08/2026) : la direction est publiée à **100 %** par
+les 4 modèles (aro 375/375, ecmwf 114/114, aifs 158/158, marc 120/120) et mesurée à
+100 % côté observations. Elle est donc parfaitement évaluable — elle ne l'était pas.
+Métrique : **erreur angulaire absolue moyenne**, via un écart signé le plus court
+ramené dans [-180, 180] — sans quoi une prévision à 350° face à un vent mesuré à 10°
+compterait pour 340° d'erreur au lieu de 20°. Vérifié : `_angDiff(350,10) = -20`,
+`_angDiff(10,350) = +20`.
+
+## ✓ Rafales : AROME seul en publie
+Sondage : `gust` est présent sur 300 des 375 heures d'AROME et **sur 0 heure** pour
+ECMWF, AIFS et MARC — alors que la rafale est mesurée à 100 % (`gust_kt`). L'onglet
+Rafales n'affiche donc qu'AROME et le dit, plutôt que trois cases vides.
+Premier résultat visible : AROME **sous-estime** la rafale de 3 à 5,5 nds selon
+l'échéance — exactement le genre d'information que le bloc existe pour produire.
+
+## Plus visuel, et « au spot / à la station »
+- Trois onglets (Vitesse / Direction / Rafales) au lieu d'une seule grandeur.
+- Barres horizontales groupées **par échéance** (l'axe Y porte l'échéance, la couleur
+  le modèle) : la lecture « jusqu'à quand puis-je lui faire confiance » est directe.
+  Forme conservée pour la vitesse et la rafale, qui sont des biais SIGNÉS (+ surestime
+  / − sous-estime, divergent autour de 0) ; la direction est une erreur absolue, donc
+  toujours positive — l'axe démarre à 0 et l'étiquette le dit.
+- Infobulle : `n` par barre, et mention « trop peu » sous 10 échantillons — une barre
+  courte ne doit pas se lire comme un résultat établi.
+- **« Au spot » n'est pas possible, et ce n'est pas une omission** : il n'existe
+  aucune observation au spot. La vérité terrain est *par construction* à la station
+  (INVARIANT du projet : houle toujours au spot, vent parfois à la station, et seules
+  Phare Amédée et Bourake mesurent). Ajouté donc ce qui existe : un **sélecteur de
+  station** (les 2, ou l'une des deux) — vérifié, il filtre bien (119 paires sur une
+  station contre 238 sur les deux).
+
+Mesuré après réécriture : **238 paires** prévision/mesure, échéances de 0 à 128 h,
+réparties 94 / 52 / 36 / 8 / 48 sur les cinq tranches ; direction sur les 238,
+rafales sur 114 (AROME). 0 erreur JS.
