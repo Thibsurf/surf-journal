@@ -2075,23 +2075,38 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 // Phare Amédée (id 9881836) → Dumbéa / Ténia / Boulari
 // Bourake (id 9880904) → Tomo / Ouano
 // Nouméa marées id: 9881852
-// Ports de référence marées (tideId = id station SHOM via meteo.nc)
-// IDs confirmés: Nouméa=9881852, Bourail=9880352
-// Les autres partagent l'ID du port le plus proche confirmé
+// Ports de référence marées (tideId = id station de marée meteo.nc)
+//
+// Jusqu'au 04/08/2026 seuls DEUX ids étaient connus (Nouméa, Bourail) et tous les
+// autres ports se rabattaient sur « le plus proche confirmé » — un pis-aller, pas un
+// choix. En balayant le motif d'id `988XX52` (les ids de marée finissent tous par 52)
+// on en a trouvé QUATORZE, vérifiées une à une en direct ; tout autre id répond
+// `tide: []`. Dix des treize ports ci-dessous interrogeaient donc une station
+// lointaine alors que la leur existait :
+//   Touho      210 km → 1 km      Poum        215 km → 2 km (Baie de Banaré)
+//   Ponérihouen 172 km → 38 km    Koumac      168 km → 15 km (Paagoumène)
+//   Hienghène  118 km → 1 km      Koné         87 km → 9 km (Foué)
+//   Canala      99 km → 32 km     Ouaco        88 km → 29 km (Foué)
+//   Thio        80 km → 4 km      Baie de Prony 42 km → 4 km
+// L'écart n'est pas qu'une affaire de distance : les côtes est et ouest de la
+// Grande Terre n'ont ni la même amplitude ni la même phase de marée — lire Touho
+// sur Nouméa, c'est traverser l'île.
+// Canala, Ouaco, Port Ouenghi et Poum n'ont pas de station homonyme : ils gardent la
+// plus proche RÉELLE (et non plus « Nouméa ou Bourail par défaut »).
 var PORTS_REF = [
   { name:'Nouméa',            tideId:'9881852', lat:-22.30,  lon:166.43 },
-  { name:'Baie de Prony',     tideId:'9881852', lat:-22.35,  lon:166.84 },
-  { name:'Thio',              tideId:'9881852', lat:-21.61,  lon:166.21 },
-  { name:'Canala',            tideId:'9881852', lat:-21.52,  lon:165.96 },
+  { name:'Baie de Prony',     tideId:'9881752', lat:-22.35,  lon:166.84 },
+  { name:'Thio',              tideId:'9882952', lat:-21.61,  lon:166.21 },
+  { name:'Canala',            tideId:'9882952', lat:-21.52,  lon:165.96 },  // Thio, 32 km (pas de station propre)
   { name:'Bourail',           tideId:'9880352', lat:-21.56,  lon:165.49 },
-  { name:'Port Ouenghi',      tideId:'9880352', lat:-21.77,  lon:165.84 },
-  { name:'Koné',              tideId:'9880352', lat:-21.06,  lon:164.87 },
-  { name:'Koumac',            tideId:'9880352', lat:-20.57,  lon:164.29 },
-  { name:'Poum',              tideId:'9880352', lat:-20.23,  lon:164.02 },
-  { name:'Ouaco',             tideId:'9880352', lat:-21.33,  lon:164.66 },
-  { name:'Ponérihouen',       tideId:'9881852', lat:-21.08,  lon:165.40 },
-  { name:'Hienghène',         tideId:'9880352', lat:-20.69,  lon:164.93 },
-  { name:'Touho',             tideId:'9881852', lat:-20.78,  lon:165.23 },
+  { name:'Port Ouenghi',      tideId:'9880352', lat:-21.77,  lon:165.84 },  // Bourail reste le plus proche
+  { name:'Koné',              tideId:'9881152', lat:-21.06,  lon:164.87 },  // Foué
+  { name:'Koumac',            tideId:'9881252', lat:-20.57,  lon:164.29 },  // Paagoumène
+  { name:'Poum',              tideId:'9882652', lat:-20.23,  lon:164.02 },  // Baie de Banaré, 2 km
+  { name:'Ouaco',             tideId:'9881152', lat:-21.33,  lon:164.66 },  // Foué, 29 km
+  { name:'Ponérihouen',       tideId:'9883052', lat:-21.08,  lon:165.40 },  // Touho, 38 km
+  { name:'Hienghène',         tideId:'9880752', lat:-20.69,  lon:164.93 },
+  { name:'Touho',             tideId:'9883052', lat:-20.78,  lon:165.23 },
 ];
 
 // Stations observations vent meteo.nc
@@ -2215,7 +2230,9 @@ var DEFAULT_SPOTS = [
   { name:'Passe de Dumbéa',  lat:-22.35, lon:166.24, wg:'https://www.windguru.cz/208760', tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881822', marineName:'Passe de Dumbéa' },
   { name:'Ilot Ténia',       lat:-22.01, lon:165.94, wg:'https://www.windguru.cz/6476',   tideId:'9881852', tideName:'Nouméa',  obsId:'9880904', obsName:'Bourake',       marineId:'9880324', marineName:'Ténia', surfSpots:['Grand bac','Gros nem','Petit U'] },
   { name:'Passe de Boulari', lat:-22.50, lon:166.44, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881826', marineName:'Passe de Boulari'},
-  { name:'Passe de Ouano',   lat:-21.91, lon:165.75, wg:null,                              tideId:'9881852', tideName:'Bourake', obsId:'9880904', obsName:'Bourake',       marineId:'9880323', marineName:'Passe de Ouano'  },
+  // Ouano : tideName annonçait déjà « Bourake » (côte ouest) alors que tideId pointait
+  // sur NOUMÉA — incohérence de recopie. Bourail est à 44 km, Nouméa à 83 km.
+  { name:'Passe de Ouano',   lat:-21.91, lon:165.75, wg:null,                              tideId:'9880352', tideName:'Bourail', obsId:'9880904', obsName:'Bourake',       marineId:'9880323', marineName:'Passe de Ouano'  },
   { name:'Passe de Mato',    lat:-22.69, lon:166.63, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881827', marineName:'Passe de Mato'   },
   { name:'Îlot Maître',      lat:-22.36, lon:166.38, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881825', marineName:'Îlot Maître'     },
   { name:'Baie de Ste Marie', lat:-22.29, lon:166.46, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881823', marineName:'Baie de Sainte Marie'},
