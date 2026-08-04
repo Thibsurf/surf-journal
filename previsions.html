@@ -4829,9 +4829,18 @@ async function _fetchMarcWave(spot) {
     var lonIdx = Math.max(0, Math.min(180, Math.round((spot.lon - 162.0) / 0.05)));
     // uwnd/vwnd = forçage vent RÉEL de ce run WW3 (pas une approximation) — confirmé
     // via l'attribut global NC_GLOBAL.forcing_wind = "wind_ecmwf_op" (ECMWF
-    // opérationnel, vérifié 2026-07-27 sur .das ; PAS ARPEGE malgré le forçage
-    // MFWAM ARPEGE utilisé ailleurs — chaque modèle a son propre forçage, pas
-    // supposé). Déjà dans la même requête OPeNDAP que la houle : pas un fetch de
+    // opérationnel, vérifié 2026-07-27 sur .das). C'est donc de l'IFS-ECMWF à sa
+    // résolution native (~9 km), regrillé sur la maille MARC 5,5 km — la donnée de
+    // vent IFS la plus fine dont dispose ce projet, l'Open Data gratuit plafonnant
+    // à 0,25°/~28 km (paquet `ecmwf-opendata` : seules résolutions 0p25 et
+    // 0p4-beta, vérifié 04/08/2026).
+    // NB (corrigé le 04/08/2026) : une version antérieure de ce commentaire opposait
+    // ce forçage à un « forçage MFWAM ARPEGE ». C'est faux pour NOTRE MFWAM : le
+    // produit Copernicus GLOBAL_ANALYSISFORECAST_WAV_001_027 est forcé par les vents
+    // IFS-ECMWF (analyses 6-horaires + prévisions 3-horaires, doc du produit) — c'est
+    // le MFWAM *national* de Météo-France qui tourne sous ARPEGE, pas celui-ci. Les
+    // deux modèles de houle partagent donc bien le même forçage atmosphérique.
+    // Déjà dans la même requête OPeNDAP que la houle : pas un fetch de
     // plus. MARC_SCALE.uwnd/vwnd existaient déjà dans la table (jamais exploités).
     var vars = ['hs', 't02', 'dir', 'spr', 'uwnd', 'vwnd'];
     MARC_PARTITIONS.forEach(function(p) { vars.push('phs' + p, 'ptp' + p, 'pdir' + p, 'pspr' + p); });

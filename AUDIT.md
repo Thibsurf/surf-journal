@@ -3910,3 +3910,67 @@ Libellés corrigés (honnêteté), zéro changement de comportement. Commit f53e
   est couvert. À creuser côté workflow cache-marc.yml quand supervisable.
 - **Compaction P1** (db-compaction.yml) : toujours en attente, action DB à lancer par
   l'utilisateur — supprimerait la cause profonde du plafond 1000.
+
+---
+
+## 2026-08-04 (suite, matin) — vent IFS pour MFWAM : ce qui existe vraiment
+
+### Infobulle du Mix : reliquat « MFWAM (ARPEGE) » corrigé
+`f53e834e` (ce matin) annonçait avoir corrigé les libellés vent MFWAM, mais n'avait touché
+que le bouton `mf` et le commentaire de `_gwBuildBestMix` : l'infobulle du bouton **Mix**
+(widget-global.js ~404) disait encore « Vent : … > GFS 28km > **MFWAM (ARPEGE)** » —
+faux deux fois (ni ARPEGE, ni source de vent). Réécrite d'après le code réel
+(`HOULE_PRIORITY = [marc, nc, om, bom, mf]`, `VENT_PRIORITY = [nc, bom, marc, om, mf]`
+où `mf` est inerte car toujours null). Vérifié en rendu headless (`--dump-dom`) :
+l'attribut `title` sort correct, 0 erreur console. sw v56→v57.
+
+### « Le vent IFS à 9 km, on peut l'avoir ? » — mesuré, la réponse est oui mais pas où on croit
+Question posée : puisque MFWAM est forcé par les vents IFS-ECMWF (doc du produit :
+« 6-hourly analysis and 3-hourly forecasted winds from the IFS-ECMWF atmospheric
+system »), peut-on récupérer ce vent à ~9 km, via CMEMS plutôt que l'Open Data 0,25° ?
+
+Trois vérifications réelles (04/08) :
+1. **CMEMS ne distribue AUCUN vent de prévision.** `cm.describe(contains=['wind'])` :
+   les seuls produits vent sont des analyses **satellite** (diffusiomètre + modèle).
+   Le plus fin en global, `WIND_GLO_PHY_L4_NRT_012_004`
+   (`cmems_obs-wind_glo_phy_nrt_l4_0.125deg_PT1H`), est en **0,125° (~13 km)** et sa
+   borne temporelle max vaut **2026-08-02T23:00Z**, soit **hier** : horizon de prévision
+   NUL. Inutilisable pour un widget de prévision. Piste fermée.
+2. **L'Open Data plafonne bien à 0,25°.** `ecmwf.opendata.Client` n'accepte que
+   `resol='0p25'` ou `'0p4-beta'` (lecture du paquet, 04/08). L'IFS natif (TCo1279,
+   ~9 km) reste dans le catalogue temps réel sous licence — déjà constaté le 30/07
+   (`services/mars` → « no access »).
+3. **Mais le vent IFS à 9 km est DÉJÀ dans le projet** : c'est `uwnd`/`vwnd` de **MARC**,
+   qui est le forçage atmosphérique réel du run WW3 Ifremer
+   (`NC_GLOBAL.forcing_wind = "wind_ecmwf_op"`, vérifié le 27/07 sur `.das`) — donc de
+   l'IFS-ECMWF à sa résolution native ~9 km, regrillé sur la maille MARC 5,5 km, récupéré
+   dans la MÊME requête OPeNDAP que la houle (pas un fetch de plus) et déjà en cache
+   (`marc`/`kind=wind` présent aux 9 vrais spots de surf, vérifié en base).
+
+Conséquence documentaire : le commentaire de `_fetchMarcWave` (previsions.html ~4830)
+opposait ce forçage à un « forçage MFWAM ARPEGE ». **Faux pour notre MFWAM** : c'est le
+MFWAM *national* de Météo-France qui tourne sous ARPEGE ; le produit Copernicus
+`GLOBAL_ANALYSISFORECAST_WAV_001_027` que nous utilisons est forcé par l'IFS. MARC et
+MFWAM partagent donc le même forçage atmosphérique. Commentaire corrigé.
+
+### Compaction P1 et ligne sonde — mesuré, l'attente était infondée
+`db-compaction.yml` a **déjà un `schedule`** (`17 15 * * 0`) et, en déclenchement planifié,
+`MAINT_ACTION='compact'` → il **exécute** ; le secret `SUPABASE_KEY` est bien service_role
+(purge de 83 lignes réussie le 03/08). Première exécution automatique : **dimanche
+09/08**. Rien à lancer à la main. Comptages réels du 04/08 (clé anon, lecture seule) :
+
+| Fenêtre (par `date` cible) | Lignes | Action du job |
+|---|---|---|
+| `date < 2026-04-06` (>120 j) | **1** | purge totale — c'est EXACTEMENT la ligne sonde |
+| `2026-04-06 ≤ date < 2026-07-21` | **64** | amincissement |
+| `date ≥ 2026-07-21` (14 j) | **55 056** | gardé tel quel |
+| total table | **55 121** | |
+
+Donc : (a) la ligne sonde `TEST probe-issued-at-cleanup` part toute seule dimanche,
+aucune action requise ; (b) **correction d'une affirmation du 04/08 au matin** — la
+compaction ne « supprime PAS la cause profonde du plafond 1000 lignes » avec ces
+réglages : aujourd'hui pèse 5 204 lignes et elles sont TOUTES dans la fenêtre
+`COMPACT_KEEP_ALL_DAYS=14`, donc conservées. Le plafond sur les jours récents n'est réglé
+que par le correctif client `c7294cb3` (bornage lat/lon serveur + pagination). La
+compaction ne mordra qu'à partir de mi-août (quand la donnée dépassera 14 j d'âge) ;
+elle borne la croissance à long terme, elle ne dégonfle pas les jours récents.
