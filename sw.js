@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v58';
+const CACHE_NAME = 'surf-nc-v59';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -17,6 +17,9 @@ const ASSETS = [
   // fuel-core.js : marine_fuel_pro.html est précaché mais son cœur de calcul ne
   // l'était pas → la page Fuel Pro restait cassée hors-ligne au 1er lancement.
   '/surf-journal/assets/fuel-core.js',
+  // tide-harmonics.js : le widget marée du Journal en dépend pour tracer la courbe
+  // du jour — sans précache, le formulaire de session serait cassé hors-ligne.
+  '/surf-journal/assets/tide-harmonics.js',
   '/surf-journal/favicon.ico',
   '/surf-journal/favicon.png',
   // Favicons référencés dans le <head> de chaque page (petits, complètent le

@@ -4000,3 +4000,101 @@ plutôt que vent extrapolé. Libellés du bouton MFWAM et du Mix mis à jour en
 conséquence (le Mix garde `mf` en fin de `VENT_PRIORITY` mais l'entrée est désormais
 inerte PAR CONSTRUCTION : son vent EST celui de MARC, déjà servi plus haut).
 sw v57→v58.
+
+---
+
+# 04/08/2026 (après-midi) — Audit `index.html` (Journal) : 6 correctifs
+
+Audit demandé sur la page Journal (menus, graphes, organisation, mécanismes).
+Constats vérifiés en headless (Chrome, sandbox `Pacific/Noumea`) + tests Node isolés.
+Ce qui suit est ce qui a été **corrigé** ; le reste du rapport (XSS nom de spot,
+`.delete()` sans `.select()` sur les alias, Escape/retour Android sur les modales,
+`select('*')` rejoué à chaque navigation, `SPOT_SLOPES` non sourcé, labels sans `for`)
+est resté en l'état, à traiter dans un chantier ultérieur.
+
+## ✗ Graphe « Qualité dans le temps » : mauvaises sessions, axe inversé
+`sessions` arrive trié **date DESC** (`.order('date',{ascending:false})`), or le code
+faisait `.filter(...).slice(-30)` → la QUEUE du tableau, c'est-à-dire les 30 sessions
+les plus **anciennes**, tracées de récent à ancien. Prouvé par test Node sur 48 sessions
+synthétiques : le graphe couvrait `2026-03-16 → 2026-06-11`, **aucun point de juillet ni
+d'août**, et la moyenne mobile (`slice(i-4,i+1)`) lissait vers le futur.
+→ `.slice(0,30).reverse()`. Vérifié après correctif : axe `05-09 → 08-01`, croissant,
+cohérent avec « Sessions par mois » juste à côté.
+
+## ✗ Axe Y du même graphe : « 6★ » sur une note /5
+`y:{min:.5,max:5.5,ticks:{stepSize:1,callback:v=>Math.round(v)+'★'}}` → Chart.js posait
+ses graduations sur 0.5, 1.5 … 5.5, arrondies en 1★…**6★**. Le vrai dégât n'était pas le
+« 6★ » mais le décalage d'un demi-cran de TOUTES les graduations (un point à 3★ tombait
+entre les libellés 3★ et 4★). → `afterBuildTicks` impose les entiers 1..5, bornes .5/5.5
+conservées pour l'air autour du tracé.
+
+## ✗ Toute valeur 0 enregistrée comme « non renseigné »
+`parseFloat(el.value) || null` sur `hs`, `period`, `wind_kts`, `duration_h`,
+`distance_nm`, `nb_surfers`, `price_cfp` (+ `conso_l_h`/`tank_l`/`nb_places` côté
+bateau). `parseFloat('0') || null === null` : **impossible de loguer un vent à 0 nds**,
+soit le glassy — précisément la condition qu'on cherche à retrouver dans les stats.
+→ helper `_numField(id, asInt)` qui distingue 0 de vide. Vérifié en navigateur :
+`0→0, ''→null, '12.5'→12.5, 'abc'→null, int('12.5')→12`.
+`quality` et `tube_count` gardent `|| null` / `|| 1` : là, 0 signifie bien « pas noté ».
+
+## ✗ Nav : débordement horizontal de 601 px à ~1250 px
+Mesuré à 6 largeurs : `nav.scrollWidth = 1237 px` constant, et
+`documentElement.scrollWidth > clientWidth` (1237 vs 585 à 601 px) — donc **toute la page**
+scrollait horizontalement, pas seulement la barre. Le seuil hamburger était resté à
+600 px alors que la barre (logo + 9 entrées + « + Session » + pastille + avatar) réclame
+1237 px : tablettes, iPad et fenêtres non maximisées étaient touchés.
+→ Règles du menu déroulant extraites dans `@media (max-width:1280px)` (marge sur les
+1237 mesurés : la largeur dépend des polices Google réellement chargées, qu'on ne veut
+pas voir décider du seuil). Vérifié : `OVERFLOW_H=false` à 1400/1280/1100/900/700/601/500.
+Au passage, « + Session » est relayé DANS le menu sous 600 px (`#nav-menu-newsession`) :
+il y était masqué sans repli, donc l'action principale demandait 3 taps hors dashboard.
+
+## ✗ Onglet actif jamais signalé
+`.nav-btn.active { color: var(--accent) }` existait en CSS mais n'était **jamais posé** :
+`showPage()` se contentait de le retirer. Sur 9 entrées, rien n'indiquait où on se
+trouvait. → `data-page` sur chaque bouton, `.active` posé par `showPage()` **et** par
+`onLogin()` (qui active le dashboard sans passer par `showPage`). Garde ajoutée sur
+`showPage('inconnue')` (avant : TypeError sur `null.classList`). Style renforcé
+(fond + graisse), la seule couleur accent se voyant à peine.
+
+## ✗✗ Marée inventée — le plus grave
+`tideLevel(hour, port)` = `mean + amp·sin(2π·(hour/12.42 + phase))`, avec des
+`amp`/`phase`/`mean` inventés par port et **aucun terme de date** : la même courbe était
+rendue tous les jours, alors que la marée se décale d'environ 50 min/jour. Juste
+seulement le jour où les constantes avaient été choisies, fausse d'un demi-cycle une
+semaine plus tard. Et ce n'était pas décoratif : le niveau moyen déduit des plages
+alimentait la stat « conditions idéales par spot » — le tableau tassait les 5 spots dans
+**8 cm** (0,45 → 0,53 m), un artefact de la sinusoïde commune, pas une mesure.
+
+**Erreur mesurée** (ancien modèle vs harmonique SHOM, 365 j × 48 pas horaires) :
+moyenne **0,52 m**, médiane 0,47 m, p90 1,00 m, max **1,38 m** — pour un marnage typique
+de 1,20 m, soit **43 % du marnage en moyenne**, et un maximum supérieur au marnage entier.
+
+→ Modèle harmonique 10 constituantes ajusté par moindres carrés sur 116 points SHOM
+(RMSE 1,5 cm, timing ±20 min), **repris de `previsions.html`** et extrait dans
+`assets/tide-harmonics.js` pour ne pas en faire une 3ᵉ copie dans le projet. Ancrage
+minuit NC (`Date.UTC(y,m,d) - 11h`, convention du projet). Choisi de préférence à un
+fetch `/tide` du Worker : un journal saisit surtout des sessions **passées**, et le
+formulaire doit marcher hors-ligne — le modèle n'a ni dérive ni dépendance réseau.
+`previsions.html` garde sa copie pour l'instant (la dédoublonner exige d'y toucher,
+autre chantier) : **si l'une bouge, l'autre doit suivre.**
+
+Portée honnête : le modèle est ajusté sur **Nouméa**. `previsions.html` rattache déjà
+noumea/tomo/thio à la même station SHOM (9881852) → exact pour ces trois. Bourail
+dépend d'une autre station (9880352), dont on n'a pas les constantes : approximation
+assumée, `lagHours: 0.5`, et **affichée comme telle** dans le widget
+(« approx. (réf. Nouméa) ») plutôt que présentée comme une mesure.
+
+Le recalcul dupliqué dans les stats (`portConfigs`, copie de la sinusoïde) est supprimé
+au profit de `tideHeightAt(s.date, h, s.tide_port)` : deux sessions au même horaire mais
+à des mois d'écart recevaient jusqu'ici un niveau **identique**.
+
+**Aucune donnée à migrer** : ce qui est stocké (`tide_ranges` = plages horaires,
+`tide_port`, `tide` texte) est sain — seul le niveau, recalculé à l'affichage, était faux.
+Les stats se corrigent donc d'elles-mêmes au rechargement.
+
+**Vérifié en headless** : 0 erreur JS sur les 7 pages + la modale ; courbe qui change
+avec la date (04/08 6h → 0,46 m ; 11/08 6h → 1,18 m, quasi en opposition — l'ancien code
+rendait les deux identiques) ; canvas réellement tracé (67 200 pixels non transparents) ;
+libellé de date présent et mention « approx. » sur Bourail ; tableau « conditions idéales »
+désormais dispersé sur 0,62 → 1,31 m au lieu de 8 cm. sw v58→v59 + `ASSETS` complété.

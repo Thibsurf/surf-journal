@@ -31,6 +31,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8" integrity="sha384-Tve8O+C6PBzsIMK/IRCwHbi8fyEzXIlIs6OfVBZHubplwYhaQF/4Mzxqgg+pp/oy" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
+<!-- Modèle harmonique de marée (SHOM) — chargé SANS defer : tideHeightAt() doit
+     exister au premier renderTideWidget(), qui part d'un setTimeout de 50 ms. -->
+<script src="assets/tide-harmonics.js"></script>
 <style>
 :root {
   --ocean: #0a1628;
@@ -1121,7 +1124,10 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
         <!-- Widget marée interactif -->
         <div id="tide-widget" style="background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.15);border-radius:var(--radius-sm);padding:10px;margin-top:4px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-            <span style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">🌊 Marée — sélection des plages</span>
+            <span style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">🌊 Marée — sélection des plages
+              <!-- Date décrite par la courbe : la marée dépend du jour (~50 min de
+                   décalage quotidien), l'afficher évite de croire à une courbe générique. -->
+              <span id="tide-date-label" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);"></span></span>
             <select id="tide-port" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="renderTideWidget()">
               <option value="noumea">Nouméa</option>
               <option value="tomo">Tomo (Dumbéa)</option>
@@ -2996,26 +3002,36 @@ function editSession() {
 // WIDGET MARÉE INTERACTIF
 // ═══════════════════════════════════════════════════════════════
 
-// Composantes harmoniques simplifiées (M2 + S2) pour approximation NC
-// Port de ref: marée semi-diurne, amplitude ~0.8m à Nouméa
-var TIDE_PORTS = {
-  noumea:  { name:'Nouméa',        amp:0.6, phase:0,    mean:0.9 },
-  tomo:    { name:'Tomo (Dumbéa)', amp:0.7, phase:0.15, mean:0.85 },
-  bourail: { name:'Bourail',       amp:0.55, phase:-0.2, mean:0.9 },
-  thio:    { name:'Thio',          amp:0.5, phase:0.35, mean:0.95 }
-};
-
 // Plages de marée sélectionnées [{start, end}] en heures décimales 0-24
 var tideRanges = [];
 var _tideDragStart = null;
 
-// Calculer le niveau d'eau à une heure donnée (0-24)
-function tideLevel(hour, port) {
-  var p = TIDE_PORTS[port] || TIDE_PORTS.noumea;
-  // Marée semi-diurne: 2 cycles de 12.42h par jour
-  // Simplification: 2 sinusoïdes par 24h
-  var phase = (hour / 12.42 + p.phase) * 2 * Math.PI;
-  return p.mean + p.amp * Math.sin(phase);
+// Date NC ('YYYY-MM-DD') à laquelle rapporter la marée : celle du formulaire.
+// Sans elle, tideLevel() ne savait PAS de quel jour il parlait (cf. ci-dessous).
+function _tideDateStr() {
+  var el = document.getElementById('f-date');
+  var v = el && el.value;
+  return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : _localDayStr();
+}
+
+// Niveau d'eau (m) à une heure donnée (0-24), POUR LA DATE de la session.
+//
+// Avant le 04/08/2026 : `mean + amp·sin(2π·(hour/12.42 + phase))`, avec des
+// amp/phase/mean inventés par port et — surtout — AUCUN terme de date. La courbe
+// était donc rigoureusement identique tous les jours, alors que la marée se décale
+// d'environ 50 min/jour : juste seulement le jour où les constantes avaient été
+// choisies, fausse dès le lendemain, et fausse d'un demi-cycle une semaine plus tard
+// (mesuré : le 04/08/2026 à 6h → 0,46 m, le 11/08 à la même heure → 1,18 m, l'ancien
+// modèle rendait les deux identiques). Écart ancien modèle / harmonique SHOM sur
+// 365 jours × 48 pas horaires : moyenne 0,52 m, p90 1,00 m, max 1,38 m — à comparer
+// à un marnage typique de 1,20 m, soit 43 % du marnage en moyenne. Le niveau moyen
+// qui en était déduit alimentait ensuite la stat « conditions idéales par spot ».
+// Remplacé par le modèle harmonique 10 constituantes ajusté sur le SHOM, partagé
+// avec previsions.html (assets/tide-harmonics.js) — les deux pages affichent
+// désormais la même marée pour un même instant.
+function tideLevel(hour, port, dateStr) {
+  var v = tideHeightAt(dateStr || _tideDateStr(), hour, port);
+  return v == null ? 0 : v;
 }
 
 // Déterminer le port par défaut selon le launch point
@@ -3034,15 +3050,28 @@ function renderTideWidget() {
   var ctx = cv.getContext('2d');
   var W = cv.width, H = cv.height;
   var port = document.getElementById('tide-port').value;
+  // Une seule lecture de la date pour tout le tracé : le widget doit décrire UN jour,
+  // pas mélanger deux jours si la saisie change pendant le rendu.
+  var dateStr = _tideDateStr();
   ctx.clearRect(0, 0, W, H);
 
   // Fond
   ctx.fillStyle = '#0a1628';
   ctx.fillRect(0, 0, W, H);
 
+  // Rappel de la date décrite + honnêteté sur le port : le modèle harmonique est
+  // ajusté sur Nouméa, donc Bourail (autre station SHOM, constantes non disponibles)
+  // est une approximation — autant l'écrire plutôt que de laisser croire à une mesure.
+  var lblEl = document.getElementById('tide-date-label');
+  if (lblEl) {
+    var dParts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+    lblEl.textContent = (dParts ? dParts[3] + '/' + dParts[2] : dateStr)
+      + (tidePortIsExact(port) ? '' : ' · approx. (réf. Nouméa)');
+  }
+
   // Calculer les niveaux min/max
   var levels = [];
-  for (var h = 0; h <= 24; h += 0.1) levels.push(tideLevel(h, port));
+  for (var h = 0; h <= 24; h += 0.1) levels.push(tideLevel(h, port, dateStr));
   var minL = Math.min.apply(null, levels);
   var maxL = Math.max.apply(null, levels);
   var rangeL = Math.max(0.1, maxL - minL);
@@ -3068,7 +3097,7 @@ function renderTideWidget() {
   ctx.lineWidth = 2;
   ctx.beginPath();
   for (var h = 0; h <= 24; h += 0.1) {
-    var x = toX(h), y = toY(tideLevel(h, port));
+    var x = toX(h), y = toY(tideLevel(h, port, dateStr));
     if (h === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.stroke();
@@ -3087,8 +3116,8 @@ function renderTideWidget() {
 
   // Labels des plages
   tideRanges.forEach(function(r, i) {
-    var startL = tideLevel(r.start, port);
-    var endL = tideLevel(r.end, port);
+    var startL = tideLevel(r.start, port, dateStr);
+    var endL = tideLevel(r.end, port, dateStr);
     var avg = ((startL + endL) / 2).toFixed(2);
     var midX = toX((r.start + r.end) / 2);
     ctx.fillStyle = '#4fa3c7';
@@ -3108,7 +3137,7 @@ function renderTideWidget() {
     if (m2 >= 60) { h2++; m2 = 0; }
     var tStart = (h1<10?'0':'')+h1+'h'+(m1<10?'0':'')+m1;
     var tEnd = (h2<10?'0':'')+h2+'h'+(m2<10?'0':'')+m2;
-    var avgL = ((tideLevel(r.start, port) + tideLevel(r.end, port)) / 2).toFixed(2);
+    var avgL = ((tideLevel(r.start, port, dateStr) + tideLevel(r.end, port, dateStr)) / 2).toFixed(2);
     return '<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.3);border-radius:14px;padding:2px 6px 2px 10px;font-size:11px;color:var(--accent);">'
       + tStart + '→' + tEnd + ' <span style="opacity:.7;">(' + dur + 'h, ~' + avgL + 'm)</span>'
       + '<button onclick="openTideTimeEditor(' + i + ')" title="Heure précise" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;padding:0 3px;opacity:.7;">✏️</button>'
@@ -3153,7 +3182,7 @@ function renderTideWidget() {
     var sumLevel = 0, nLev = 0;
     tideRanges.forEach(function(r) {
       for (var h = r.start; h <= r.end; h += 0.25) {
-        sumLevel += tideLevel(h, port); nLev++;
+        sumLevel += tideLevel(h, port, dateStr); nLev++;
       }
     });
     var avgLevel = nLev > 0 ? (sumLevel / nLev).toFixed(2) : '?';
@@ -3181,8 +3210,8 @@ function renderTideWidget() {
       // Format: "startMoy→endMoy" sur toutes les plages
       var firstR = tideRanges[0];
       var lastR = tideRanges[tideRanges.length - 1];
-      var s1 = tideLevel(firstR.start, port).toFixed(2);
-      var e1 = tideLevel(lastR.end, port).toFixed(2);
+      var s1 = tideLevel(firstR.start, port, dateStr).toFixed(2);
+      var e1 = tideLevel(lastR.end, port, dateStr).toFixed(2);
       tideEl.value = s1 + '→' + e1 + ' (moy ' + avgLevel + 'm)';
       tideEl.dataset.fromTide = '1';
     }
@@ -4765,22 +4794,23 @@ function renderStats(sessions, el) {
       // Meilleur niveau d'eau par spot (pondéré par qualité étoiles)
       // Utilise tide_ranges (nouveau format) OU tide texte (ancien)
       var spotTide = {};
-      var portConfigs = {
-        noumea:{amp:0.6,phase:0,mean:0.9}, tomo:{amp:0.7,phase:0.15,mean:0.85},
-        bourail:{amp:0.55,phase:-0.2,mean:0.9}, thio:{amp:0.5,phase:0.35,mean:0.95}
-      };
       sessions.forEach(function(s) {
         if (!s.spot || !s.quality) return;
         var avgLevel = null;
 
-        // 1) Nouveau format: tide_ranges calculé via sinusoïde
-        if (s.tide_ranges && s.tide_ranges.length && s.tide_port) {
-          var portCfg = portConfigs[s.tide_port] || portConfigs.noumea;
+        // 1) Format tide_ranges : le niveau est RECALCULÉ à l'affichage, il n'a jamais
+        //    été stocké — ce qui est enregistré (plages horaires + port) est sain, seul
+        //    ce calcul était faux. Il refaisait ici, en copie, la sinusoïde sans date de
+        //    l'ancien tideLevel() : deux sessions au même horaire mais à des mois d'écart
+        //    recevaient un niveau d'eau IDENTIQUE, et c'est cette valeur qui pondérait le
+        //    tableau « conditions idéales par spot » ci-dessous. Le modèle harmonique
+        //    ancré sur s.date corrige les deux (plus de copie, et la vraie marée du jour).
+        if (s.tide_ranges && s.tide_ranges.length && s.tide_port && s.date) {
           var sumL = 0, nL = 0;
           s.tide_ranges.forEach(function(r) {
             for (var h = r.start; h <= r.end; h += 0.25) {
-              sumL += portCfg.mean + portCfg.amp * Math.sin((h/12.42 + portCfg.phase) * 2 * Math.PI);
-              nL++;
+              var lv = tideHeightAt(s.date, h, s.tide_port);
+              if (lv != null) { sumL += lv; nL++; }
             }
           });
           if (nL > 0) avgLevel = sumL / nL;
@@ -6243,6 +6273,10 @@ function updateShomLink() {
   var url = 'https://maree.shom.fr/harbor/' + port + '/hlt/0?date=' + date + '&utc=11';
   var link = document.getElementById('shom-link');
   if (link) link.href = url;
+  // La courbe de marée dépend désormais de la DATE (modèle harmonique ancré, cf.
+  // tideLevel) : changer le jour doit la redessiner, sinon on continuerait de
+  // sélectionner ses plages sur la marée d'un autre jour.
+  if (typeof renderTideWidget === 'function') renderTideWidget();
   if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
 }
 
