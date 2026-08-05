@@ -1,8 +1,17 @@
 # Conventions du projet `surf-journal`
 
-Site : `thibsurf.github.io/surf-journal` (Cloudflare Pages) — PWA de prévisions surf
-pour la Nouvelle-Calédonie. Ce fichier est chargé automatiquement à chaque session :
+Site : `thibsurf.github.io/surf-journal` — PWA de prévisions surf pour la
+Nouvelle-Calédonie. Ce fichier est chargé automatiquement à chaque session :
 il contient ce qu'on ne peut PAS déduire du code en le lisant.
+
+**Ce front est servi par GitHub Pages, pas par Cloudflare Pages** (vérifié le
+05/08/2026 : `server: GitHub.com`, aucun `cf-ray` dans la réponse ; déploiement auto
+sur push vers `main`). Ce fichier a longtemps dit « Cloudflare Pages », ce qui est
+faux et coûte du temps : la page n'est **pas** proxifiée par Cloudflare, donc tout ce
+qui suppose l'orange cloud est indisponible (règles de cache, Zaraz, et la config
+« automatique » zéro-JS de Web Analytics — d'où le beacon inséré à la main dans le
+`<head>` des 7 pages, cf. `AUDIT.md` 05/08). Le seul Cloudflare du projet est le
+**Worker** (`worker_cloudflare/`), déployé séparément à la main par `wrangler`.
 
 ---
 
