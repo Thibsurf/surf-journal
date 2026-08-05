@@ -52,7 +52,7 @@ try {
 <!-- html2canvas (180 Ko) : chargé À LA DEMANDE par generateMeteogram/_gwCapture
      (elles ont chacune leur injection+retry intégrés). Plotly (3,6 Mo !) :
      chargé À LA DEMANDE à l'ouverture de l'onglet ENSO — le télécharger au boot
-     pénalisait chaque visite mobile pour un onglet occasionnel. -->>
+     pénalisait chaque visite mobile pour un onglet occasionnel. -->
 <style>
 :root {
   --ocean:#0a1628;--deep:#0d1f3c;--mid:#1a3a5c;--surface:#1e2d42;
@@ -524,7 +524,13 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 <link rel="preconnect" href="https://rpcache.meteo.nc">
 <link rel="preconnect" href="https://api.open-meteo.com">
 <link rel="preconnect" href="https://marine-api.open-meteo.com">
-<link rel="dns-prefetch" href="https://server.arcgisonline.com"></head>
+<link rel="dns-prefetch" href="https://server.arcgisonline.com"><!-- Cloudflare Web Analytics. Script classique + defer, et non le type="module"
+     proposé par défaut dans le dashboard : beacon.min.js ne contient aucune syntaxe
+     de module (vérifié le 05/08/2026), et defer reste supporté par les vieux iOS que
+     type="module" ignorerait silencieusement — or toute la page est en ES5 pour eux.
+     Non bloquant pour le rendu. Aucun cookie, pas de donnée personnelle collectée. -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "c6f5fb974f584556a9e32437766eaade"}'></script>
+</head>
 <body>
 
 <nav>

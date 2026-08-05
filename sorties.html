@@ -520,6 +520,12 @@ nav a.back:hover{color:var(--text);}
   .tc-transfer-who{flex:1 1 100%;}
 }
 </style>
+<!-- Cloudflare Web Analytics. Script classique + defer, et non le type="module"
+     proposé par défaut dans le dashboard : beacon.min.js ne contient aucune syntaxe
+     de module (vérifié le 05/08/2026), et defer reste supporté par les vieux iOS que
+     type="module" ignorerait silencieusement — or toute la page est en ES5 pour eux.
+     Non bloquant pour le rendu. Aucun cookie, pas de donnée personnelle collectée. -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "c6f5fb974f584556a9e32437766eaade"}'></script>
 </head>
 <body>
 

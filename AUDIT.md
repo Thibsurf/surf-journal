@@ -4752,3 +4752,65 @@ retrouvée. Précacher aurait donné l'illusion du correctif. Raison inscrite da
   208763, 208755, 4164]`, mêmes valeurs, même ordre.
 - Unité vent : aucune occurrence de « kt » dans l'UI (les deux `'kt'` du fichier sont
   des clés de données internes).
+
+---
+
+# 05/08/2026 — Cloudflare Web Analytics sur les 7 pages du site
+
+Site enregistré côté Cloudflare pour `thibsurf.github.io`, token de beacon
+`c6f5fb974f584556a9e32437766eaade` (token public, prévu pour être en clair
+dans le HTML).
+
+## `defer` plutôt que le `type="module"` du dashboard
+
+Le snippet proposé par le dashboard Cloudflare est en `type='module'`. Les deux
+formes sont non bloquantes (un script module est différé par défaut, et l'attribut
+`defer` y est même ignoré), mais `type="module"` est **ignoré silencieusement par
+les vieux Safari/iOS** — exactement les navigateurs pour lesquels toute cette page
+est maintenue en ES5. Ces visiteurs auraient disparu des statistiques sans le
+moindre signal.
+
+Vérifié avant de trancher : `beacon.min.js` (31 612 octets) ne contient **aucune**
+syntaxe de module — 0 `import`, 0 `export`, n'importe où dans le fichier. Il est
+donc chargeable en script classique. Retenu :
+
+```html
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "…"}'></script>
+```
+
+Pas de `preconnect` ajouté pour `static.cloudflareinsights.com` : ce serait mettre
+une mesure d'audience en concurrence avec les vraies ressources critiques de la
+page, pour un script délibérément non prioritaire.
+
+## Le service worker interceptait le beacon
+
+`sw.js` applique un stale-while-revalidate à **tout** GET sauf une liste
+d'exceptions, où `cloudflareinsights.com` ne figurait pas : le beacon aurait été
+servi depuis une copie figée du cache PWA. Ajouté à la liste. Le POST des mesures
+vers `/cdn-cgi/rum` sortait déjà par le garde non-GET. `CACHE_NAME` v63 → **v64**
+(les 4 HTML précachés changent).
+
+## Bug préexistant trouvé au passage : `-->>` ligne 55
+
+Le DOM parsé de `previsions.html` plaçait le beacon **après** `</head>`. Cause : le
+commentaire html2canvas/Plotly se terminait par `-->>`. Ce `>` orphelin est un nœud
+texte, interdit dans `<head>` — le parseur fermait donc le head **ligne 55**, et
+tout ce qui suivait tombait dans le `<body>` : le bloc `<style>` entier, mais
+surtout les 4 hints `preconnect`/`dns-prefetch` (meteo.nc, open-meteo ×2,
+arcgisonline). Un `preconnect` déplacé si tard perd l'essentiel de son intérêt —
+ces hints étaient donc largement inopérants depuis leur ajout. Un caractère
+supprimé les remet dans le head.
+
+## Vérifications
+
+- **DOM parsé** (et pas seulement la source) des 7 pages : exactement **1** balise
+  `<script cloudflareinsights>`, portant `defer`, **dans le `<head>`**.
+- Chargement réel en headless : `LOADED[true]`, `ERR[null]`, et surtout la mesure
+  part vraiment → `xhr:https://cloudflareinsights.com/cdn-cgi/rum`. C'est la preuve
+  de bout en bout que le beacon fonctionne en script classique.
+- Exclues volontairement : `test_fuel.html`, `test_share.html` (pages de test),
+  `thibsurf_nav/old/` (mort), et **`extension/`** — un script distant y violerait la
+  CSP du Manifest V3 de l'extension Chrome.
+- `node --check sw.js` passe (à ne pas prendre pour un garde-fou, cf. session du
+  05/08 plus haut : ce Node v12 rejette des syntaxes valides ; ici il accepte).

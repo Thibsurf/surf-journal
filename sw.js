@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v63';
+const CACHE_NAME = 'surf-nc-v64';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -80,7 +80,13 @@ self.addEventListener('fetch', event => {
       event.request.url.includes('meteo.nc') ||
       event.request.url.includes('open-meteo.com') ||
       event.request.url.includes('openstreetmap.org') ||
-      event.request.url.includes('esri.com')) {
+      event.request.url.includes('esri.com') ||
+      // Beacon Cloudflare Web Analytics : le laisser passer au réseau. Mis en cache par
+      // le stale-while-revalidate ci-dessous, il serait servi depuis une version figée
+      // et polluerait le cache de la PWA sans aucun bénéfice — c'est un script tiers de
+      // 31 Ko que Cloudflare met à jour de son côté. (Le POST des mesures vers
+      // /cdn-cgi/rum sort déjà par le garde non-GET plus haut.)
+      event.request.url.includes('cloudflareinsights.com')) {
     return;
   }
 
