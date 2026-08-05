@@ -4644,3 +4644,111 @@ chaîne vide d'elle-même sous 2 modèles).
 
 Vérifié : cohérence victoires ≤ duels (99 ≤ 100, une égalité), 4 infobulles de
 face-à-face, 0 erreur JS.
+
+---
+
+# Session du 05/08/2026 — audit `previsions.html` à 3 agents, puis correctifs
+
+Audit conduit par 3 agents en parallèle (logique JS · apparence · structure/PWA), puis
+**chaque constat revérifié un par un avant d'être retenu**. Sur 8 constats remontés,
+**3 tenaient**, 5 étaient faux ou surcotés. Un 4e défaut, manqué par les trois agents,
+a été trouvé pendant cette revérification. Détail des écartés plus bas — ils valent
+d'être consignés, plusieurs sont des pièges de méthode qui remordront.
+
+## Ce qui a été corrigé
+
+### 1. `sb?.createClient` — risque de page blanche sur iOS < 13.4 (le vrai)
+
+`previsions.html:2545`, seule occurrence d'optional chaining du fichier. Elle vivait
+dans le `<script>` inline principal, **lignes 2083-16117, soit 797 123 o : tout le cœur
+applicatif**. Le point qui rend ça grave : une syntaxe non reconnue est une erreur de
+**parsing**, pas d'exécution. Sur un moteur qui ignore `?.`, ce n'est pas cette ligne
+qui échoue, c'est le bloc entier qui n'est jamais évalué — donc page blanche, et non
+dégradation partielle. `?.` exige Safari 13.1 / iOS 13.4 (mars 2020), c'est-à-dire
+exactement la population que la convention ES5 du projet cherche à couvrir.
+
+Remplacé par `if (sb && sb.createClient)`, idiome déjà utilisé 18 lignes plus bas dans
+`_ensureSupabaseClient()`. Vérifié avant conversion `const`→`var` qu'aucun `sb` global
+n'est attendu nulle part (tous les usages du dépôt sont des `var sb` locaux, y compris
+dans `assets/nc-token.js`) — sans quoi la conversion aurait créé un `window.sb` pointant
+sur le namespace du SDK au lieu d'un client.
+
+> À noter au passage, non corrigé car hors périmètre : ce bloc de haut niveau
+> (2542-2554) fait **exactement** ce que `_ensureSupabaseClient()` refait en version
+> paresseuse. Le SDK Supabase étant chargé en `defer`, `window.supabase` est
+> vraisemblablement `undefined` à cet instant synchrone, ce qui rendrait ce bloc
+> inopérant. À trancher un jour, mesure à l'appui.
+
+### 2. `--faint` sous le seuil AA sur le fond des cartes (manqué par les 3 agents)
+
+`previsions.html:60`. Le commentaire existant — « 4,56:1 sur `--ocean` (WCAG AA) » —
+était exact mais mesurait sur le fond de **page**. Or `--faint` sert aussi sur `--deep`
+(#0d1f3c), le fond des **cartes** : rang « #N » et note « ⚠ marée extrême » du bloc
+Meilleurs créneaux. Là il ne faisait que **4,13:1**, sous le seuil AA de 4,5:1 — ce
+texte fait 11 px, c'est donc du « petit texte », le seuil 3:1 ne s'applique pas.
+
+`#6b8299` → `#728aa1` : 4,59:1 sur `--deep`, 5,06:1 sur `--ocean`, tout en restant plus
+discret que `--muted` (5,20:1 sur `--deep`) — la hiérarchie visuelle est préservée.
+C'est le plus petit écart qui passe. Thème clair vérifié aussi : conforme partout
+(`--faint` #5c7080 → 4,57:1 sur #eef2f6, 5,14:1 sur #ffffff), non touché.
+
+Le commentaire de la ligne 60 a été réécrit pour dire **sur quel fond** la mesure vaut :
+c'est précisément ce silence qui avait masqué le cas, et à un agent de relecture aussi.
+
+### 3. Dérive de convention ES5 — réelle mais sans conséquence
+
+4 `const` (2543, 3676, 3689, 3692) et 3 fonctions fléchées (13875, 13876, 16135), tous
+repassés en `var` / `function`. `0 let` avant comme après. Ces deux constructions
+passent depuis Safari 10 (2016) : **aucun appareil réaliste ne cassait**. C'est de
+l'hygiène, à ne pas confondre avec le point 1, seul à porter un risque.
+
+### 4. Icônes de notification hors précache
+
+`sw.js` : ajout de `icons/icon-192x192.png` et `icons/icon-72x72.png`, utilisées en
+`icon`/`badge` de la notification BMS (`previsions.html:15878`). Hors-ligne, l'alerte
+s'affichait sans visuel. `CACHE_NAME` v62 → **v63**.
+
+`icons/icon-180x180.png` (apple-touch-icon des 4 pages) a été **délibérément laissée
+hors d'ASSETS** : elle est référencée en `?v=6`, et le handler `fetch` fait
+`cache.match(request)` **sans `ignoreSearch`** — l'entrée précachée ne serait jamais
+retrouvée. Précacher aurait donné l'illusion du correctif. Raison inscrite dans `sw.js`.
+
+## Constats écartés — et pourquoi (à relire avant le prochain audit)
+
+| Constat | Verdict |
+|---|---|
+| « CSS inline = 837 Ko, 85,7 % du fichier » | **Faux.** Regex qui avalait le JS via des chaînes `<style>` construites en JS ; la somme annoncée dépassait 170 % du fichier. Mesure correcte par parcours séquentiel non chevauchant : **JS 820 713 o (84,1 %), CSS 34 452 o (3,5 %), HTML 121 127 o (12,4 %)**, gzip 292 001 o. Le CSS n'est pas un sujet de poids ici. |
+| « `node --check` échoue → syntaxe invalide » | **Mauvais diagnostic.** Le Node de ce poste est en **v12.22.9**, antérieure au support de `?.`. La conclusion était juste, le raisonnement faux. |
+| « Bug de fuseau GRAVE sur la lune » (14526) | **Négligeable.** Le `getFullYear()` local n'alimente que le `seed` d'un champ d'étoiles décoratif ; la phase lunaire est calculée sur `new Date()` (14483-14487), donc sur un instant absolu, correcte sous tout fuseau. Impact maximal : des points blancs placés autrement. |
+| « ResizeObserver jamais déconnecté » (8850) | **Pas de fuite.** L'observer n'est référencé que par `img._satRO`, porté par l'élément qu'il observe : `img` et observer deviennent inatteignables ensemble et sont ramassés. Le garde `if (!img._satRO)` empêche tout doublon. |
+| « Badges tronqués à 400 px » | **Faux positif**, le piège des 500 px de `CLAUDE.md`. Mesuré à la sonde : à `--window-size=360/400/450`, `window.innerWidth` vaut **toujours 500**. La capture « 400 px » est un rendu 500 px rogné. Signature : badge, « Partager », « ⚙ Régl… » et « 🎯 Calib… » tranchés exactement à x=400 alors qu'ils vivent dans des conteneurs différents — un `overflow:hidden` sur un seul wrapper ne peut pas faire ça. |
+| ↳ et sur un vrai téléphone (360-430 px) ? | **Sain**, analysé au CSS : badge en `flex-shrink:0; white-space:nowrap`, bloc central en `flex:1; min-width:0` — c'est le texte du milieu qui cède, jamais le badge. Largeur minimale de rangée ≈ 28 px + badge + gaps. |
+| « ES5 strict préservé ✓ » | **Contredit** par les 4 `const` du point 3. Annoncé conforme sans avoir cherché. |
+
+## Deux enseignements de méthode
+
+1. **`node --check` n'est pas un garde-fou utilisable sur ce poste** (Node v12.22.9) :
+   il rejette des syntaxes parfaitement valides. Ne pas s'en servir pour valider une
+   modification, et ne pas conclure « syntaxe invalide » sur son seul refus.
+2. **Le piège des 500 px mord encore.** La sonde qui le prouve en trois secondes, à
+   garder sous la main :
+   ```bash
+   google-chrome --headless=new --no-sandbox --disable-gpu --window-size=400,600 \
+     --virtual-time-budget=3000 --dump-dom page.html   # window.innerWidth → 500
+   ```
+   Toute conclusion visuelle sous 500 px doit venir du CSS, jamais d'une capture.
+
+## Vérifications
+
+- `0 const`, `0 let`, `0 fonction fléchée`, `0 optional chaining` restants dans
+  `previsions.html` (les 2 correspondances subsistantes sont un commentaire et le
+  ternaire `isPast?.45:1`).
+- Chargement réel en headless : **0 erreur JS**, `SPOTS=7`, `loadForecast` défini,
+  `PANEL_GEOM` présent, client Supabase initialisé.
+- Thème sombre relu au runtime : `--faint = #728aa1` sur `--deep = #0d1f3c`.
+- Les **24 entrées d'ASSETS existent toutes sur disque** — une seule manquante ferait
+  échouer `cache.addAll()` en bloc, donc l'install du SW entière.
+- `KNOWN_WG_SPOTS` (worker) ↔ `_wgIdForSpot()` : `[6476, 208760, 208762, 207051,
+  208763, 208755, 4164]`, mêmes valeurs, même ordre.
+- Unité vent : aucune occurrence de « kt » dans l'UI (les deux `'kt'` du fichier sont
+  des clés de données internes).

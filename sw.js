@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v62';
+const CACHE_NAME = 'surf-nc-v63';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -30,7 +30,15 @@ const ASSETS = [
   // Favicons référencés dans le <head> de chaque page (petits, complètent le
   // précache pour un affichage hors-ligne cohérent).
   '/surf-journal/icons/favicon-16x16.png',
-  '/surf-journal/icons/favicon-32x32.png'
+  '/surf-journal/icons/favicon-32x32.png',
+  // Icônes de la notification BMS (previsions.html, showNotification `icon`/`badge`) :
+  // sans elles en cache, une alerte reçue hors-ligne s'affichait sans visuel.
+  // NB : on ne précache PAS icon-180x180.png (apple-touch-icon) alors qu'elle est bien
+  // référencée dans le <head> des 4 pages — elle l'est en `?v=6`, et le handler fetch
+  // plus bas fait cache.match(request) SANS ignoreSearch : l'entrée ne serait jamais
+  // retrouvée. Les deux ci-dessous sont référencées sans query, elles, donc utiles.
+  '/surf-journal/icons/icon-192x192.png',
+  '/surf-journal/icons/icon-72x72.png'
 ];
 
 self.addEventListener('install', event => {
