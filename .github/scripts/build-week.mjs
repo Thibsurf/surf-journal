@@ -417,6 +417,27 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
                     font-weight:600}
 .cal-note{font-size:10.5px;color:var(--faint);line-height:1.5;margin-top:12px}
 .cal-note b{color:var(--warm)}
+.cal-seed{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.cal-seed label{font-size:11px;color:var(--muted);white-space:nowrap}
+.cal-seed select{flex:1;background:var(--ocean);color:var(--text);border:1px solid var(--border);
+                 border-radius:7px;padding:6px 8px;font-size:11.5px;font-family:inherit}
+/* Ligne = zone de molette. On la matérialise au survol, sinon rien n'indique
+   qu'on peut régler sans viser la piste du curseur. */
+.row{margin-bottom:11px;padding:2px 6px;margin-left:-6px;margin-right:-6px;border-radius:8px}
+.row:hover{background:rgba(255,255,255,.03)}
+.row-c{display:flex;align-items:center;gap:8px}
+.row-h{font-size:10px;color:var(--faint);margin-top:3px;line-height:1.4}
+.stp{flex:0 0 26px;height:26px;background:rgba(255,255,255,.05);border:1px solid var(--border);
+     color:var(--muted);border-radius:7px;cursor:pointer;font-size:15px;line-height:1;
+     font-family:inherit;padding:0}
+.stp:hover{border-color:var(--accent);color:var(--accent)}
+.cal-live{font-size:11.5px;color:var(--muted);margin-top:14px;padding-top:11px;
+          border-top:1px solid var(--border)}
+.cal-live b{color:var(--accent);font-weight:600}
+/* En mode « calibrage de chaque spot », les curseurs ne montrent qu'une AMORCE :
+   ils ne pilotent encore rien. Les estomper évite de croire qu'ils s'appliquent. */
+.cal.seedmode .row{opacity:.72}
+.cal.seedmode .row:hover{opacity:1}
 
 .cta{display:block;text-align:center;margin-top:22px;padding:13px;border-radius:10px;
      background:var(--accent);color:#06131f;font-weight:600;font-size:15px}
@@ -548,11 +569,14 @@ function loadPrefs() {
       var o = JSON.parse(raw);
       if (o && o.params) { var k; for (k in o.params) COMMON[k] = o.params[k]; }
       if (o && o.mode === 'commun') MODE = 'commun';
+      if (o && o.seed != null) SEED = o.seed;
     }
   } catch (e) {}
 }
 function savePrefs() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ mode: MODE, params: COMMON })); } catch (e) {}
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ mode: MODE, seed: SEED, params: COMMON }));
+  } catch (e) {}
 }
 
 function paramsFor(spot) {
@@ -739,6 +763,21 @@ function render() {
   if (others) html += '<h2>Sinon</h2><div class="cards">' + others + '</div>';
 
   document.getElementById('app').innerHTML = html;
+
+  // Retour immédiat pendant le réglage : sans ce compteur, pousser un curseur
+  // trop loin éteint la grille sans qu'on comprenne lequel a fait basculer quoi.
+  var live = document.getElementById('cal-live');
+  if (live) {
+    var tot = 0, ok = 0, best = 0, si, k;
+    for (si in r.grid) for (k in r.grid[si]) {
+      tot++; if (r.grid[si][k].score) ok++;
+      if (r.grid[si][k].score > best) best = r.grid[si][k].score;
+    }
+    live.innerHTML = '<b>' + ok + '</b> journée' + (ok > 1 ? 's' : '') + ' retenue'
+      + (ok > 1 ? 's' : '') + ' sur ' + tot
+      + ' · meilleur score <b>' + best + '/5</b>'
+      + (MODE === 'spot' ? ' · calibrage propre à chaque spot' : ' · seuils communs');
+  }
 }
 
 // ─── Panneau de calibrage ───────────────────────────────────────────────────
@@ -746,19 +785,62 @@ function render() {
 // le curseur n'aurait aucun effet — un réglage qui ne fait rien est pire que pas
 // de réglage. Les directions sont des curseurs 0-350 plutôt que le compas de
 // settings-utils.js : la molette y marche, et ça reste lisible sur mobile.
+// ─── Panneau de calibrage ───────────────────────────────────────────────────
+// gustMalusKt volontairement absent : meteo.nc ne fournit pas de rafales, donc
+// le curseur n'aurait aucun effet — un réglage qui ne fait rien est pire que pas
+// de réglage. Les directions sont des curseurs 0-350 plutôt que le compas de
+// settings-utils.js : la molette y marche, et ça reste lisible sur mobile.
 var ROWS = [
-  ['sw', 'minHs',         'Hs mini pour surfer',   0.1,  2.5, 0.1, ' m'],
-  ['sw', 'minPeriod',     'Période mini',            4,   16,   1, ' s'],
-  ['sw', 'minPwr',        'Puissance mini',          0,   15, 0.5, ' kW/m'],
-  ['sw', 'swellDirIdeal', 'Houle — provenance idéale', 0, 350,  10, '°'],
-  ['wd', 'windCalmKt',    'Seuil moutons/clapot',    3,   25,   1, ' nds'],
-  ['wd', 'windMalusKt',   'Vent max avant malus',    5,   30,   1, ' nds'],
-  ['wd', 'windDirIdeal',  'Vent — direction idéale', 0,  350,  10, '°']
+  ['sw', 'minHs',         'Hs mini pour surfer',       0.1,  2.5, 0.1, ' m'],
+  ['sw', 'maxHs',         'Hs maxi (trop gros)',       1.5,  6.0, 0.5, ' m'],
+  ['sw', 'minPeriod',     'Période mini',                4,   16,   1, ' s'],
+  ['sw', 'minPwr',        'Puissance mini',              0,   15, 0.5, ' kW/m'],
+  ['sw', 'swellDirIdeal', 'Houle — provenance idéale',   0,  350,  10, '°'],
+  ['wd', 'windCalmKt',    'Seuil moutons/clapot',        3,   25,   1, ' nds'],
+  ['wd', 'windMalusKt',   'Vent max avant malus',        5,   30,   1, ' nds'],
+  ['wd', 'windDirIdeal',  'Vent — direction idéale',     0,  350,  10, '°'],
+  ['wd', 'onshoreLimit',  'Angle « onshore » jusqu\'à',  15,   90,   5, '°'],
+  ['wd', 'offshoreMin',   'Angle « offshore » à partir de', 90, 175, 5, '°']
 ];
+var ROW_HELP = {
+  minPwr: 'Sous ce seuil, le créneau est classé « plat » quelle que soit la taille.',
+  swellDirIdeal: 'Bonus si la houle vient de ±45° autour de cette direction.',
+  windDirIdeal: 'Direction VERS laquelle souffle le vent idéal (offshore).',
+  onshoreLimit: 'En dessous de cet angle vent/houle, le vent est compté onshore.',
+  offshoreMin: 'Au-dessus de cet angle, il est compté offshore.'
+};
 
 function valTxt(row, v) {
-  if (row[6] === '°') return Math.round(v) + '° ' + compass(v);
+  if (row[6] === '°') return Math.round(v) + '°' + (row[1].indexOf('Dir') !== -1 ? ' ' + compass(v) : '');
   return (row[5] < 1 ? v.toFixed(1).replace('.', ',') : String(Math.round(v))) + row[6];
+}
+
+// Jeu de valeurs servant d'AMORCE aux curseurs. SEED = -1 pour les seuils par
+// défaut, sinon l'index du spot dont on reprend le calibrage.
+var SEED = -1;
+function seedParams() {
+  var base = {}, k, src;
+  for (k in WEEK.defaults) base[k] = WEEK.defaults[k];
+  src = (SEED >= 0 && WEEK.spots[SEED]) ? WEEK.spots[SEED].params : null;
+  if (src) for (k in src) if (src[k] != null && typeof src[k] !== 'object') base[k] = src[k];
+  return base;
+}
+// Ce que les curseurs doivent AFFICHER. En mode « spot » ils montraient COMMON,
+// c'est-à-dire des valeurs qui ne sont appliquées à rien : le panneau annonçait
+// des seuils différents de ceux réellement utilisés pour noter la grille. Ils
+// affichent désormais le calibrage d'amorce, donc quelque chose de vrai.
+function shownParams() { return MODE === 'commun' ? COMMON : seedParams(); }
+
+function syncSliders() {
+  var p = shownParams();
+  ROWS.forEach(function (row) {
+    var el = document.getElementById('r-' + row[1]);
+    if (!el) return;
+    var v = p[row[1]];
+    if (v == null) v = WEEK.defaults[row[1]];
+    el.value = v;
+    document.getElementById('v-' + row[1]).textContent = valTxt(row, parseFloat(el.value));
+  });
 }
 
 function buildCal() {
@@ -766,88 +848,159 @@ function buildCal() {
     + '<button type="button" data-mode="spot">Calibrage de chaque spot</button>'
     + '<button type="button" data-mode="commun">Réglages communs</button>'
     + '</div>';
+
+  // Amorce : reprendre le calibrage d'un spot déjà réglé plutôt que de repartir
+  // des seuils par défaut. C'est le point de départ naturel — les valeurs de
+  // Dumbéa sont issues de 20 sessions réelles, pas d'une supposition.
+  h += '<div class="cal-seed"><label for="cal-seed">Partir du calibrage de</label>'
+    + '<select id="cal-seed"><option value="-1">Seuils par défaut</option>';
+  WEEK.spots.forEach(function (sp, i) {
+    if (sp.cal) h += '<option value="' + i + '">' + esc(sp.short) + '</option>';
+  });
+  h += '</select></div>';
+
   var cur = '';
   ROWS.forEach(function (row) {
     if (row[0] !== cur) {
       cur = row[0];
       h += '<div class="cal-sec ' + cur + '">' + (cur === 'sw' ? '🌊 Houle' : '💨 Vent') + '</div>';
     }
-    var v = COMMON[row[1]];
-    h += '<div class="row">'
+    var v = shownParams()[row[1]];
+    if (v == null) v = WEEK.defaults[row[1]];
+    h += '<div class="row" data-for="' + row[1] + '">'
       + '<div class="row-t"><label for="r-' + row[1] + '">' + row[2] + '</label>'
       + '<span id="v-' + row[1] + '">' + valTxt(row, v) + '</span></div>'
+      + '<div class="row-c">'
+      // Pas de molette sur un écran tactile : sans ces deux boutons, régler au
+      // cran près y est impossible — le pouce ne vise pas à 0,1 m près.
+      + '<button type="button" class="stp" data-d="-1" aria-label="diminuer">−</button>'
       + '<input type="range" id="r-' + row[1] + '" data-k="' + row[1] + '"'
       + ' min="' + row[3] + '" max="' + row[4] + '" step="' + row[5] + '" value="' + v + '">'
+      + '<button type="button" class="stp" data-d="1" aria-label="augmenter">+</button>'
+      + '</div>'
+      + (ROW_HELP[row[1]] ? '<div class="row-h">' + ROW_HELP[row[1]] + '</div>' : '')
       + '</div>';
   });
-  h += '<div class="cal-note">Bouger un curseur bascule en <b>réglages communs</b> :'
+
+  h += '<div class="cal-live" id="cal-live"></div>'
+    + '<div class="cal-note">Bouger un curseur bascule en <b>réglages communs</b> :'
     + ' tous les spots sont alors jugés avec les mêmes seuils, ce qui est le seul'
-    + ' moyen de les comparer honnêtement. Molette ou flèches du clavier pour affiner.'
+    + ' moyen de les comparer honnêtement. Molette, flèches du clavier ou boutons'
+    + ' −/+ ; <b>Maj + molette</b> pour avancer de cinq crans.'
     + ' Les réglages restent sur cet appareil et ne modifient pas ceux du site.'
     + ' <button class="calbtn" type="button" id="cal-reset">Réinitialiser</button></div>';
   document.getElementById('cal').innerHTML = h;
 
   var cal = document.getElementById('cal');
-  cal.addEventListener('input', function (e) {
-    var k = e.target.getAttribute('data-k');
-    if (!k) return;
-    COMMON[k] = parseFloat(e.target.value);
+
+  // Toute modification passe ici, quelle que soit son origine (glissement,
+  // clavier, molette, boutons) : un seul endroit qui bascule le mode, met à jour
+  // le libellé, persiste et redessine.
+  function apply(k, value) {
     var row = ROWS.filter(function (r) { return r[1] === k; })[0];
-    document.getElementById('v-' + k).textContent = valTxt(row, COMMON[k]);
-    if (MODE !== 'commun') { MODE = 'commun'; syncMode(); }
-    savePrefs(); render();
-  });
-  // Molette : passive:false est indispensable pour pouvoir empêcher le défilement
-  // de la page pendant qu'on règle. Sans ça Chrome ignore le preventDefault().
-  cal.addEventListener('wheel', function (e) {
-    var t = e.target;
-    if (!t.getAttribute || !t.getAttribute('data-k')) return;
-    e.preventDefault();
-    var step = parseFloat(t.step) || 1;
-    var next = parseFloat(t.value) + (e.deltaY < 0 ? step : -step);
-    next = Math.max(parseFloat(t.min), Math.min(parseFloat(t.max), next));
+    if (!row) return;
+    var v = Math.max(row[3], Math.min(row[4], value));
     // Réaligner sur le pas : les additions flottantes dérivent (0.1+0.2…), et un
     // minHs à 0.7000000000000001 s'afficherait faux.
-    next = Math.round(next / step) * step;
-    if (next === parseFloat(t.value)) return;
-    t.value = next;
-    t.dispatchEvent(new Event('input', { bubbles: true }));
+    v = Math.round(v / row[5]) * row[5];
+    v = Math.round(v * 1000) / 1000;
+    if (MODE !== 'commun') {
+      // On entre en mode commun EN PARTANT de ce qui était affiché : sinon le
+      // simple fait de toucher un curseur ferait sauter tous les autres réglages
+      // vers les valeurs par défaut, sans que rien ne l'annonce.
+      COMMON = shownParams();
+      MODE = 'commun';
+      syncMode();
+    }
+    COMMON[k] = v;
+    var el = document.getElementById('r-' + k);
+    if (parseFloat(el.value) !== v) el.value = v;
+    document.getElementById('v-' + k).textContent = valTxt(row, v);
+    savePrefs();
+    render();
+  }
+  function stepOf(k) {
+    var row = ROWS.filter(function (r) { return r[1] === k; })[0];
+    return row ? row[5] : 1;
+  }
+  // La molette écoutée sur la LIGNE entière, pas seulement sur la piste du
+  // curseur : viser une zone de 20 px de haut à la souris est pénible, et c'est
+  // ce qui rendait le réglage frustrant.
+  function rowKey(node) {
+    while (node && node !== cal) {
+      if (node.getAttribute && node.getAttribute('data-for')) return node.getAttribute('data-for');
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  cal.addEventListener('input', function (e) {
+    var k = e.target.getAttribute('data-k');
+    if (k) apply(k, parseFloat(e.target.value));
+  });
+
+  // passive:false est indispensable pour empêcher le défilement de la page
+  // pendant le réglage : sans ça Chrome ignore le preventDefault().
+  cal.addEventListener('wheel', function (e) {
+    var k = rowKey(e.target);
+    if (!k) return;
+    e.preventDefault();
+    var mult = e.shiftKey ? 5 : 1;
+    var el = document.getElementById('r-' + k);
+    apply(k, parseFloat(el.value) + (e.deltaY < 0 ? 1 : -1) * stepOf(k) * mult);
   }, { passive: false });
 
   cal.addEventListener('click', function (e) {
-    var m = e.target.getAttribute && e.target.getAttribute('data-mode');
-    if (m) { MODE = m; syncMode(); savePrefs(); render(); return; }
-    if (e.target.id === 'cal-reset') {
-      COMMON = JSON.parse(JSON.stringify(WEEK.defaults));
+    var t = e.target;
+    var m = t.getAttribute && t.getAttribute('data-mode');
+    if (m) {
+      MODE = m;
+      if (m === 'commun') COMMON = shownParams();
+      syncMode(); syncSliders(); savePrefs(); render();
+      return;
+    }
+    var d = t.getAttribute && t.getAttribute('data-d');
+    if (d) {
+      var k = rowKey(t);
+      if (k) apply(k, parseFloat(document.getElementById('r-' + k).value) + (+d) * stepOf(k));
+      return;
+    }
+    if (t.id === 'cal-reset') {
+      SEED = -1;
+      document.getElementById('cal-seed').value = '-1';
       MODE = 'spot';
-      ROWS.forEach(function (row) {
-        var el = document.getElementById('r-' + row[1]);
-        el.value = COMMON[row[1]];
-        document.getElementById('v-' + row[1]).textContent = valTxt(row, COMMON[row[1]]);
-      });
-      syncMode(); savePrefs(); render();
+      COMMON = seedParams();
+      syncMode(); syncSliders(); savePrefs(); render();
     }
   });
+
+  document.getElementById('cal-seed').addEventListener('change', function () {
+    SEED = parseInt(this.value, 10);
+    if (MODE === 'commun') COMMON = seedParams();
+    syncSliders(); savePrefs(); render();
+  });
+
   syncMode();
 }
 
 function syncMode() {
   var btns = document.querySelectorAll('.cal-mode button'), i;
   for (i = 0; i < btns.length; i++) {
-    if (btns[i].getAttribute('data-mode') === MODE) btns[i].className = 'on';
-    else btns[i].className = '';
+    btns[i].className = btns[i].getAttribute('data-mode') === MODE ? 'on' : '';
   }
+  var cal = document.getElementById('cal');
+  if (cal) cal.className = cal.className.replace(' seedmode', '') + (MODE === 'spot' ? ' seedmode' : '');
 }
 
 document.getElementById('cal-toggle').addEventListener('click', function () {
   var el = document.getElementById('cal');
   var open = el.className.indexOf('open') === -1;
-  el.className = open ? 'cal open' : 'cal';
+  el.className = (open ? 'cal open' : 'cal') + (MODE === 'spot' ? ' seedmode' : '');
   this.textContent = open ? '✕ Fermer' : '🎯 Calibrer';
 });
-
 loadPrefs();
 buildCal();
+syncSliders();
 render();
 `;
 }
@@ -900,6 +1053,18 @@ async function main() {
     console.log('horizon utile : ' + shown.length + '/' + days.length
       + ' jours (meteo.nc n\'a plus d\'échéance diurne au-delà)');
   }
+
+  // Restreindre les créneaux aux jours RÉELLEMENT affichés. meteo.nc renvoie une
+  // série qui commence AUJOURD'HUI alors que la page couvre J+1..J+7 : sans ce
+  // filtre, le podium pouvait élire un créneau du jour même, donc annoncer en
+  // gros une journée absente du tableau juste en dessous. Détecté le 05/08/2026
+  // par le compteur du panneau — 28 journées évaluées pour 4 spots × 6 colonnes.
+  const keep = {};
+  shown.forEach((k) => { keep[k] = 1; });
+  out.forEach((sp) => {
+    sp.slots = sp.slots.filter((s) => keep[s.d]);
+    Object.keys(sp.models).forEach((k) => { if (!keep[k.split('|')[0]]) delete sp.models[k]; });
+  });
 
   const data = { days: shown, spots: out, defaults: SCORE.DEFAULT_SCORE };
   const html = render(data, now);

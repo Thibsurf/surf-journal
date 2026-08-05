@@ -5133,3 +5133,71 @@ erreurs:aucune
 `CACHE_NAME` v66 → **v67** : `semaine.html` n'est pas précachée mais tombe dans le
 scope du service worker, un visiteur déjà venu se serait vu resservir la version
 non interactive (même raison que le bump v65 pour `thibsurf_nav/`).
+
+## Suite — panneau de calibrage retravaillé (v68)
+
+Demande : « améliore encore le menu, molette etc et les paramètres ».
+
+### ✗ Le panneau annonçait des seuils qui n'étaient pas appliqués
+
+En mode « calibrage de chaque spot », les curseurs affichaient `COMMON` — un jeu
+de valeurs qui ne servait à rien puisque la grille était notée avec les
+`scoreParams` de chaque spot. Le panneau décrivait donc un état faux.
+
+Corrigé : les curseurs affichent désormais une **amorce** explicite (`shownParams`),
+et un sélecteur « Partir du calibrage de » permet de reprendre celui d'un spot
+déjà réglé plutôt que les seuils par défaut — les valeurs de Dumbéa viennent de
+20 sessions réelles, pas d'une supposition. En mode amorce les lignes sont
+estompées : elles ne pilotent encore rien, il faut le voir.
+
+Et en basculant vers « réglages communs », `COMMON` part de ce qui était affiché.
+Avant, toucher un curseur faisait sauter tous les autres réglages vers les
+défauts sans rien annoncer.
+
+### ✗ Le podium pouvait élire un jour absent de la grille
+
+Détecté par le nouveau compteur du panneau : **28 journées évaluées pour 4 spots
+× 6 colonnes**. `slotsFromNc` conserve toute la série meteo.nc, qui commence
+AUJOURD'HUI, alors que la page couvre J+1..J+7 — le créneau vedette pouvait donc
+afficher en gros une journée introuvable dans le tableau juste en dessous. Les
+créneaux (et les séries multi-modèles) sont maintenant filtrés sur les jours
+réellement affichés. Contrôle : 24 = 24, `podium-hors-grille = 0`, et le compteur
+concorde avec le nombre de cellules colorées (15/15).
+
+### Molette
+
+Écoutée sur la **ligne entière** et plus seulement sur la piste du curseur :
+viser une zone de 20 px de haut à la souris était la vraie source de frustration.
+La ligne s'éclaire au survol pour le signaler. **Maj + molette** avance de cinq
+crans. Deux boutons −/+ par ligne complètent le dispositif : il n'y a pas de
+molette sur un écran tactile, et le pouce ne vise pas à 0,1 m près.
+
+Tout passe désormais par une fonction `apply()` unique — glissement, clavier,
+molette, boutons : un seul endroit qui borne, réaligne sur le pas, bascule le
+mode, met à jour le libellé, persiste et redessine.
+
+### Paramètres
+
+Trois ajouts : `maxHs` (le seuil « trop gros » n'était pas réglable), et surtout
+`onshoreLimit` / `offshoreMin`, qui décident de tout l'effet directionnel du vent
+et n'étaient exposés nulle part. Cinq lignes d'aide contextuelle sur les réglages
+non évidents (`minPwr`, les deux directions, les deux angles).
+
+Nouveau compteur permanent : « N journées retenues sur M · meilleur score X/5 ».
+Sans lui, pousser un curseur trop loin éteignait la grille sans qu'on comprenne
+lequel avait fait basculer quoi.
+
+### Vérifications (headless)
+
+```
+curseurs=10 steppers=20 aides=5 | mode0=spot seedmode=true
+live0=19 journées retenues sur 28…            ← a RÉVÉLÉ le bug des 28 vs 24
+amorce Dumbéa : minPwr 1 -> 6,5 sans changer de mode
+molette sur le LABEL + Maj : minPeriod 12 -> 16, bascule en commun
+stepper + : windCalmKt 7 -> 8
+maxHs=oui onshore=oui offshore=oui
+reset : mode=spot seed=-1 minPeriod=8, 15 cellules colorées
+erreurs:aucune
+```
+
+`CACHE_NAME` v67 → **v68**.

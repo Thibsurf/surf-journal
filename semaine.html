@@ -117,6 +117,27 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
                     font-weight:600}
 .cal-note{font-size:10.5px;color:var(--faint);line-height:1.5;margin-top:12px}
 .cal-note b{color:var(--warm)}
+.cal-seed{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.cal-seed label{font-size:11px;color:var(--muted);white-space:nowrap}
+.cal-seed select{flex:1;background:var(--ocean);color:var(--text);border:1px solid var(--border);
+                 border-radius:7px;padding:6px 8px;font-size:11.5px;font-family:inherit}
+/* Ligne = zone de molette. On la matérialise au survol, sinon rien n'indique
+   qu'on peut régler sans viser la piste du curseur. */
+.row{margin-bottom:11px;padding:2px 6px;margin-left:-6px;margin-right:-6px;border-radius:8px}
+.row:hover{background:rgba(255,255,255,.03)}
+.row-c{display:flex;align-items:center;gap:8px}
+.row-h{font-size:10px;color:var(--faint);margin-top:3px;line-height:1.4}
+.stp{flex:0 0 26px;height:26px;background:rgba(255,255,255,.05);border:1px solid var(--border);
+     color:var(--muted);border-radius:7px;cursor:pointer;font-size:15px;line-height:1;
+     font-family:inherit;padding:0}
+.stp:hover{border-color:var(--accent);color:var(--accent)}
+.cal-live{font-size:11.5px;color:var(--muted);margin-top:14px;padding-top:11px;
+          border-top:1px solid var(--border)}
+.cal-live b{color:var(--accent);font-weight:600}
+/* En mode « calibrage de chaque spot », les curseurs ne montrent qu'une AMORCE :
+   ils ne pilotent encore rien. Les estomper évite de croire qu'ils s'appliquent. */
+.cal.seedmode .row{opacity:.72}
+.cal.seedmode .row:hover{opacity:1}
 
 .cta{display:block;text-align:center;margin-top:22px;padding:13px;border-radius:10px;
      background:var(--accent);color:#06131f;font-weight:600;font-size:15px}
@@ -166,13 +187,13 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
   peut donc paraître un cran meilleur qu'il ne l'est, et le seuil de rafales n'est pas
   proposé en réglage), et au-delà de J+2 il ne sort plus que 4&nbsp;échéances par jour —
   l'heure affichée est alors la meilleure <i>parmi celles disponibles</i>.
-  <br>Page regénérée automatiquement chaque lundi matin — dernière fois le 05/08 à 17h54 (heure NC).
+  <br>Page regénérée automatiquement chaque lundi matin — dernière fois le 05/08 à 18h22 (heure NC).
 </footer>
 
 <!-- Le moteur de score, le MÊME fichier que celui chargé par previsions.html :
      c'est ce qui garantit qu'un créneau noté « Excellent » ici l'est aussi là-bas. -->
 <script src="assets/score-core.js"></script>
-<script>var WEEK = {"days":["2026-08-06","2026-08-07","2026-08-08","2026-08-09","2026-08-10","2026-08-11"],"spots":[{"name":"Passe de Dumbéa","short":"Dumbéa","cal":true,"params":{"minHs":0.6,"maxHs":4,"minPeriod":12,"minPwr":6.5,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":7,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-05","n":20,"nGood":2,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt"]}},"slots":[{"d":"2026-08-05","h":17,"hs":1.4,"t":16,"sd":205,"ws":19,"wd":100},{"d":"2026-08-06","h":8,"hs":1.2,"t":14,"sd":180,"ws":19,"wd":85},{"d":"2026-08-06","h":11,"hs":1.2,"t":14,"sd":180,"ws":19,"wd":85},{"d":"2026-08-06","h":14,"hs":1.2,"t":10,"sd":160,"ws":19,"wd":80},{"d":"2026-08-06","h":17,"hs":1.2,"t":10,"sd":160,"ws":19,"wd":80},{"d":"2026-08-07","h":8,"hs":1.6,"t":10,"sd":135,"ws":21,"wd":80},{"d":"2026-08-07","h":11,"hs":1.6,"t":10,"sd":135,"ws":21,"wd":80},{"d":"2026-08-07","h":17,"hs":1.4,"t":10,"sd":135,"ws":21,"wd":75},{"d":"2026-08-08","h":11,"hs":1.2,"t":10,"sd":135,"ws":14,"wd":50},{"d":"2026-08-08","h":17,"hs":1.2,"t":10,"sd":115,"ws":10,"wd":40},{"d":"2026-08-09","h":11,"hs":0.5,"t":11,"sd":175,"ws":7,"wd":140},{"d":"2026-08-09","h":17,"hs":0.5,"t":11,"sd":185,"ws":11,"wd":155},{"d":"2026-08-10","h":11,"hs":0.5,"t":12,"sd":195,"ws":8,"wd":110},{"d":"2026-08-10","h":17,"hs":0.5,"t":11,"sd":195,"ws":10,"wd":135},{"d":"2026-08-11","h":11,"hs":0.6,"t":10,"sd":195,"ws":2,"wd":300}],"models":{"2026-08-06|11":[["AIFS",0.406],["BOM",0.99],["ECMWF",0.366],["GFS",0.74],["MARC",0.86],["MFWAM",0.98]],"2026-08-06|17":[["AIFS",0.36],["BOM",0.96],["ECMWF",0.351],["GFS",0.68],["MARC",0.848],["MFWAM",0.92]],"2026-08-06|8":[["BOM",1.01],["GFS",0.78],["MARC",0.88],["MFWAM",1.02]],"2026-08-06|14":[["BOM",0.97],["GFS",0.72],["MARC",0.842],["MFWAM",0.95]],"2026-08-06|6":[["LOTUS",1.143]],"2026-08-06|9":[["LOTUS",1.158]],"2026-08-06|12":[["LOTUS",1.03]],"2026-08-06|15":[["LOTUS",0.967]],"2026-08-07|11":[["AIFS",0.325],["BOM",0.89],["ECMWF",0.382],["GFS",1.02],["MARC",1.49],["MFWAM",1.18]],"2026-08-07|17":[["AIFS",0.402],["BOM",0.92],["ECMWF",0.385],["GFS",0.98],["MARC",1.512],["MFWAM",1.1]],"2026-08-07|8":[["BOM",0.91],["GFS",0.98],["MARC",1.382],["MFWAM",1.11]],"2026-08-07|14":[["BOM",0.86],["GFS",1],["MARC",1.516],["MFWAM",1.15]],"2026-08-07|6":[["LOTUS",1.2]],"2026-08-07|9":[["LOTUS",1.225]],"2026-08-07|12":[["LOTUS",1.294]],"2026-08-07|15":[["LOTUS",1.372]],"2026-08-08|11":[["AIFS",0.391],["BOM",1.02],["ECMWF",0.256]],"2026-08-08|17":[["AIFS",0.38],["BOM",0.88],["ECMWF",0.227]],"2026-08-08|8":[["BOM",0.67]],"2026-08-08|14":[["BOM",0.94]]}},{"name":"Ilot Ténia","short":"Ilot Ténia","cal":true,"params":{"minHs":0.8,"maxHs":4,"minPeriod":12,"minPwr":5.8,"swellDirIdeal":197,"windDirIdeal":296,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":11,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-05","n":46,"nGood":17,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt","swellDirIdeal","windDirIdeal"]}},"slots":[{"d":"2026-08-05","h":17,"hs":1.4,"t":16,"sd":205,"ws":16,"wd":120},{"d":"2026-08-06","h":8,"hs":1.2,"t":14,"sd":180,"ws":10,"wd":110},{"d":"2026-08-06","h":11,"hs":1.2,"t":14,"sd":180,"ws":10,"wd":110},{"d":"2026-08-06","h":14,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-06","h":17,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-07","h":8,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":125},{"d":"2026-08-07","h":11,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":125},{"d":"2026-08-07","h":17,"hs":1.4,"t":10,"sd":135,"ws":12,"wd":90},{"d":"2026-08-08","h":11,"hs":1,"t":10,"sd":135,"ws":6,"wd":175},{"d":"2026-08-08","h":17,"hs":0.8,"t":8,"sd":135,"ws":4,"wd":245},{"d":"2026-08-09","h":11,"hs":0.4,"t":11,"sd":185,"ws":5,"wd":110},{"d":"2026-08-09","h":17,"hs":0.5,"t":11,"sd":195,"ws":12,"wd":145},{"d":"2026-08-10","h":11,"hs":0.5,"t":11,"sd":195,"ws":5,"wd":175},{"d":"2026-08-10","h":17,"hs":0.5,"t":11,"sd":200,"ws":10,"wd":130},{"d":"2026-08-11","h":11,"hs":0.5,"t":10,"sd":195,"ws":3,"wd":220}],"models":{"2026-08-06|11":[["AIFS",0.453],["BOM",0.82],["ECMWF",0.369],["GFS",0.78],["MARC",0.756],["MFWAM",0.91]],"2026-08-06|17":[["AIFS",0.396],["BOM",0.79],["ECMWF",0.351],["GFS",0.72],["MARC",0.746],["MFWAM",0.89]],"2026-08-06|8":[["BOM",0.84],["GFS",0.84],["MARC",0.78],["MFWAM",0.95]],"2026-08-06|14":[["BOM",0.81],["GFS",0.74],["MARC",0.744],["MFWAM",0.88]],"2026-08-06|6":[["LOTUS",1.143]],"2026-08-06|9":[["LOTUS",1.158]],"2026-08-06|12":[["LOTUS",1.03]],"2026-08-06|15":[["LOTUS",0.967]],"2026-08-07|11":[["AIFS",0.346],["BOM",0.73],["ECMWF",0.364],["GFS",0.88]],"2026-08-07|17":[["AIFS",0.374],["BOM",0.75],["ECMWF",0.374],["GFS",0.96]],"2026-08-07|8":[["BOM",0.79],["GFS",0.84]],"2026-08-07|14":[["BOM",0.77],["GFS",0.92]]}},{"name":"Passe de Boulari","short":"Boulari","cal":false,"params":null,"slots":[{"d":"2026-08-05","h":17,"hs":1,"t":12,"sd":190,"ws":19,"wd":90},{"d":"2026-08-06","h":8,"hs":0.8,"t":10,"sd":180,"ws":17,"wd":90},{"d":"2026-08-06","h":11,"hs":0.8,"t":10,"sd":180,"ws":17,"wd":90},{"d":"2026-08-06","h":14,"hs":0.8,"t":10,"sd":175,"ws":19,"wd":90},{"d":"2026-08-06","h":17,"hs":0.8,"t":10,"sd":175,"ws":19,"wd":90},{"d":"2026-08-07","h":8,"hs":0.9,"t":10,"sd":160,"ws":19,"wd":90},{"d":"2026-08-07","h":11,"hs":0.9,"t":10,"sd":160,"ws":19,"wd":90},{"d":"2026-08-07","h":17,"hs":0.8,"t":10,"sd":160,"ws":19,"wd":70},{"d":"2026-08-08","h":11,"hs":0.8,"t":9,"sd":135,"ws":16,"wd":45},{"d":"2026-08-08","h":17,"hs":0.7,"t":9,"sd":125,"ws":10,"wd":45},{"d":"2026-08-09","h":11,"hs":0.7,"t":10,"sd":130,"ws":6,"wd":100},{"d":"2026-08-09","h":17,"hs":0.7,"t":10,"sd":140,"ws":10,"wd":155},{"d":"2026-08-10","h":11,"hs":0.7,"t":10,"sd":155,"ws":9,"wd":100},{"d":"2026-08-10","h":17,"hs":0.6,"t":11,"sd":160,"ws":11,"wd":120},{"d":"2026-08-11","h":11,"hs":0.7,"t":10,"sd":165,"ws":0,"wd":75}],"models":{"2026-08-06|8":[["BOM",0.99],["GFS",0.86],["MARC",0.902]],"2026-08-06|11":[["BOM",0.97],["GFS",0.84],["MARC",0.888]],"2026-08-06|14":[["BOM",0.94],["GFS",0.82],["MARC",0.874]],"2026-08-06|17":[["BOM",0.92],["GFS",0.78],["MARC",0.852]],"2026-08-06|6":[["GFS",0.92]],"2026-08-06|7":[["GFS",0.88]],"2026-08-06|9":[["GFS",0.84]],"2026-08-06|10":[["GFS",0.86]],"2026-08-06|12":[["GFS",0.84]],"2026-08-06|13":[["GFS",0.82]],"2026-08-06|15":[["GFS",0.8]],"2026-08-06|16":[["GFS",0.8]],"2026-08-07|8":[["BOM",0.86],["GFS",1.14],["MARC",0.926]],"2026-08-07|11":[["BOM",0.92],["GFS",1.22],["MARC",0.93]],"2026-08-07|14":[["BOM",1.06],["GFS",1.24],["MARC",1.05]],"2026-08-07|17":[["BOM",0.98],["GFS",1.14],["MARC",0.874]],"2026-08-07|6":[["GFS",1.1]],"2026-08-07|7":[["GFS",1.14]],"2026-08-07|9":[["GFS",1.16]],"2026-08-07|10":[["GFS",1.18]],"2026-08-07|12":[["GFS",1.22]],"2026-08-07|13":[["GFS",1.24]],"2026-08-07|15":[["GFS",1.2]],"2026-08-07|16":[["GFS",1.16]],"2026-08-08|8":[["BOM",0.71],["GFS",0.96],["MARC",0.6960000000000001]],"2026-08-08|11":[["BOM",0.66],["GFS",0.9],["MARC",0.634]],"2026-08-08|14":[["BOM",0.59],["GFS",0.84],["MARC",0.592]],"2026-08-08|17":[["BOM",0.73],["GFS",0.9],["MARC",0.552]],"2026-08-08|6":[["GFS",0.98]],"2026-08-08|7":[["GFS",0.98]],"2026-08-08|9":[["GFS",0.94]],"2026-08-08|10":[["GFS",0.9]],"2026-08-08|12":[["GFS",0.86]],"2026-08-08|13":[["GFS",0.86]],"2026-08-08|15":[["GFS",0.82]],"2026-08-08|16":[["GFS",0.92]],"2026-08-09|8":[["BOM",0.79],["GFS",0.76],["MARC",0.46]],"2026-08-09|11":[["BOM",0.78],["GFS",0.76],["MARC",0.482]],"2026-08-09|14":[["BOM",0.7],["GFS",0.76],["MARC",0.47000000000000003]],"2026-08-09|17":[["BOM",0.69],["GFS",0.72],["MARC",0.446]],"2026-08-09|6":[["GFS",0.76]],"2026-08-09|7":[["GFS",0.76]],"2026-08-09|9":[["GFS",0.76]],"2026-08-09|10":[["GFS",0.78]],"2026-08-09|12":[["GFS",0.78]],"2026-08-09|13":[["GFS",0.8]],"2026-08-09|15":[["GFS",0.74]],"2026-08-09|16":[["GFS",0.74]],"2026-08-10|8":[["BOM",0.77],["GFS",0.58],["MARC",0.438]],"2026-08-10|11":[["BOM",0.79],["GFS",0.5],["MARC",0.42]],"2026-08-10|14":[["BOM",0.82],["GFS",0.38],["MARC",0.396]],"2026-08-10|17":[["BOM",0.85],["GFS",0.52],["MARC",0.448]],"2026-08-10|6":[["GFS",0.6]],"2026-08-10|7":[["GFS",0.58]],"2026-08-10|9":[["GFS",0.56]],"2026-08-10|10":[["GFS",0.52]],"2026-08-10|12":[["GFS",0.46]],"2026-08-10|13":[["GFS",0.42]],"2026-08-10|15":[["GFS",0.42]],"2026-08-10|16":[["GFS",0.48]],"2026-08-11|8":[["BOM",0.7],["GFS",0.58]],"2026-08-11|11":[["BOM",0.8],["GFS",0.46]],"2026-08-11|14":[["BOM",0.77],["GFS",0.46]],"2026-08-11|17":[["BOM",0.75],["GFS",0.44]],"2026-08-11|6":[["GFS",0.52]],"2026-08-11|7":[["GFS",0.56]],"2026-08-11|9":[["GFS",0.54]],"2026-08-11|10":[["GFS",0.5]],"2026-08-11|12":[["GFS",0.46]],"2026-08-11|13":[["GFS",0.46]],"2026-08-11|15":[["GFS",0.46]],"2026-08-11|16":[["GFS",0.44]],"2026-08-12|8":[["BOM",0.58],["GFS",0.5]],"2026-08-12|11":[["BOM",0.52],["GFS",0.5]],"2026-08-12|14":[["BOM",0.53],["GFS",0.46]],"2026-08-12|17":[["BOM",0.7],["GFS",0.92]],"2026-08-12|6":[["GFS",0.52]],"2026-08-12|7":[["GFS",0.5]],"2026-08-12|9":[["GFS",0.5]],"2026-08-12|10":[["GFS",0.5]],"2026-08-12|12":[["GFS",0.48]],"2026-08-12|13":[["GFS",0.48]],"2026-08-12|15":[["GFS",0.62]],"2026-08-12|16":[["GFS",0.76]]}},{"name":"Passe de Ouano","short":"Ouano","cal":false,"params":null,"slots":[{"d":"2026-08-05","h":17,"hs":1.4,"t":16,"sd":205,"ws":16,"wd":120},{"d":"2026-08-06","h":8,"hs":1.2,"t":14,"sd":180,"ws":10,"wd":110},{"d":"2026-08-06","h":11,"hs":1.2,"t":14,"sd":180,"ws":10,"wd":110},{"d":"2026-08-06","h":14,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-06","h":17,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-07","h":8,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":125},{"d":"2026-08-07","h":11,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":125},{"d":"2026-08-07","h":17,"hs":1.4,"t":10,"sd":135,"ws":12,"wd":90},{"d":"2026-08-08","h":11,"hs":1,"t":10,"sd":135,"ws":6,"wd":175},{"d":"2026-08-08","h":17,"hs":0.8,"t":8,"sd":135,"ws":4,"wd":245},{"d":"2026-08-09","h":11,"hs":0.8,"t":10,"sd":160,"ws":5,"wd":95},{"d":"2026-08-09","h":17,"hs":0.8,"t":11,"sd":170,"ws":12,"wd":150},{"d":"2026-08-10","h":11,"hs":0.8,"t":10,"sd":175,"ws":6,"wd":185},{"d":"2026-08-10","h":17,"hs":0.8,"t":11,"sd":185,"ws":10,"wd":130},{"d":"2026-08-11","h":11,"hs":0.8,"t":10,"sd":185,"ws":3,"wd":215}],"models":{"2026-08-06|8":[["BOM",1],["GFS",1.24],["MARC",0.8320000000000001]],"2026-08-06|11":[["BOM",0.97],["GFS",1.2],["MARC",0.802]],"2026-08-06|14":[["BOM",0.95],["GFS",1.06],["MARC",0.792]],"2026-08-06|17":[["BOM",0.94],["GFS",1.02],["MARC",0.79]],"2026-08-06|6":[["GFS",1.22]],"2026-08-06|7":[["GFS",1.22]],"2026-08-06|9":[["GFS",1.24]],"2026-08-06|10":[["GFS",1.22]],"2026-08-06|12":[["GFS",1.16]],"2026-08-06|13":[["GFS",1.1]],"2026-08-06|15":[["GFS",0.7]],"2026-08-06|16":[["GFS",1]],"2026-08-07|8":[["BOM",0.95],["GFS",1.26],["MARC",0.896]],"2026-08-07|11":[["BOM",0.91],["GFS",1.28],["MARC",1.03]],"2026-08-07|14":[["BOM",0.87],["GFS",1.34],["MARC",1.106]],"2026-08-07|17":[["BOM",0.86],["GFS",1.44],["MARC",1.1520000000000001]],"2026-08-07|6":[["GFS",1.22]],"2026-08-07|7":[["GFS",1.24]],"2026-08-07|9":[["GFS",1.26]],"2026-08-07|10":[["GFS",1.26]],"2026-08-07|12":[["GFS",1.28]],"2026-08-07|13":[["GFS",1.3]],"2026-08-07|15":[["GFS",1.38]],"2026-08-07|16":[["GFS",1.42]],"2026-08-08|8":[["BOM",0.73],["GFS",1],["MARC",0.786]],"2026-08-08|11":[["BOM",0.69],["GFS",0.92],["MARC",0.6940000000000001]],"2026-08-08|14":[["BOM",0.64],["GFS",0.88],["MARC",0.626]],"2026-08-08|17":[["BOM",0.6],["GFS",0.8],["MARC",0.5760000000000001]],"2026-08-08|6":[["GFS",1.04]],"2026-08-08|7":[["GFS",1.02]],"2026-08-08|9":[["GFS",0.98]],"2026-08-08|10":[["GFS",0.94]],"2026-08-08|12":[["GFS",0.9]],"2026-08-08|13":[["GFS",0.88]],"2026-08-08|15":[["GFS",0.86]],"2026-08-08|16":[["GFS",0.82]],"2026-08-09|8":[["BOM",0.68],["GFS",0.66],["MARC",0.426]],"2026-08-09|11":[["BOM",0.67],["GFS",0.66],["MARC",0.42]],"2026-08-09|14":[["BOM",0.67],["GFS",0.56],["MARC",0.41400000000000003]],"2026-08-09|17":[["BOM",0.68],["GFS",0.3],["MARC",0.462]],"2026-08-09|6":[["GFS",0.68]],"2026-08-09|7":[["GFS",0.66]],"2026-08-09|9":[["GFS",0.66]],"2026-08-09|10":[["GFS",0.66]],"2026-08-09|12":[["GFS",0.58]],"2026-08-09|13":[["GFS",0.56]],"2026-08-09|15":[["GFS",0.56]],"2026-08-09|16":[["GFS",0.52]],"2026-08-10|8":[["BOM",0.73],["GFS",0.62],["MARC",0.336]],"2026-08-10|11":[["BOM",0.74],["GFS",0.56],["MARC",0.432]],"2026-08-10|14":[["BOM",0.76],["GFS",0.34],["MARC",0.426]],"2026-08-10|17":[["BOM",0.79],["GFS",0.34],["MARC",0.364]],"2026-08-10|6":[["GFS",0.66]],"2026-08-10|7":[["GFS",0.64]],"2026-08-10|9":[["GFS",0.6]],"2026-08-10|10":[["GFS",0.58]],"2026-08-10|12":[["GFS",0.48]],"2026-08-10|13":[["GFS",0.42]],"2026-08-10|15":[["GFS",0.34]],"2026-08-10|16":[["GFS",0.34]],"2026-08-11|8":[["BOM",0.71],["GFS",0.44]],"2026-08-11|11":[["BOM",0.73],["GFS",0.4]],"2026-08-11|14":[["BOM",0.72],["GFS",0.38]],"2026-08-11|17":[["BOM",0.72],["GFS",0.28]],"2026-08-11|6":[["GFS",0.5]],"2026-08-11|7":[["GFS",0.46]],"2026-08-11|9":[["GFS",0.42]],"2026-08-11|10":[["GFS",0.42]],"2026-08-11|12":[["GFS",0.4]],"2026-08-11|13":[["GFS",0.38]],"2026-08-11|15":[["GFS",0.34]],"2026-08-11|16":[["GFS",0.32]],"2026-08-12|8":[["BOM",0.59],["GFS",0.3]],"2026-08-12|11":[["BOM",0.58],["GFS",0.34]],"2026-08-12|14":[["BOM",0.7],["GFS",0.42]],"2026-08-12|17":[["BOM",0.69],["GFS",0.6]],"2026-08-12|6":[["GFS",0.32]],"2026-08-12|7":[["GFS",0.32]],"2026-08-12|9":[["GFS",0.32]],"2026-08-12|10":[["GFS",0.32]],"2026-08-12|12":[["GFS",0.36]],"2026-08-12|13":[["GFS",0.4]],"2026-08-12|15":[["GFS",0.48]],"2026-08-12|16":[["GFS",0.54]]}}],"defaults":{"minHs":0.4,"maxHs":4,"minPeriod":8,"minPwr":1,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"}}};</script>
+<script>var WEEK = {"days":["2026-08-06","2026-08-07","2026-08-08","2026-08-09","2026-08-10","2026-08-11"],"spots":[{"name":"Passe de Dumbéa","short":"Dumbéa","cal":true,"params":{"minHs":0.6,"maxHs":4,"minPeriod":12,"minPwr":6.5,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":7,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-05","n":20,"nGood":2,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt"]}},"slots":[{"d":"2026-08-06","h":8,"hs":1.2,"t":14,"sd":180,"ws":19,"wd":90},{"d":"2026-08-06","h":11,"hs":1.2,"t":14,"sd":180,"ws":19,"wd":90},{"d":"2026-08-06","h":14,"hs":1.2,"t":10,"sd":160,"ws":21,"wd":80},{"d":"2026-08-06","h":17,"hs":1.2,"t":10,"sd":160,"ws":21,"wd":80},{"d":"2026-08-07","h":8,"hs":1.6,"t":10,"sd":135,"ws":23,"wd":80},{"d":"2026-08-07","h":11,"hs":1.6,"t":10,"sd":135,"ws":23,"wd":80},{"d":"2026-08-07","h":17,"hs":1.4,"t":10,"sd":135,"ws":23,"wd":80},{"d":"2026-08-08","h":11,"hs":1.2,"t":10,"sd":135,"ws":14,"wd":50},{"d":"2026-08-08","h":17,"hs":1.2,"t":10,"sd":115,"ws":10,"wd":40},{"d":"2026-08-09","h":11,"hs":0.5,"t":11,"sd":175,"ws":7,"wd":140},{"d":"2026-08-09","h":17,"hs":0.6,"t":9,"sd":135,"ws":11,"wd":155},{"d":"2026-08-10","h":11,"hs":0.6,"t":13,"sd":200,"ws":8,"wd":110},{"d":"2026-08-10","h":17,"hs":0.5,"t":11,"sd":195,"ws":10,"wd":135},{"d":"2026-08-11","h":11,"hs":0.6,"t":10,"sd":195,"ws":2,"wd":300}],"models":{"2026-08-06|11":[["AIFS",0.406],["BOM",0.99],["ECMWF",0.366],["GFS",0.74],["MARC",0.86],["MFWAM",0.98]],"2026-08-06|17":[["AIFS",0.36],["BOM",0.96],["ECMWF",0.351],["GFS",0.68],["MARC",0.848],["MFWAM",0.92]],"2026-08-06|8":[["BOM",1.01],["GFS",0.78],["MARC",0.88],["MFWAM",1.02]],"2026-08-06|14":[["BOM",0.97],["GFS",0.72],["MARC",0.842],["MFWAM",0.95]],"2026-08-06|6":[["LOTUS",1.143]],"2026-08-06|9":[["LOTUS",1.158]],"2026-08-06|12":[["LOTUS",1.03]],"2026-08-06|15":[["LOTUS",0.967]],"2026-08-07|11":[["AIFS",0.325],["BOM",0.89],["ECMWF",0.382],["GFS",1.02],["MARC",1.49],["MFWAM",1.18]],"2026-08-07|17":[["AIFS",0.402],["BOM",0.92],["ECMWF",0.385],["GFS",0.98],["MARC",1.512],["MFWAM",1.1]],"2026-08-07|8":[["BOM",0.91],["GFS",0.98],["MARC",1.382],["MFWAM",1.11]],"2026-08-07|14":[["BOM",0.86],["GFS",1],["MARC",1.516],["MFWAM",1.15]],"2026-08-07|6":[["LOTUS",1.2]],"2026-08-07|9":[["LOTUS",1.225]],"2026-08-07|12":[["LOTUS",1.294]],"2026-08-07|15":[["LOTUS",1.372]],"2026-08-08|11":[["AIFS",0.391],["BOM",1.02],["ECMWF",0.256]],"2026-08-08|17":[["AIFS",0.38],["BOM",0.88],["ECMWF",0.227]],"2026-08-08|8":[["BOM",0.67]],"2026-08-08|14":[["BOM",0.94]]}},{"name":"Ilot Ténia","short":"Ilot Ténia","cal":true,"params":{"minHs":0.8,"maxHs":4,"minPeriod":12,"minPwr":5.8,"swellDirIdeal":197,"windDirIdeal":296,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":11,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-05","n":46,"nGood":17,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt","swellDirIdeal","windDirIdeal"]}},"slots":[{"d":"2026-08-06","h":8,"hs":1.2,"t":14,"sd":180,"ws":12,"wd":120},{"d":"2026-08-06","h":11,"hs":1.2,"t":14,"sd":180,"ws":12,"wd":120},{"d":"2026-08-06","h":14,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-06","h":17,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-07","h":8,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":115},{"d":"2026-08-07","h":11,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":115},{"d":"2026-08-07","h":17,"hs":1.4,"t":10,"sd":135,"ws":10,"wd":95},{"d":"2026-08-08","h":11,"hs":1,"t":10,"sd":135,"ws":6,"wd":175},{"d":"2026-08-08","h":17,"hs":0.8,"t":8,"sd":135,"ws":4,"wd":245},{"d":"2026-08-09","h":11,"hs":0.4,"t":11,"sd":185,"ws":5,"wd":110},{"d":"2026-08-09","h":17,"hs":0.5,"t":14,"sd":200,"ws":12,"wd":145},{"d":"2026-08-10","h":11,"hs":0.5,"t":13,"sd":200,"ws":5,"wd":175},{"d":"2026-08-10","h":17,"hs":0.5,"t":11,"sd":200,"ws":10,"wd":130},{"d":"2026-08-11","h":11,"hs":0.5,"t":10,"sd":195,"ws":3,"wd":220}],"models":{"2026-08-06|11":[["AIFS",0.453],["BOM",0.82],["ECMWF",0.369],["GFS",0.78],["MARC",0.756],["MFWAM",0.91]],"2026-08-06|17":[["AIFS",0.396],["BOM",0.79],["ECMWF",0.351],["GFS",0.72],["MARC",0.746],["MFWAM",0.89]],"2026-08-06|8":[["BOM",0.84],["GFS",0.84],["MARC",0.78],["MFWAM",0.95]],"2026-08-06|14":[["BOM",0.81],["GFS",0.74],["MARC",0.744],["MFWAM",0.88]],"2026-08-06|6":[["LOTUS",1.143]],"2026-08-06|9":[["LOTUS",1.158]],"2026-08-06|12":[["LOTUS",1.03]],"2026-08-06|15":[["LOTUS",0.967]],"2026-08-07|11":[["AIFS",0.346],["BOM",0.73],["ECMWF",0.364],["GFS",0.88]],"2026-08-07|17":[["AIFS",0.374],["BOM",0.75],["ECMWF",0.374],["GFS",0.96]],"2026-08-07|8":[["BOM",0.79],["GFS",0.84]],"2026-08-07|14":[["BOM",0.77],["GFS",0.92]]}},{"name":"Passe de Boulari","short":"Boulari","cal":false,"params":null,"slots":[{"d":"2026-08-06","h":8,"hs":0.8,"t":11,"sd":185,"ws":17,"wd":90},{"d":"2026-08-06","h":11,"hs":0.8,"t":11,"sd":185,"ws":17,"wd":90},{"d":"2026-08-06","h":14,"hs":0.8,"t":11,"sd":180,"ws":19,"wd":90},{"d":"2026-08-06","h":17,"hs":0.8,"t":11,"sd":180,"ws":19,"wd":90},{"d":"2026-08-07","h":8,"hs":0.9,"t":10,"sd":165,"ws":19,"wd":90},{"d":"2026-08-07","h":11,"hs":0.9,"t":10,"sd":165,"ws":19,"wd":90},{"d":"2026-08-07","h":17,"hs":0.8,"t":10,"sd":165,"ws":19,"wd":70},{"d":"2026-08-08","h":11,"hs":0.8,"t":8,"sd":130,"ws":16,"wd":45},{"d":"2026-08-08","h":17,"hs":0.7,"t":9,"sd":130,"ws":10,"wd":45},{"d":"2026-08-09","h":11,"hs":0.7,"t":10,"sd":130,"ws":6,"wd":100},{"d":"2026-08-09","h":17,"hs":0.5,"t":9,"sd":130,"ws":10,"wd":155},{"d":"2026-08-10","h":11,"hs":0.5,"t":13,"sd":205,"ws":9,"wd":100},{"d":"2026-08-10","h":17,"hs":0.6,"t":11,"sd":160,"ws":11,"wd":120},{"d":"2026-08-11","h":11,"hs":0.7,"t":10,"sd":165,"ws":0,"wd":75}],"models":{"2026-08-06|8":[["BOM",0.99],["GFS",0.86],["MARC",0.902]],"2026-08-06|11":[["BOM",0.97],["GFS",0.84],["MARC",0.888]],"2026-08-06|14":[["BOM",0.94],["GFS",0.82],["MARC",0.874]],"2026-08-06|17":[["BOM",0.92],["GFS",0.78],["MARC",0.852]],"2026-08-06|6":[["GFS",0.92]],"2026-08-06|7":[["GFS",0.88]],"2026-08-06|9":[["GFS",0.84]],"2026-08-06|10":[["GFS",0.86]],"2026-08-06|12":[["GFS",0.84]],"2026-08-06|13":[["GFS",0.82]],"2026-08-06|15":[["GFS",0.8]],"2026-08-06|16":[["GFS",0.8]],"2026-08-07|8":[["BOM",0.86],["GFS",1.14],["MARC",0.926]],"2026-08-07|11":[["BOM",0.92],["GFS",1.22],["MARC",0.93]],"2026-08-07|14":[["BOM",1.06],["GFS",1.24],["MARC",1.05]],"2026-08-07|17":[["BOM",0.98],["GFS",1.14],["MARC",0.874]],"2026-08-07|6":[["GFS",1.1]],"2026-08-07|7":[["GFS",1.14]],"2026-08-07|9":[["GFS",1.16]],"2026-08-07|10":[["GFS",1.18]],"2026-08-07|12":[["GFS",1.22]],"2026-08-07|13":[["GFS",1.24]],"2026-08-07|15":[["GFS",1.2]],"2026-08-07|16":[["GFS",1.16]],"2026-08-08|8":[["BOM",0.71],["GFS",0.96],["MARC",0.6960000000000001]],"2026-08-08|11":[["BOM",0.66],["GFS",0.9],["MARC",0.634]],"2026-08-08|14":[["BOM",0.59],["GFS",0.84],["MARC",0.592]],"2026-08-08|17":[["BOM",0.73],["GFS",0.9],["MARC",0.552]],"2026-08-08|6":[["GFS",0.98]],"2026-08-08|7":[["GFS",0.98]],"2026-08-08|9":[["GFS",0.94]],"2026-08-08|10":[["GFS",0.9]],"2026-08-08|12":[["GFS",0.86]],"2026-08-08|13":[["GFS",0.86]],"2026-08-08|15":[["GFS",0.82]],"2026-08-08|16":[["GFS",0.92]],"2026-08-09|8":[["BOM",0.79],["GFS",0.76],["MARC",0.46]],"2026-08-09|11":[["BOM",0.78],["GFS",0.76],["MARC",0.482]],"2026-08-09|14":[["BOM",0.7],["GFS",0.76],["MARC",0.47000000000000003]],"2026-08-09|17":[["BOM",0.69],["GFS",0.72],["MARC",0.446]],"2026-08-09|6":[["GFS",0.76]],"2026-08-09|7":[["GFS",0.76]],"2026-08-09|9":[["GFS",0.76]],"2026-08-09|10":[["GFS",0.78]],"2026-08-09|12":[["GFS",0.78]],"2026-08-09|13":[["GFS",0.8]],"2026-08-09|15":[["GFS",0.74]],"2026-08-09|16":[["GFS",0.74]],"2026-08-10|8":[["BOM",0.77],["GFS",0.58],["MARC",0.438]],"2026-08-10|11":[["BOM",0.79],["GFS",0.5],["MARC",0.42]],"2026-08-10|14":[["BOM",0.82],["GFS",0.38],["MARC",0.396]],"2026-08-10|17":[["BOM",0.85],["GFS",0.52],["MARC",0.448]],"2026-08-10|6":[["GFS",0.6]],"2026-08-10|7":[["GFS",0.58]],"2026-08-10|9":[["GFS",0.56]],"2026-08-10|10":[["GFS",0.52]],"2026-08-10|12":[["GFS",0.46]],"2026-08-10|13":[["GFS",0.42]],"2026-08-10|15":[["GFS",0.42]],"2026-08-10|16":[["GFS",0.48]],"2026-08-11|8":[["BOM",0.7],["GFS",0.58]],"2026-08-11|11":[["BOM",0.8],["GFS",0.46]],"2026-08-11|14":[["BOM",0.77],["GFS",0.46]],"2026-08-11|17":[["BOM",0.75],["GFS",0.44]],"2026-08-11|6":[["GFS",0.52]],"2026-08-11|7":[["GFS",0.56]],"2026-08-11|9":[["GFS",0.54]],"2026-08-11|10":[["GFS",0.5]],"2026-08-11|12":[["GFS",0.46]],"2026-08-11|13":[["GFS",0.46]],"2026-08-11|15":[["GFS",0.46]],"2026-08-11|16":[["GFS",0.44]]}},{"name":"Passe de Ouano","short":"Ouano","cal":false,"params":null,"slots":[{"d":"2026-08-06","h":8,"hs":1.2,"t":14,"sd":180,"ws":12,"wd":120},{"d":"2026-08-06","h":11,"hs":1.2,"t":14,"sd":180,"ws":12,"wd":120},{"d":"2026-08-06","h":14,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-06","h":17,"hs":1,"t":10,"sd":160,"ws":12,"wd":80},{"d":"2026-08-07","h":8,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":115},{"d":"2026-08-07","h":11,"hs":1.6,"t":10,"sd":135,"ws":8,"wd":115},{"d":"2026-08-07","h":17,"hs":1.4,"t":10,"sd":135,"ws":10,"wd":95},{"d":"2026-08-08","h":11,"hs":1,"t":10,"sd":135,"ws":6,"wd":175},{"d":"2026-08-08","h":17,"hs":0.8,"t":8,"sd":135,"ws":4,"wd":245},{"d":"2026-08-09","h":11,"hs":0.8,"t":10,"sd":160,"ws":5,"wd":95},{"d":"2026-08-09","h":17,"hs":0.4,"t":11,"sd":200,"ws":12,"wd":150},{"d":"2026-08-10","h":11,"hs":0.5,"t":13,"sd":200,"ws":6,"wd":185},{"d":"2026-08-10","h":17,"hs":0.8,"t":11,"sd":185,"ws":10,"wd":130},{"d":"2026-08-11","h":11,"hs":0.8,"t":10,"sd":185,"ws":3,"wd":215}],"models":{"2026-08-06|8":[["BOM",1],["GFS",1.24],["MARC",0.8320000000000001]],"2026-08-06|11":[["BOM",0.97],["GFS",1.2],["MARC",0.802]],"2026-08-06|14":[["BOM",0.95],["GFS",1.06],["MARC",0.792]],"2026-08-06|17":[["BOM",0.94],["GFS",1.02],["MARC",0.79]],"2026-08-06|6":[["GFS",1.22]],"2026-08-06|7":[["GFS",1.22]],"2026-08-06|9":[["GFS",1.24]],"2026-08-06|10":[["GFS",1.22]],"2026-08-06|12":[["GFS",1.16]],"2026-08-06|13":[["GFS",1.1]],"2026-08-06|15":[["GFS",0.7]],"2026-08-06|16":[["GFS",1]],"2026-08-07|8":[["BOM",0.95],["GFS",1.26],["MARC",0.896]],"2026-08-07|11":[["BOM",0.91],["GFS",1.28],["MARC",1.03]],"2026-08-07|14":[["BOM",0.87],["GFS",1.34],["MARC",1.106]],"2026-08-07|17":[["BOM",0.86],["GFS",1.44],["MARC",1.1520000000000001]],"2026-08-07|6":[["GFS",1.22]],"2026-08-07|7":[["GFS",1.24]],"2026-08-07|9":[["GFS",1.26]],"2026-08-07|10":[["GFS",1.26]],"2026-08-07|12":[["GFS",1.28]],"2026-08-07|13":[["GFS",1.3]],"2026-08-07|15":[["GFS",1.38]],"2026-08-07|16":[["GFS",1.42]],"2026-08-08|8":[["BOM",0.73],["GFS",1],["MARC",0.786]],"2026-08-08|11":[["BOM",0.69],["GFS",0.92],["MARC",0.6940000000000001]],"2026-08-08|14":[["BOM",0.64],["GFS",0.88],["MARC",0.626]],"2026-08-08|17":[["BOM",0.6],["GFS",0.8],["MARC",0.5760000000000001]],"2026-08-08|6":[["GFS",1.04]],"2026-08-08|7":[["GFS",1.02]],"2026-08-08|9":[["GFS",0.98]],"2026-08-08|10":[["GFS",0.94]],"2026-08-08|12":[["GFS",0.9]],"2026-08-08|13":[["GFS",0.88]],"2026-08-08|15":[["GFS",0.86]],"2026-08-08|16":[["GFS",0.82]],"2026-08-09|8":[["BOM",0.68],["GFS",0.66],["MARC",0.426]],"2026-08-09|11":[["BOM",0.67],["GFS",0.66],["MARC",0.42]],"2026-08-09|14":[["BOM",0.67],["GFS",0.56],["MARC",0.41400000000000003]],"2026-08-09|17":[["BOM",0.68],["GFS",0.3],["MARC",0.462]],"2026-08-09|6":[["GFS",0.68]],"2026-08-09|7":[["GFS",0.66]],"2026-08-09|9":[["GFS",0.66]],"2026-08-09|10":[["GFS",0.66]],"2026-08-09|12":[["GFS",0.58]],"2026-08-09|13":[["GFS",0.56]],"2026-08-09|15":[["GFS",0.56]],"2026-08-09|16":[["GFS",0.52]],"2026-08-10|8":[["BOM",0.73],["GFS",0.62],["MARC",0.336]],"2026-08-10|11":[["BOM",0.74],["GFS",0.56],["MARC",0.432]],"2026-08-10|14":[["BOM",0.76],["GFS",0.34],["MARC",0.426]],"2026-08-10|17":[["BOM",0.79],["GFS",0.34],["MARC",0.364]],"2026-08-10|6":[["GFS",0.66]],"2026-08-10|7":[["GFS",0.64]],"2026-08-10|9":[["GFS",0.6]],"2026-08-10|10":[["GFS",0.58]],"2026-08-10|12":[["GFS",0.48]],"2026-08-10|13":[["GFS",0.42]],"2026-08-10|15":[["GFS",0.34]],"2026-08-10|16":[["GFS",0.34]],"2026-08-11|8":[["BOM",0.71],["GFS",0.44]],"2026-08-11|11":[["BOM",0.73],["GFS",0.4]],"2026-08-11|14":[["BOM",0.72],["GFS",0.38]],"2026-08-11|17":[["BOM",0.72],["GFS",0.28]],"2026-08-11|6":[["GFS",0.5]],"2026-08-11|7":[["GFS",0.46]],"2026-08-11|9":[["GFS",0.42]],"2026-08-11|10":[["GFS",0.42]],"2026-08-11|12":[["GFS",0.4]],"2026-08-11|13":[["GFS",0.38]],"2026-08-11|15":[["GFS",0.34]],"2026-08-11|16":[["GFS",0.32]]}}],"defaults":{"minHs":0.4,"maxHs":4,"minPeriod":8,"minPwr":1,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"}}};</script>
 <script>
 
 var J_LONG  = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
@@ -234,11 +255,14 @@ function loadPrefs() {
       var o = JSON.parse(raw);
       if (o && o.params) { var k; for (k in o.params) COMMON[k] = o.params[k]; }
       if (o && o.mode === 'commun') MODE = 'commun';
+      if (o && o.seed != null) SEED = o.seed;
     }
   } catch (e) {}
 }
 function savePrefs() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ mode: MODE, params: COMMON })); } catch (e) {}
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ mode: MODE, seed: SEED, params: COMMON }));
+  } catch (e) {}
 }
 
 function paramsFor(spot) {
@@ -425,6 +449,21 @@ function render() {
   if (others) html += '<h2>Sinon</h2><div class="cards">' + others + '</div>';
 
   document.getElementById('app').innerHTML = html;
+
+  // Retour immédiat pendant le réglage : sans ce compteur, pousser un curseur
+  // trop loin éteint la grille sans qu'on comprenne lequel a fait basculer quoi.
+  var live = document.getElementById('cal-live');
+  if (live) {
+    var tot = 0, ok = 0, best = 0, si, k;
+    for (si in r.grid) for (k in r.grid[si]) {
+      tot++; if (r.grid[si][k].score) ok++;
+      if (r.grid[si][k].score > best) best = r.grid[si][k].score;
+    }
+    live.innerHTML = '<b>' + ok + '</b> journée' + (ok > 1 ? 's' : '') + ' retenue'
+      + (ok > 1 ? 's' : '') + ' sur ' + tot
+      + ' · meilleur score <b>' + best + '/5</b>'
+      + (MODE === 'spot' ? ' · calibrage propre à chaque spot' : ' · seuils communs');
+  }
 }
 
 // ─── Panneau de calibrage ───────────────────────────────────────────────────
@@ -432,19 +471,62 @@ function render() {
 // le curseur n'aurait aucun effet — un réglage qui ne fait rien est pire que pas
 // de réglage. Les directions sont des curseurs 0-350 plutôt que le compas de
 // settings-utils.js : la molette y marche, et ça reste lisible sur mobile.
+// ─── Panneau de calibrage ───────────────────────────────────────────────────
+// gustMalusKt volontairement absent : meteo.nc ne fournit pas de rafales, donc
+// le curseur n'aurait aucun effet — un réglage qui ne fait rien est pire que pas
+// de réglage. Les directions sont des curseurs 0-350 plutôt que le compas de
+// settings-utils.js : la molette y marche, et ça reste lisible sur mobile.
 var ROWS = [
-  ['sw', 'minHs',         'Hs mini pour surfer',   0.1,  2.5, 0.1, ' m'],
-  ['sw', 'minPeriod',     'Période mini',            4,   16,   1, ' s'],
-  ['sw', 'minPwr',        'Puissance mini',          0,   15, 0.5, ' kW/m'],
-  ['sw', 'swellDirIdeal', 'Houle — provenance idéale', 0, 350,  10, '°'],
-  ['wd', 'windCalmKt',    'Seuil moutons/clapot',    3,   25,   1, ' nds'],
-  ['wd', 'windMalusKt',   'Vent max avant malus',    5,   30,   1, ' nds'],
-  ['wd', 'windDirIdeal',  'Vent — direction idéale', 0,  350,  10, '°']
+  ['sw', 'minHs',         'Hs mini pour surfer',       0.1,  2.5, 0.1, ' m'],
+  ['sw', 'maxHs',         'Hs maxi (trop gros)',       1.5,  6.0, 0.5, ' m'],
+  ['sw', 'minPeriod',     'Période mini',                4,   16,   1, ' s'],
+  ['sw', 'minPwr',        'Puissance mini',              0,   15, 0.5, ' kW/m'],
+  ['sw', 'swellDirIdeal', 'Houle — provenance idéale',   0,  350,  10, '°'],
+  ['wd', 'windCalmKt',    'Seuil moutons/clapot',        3,   25,   1, ' nds'],
+  ['wd', 'windMalusKt',   'Vent max avant malus',        5,   30,   1, ' nds'],
+  ['wd', 'windDirIdeal',  'Vent — direction idéale',     0,  350,  10, '°'],
+  ['wd', 'onshoreLimit',  'Angle « onshore » jusqu\'à',  15,   90,   5, '°'],
+  ['wd', 'offshoreMin',   'Angle « offshore » à partir de', 90, 175, 5, '°']
 ];
+var ROW_HELP = {
+  minPwr: 'Sous ce seuil, le créneau est classé « plat » quelle que soit la taille.',
+  swellDirIdeal: 'Bonus si la houle vient de ±45° autour de cette direction.',
+  windDirIdeal: 'Direction VERS laquelle souffle le vent idéal (offshore).',
+  onshoreLimit: 'En dessous de cet angle vent/houle, le vent est compté onshore.',
+  offshoreMin: 'Au-dessus de cet angle, il est compté offshore.'
+};
 
 function valTxt(row, v) {
-  if (row[6] === '°') return Math.round(v) + '° ' + compass(v);
+  if (row[6] === '°') return Math.round(v) + '°' + (row[1].indexOf('Dir') !== -1 ? ' ' + compass(v) : '');
   return (row[5] < 1 ? v.toFixed(1).replace('.', ',') : String(Math.round(v))) + row[6];
+}
+
+// Jeu de valeurs servant d'AMORCE aux curseurs. SEED = -1 pour les seuils par
+// défaut, sinon l'index du spot dont on reprend le calibrage.
+var SEED = -1;
+function seedParams() {
+  var base = {}, k, src;
+  for (k in WEEK.defaults) base[k] = WEEK.defaults[k];
+  src = (SEED >= 0 && WEEK.spots[SEED]) ? WEEK.spots[SEED].params : null;
+  if (src) for (k in src) if (src[k] != null && typeof src[k] !== 'object') base[k] = src[k];
+  return base;
+}
+// Ce que les curseurs doivent AFFICHER. En mode « spot » ils montraient COMMON,
+// c'est-à-dire des valeurs qui ne sont appliquées à rien : le panneau annonçait
+// des seuils différents de ceux réellement utilisés pour noter la grille. Ils
+// affichent désormais le calibrage d'amorce, donc quelque chose de vrai.
+function shownParams() { return MODE === 'commun' ? COMMON : seedParams(); }
+
+function syncSliders() {
+  var p = shownParams();
+  ROWS.forEach(function (row) {
+    var el = document.getElementById('r-' + row[1]);
+    if (!el) return;
+    var v = p[row[1]];
+    if (v == null) v = WEEK.defaults[row[1]];
+    el.value = v;
+    document.getElementById('v-' + row[1]).textContent = valTxt(row, parseFloat(el.value));
+  });
 }
 
 function buildCal() {
@@ -452,88 +534,159 @@ function buildCal() {
     + '<button type="button" data-mode="spot">Calibrage de chaque spot</button>'
     + '<button type="button" data-mode="commun">Réglages communs</button>'
     + '</div>';
+
+  // Amorce : reprendre le calibrage d'un spot déjà réglé plutôt que de repartir
+  // des seuils par défaut. C'est le point de départ naturel — les valeurs de
+  // Dumbéa sont issues de 20 sessions réelles, pas d'une supposition.
+  h += '<div class="cal-seed"><label for="cal-seed">Partir du calibrage de</label>'
+    + '<select id="cal-seed"><option value="-1">Seuils par défaut</option>';
+  WEEK.spots.forEach(function (sp, i) {
+    if (sp.cal) h += '<option value="' + i + '">' + esc(sp.short) + '</option>';
+  });
+  h += '</select></div>';
+
   var cur = '';
   ROWS.forEach(function (row) {
     if (row[0] !== cur) {
       cur = row[0];
       h += '<div class="cal-sec ' + cur + '">' + (cur === 'sw' ? '🌊 Houle' : '💨 Vent') + '</div>';
     }
-    var v = COMMON[row[1]];
-    h += '<div class="row">'
+    var v = shownParams()[row[1]];
+    if (v == null) v = WEEK.defaults[row[1]];
+    h += '<div class="row" data-for="' + row[1] + '">'
       + '<div class="row-t"><label for="r-' + row[1] + '">' + row[2] + '</label>'
       + '<span id="v-' + row[1] + '">' + valTxt(row, v) + '</span></div>'
+      + '<div class="row-c">'
+      // Pas de molette sur un écran tactile : sans ces deux boutons, régler au
+      // cran près y est impossible — le pouce ne vise pas à 0,1 m près.
+      + '<button type="button" class="stp" data-d="-1" aria-label="diminuer">−</button>'
       + '<input type="range" id="r-' + row[1] + '" data-k="' + row[1] + '"'
       + ' min="' + row[3] + '" max="' + row[4] + '" step="' + row[5] + '" value="' + v + '">'
+      + '<button type="button" class="stp" data-d="1" aria-label="augmenter">+</button>'
+      + '</div>'
+      + (ROW_HELP[row[1]] ? '<div class="row-h">' + ROW_HELP[row[1]] + '</div>' : '')
       + '</div>';
   });
-  h += '<div class="cal-note">Bouger un curseur bascule en <b>réglages communs</b> :'
+
+  h += '<div class="cal-live" id="cal-live"></div>'
+    + '<div class="cal-note">Bouger un curseur bascule en <b>réglages communs</b> :'
     + ' tous les spots sont alors jugés avec les mêmes seuils, ce qui est le seul'
-    + ' moyen de les comparer honnêtement. Molette ou flèches du clavier pour affiner.'
+    + ' moyen de les comparer honnêtement. Molette, flèches du clavier ou boutons'
+    + ' −/+ ; <b>Maj + molette</b> pour avancer de cinq crans.'
     + ' Les réglages restent sur cet appareil et ne modifient pas ceux du site.'
     + ' <button class="calbtn" type="button" id="cal-reset">Réinitialiser</button></div>';
   document.getElementById('cal').innerHTML = h;
 
   var cal = document.getElementById('cal');
-  cal.addEventListener('input', function (e) {
-    var k = e.target.getAttribute('data-k');
-    if (!k) return;
-    COMMON[k] = parseFloat(e.target.value);
+
+  // Toute modification passe ici, quelle que soit son origine (glissement,
+  // clavier, molette, boutons) : un seul endroit qui bascule le mode, met à jour
+  // le libellé, persiste et redessine.
+  function apply(k, value) {
     var row = ROWS.filter(function (r) { return r[1] === k; })[0];
-    document.getElementById('v-' + k).textContent = valTxt(row, COMMON[k]);
-    if (MODE !== 'commun') { MODE = 'commun'; syncMode(); }
-    savePrefs(); render();
-  });
-  // Molette : passive:false est indispensable pour pouvoir empêcher le défilement
-  // de la page pendant qu'on règle. Sans ça Chrome ignore le preventDefault().
-  cal.addEventListener('wheel', function (e) {
-    var t = e.target;
-    if (!t.getAttribute || !t.getAttribute('data-k')) return;
-    e.preventDefault();
-    var step = parseFloat(t.step) || 1;
-    var next = parseFloat(t.value) + (e.deltaY < 0 ? step : -step);
-    next = Math.max(parseFloat(t.min), Math.min(parseFloat(t.max), next));
+    if (!row) return;
+    var v = Math.max(row[3], Math.min(row[4], value));
     // Réaligner sur le pas : les additions flottantes dérivent (0.1+0.2…), et un
     // minHs à 0.7000000000000001 s'afficherait faux.
-    next = Math.round(next / step) * step;
-    if (next === parseFloat(t.value)) return;
-    t.value = next;
-    t.dispatchEvent(new Event('input', { bubbles: true }));
+    v = Math.round(v / row[5]) * row[5];
+    v = Math.round(v * 1000) / 1000;
+    if (MODE !== 'commun') {
+      // On entre en mode commun EN PARTANT de ce qui était affiché : sinon le
+      // simple fait de toucher un curseur ferait sauter tous les autres réglages
+      // vers les valeurs par défaut, sans que rien ne l'annonce.
+      COMMON = shownParams();
+      MODE = 'commun';
+      syncMode();
+    }
+    COMMON[k] = v;
+    var el = document.getElementById('r-' + k);
+    if (parseFloat(el.value) !== v) el.value = v;
+    document.getElementById('v-' + k).textContent = valTxt(row, v);
+    savePrefs();
+    render();
+  }
+  function stepOf(k) {
+    var row = ROWS.filter(function (r) { return r[1] === k; })[0];
+    return row ? row[5] : 1;
+  }
+  // La molette écoutée sur la LIGNE entière, pas seulement sur la piste du
+  // curseur : viser une zone de 20 px de haut à la souris est pénible, et c'est
+  // ce qui rendait le réglage frustrant.
+  function rowKey(node) {
+    while (node && node !== cal) {
+      if (node.getAttribute && node.getAttribute('data-for')) return node.getAttribute('data-for');
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  cal.addEventListener('input', function (e) {
+    var k = e.target.getAttribute('data-k');
+    if (k) apply(k, parseFloat(e.target.value));
+  });
+
+  // passive:false est indispensable pour empêcher le défilement de la page
+  // pendant le réglage : sans ça Chrome ignore le preventDefault().
+  cal.addEventListener('wheel', function (e) {
+    var k = rowKey(e.target);
+    if (!k) return;
+    e.preventDefault();
+    var mult = e.shiftKey ? 5 : 1;
+    var el = document.getElementById('r-' + k);
+    apply(k, parseFloat(el.value) + (e.deltaY < 0 ? 1 : -1) * stepOf(k) * mult);
   }, { passive: false });
 
   cal.addEventListener('click', function (e) {
-    var m = e.target.getAttribute && e.target.getAttribute('data-mode');
-    if (m) { MODE = m; syncMode(); savePrefs(); render(); return; }
-    if (e.target.id === 'cal-reset') {
-      COMMON = JSON.parse(JSON.stringify(WEEK.defaults));
+    var t = e.target;
+    var m = t.getAttribute && t.getAttribute('data-mode');
+    if (m) {
+      MODE = m;
+      if (m === 'commun') COMMON = shownParams();
+      syncMode(); syncSliders(); savePrefs(); render();
+      return;
+    }
+    var d = t.getAttribute && t.getAttribute('data-d');
+    if (d) {
+      var k = rowKey(t);
+      if (k) apply(k, parseFloat(document.getElementById('r-' + k).value) + (+d) * stepOf(k));
+      return;
+    }
+    if (t.id === 'cal-reset') {
+      SEED = -1;
+      document.getElementById('cal-seed').value = '-1';
       MODE = 'spot';
-      ROWS.forEach(function (row) {
-        var el = document.getElementById('r-' + row[1]);
-        el.value = COMMON[row[1]];
-        document.getElementById('v-' + row[1]).textContent = valTxt(row, COMMON[row[1]]);
-      });
-      syncMode(); savePrefs(); render();
+      COMMON = seedParams();
+      syncMode(); syncSliders(); savePrefs(); render();
     }
   });
+
+  document.getElementById('cal-seed').addEventListener('change', function () {
+    SEED = parseInt(this.value, 10);
+    if (MODE === 'commun') COMMON = seedParams();
+    syncSliders(); savePrefs(); render();
+  });
+
   syncMode();
 }
 
 function syncMode() {
   var btns = document.querySelectorAll('.cal-mode button'), i;
   for (i = 0; i < btns.length; i++) {
-    if (btns[i].getAttribute('data-mode') === MODE) btns[i].className = 'on';
-    else btns[i].className = '';
+    btns[i].className = btns[i].getAttribute('data-mode') === MODE ? 'on' : '';
   }
+  var cal = document.getElementById('cal');
+  if (cal) cal.className = cal.className.replace(' seedmode', '') + (MODE === 'spot' ? ' seedmode' : '');
 }
 
 document.getElementById('cal-toggle').addEventListener('click', function () {
   var el = document.getElementById('cal');
   var open = el.className.indexOf('open') === -1;
-  el.className = open ? 'cal open' : 'cal';
+  el.className = (open ? 'cal open' : 'cal') + (MODE === 'spot' ? ' seedmode' : '');
   this.textContent = open ? '✕ Fermer' : '🎯 Calibrer';
 });
-
 loadPrefs();
 buildCal();
+syncSliders();
 render();
 
 </script>
