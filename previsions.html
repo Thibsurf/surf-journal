@@ -57,7 +57,14 @@ try {
 :root {
   --ocean:#0a1628;--deep:#0d1f3c;--mid:#1a3a5c;--surface:#1e2d42;
   --glass:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);--border-h:rgba(255,255,255,0.16);
-  --text:#e8eef4;--muted:#7a94aa;--faint:#6b8299;/* 4,56:1 sur --ocean (WCAG AA) — #3d5468 ne faisait que 2,30:1 */
+  --text:#e8eef4;--muted:#7a94aa;--faint:#728aa1;
+  /* --faint : mesuré sur les DEUX fonds où il apparaît, pas seulement sur --ocean.
+     #3d5468 ne faisait que 2,30:1 ; #6b8299 passait à 4,56:1 sur --ocean mais retombait
+     à 4,13:1 sur --deep (fond des cartes : rang « #N » et note « ⚠ marée extrême » du
+     bloc Meilleurs créneaux) — sous le seuil AA de 4,5:1, ce texte faisant 11 px donc
+     du « petit texte ». #728aa1 tient 4,59:1 sur --deep et 5,06:1 sur --ocean, tout en
+     restant plus discret que --muted (5,20:1 sur --deep) : la hiérarchie est préservée.
+     Toujours vérifier une couleur sur --deep, c'est le plus clair des deux fonds. */
   --accent:#4fa3c7;--warm:#e8a057;--tube:#7b6cf6;--ok:#3dba8a;--bad:#e05c5c;
   --font-d:'Playfair Display',Georgia,serif;--font-b:'DM Sans',system-ui,sans-serif;
   --r:12px;--rs:8px;
@@ -2539,10 +2546,16 @@ var _tokenSbClient = null; // null when file:// or no supabase  // base principa
 // depuis previsions.html même connecté sur index.html (même origine, mais
 // clé de storage différente par défaut → session invisible d'une page à l'autre).
 var _SB_AUTH_OPTS = { auth: { persistSession: true, storageKey: 'surf-nc-auth', storage: window.localStorage, autoRefreshToken: true } };
+// ES5 strict ici, et pas par principe : ce bloc vit dans le <script> inline
+// principal (~797 Ko, tout le cœur applicatif). Une syntaxe non reconnue y est une
+// erreur de PARSING, pas d'exécution — le moteur n'exécute alors AUCUNE de ces
+// 797 Ko, la page est blanche. Le `sb?.createClient` qui se trouvait ici exigeait
+// Safari 13.1 / iOS 13.4 (mars 2020) : sur un iPhone plus ancien — la cible même de
+// la convention ES5 du projet — l'application entière ne démarrait pas.
 try {
-  const sb = window.supabase;
+  var sb = window.supabase;
 
-  if (sb?.createClient) {
+  if (sb && sb.createClient) {
     _tokenSbClient = sb.createClient(
       'https://tiiptlozingmgzcnexpu.supabase.co',
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpaXB0bG96aW5nbWd6Y25leHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTQyNTAsImV4cCI6MjA5MTYzMDI1MH0.ksgIzAgUWCAbt76S33PD9_o-52zyifGik1MLtBv9vF0',
@@ -3673,7 +3686,7 @@ async function loadForecast(i) {
   loadScoreParams();
   if (typeof updateAromeCard === 'function') updateAromeCard(); // carte AROME suit le spot actif
 
-  const s = SPOTS[i];
+  var s = SPOTS[i];
   if (!s) {
     console.warn("Spot inconnu:", i);
     return;
@@ -3686,10 +3699,10 @@ async function loadForecast(i) {
   document.getElementById('table-wrap').innerHTML =
     '<div style="padding:6px 2px;">' + _skelBlock(6, '18px') + '</div>';
 
-  const ow = document.getElementById('obs-wrap');
+  var ow = document.getElementById('obs-wrap');
   if (ow) ow.innerHTML = '<div style="padding:6px 2px;">' + _skelBlock(3, '16px') + '</div>';
 
-  const tideEncWrap = document.getElementById('tide-enc-wrap');
+  var tideEncWrap = document.getElementById('tide-enc-wrap');
   if (tideEncWrap) tideEncWrap.innerHTML = '<div style="padding:6px 2px;">' + _skel('40px','10px') + _skel('14px') + '</div>';
 
   try {
@@ -13872,8 +13885,8 @@ async function loadOpenMeteoMeteo(){
       fetch('https://api.open-meteo.com/v1/forecast?latitude=-22.27&longitude=166.43'
         +'&current=temperature_2m,apparent_temperature,relative_humidity_2m,uv_index'
         +'&daily=uv_index_max,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max'
-        +'&forecast_days=7&timezone=Pacific%2FNoumea').then(r=>r.json()),
-      fetch('https://marine-api.open-meteo.com/v1/marine?latitude=-22.27&longitude=166.43&current=sea_surface_temperature&forecast_days=1&timezone=Pacific%2FNoumea').then(r=>r.json())
+        +'&forecast_days=7&timezone=Pacific%2FNoumea').then(function(r){ return r.json(); }),
+      fetch('https://marine-api.open-meteo.com/v1/marine?latitude=-22.27&longitude=166.43&current=sea_surface_temperature&forecast_days=1&timezone=Pacific%2FNoumea').then(function(r){ return r.json(); })
     ]);
     var precipDays = (w.daily && w.daily.precipitation_sum) || [];
     var uvDays     = (w.daily && w.daily.uv_index_max) || [];
@@ -16132,7 +16145,7 @@ function openNavBMSDetail() {
 <script defer src="assets/settings-utils.js"></script>
 <script>
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    window.addEventListener('load', () => {
+    window.addEventListener('load', function() {
       navigator.serviceWorker.register('/surf-journal/sw.js');
     });
   }
