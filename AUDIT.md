@@ -5026,3 +5026,110 @@ grille où chaque cellule porterait sa dispersion serait illisible.
 
 Rendu compact des cartes : le verdict textuel y est **omis**, la couleur le porte —
 la phrase entière passait à la ligne en laissant le « m » orphelin.
+
+---
+
+# 05/08/2026 (suite) — `semaine.html` interactive : vent, curseurs, spots surfés (v67)
+
+Trois demandes : afficher **le vent**, pouvoir **jouer avec les paramètres**
+(curseurs + molette) comme sur le site, et ne garder que **les spots réellement
+surfés** — « Îlot Maître, Baie de Ste Marie… ce sont des stations, pas des spots ».
+
+## Bascule en rendu client — la seule façon d'éviter deux vérités
+
+Le générateur ne produit **plus de HTML pré-scoré**. Il écrit un snapshot de
+données (`WEEK` : créneaux meteo.nc + valeurs des autres modèles par heure), et
+la page score elle-même dans le navigateur via `assets/score-core.js` — le même
+fichier que celui chargé par `previsions.html`.
+
+C'était la condition pour que les curseurs recalculent en direct, mais l'intérêt
+principal est ailleurs : il n'existe désormais qu'**un chemin de scoring et un
+chemin de rendu**. Un rendu serveur + un rendu client auraient fini par diverger,
+et c'est exactement le défaut qu'on cherchait à éviter depuis le début de ce
+chantier. Coût assumé : sans JavaScript la page est vide — un `<noscript>` le dit
+et renvoie vers les prévisions. Acceptable, tout le site est déjà en JS.
+
+Poids : 39 Ko (données comprises), pas de requête au chargement.
+
+## Filtre des spots par le journal de sessions
+
+`shared_spots` contient des **points de prévision** (position de grille + station
+de marée), pas des spots de surf. Mesuré sur `sessions` (lisible en anon) :
+
+| point | sessions | retenu |
+|-------|---------:|:------:|
+| Ilot Ténia | 46 | ✓ |
+| Passe de Dumbéa | 20 | ✓ |
+| Passe de Boulari | 1 | ✓ |
+| Passe de Ouano | 1 | ✓ |
+| Passe de Mato | 0 | ✗ |
+| Îlot Maître | 0 | ✗ |
+| Baie de Ste Marie | 0 | ✗ |
+
+Le journal cite des **noms de spots de surf** (« Gros nem », « Fausse passe
+Dumbéa »), jamais les points. Rattachement par deux voies explicites, aucune
+devinée : `spot.surfSpots` quand il existe (Ténia → Grand bac/Gros nem/Petit U),
+sinon le nom-clé du point contenu dans le nom du spot (« Droite de Boulari » →
+Boulari). Comparaison sans accents ni casse — le journal contient « Droite de
+dumbéa » ET « Droite de Dumbéa ».
+
+Comptage **par session** et non par mention : `spot` et `spots[]` citent souvent
+les mêmes noms, et compter à plat donnait 85 « sessions » à Ténia sur un journal
+qui en compte 75 au total. Repli explicite si `sessions` devient illisible (RLS) :
+aucun filtre plutôt qu'une page vide.
+
+Effet de bord bienvenu : les 3 spots écartés étaient précisément ceux **sans
+calibrage propre** qui trustaient le podium grâce à des seuils plus permissifs.
+
+## Vent
+
+Ajouté dans les cellules (3e valeur, colorée), dans le créneau vedette et dans les
+cartes. Seuils de couleur repris de `WIND_COL_THRESHOLDS` (7/12/17/23 nds,
+`settings-utils.js`) — un vent de 21 nds doit avoir la même couleur sur les deux
+pages, c'est précisément le bug corrigé en §3.1 de l'audit externe.
+
+Une **légende** sous la grille était indispensable : sans elle le second chiffre
+de chaque cellule est indéchiffrable. La couleur hiérarchise, elle ne dit pas de
+quelle grandeur il s'agit.
+
+## Panneau 🎯 Calibrer
+
+Replié par défaut — la page doit rester lisible en dix secondes. Sept curseurs :
+`minHs`, `minPeriod`, `minPwr`, `swellDirIdeal` / `windCalmKt`, `windMalusKt`,
+`windDirIdeal`.
+
+`gustMalusKt` **volontairement absent** : meteo.nc ne fournit pas de rafales, le
+curseur n'aurait donc aucun effet — un réglage qui ne fait rien est pire que pas
+de réglage.
+
+Deux modes, et c'est le point important : **« calibrage de chaque spot »** (état
+de référence, mais les spots non calibrés y sont avantagés) et **« réglages
+communs »** (tous jugés avec les mêmes seuils — le seul mode où la comparaison
+entre spots est honnête). Bouger un curseur y bascule automatiquement.
+
+Détails qui ont mordu :
+- `touch-action:none` sur les `input[type=range]` : sans ça un glissement fait
+  défiler la page au lieu de régler la valeur sur mobile.
+- `wheel` en `{passive:false}` : sans ça Chrome ignore le `preventDefault()` et la
+  page défile pendant qu'on règle à la molette.
+- Réalignement sur le pas après chaque cran de molette : les additions flottantes
+  dérivent, un `minHs` à `0.7000000000000001` s'afficherait faux.
+
+Réglages persistés en `localStorage` (`surf-semaine-params`), **sans toucher** à
+ceux du site — c'est un bac à sable, pas un second endroit où calibrer.
+
+## Vérifications (headless, injection + dump-dom)
+
+```
+cellules=24 colorées=15 | vent-dans-cellule=oui | legende=oui | hero0=Passe de Ouano
+apres-minPwr15: colorées=0 mode=commun hero=(pas de hero)     ← bascule auto + repli « semaine calme »
+molette minHs 0.4->0.5 (label 0,5 m)                          ← un cran = un pas exact
+localStorage={"mode":"commun","params":{"minHs":0.5,…         ← persistance
+apres-reset: minPwr=1 mode=spot colorées=15                   ← retour à l'état initial
+marqueurs-non-calibres=2                                       ← Boulari + Ouano
+erreurs:aucune
+```
+
+`CACHE_NAME` v66 → **v67** : `semaine.html` n'est pas précachée mais tombe dans le
+scope du service worker, un visiteur déjà venu se serait vu resservir la version
+non interactive (même raison que le bump v65 pour `thibsurf_nav/`).
