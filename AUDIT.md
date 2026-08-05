@@ -4814,3 +4814,18 @@ supprimé les remet dans le head.
   CSP du Manifest V3 de l'extension Chrome.
 - `node --check sw.js` passe (à ne pas prendre pour un garde-fou, cf. session du
   05/08 plus haut : ce Node v12 rejette des syntaxes valides ; ici il accepte).
+
+## Complément le même jour — `thibsurf_nav/`, 2 pages de plus (v65)
+
+`thibsurf_nav/index.html` et `thibsurf_nav/guide.html` répondent en HTTP 200 : ce
+sous-site est publiquement servi, il n'était donc pas mesuré. Beacon ajouté aux
+deux, même snippet. Les deux pages étaient saines (pas de `-->>`, `</head>` net).
+
+`CACHE_NAME` v64 → **v65**. Elles ne sont pas dans `ASSETS` (aucun précache), mais
+elles tombent dans le **scope** du service worker (`/surf-journal/`) : le
+stale-while-revalidate les met en cache à la visite, et sans bump un visiteur déjà
+venu se serait vu resservir l'ancienne version sans beacon. C'est la raison du bump
+ici — pas le précache.
+
+Toujours exclus : `test_fuel.html`, `test_share.html`, `thibsurf_nav/old/`, et
+`extension/` (CSP du Manifest V3).
