@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v65';
+const CACHE_NAME = 'surf-nc-v66';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -14,6 +14,13 @@ const ASSETS = [
   '/surf-journal/assets/enso.js',
   '/surf-journal/assets/widget-global.js',
   '/surf-journal/assets/settings-utils.js',
+  // score-core.js : calcSurfScore/SCORE_PARAMS en sont sortis le 05/08/2026 pour
+  // être partagés avec le générateur de semaine.html. Sans précache, previsions.html
+  // lèverait un ReferenceError au 1er lancement hors-ligne — la page entière.
+  '/surf-journal/assets/score-core.js',
+  // semaine.html : PAS précachée volontairement. Elle est réécrite chaque lundi ;
+  // le stale-while-revalidate plus bas la mettra en cache à la 1re visite et la
+  // rafraîchira ensuite, ce qui suffit pour une page hebdomadaire.
   // fuel-core.js : marine_fuel_pro.html est précaché mais son cœur de calcul ne
   // l'était pas → la page Fuel Pro restait cassée hors-ligne au 1er lancement.
   '/surf-journal/assets/fuel-core.js',

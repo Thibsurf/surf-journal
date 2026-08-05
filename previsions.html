@@ -576,6 +576,7 @@ html.widget-mode #gw-widget { margin-bottom:0; }
   <div class="mm-sep"></div>
   <div class="mm-label">Autres pages</div>
   <a class="mm-item" role="menuitem" href="https://thibsurf.github.io/surf-journal/" title="Retour au journal"><span class="mm-ic">←</span>Journal des sessions</a>
+  <a class="mm-item" role="menuitem" href="https://thibsurf.github.io/surf-journal/semaine.html" title="Les meilleurs créneaux des 7 prochains jours, régénéré chaque lundi"><span class="mm-ic">📅</span>La semaine</a>
   <a class="mm-item" role="menuitem" href="https://thibsurf.github.io/surf-journal/sorties.html" title="Sorties"><span class="mm-ic">🏄</span>Sorties</a>
   <a class="mm-item mm-fuel" role="menuitem" href="https://thibsurf.github.io/surf-journal/marine_fuel_pro.html" title="Gestion carburant bateau"><span class="mm-ic">⛽</span>Fuel Pro</a>
 </div>
@@ -2085,6 +2086,12 @@ html.widget-mode #gw-widget { margin-bottom:0; }
      AVANT le bloc inline (pas en defer) : PANEL_GEOM doit exister quel que soit le
      moment où un graphe est dessiné, y compris un tout premier rendu synchrone. -->
 <script src="assets/charts-core.js"></script>
+<!-- Moteur de score surf (_DEFAULT_SCORE, SCORE_PARAMS, calcSurfScore, surfPower).
+     Même contrainte de chargement que charts-core.js — SANS defer, avant le bloc
+     inline : SCORE_PARAMS est lu et RÉASSIGNÉ par loadScoreParams() plus bas dans
+     ce même bloc. Partagé avec .github/scripts/build-week.mjs (Node) via
+     module.exports, pour que semaine.html ne redéfinisse jamais ses pondérations. -->
+<script src="assets/score-core.js"></script>
 <!-- Modèle harmonique de marée. Même contrainte que charts-core.js : chargé SANS
      defer, avant le bloc inline, car tideH()/TIDE_EPOCH sont appelés par
      _tideNormalizeDay() bien plus haut dans ce même bloc — ils doivent exister au
@@ -3160,7 +3167,9 @@ function _pwrHoverInfo(idx) {
   if (!d || !d.pwr) return;
   var p = d.pwr[idx], hs = d.sw1h[idx], T = d.sw1t[idx], lbl = (d.lbl && d.lbl[idx]) || '';
   if (p == null) { el.innerHTML = '<b style="color:var(--text);">' + lbl + '</b> · puissance indisponible sur ce créneau'; return; }
-  var band = p < 1 ? ['minuscule', '#4fa3c7'] : p < 5 ? ['surfable', '#3dba8a'] : p < 15 ? ['bon', '#e8a057'] : ['costaud', '#a99ff8'];
+  // Seuils/couleurs des bandes de puissance : source unique dans score-core.js
+  // (powerBand), pour que la page hebdomadaire les reprenne à l'identique.
+  var _pb = powerBand(p), band = [_pb.label, _pb.col];
   var refTxt = '';
   var ref = window._spotTriggerRef;
   if (ref && ref.p25 != null) {
@@ -8183,34 +8192,16 @@ function updateHsHover(i){
 }
 
 // ─── SCORE SURF ──────────────────────────────────────────────────────────────
-// Paramètres de score (modifiables via menu)
-var _DEFAULT_SCORE = {
-  minHs: 0.4, maxHs: 4.0, minPeriod: 8, minPwr: 1,
-  swellDirIdeal: 120, windDirIdeal: 270,
-  onshoreLimit: 45, offshoreMin: 135,
-  // Spots à accès bateau : peu de vent est un critère en soi (navigation,
-  // moutons dans le lagon, clapot sur le plan d'eau), quelle que soit la
-  // direction. Seuils RECALIBRÉS sur données réelles le 03/08/2026 (73 sessions
-  // du journal, retour utilisateur "à 16 nds trop de vent, déjà 12") : la
-  // qualité moyenne chute dès 8-10 nds (3,11 sous 8 nds → 2,90 à 8-10 →
-  // 2,33 à 10-12), et le p75 des sessions RÉUSSIES (★≥3) est à 8 nds — 3
-  // sessions correctes sur 4 se font sous 8 nds. Une seule session sur 73
-  // dépasse 16 nds : les anciens seuils (13/22) étaient extrapolés bien
-  // au-delà de ce que les données couvrent.
-  windCalmKt: 8,
-  windMalusKt: 12, gustMalusKt: 25,
-  // Préférence de marée du spot (chantier 10, §10.5 priorité 3). Elle vivait
-  // dans `spot.tidePref`, que RIEN n'écrivait : `_tideAdj()` renvoyait donc
-  // toujours 0 et la marée ne pesait rien dans le score, alors que le code
-  // laissait croire le contraire. Déplacée dans scoreParams pour profiter du
-  // dialogue ⚙ et de sa persistance par spot. 'any' = pas de préférence.
-  tidePref: { state: 'any', phase: 'any' }
-};
-var SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE);
+// _DEFAULT_SCORE, SCORE_PARAMS et calcSurfScore() vivent désormais dans
+// assets/score-core.js (chargé sans defer, avant ce bloc) : le générateur de la
+// page hebdomadaire les require() en Node et score donc à l'identique. Seuls
+// load/saveScoreParams restent ici, ils dépendent de SPOTS/currentSpot.
 
-// Charger les params du spot actif (depuis SPOTS[currentSpot].scoreParams ou global)
-function loadScoreParams() {
-  var spot = SPOTS[currentSpot];
+// Charger les params de score — accepte un spot optionnel pour que BSF puisse scorer
+// plusieurs spots d'affilée sans changer currentSpot. Sans argument, reprend le spot actif.
+// Bug fixé 05/08/2026 : BSF réutilisait le calibrage du spot actif au lieu de celui-ci.
+function loadScoreParams(spot) {
+  if (!spot) spot = SPOTS[currentSpot];
   if (spot && spot.scoreParams) {
     SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE, spot.scoreParams);
   } else {
@@ -8229,136 +8220,6 @@ function saveScoreParams(params) {
   try { localStorage.setItem('surf-score-params', JSON.stringify(params)); } catch(e) {}
 }
 
-function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
-  if(!hs || hs < SCORE_PARAMS.minHs) return {score:0, label:'Trop petit', col:'#3d5468', details:['Hs < '+SCORE_PARAMS.minHs+'m']};
-  if(hs > SCORE_PARAMS.maxHs) return {score:1, label:'Trop gros', col:'#7a94aa', details:['Hs > '+SCORE_PARAMS.maxHs+'m']};
-  if(!pwr || pwr < SCORE_PARAMS.minPwr) return {score:0, label:'Plat', col:'#3d5468', details:['Puissance insuffisante']};
-
-  var details = [];
-  var score = 0;
-
-  // Score de base sur la puissance (0-4 pts)
-  if(pwr < 2)  { score = 1; }
-  else if(pwr < 5)  { score = 2; }
-  else if(pwr < 12) { score = 3; }
-  else if(pwr < 25) { score = 4; }
-  else              { score = 3; details.push('Très puissant'); } // trop gros = moins bien
-
-  // Période: malus si trop courte, bonus si longue
-  if(T) {
-    if(T < SCORE_PARAMS.minPeriod) {
-      score = Math.max(0, score - 1);
-      details.push('Période courte '+T+'s (&lt;'+SCORE_PARAMS.minPeriod+'s)');
-    } else if(T >= 12) {
-      score = Math.min(5, score + 1);
-      details.push('Longue période '+T+'s');
-    }
-  }
-  // Direction houle: bonus/malus selon proximité avec la direction idéale
-  if(swDir !== null && swDir !== undefined) {
-    var idealSwell = SCORE_PARAMS.swellDirIdeal || 120;
-    var diffSwell = Math.abs(((swDir - idealSwell + 180 + 360) % 360) - 180);
-    if(diffSwell <= 45) { score = Math.min(5, score + 1); details.push('Houle idéale '+compass(swDir)); }
-    else if(diffSwell > 120) { score = Math.max(0, score - 1); details.push('Houle défav. '+compass(swDir)); }
-  }
-  // Direction vent: bonus/malus basé sur windDirIdeal (cap offshore du spot, réglage compas)
-  // windDirIdeal = vers où souffle le vent idéal (ex: 270 = offshore côte ouest)
-  // wDir (API) = provenance → convertir en destination avant comparaison
-  if(wDir != null) {
-    var idealWind = SCORE_PARAMS.windDirIdeal || 270;
-    var wDirTo = (wDir + 180) % 360;
-    var diffWind = Math.abs(((wDirTo - idealWind + 180 + 360) % 360) - 180);
-    if(diffWind <= 60) { details.push('Vent favorable '+compass(wDir)); }
-    else if(diffWind > 120) { score = Math.max(0, score - 1); details.push('Vent défav. '+compass(wDir)); }
-  }
-
-  // Malus vent PLAT (indépendant de la direction) : sur ces spots à accès
-  // bateau, le vent dégrade tout — navigation, moutons dans le lagon, clapot
-  // sur la vague. Deux paliers : moutons (windCalmKt, ~13kt) puis vent fort
-  // (windMalusKt). S'additionne aux effets directionnels ci-dessous.
-  // >= au lieu de > (03/08/2026, retour utilisateur "16nds trop de vent") :
-  // à vent PILE au seuil, le malus ne se déclenchait pas (16 > 16 = faux) —
-  // un écart d'1nds suffisait à afficher "Très bien" un jour trop venté.
-  var _calmKt = SCORE_PARAMS.windCalmKt || 8;
-  if(ws && ws > _calmKt) {
-    score = Math.max(0, score - 1);
-    details.push('Moutons/clapot ('+Math.round(ws)+'nds &gt; '+_calmKt+'nds)');
-    if(ws >= SCORE_PARAMS.windMalusKt) {
-      score = Math.max(0, score - 1);
-      details.push('Vent fort — nav difficile');
-    }
-  }
-
-  // Bonus VENT NUL / très faible, indépendant de la direction (03/08/2026,
-  // "moins y'a de vent, mieux c'est"). Le seul bonus vent existant exigeait
-  // `ws >= 5` ET une direction offshore : une matinée glassy à 2 nds n'était
-  // donc JAMAIS récompensée, alors que c'est la meilleure condition possible
-  // sur ces passes (mesuré : qualité moyenne 3,11 sous 8 nds, la tranche la
-  // plus élevée du journal). Posé ici pour s'appliquer quelle que soit
-  // l'orientation, avant les effets directionnels ci-dessous.
-  if(ws != null && ws <= 5) {
-    score = Math.min(5, score + 1);
-    details.push(ws < 2 ? 'Glassy (vent nul)' : 'Vent très faible ('+Math.round(ws)+'nds)');
-  }
-
-  // Effet du vent (onshore/offshore relatif à la houle)
-  if(ws && wDir != null && swDir != null) {
-    // Angle entre vent et direction de propagation de la houle
-    // swDir = D'OÙ vient la houle, wDir = D'OÙ vient le vent
-    // Vent onshore = vent va VERS la côte = dans le MÊME sens que la houle
-    var angleDiff = Math.abs(((wDir - swDir) + 360) % 360);
-    if(angleDiff > 180) angleDiff = 360 - angleDiff;
-    // angleDiff = 0° → vent et houle dans le même sens → plein onshore (mauvais)
-    // angleDiff = 180° → vent dans le sens opposé → offshore (bon léger)
-
-    if(angleDiff < SCORE_PARAMS.onshoreLimit) {
-      // Onshore: malus selon force
-      if(ws >= SCORE_PARAMS.windMalusKt) {
-        score = Math.max(0, score - 2);
-        details.push('Onshore fort ('+Math.round(ws)+'nds, '+Math.round(angleDiff)+'°)');
-      } else if(ws > 8) {
-        score = Math.max(0, score - 1);
-        details.push('Onshore modéré ('+Math.round(ws)+'nds)');
-      }
-    } else if(angleDiff > SCORE_PARAMS.offshoreMin) {
-      // Offshore: bonus seulement si le plan d'eau reste propre (≤ seuil
-      // moutons) — offshore fort = vague peignée mais lagon/navigation dégradés.
-      // Seuil aligné sur windMalusKt du spot (03/08/2026) — était fixé en dur à
-      // 20nds, indépendant du réglage par spot : un vent offshore fort restait
-      // sans malus directionnel jusqu'à 20nds même sur un spot réglé à 14-16nds.
-      // `> 5` (et non `>= 5`) : à 5 nds pile le bonus "vent très faible"
-      // ci-dessus s'applique déjà, inutile de compter deux fois le même point.
-      if(ws > 5 && ws <= _calmKt) {
-        score = Math.min(5, score + 1);
-        details.push('Offshore idéal ('+Math.round(ws)+'nds)');
-      } else if(ws >= SCORE_PARAMS.windMalusKt) {
-        score = Math.max(0, score - 1);
-        details.push('Offshore trop fort ('+Math.round(ws)+'nds)');
-      }
-    } else {
-      // Sideshore (entre 45 et 135°, 03/08/2026 — retour utilisateur) : jusqu'ici
-      // totalement neutre quelle que soit la force, seul le malus universel
-      // moutons/vent fort ci-dessus s'appliquait (-2 max) — un vent fort
-      // sideshore restait sous-pénalisé par rapport à onshore (-4) et offshore
-      // (-3 depuis la ligne au-dessus). Même seuil que offshore pour cohérence.
-      if(ws >= SCORE_PARAMS.windMalusKt) {
-        score = Math.max(0, score - 1);
-        details.push('Sideshore fort ('+Math.round(ws)+'nds)');
-      }
-    }
-  }
-
-  // Rafales excessives
-  if(wg && wg > SCORE_PARAMS.gustMalusKt) {
-    score = Math.max(0, score - 1);
-    details.push('Rafales '+Math.round(wg)+'nds');
-  }
-
-  score = Math.max(0, Math.min(5, Math.round(score)));
-  var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
-  var cols = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
-  return { score:score, label:labels[score], col:cols[score], details:details };
-}
 
 function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p){
   // Visibilité depuis omFcastData[0] si disponible

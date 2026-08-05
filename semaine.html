@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>La semaine — Surf NC</title>
+<meta name="description" content="Les meilleurs créneaux de surf de la semaine en Nouvelle-Calédonie, du 6 au 11 août.">
+<meta name="theme-color" content="#0a1628">
+<link rel="icon" href="favicon.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ocean:#0a1628;--deep:#0d1f3c;--text:#e8eef4;--muted:#7a94aa;--faint:#728aa1;
+      --border:rgba(255,255,255,.08);--accent:#4fa3c7}
+body{background:var(--ocean);color:var(--text);
+     font:15px/1.45 'DM Sans',system-ui,-apple-system,sans-serif;
+     padding:20px 14px 40px;max-width:560px;margin:0 auto;-webkit-text-size-adjust:100%}
+a{color:inherit;text-decoration:none}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:16px}
+h1{font:600 20px/1.2 Georgia,serif;letter-spacing:.2px}
+.per{font-size:12px;color:var(--muted);white-space:nowrap}
+
+/* Le verdict. Bande de couleur à gauche = code couleur du score, le même que
+   celui des pastilles de previsions.html. */
+.hero{display:block;background:var(--deep);border-radius:12px;padding:16px 16px 16px 20px;
+      border-left:5px solid var(--c,#3dba8a);margin-bottom:18px}
+.hero.flat{border-left-color:#5c6b7a}
+.hero-k{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint)}
+.hero-d{font-size:13px;color:var(--muted);margin-top:7px}
+.hero-s{font:600 27px/1.15 Georgia,serif;margin:1px 0 8px}
+.hero-m{font-size:16px}
+.hero-m b{color:var(--c,#3dba8a)}
+.hero-b{font-size:12px;color:var(--faint);margin-top:5px}
+
+h2{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint);
+   margin:22px 0 9px}
+
+/* Accord des modèles. La réglette se lit à la dispersion, pas à la position :
+   points serrés = créneau solide, points étalés = à reconfirmer. */
+.acc{background:rgba(255,255,255,.03);border-radius:0 0 12px 12px;
+     padding:9px 14px 11px;margin:-4px 0 18px}
+.acc-h{font-size:11px;letter-spacing:.3px}
+.acc-h b{color:var(--text);font-weight:600}
+.acc-bar{position:relative;height:7px;margin:7px 0 0;border-radius:4px;
+         background:rgba(255,255,255,.07)}
+.acc-bar .dot{position:absolute;top:-2px;width:11px;height:11px;margin-left:-5.5px;
+              border-radius:50%;background:var(--ocean);
+              box-shadow:inset 0 0 0 2px var(--muted)}
+/* meteo.nc = le modèle qui porte le score : plein, les autres en anneau. */
+.acc-bar .dot.ref{background:var(--accent);box-shadow:inset 0 0 0 2px var(--accent),
+                  0 0 0 2px var(--ocean);z-index:2}
+.acc-l{font-size:10.5px;color:var(--faint);margin-top:8px;line-height:1.5}
+.acc-l .ref{color:var(--accent)}
+.acc.cmp{margin:8px -11px -11px -13px;padding:7px 11px 9px 13px;border-radius:0 0 10px 0}
+.acc.cmp .acc-h{font-size:10px}
+
+/* Grille spots × jours. Le tableau scrolle seul si l'écran est vraiment étroit :
+   le body, lui, ne doit jamais partir en travers. */
+.wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:separate;border-spacing:3px;width:100%;min-width:330px}
+th{font-weight:400;font-size:11px;color:var(--muted)}
+th.sp{text-align:left;font-size:12px;color:var(--text);white-space:nowrap;padding-right:4px}
+/* Spot sans calibrage propre : jugé avec les seuils par défaut, donc plus
+   facilement flatteur. Marqué, pas caché — c'est une nuance de lecture. */
+th.sp.unc{color:var(--muted)}
+th.sp sup{font-size:9px;color:var(--warm);margin-left:1px;vertical-align:super}
+.dw{display:block;font-size:10px;color:var(--faint)}
+.dn{display:block;font-size:12px}
+/* Fond des cellules : couleur figée, calculée en Node (cf. mix()). */
+.cell{display:flex;flex-direction:column;align-items:center;justify-content:center;
+      height:38px;border-radius:7px;font-style:normal}
+.cell b{font-size:12.5px;font-weight:600;line-height:1.1}
+.cell s{font-size:9.5px;text-decoration:none;line-height:1.1;
+        color:rgba(232,238,244,.62)}
+/* Créneau sous le seuil du spot : lisible mais nettement en retrait — c'est
+   l'absence de couleur qui doit sauter aux yeux, pas le chiffre. */
+.cell.off{background:rgba(255,255,255,.035)}
+.cell.off b{font-weight:400;color:#7a94aa}
+.cell.off s{color:#4a6076}
+.cell.nil{background:rgba(255,255,255,.02);color:#3d5468;font-size:13px}
+td{width:13%}
+
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.card{background:var(--deep);border-radius:10px;padding:11px 11px 11px 13px;
+      border-left:4px solid var(--c,#3dba8a)}
+.c-d{font-size:11px;color:var(--faint)}
+.c-s{font:600 15px/1.2 Georgia,serif;margin:2px 0 5px}
+.c-m{font-size:12.5px;color:var(--text)}
+.c-b{font-size:11px;color:var(--c,#3dba8a);margin-top:3px}
+
+.cta{display:block;text-align:center;margin-top:22px;padding:13px;border-radius:10px;
+     background:var(--accent);color:#06131f;font-weight:600;font-size:15px}
+footer{margin-top:20px;font-size:11px;line-height:1.6;color:var(--faint);
+       border-top:1px solid var(--border);padding-top:12px}
+@media (max-width:400px){
+  .cards{grid-template-columns:1fr}
+  .hero-s{font-size:23px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1>🏄 La semaine</h1>
+  <div class="per">du 6 au 11 août</div>
+</div>
+
+<a class="hero" href="previsions.html" style="--c:#7b6cf6">
+         <div class="hero-k">Le créneau de la semaine</div>
+         <div class="hero-d">vendredi 7, 8 h</div>
+         <div class="hero-s">Passe de Ouano</div>
+         <div class="hero-m"><b>1,6 m</b> · 10 s · 8 nds SE</div>
+         <div class="hero-b">Excellent · 12,8 kW/m</div>
+       </a>
+       <div class="acc">
+    <div class="acc-h" style="color:#e8a057">4 modèles · modèles en désaccord <b>0,9–1,6&nbsp;m</b></div>
+    <div class="acc-bar"><i class="dot ref" style="left:87.0%"
+              title="meteo.nc — 1,6 m"></i><i class="dot" style="left:48.7%"
+              title="MARC — 0,9 m"></i><i class="dot" style="left:68.5%"
+              title="GFS — 1,3 m"></i><i class="dot" style="left:51.6%"
+              title="BOM — 0,9 m"></i></div>
+    <div class="acc-l"><span class="ref">meteo.nc 1,6</span> · <span>MARC 0,9</span> · <span>GFS 1,3</span> · <span>BOM 0,9</span></div>
+  </div>
+
+<h2>6 jours, spot par spot</h2>
+<div class="wrap">
+  <table>
+    <thead><tr><th></th><th><span class="dw">jeu</span><span class="dn">6</span></th><th><span class="dw">ven</span><span class="dn">7</span></th><th><span class="dw">sam</span><span class="dn">8</span></th><th><span class="dw">dim</span><span class="dn">9</span></th><th><span class="dw">lun</span><span class="dn">10</span></th><th><span class="dw">mar</span><span class="dn">11</span></th></tr></thead>
+    <tbody><tr><th class="sp">Dumbéa</th><td><i class="cell" style="background:#3c3140;box-shadow:inset 0 0 0 1px #c1654a"
+                  title="Passe de Dumbéa 2026-08-06 8h — Médiocre"
+                  ><b>1,2</b><s>14s</s></i></td><td><i class="cell" style="background:#3c3140;box-shadow:inset 0 0 0 1px #c1654a"
+                  title="Passe de Dumbéa 2026-08-07 8h — Médiocre"
+                  ><b>1,6</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Passe de Dumbéa 2026-08-08 17h — Passable"
+                  ><b>1,2</b><s>10s</s></i></td><td><i class="cell off" title="Passe de Dumbéa 2026-08-09 — Trop petit"
+                  ><b>0,5</b><s>11s</s></i></td><td><i class="cell off" title="Passe de Dumbéa 2026-08-10 — Trop petit"
+                  ><b>0,5</b><s>12s</s></i></td><td><i class="cell off" title="Passe de Dumbéa 2026-08-11 — Plat"
+                  ><b>0,6</b><s>10s</s></i></td></tr><tr><th class="sp">Ilot Ténia</th><td><i class="cell" style="background:#287668;box-shadow:inset 0 0 0 1px #3dba8a"
+                  title="Ilot Ténia 2026-08-06 8h — Très bien"
+                  ><b>1,2</b><s>14s</s></i></td><td><i class="cell" style="background:#726b42;box-shadow:inset 0 0 0 1px #e8c44a"
+                  title="Ilot Ténia 2026-08-07 8h — Bien"
+                  ><b>1,6</b><s>10s</s></i></td><td><i class="cell off" title="Ilot Ténia 2026-08-08 — Plat"
+                  ><b>1,0</b><s>10s</s></i></td><td><i class="cell off" title="Ilot Ténia 2026-08-09 — Trop petit"
+                  ><b>0,5</b><s>11s</s></i></td><td><i class="cell off" title="Ilot Ténia 2026-08-10 — Trop petit"
+                  ><b>0,5</b><s>11s</s></i></td><td><i class="cell off" title="Ilot Ténia 2026-08-11 — Trop petit"
+                  ><b>0,5</b><s>10s</s></i></td></tr><tr><th class="sp unc">Boulari<sup title="pas de calibrage propre — seuils par défaut, plus permissifs">°</sup></th><td><i class="cell off" title="Passe de Boulari 2026-08-06 — Nul"
+                  ><b>0,8</b><s>10s</s></i></td><td><i class="cell off" title="Passe de Boulari 2026-08-07 — Nul"
+                  ><b>0,9</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Passe de Boulari 2026-08-08 17h — Passable"
+                  ><b>0,7</b><s>9s</s></i></td><td><i class="cell" style="background:#726b42;box-shadow:inset 0 0 0 1px #e8c44a"
+                  title="Passe de Boulari 2026-08-09 11h — Bien"
+                  ><b>0,7</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Passe de Boulari 2026-08-10 11h — Passable"
+                  ><b>0,7</b><s>10s</s></i></td><td><i class="cell" style="background:#287668;box-shadow:inset 0 0 0 1px #3dba8a"
+                  title="Passe de Boulari 2026-08-11 11h — Très bien"
+                  ><b>0,7</b><s>10s</s></i></td></tr><tr><th class="sp unc">Ouano<sup title="pas de calibrage propre — seuils par défaut, plus permissifs">°</sup></th><td><i class="cell" style="background:#726b42;box-shadow:inset 0 0 0 1px #e8c44a"
+                  title="Passe de Ouano 2026-08-06 8h — Bien"
+                  ><b>1,2</b><s>14s</s></i></td><td><i class="cell" style="background:#5652b7;box-shadow:inset 0 0 0 1px #7b6cf6"
+                  title="Passe de Ouano 2026-08-07 8h — Excellent"
+                  ><b>1,6</b><s>10s</s></i></td><td><i class="cell" style="background:#287668;box-shadow:inset 0 0 0 1px #3dba8a"
+                  title="Passe de Ouano 2026-08-08 11h — Très bien"
+                  ><b>1,0</b><s>10s</s></i></td><td><i class="cell" style="background:#287668;box-shadow:inset 0 0 0 1px #3dba8a"
+                  title="Passe de Ouano 2026-08-09 11h — Très bien"
+                  ><b>0,8</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Passe de Ouano 2026-08-10 11h — Passable"
+                  ><b>0,8</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Passe de Ouano 2026-08-11 11h — Passable"
+                  ><b>0,8</b><s>10s</s></i></td></tr><tr><th class="sp unc">Mato<sup title="pas de calibrage propre — seuils par défaut, plus permissifs">°</sup></th><td><i class="cell" style="background:#3c3140;box-shadow:inset 0 0 0 1px #c1654a"
+                  title="Passe de Mato 2026-08-06 8h — Médiocre"
+                  ><b>1,2</b><s>14s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Passe de Mato 2026-08-07 8h — Passable"
+                  ><b>1,6</b><s>10s</s></i></td><td><i class="cell" style="background:#726b42;box-shadow:inset 0 0 0 1px #e8c44a"
+                  title="Passe de Mato 2026-08-08 17h — Bien"
+                  ><b>1,2</b><s>10s</s></i></td><td><i class="cell" style="background:#726b42;box-shadow:inset 0 0 0 1px #e8c44a"
+                  title="Passe de Mato 2026-08-09 17h — Bien"
+                  ><b>1,4</b><s>9s</s></i></td><td><i class="cell" style="background:#287668;box-shadow:inset 0 0 0 1px #3dba8a"
+                  title="Passe de Mato 2026-08-10 11h — Très bien"
+                  ><b>1,2</b><s>10s</s></i></td><td><i class="cell" style="background:#5652b7;box-shadow:inset 0 0 0 1px #7b6cf6"
+                  title="Passe de Mato 2026-08-11 11h — Excellent"
+                  ><b>1,1</b><s>9s</s></i></td></tr><tr><th class="sp unc">Îlot Maître<sup title="pas de calibrage propre — seuils par défaut, plus permissifs">°</sup></th><td><i class="cell off" title="Îlot Maître 2026-08-06 — Nul"
+                  ><b>0,8</b><s>10s</s></i></td><td><i class="cell off" title="Îlot Maître 2026-08-07 — Nul"
+                  ><b>0,9</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Îlot Maître 2026-08-08 17h — Passable"
+                  ><b>0,7</b><s>9s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Îlot Maître 2026-08-09 11h — Passable"
+                  ><b>0,5</b><s>11s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Îlot Maître 2026-08-10 11h — Passable"
+                  ><b>0,5</b><s>12s</s></i></td><td><i class="cell" style="background:#3c3140;box-shadow:inset 0 0 0 1px #c1654a"
+                  title="Îlot Maître 2026-08-11 11h — Médiocre"
+                  ><b>0,6</b><s>10s</s></i></td></tr><tr><th class="sp unc">Ste Marie<sup title="pas de calibrage propre — seuils par défaut, plus permissifs">°</sup></th><td><i class="cell off" title="Baie de Ste Marie 2026-08-06 — Nul"
+                  ><b>0,8</b><s>10s</s></i></td><td><i class="cell off" title="Baie de Ste Marie 2026-08-07 — Nul"
+                  ><b>0,9</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Baie de Ste Marie 2026-08-08 17h — Passable"
+                  ><b>0,7</b><s>9s</s></i></td><td><i class="cell" style="background:#287668;box-shadow:inset 0 0 0 1px #3dba8a"
+                  title="Baie de Ste Marie 2026-08-09 11h — Très bien"
+                  ><b>0,7</b><s>10s</s></i></td><td><i class="cell" style="background:#726b42;box-shadow:inset 0 0 0 1px #e8c44a"
+                  title="Baie de Ste Marie 2026-08-10 11h — Bien"
+                  ><b>0,7</b><s>10s</s></i></td><td><i class="cell" style="background:#5c4d46;box-shadow:inset 0 0 0 1px #e8a057"
+                  title="Baie de Ste Marie 2026-08-11 11h — Passable"
+                  ><b>0,7</b><s>10s</s></i></td></tr></tbody>
+  </table>
+</div>
+
+<h2>Sinon</h2><div class="cards"><a class="card" href="previsions.html" style="--c:#7b6cf6">
+      <div class="c-d">mar 11 · 11 h</div>
+      <div class="c-s">Passe de Mato</div>
+      <div class="c-m">1,1 m · 9 s · 5 nds</div>
+      <div class="c-b">Excellent</div>
+      <div class="acc cmp">
+    <div class="acc-h" style="color:#e8c44a">3 modèles · <b>0,7–1,1&nbsp;m</b></div>
+    <div class="acc-bar"><i class="dot ref" style="left:87.0%"
+              title="meteo.nc — 1,1 m"></i><i class="dot" style="left:87.0%"
+              title="GFS — 1,1 m"></i><i class="dot" style="left:55.3%"
+              title="BOM — 0,7 m"></i></div>
+    
+  </div>
+    </a><a class="card" href="previsions.html" style="--c:#3dba8a">
+      <div class="c-d">jeu 6 · 8 h</div>
+      <div class="c-s">Ilot Ténia</div>
+      <div class="c-m">1,2 m · 14 s · 10 nds</div>
+      <div class="c-b">Très bien</div>
+      <div class="acc cmp">
+    <div class="acc-h" style="color:#e8a057">8 modèles · <b>0,4–1,2&nbsp;m</b></div>
+    <div class="acc-bar"><i class="dot ref" style="left:87.0%"
+              title="meteo.nc — 1,2 m"></i><i class="dot" style="left:56.5%"
+              title="MARC — 0,8 m"></i><i class="dot" style="left:68.8%"
+              title="MFWAM — 0,9 m"></i><i class="dot" style="left:60.9%"
+              title="GFS — 0,8 m"></i><i class="dot" style="left:60.9%"
+              title="BOM — 0,8 m"></i><i class="dot" style="left:28.8%"
+              title="ECMWF — 0,4 m"></i><i class="dot" style="left:38.8%"
+              title="AIFS — 0,5 m"></i><i class="dot" style="left:83.9%"
+              title="LOTUS — 1,2 m"></i></div>
+    
+  </div>
+    </a></div>
+
+<a class="cta" href="previsions.html">Voir le détail heure par heure →</a>
+
+<footer>
+  Houle et vent&nbsp;: <b>meteo.nc</b> — la même source que le bloc «&nbsp;Meilleurs
+  créneaux&nbsp;» des prévisions, pour que les deux pages ne se contredisent jamais.
+  Le score reprend ton calibrage par spot (🎯&nbsp;Calibrer)&nbsp;; le meilleur
+  créneau de chaque journée est retenu entre 6&nbsp;h et 17&nbsp;h.
+  <br>La réglette sous chaque créneau compare cette prévision à MARC, MFWAM, GFS, BOM,
+  ECMWF, AIFS et LOTUS&nbsp;: elle ne sert pas à moyenner les modèles mais à dire si on
+  peut s'engager. Points serrés&nbsp;= houle certaine, points étalés&nbsp;= à
+  reconfirmer la veille.
+  <br>Les spots marqués <sup style="color:var(--warm)">°</sup> n'ont <b>pas de calibrage
+  propre</b>&nbsp;: ils sont notés avec les seuils par défaut, plus permissifs que ceux de
+  Dumbéa ou Ténia. Leur score est donc optimiste — à recalibrer via 🎯&nbsp;Calibrer pour
+  que la comparaison entre spots ait un sens.
+  <br>Deux limites à garder en tête&nbsp;: meteo.nc ne fournit <b>pas de rafales</b>
+  (un créneau rafaleux peut donc paraître un cran meilleur qu'il ne l'est), et
+  au-delà de J+2 il ne sort plus que 4&nbsp;échéances par jour — l'heure affichée
+  est alors la meilleure <i>parmi celles disponibles</i>, pas forcément l'optimum.
+  <br>Page regénérée automatiquement chaque lundi matin — dernière fois le 05/08 à 17h31 (heure NC).
+</footer>
+
+</body>
+</html>

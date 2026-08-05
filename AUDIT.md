@@ -4829,3 +4829,200 @@ ici — pas le précache.
 
 Toujours exclus : `test_fuel.html`, `test_share.html`, `thibsurf_nav/old/`, et
 `extension/` (CSP du Manifest V3).
+
+---
+
+# 05/08/2026 — `semaine.html` : page hebdomadaire « meilleurs créneaux » (v66)
+
+Demande : une page très visuelle et très concise récapitulant les créneaux surfables
+de la semaine, **simple et gratuite**. Écarté d'emblée : la newsletter par email.
+Resend n'envoie à des tiers qu'avec un domaine vérifié en DNS (`onboarding@resend.dev`
+ne sert qu'à s'auto-envoyer), or le site est sur `thibsurf.github.io` — pas de domaine.
+Et aucun client mail ne rend `<canvas>` ni SVG de façon fiable, donc les graphes du
+site n'y voyageraient pas. Une page statique committée par Actions n'a ni domaine, ni
+quota, ni RGPD, ni inscription — et un lien se partage sur WhatsApp, ce qui est le
+vrai canal ici. L'email reste branchable plus tard sur le même générateur.
+
+## `assets/score-core.js` — le moteur de score sort de `previsions.html`
+
+`_DEFAULT_SCORE`, `SCORE_PARAMS` et `calcSurfScore()` (~175 lignes) extraits tels
+quels, commentaires compris. `loadScoreParams`/`saveScoreParams` restent dans la page :
+ils touchent `SPOTS`/`currentSpot`/`localStorage`, donc au navigateur seul.
+
+Chargé **sans `defer`**, avant le bloc inline, pour la même raison que `charts-core.js`
+et `tide-harmonics.js` : `SCORE_PARAMS` est lu ET réassigné par `loadScoreParams()`
+depuis ce bloc. Le `var` d'un `<script>` classique EST la globale, la réassignation
+depuis la page continue donc de fonctionner sans changement.
+
+Ajouts au passage : `surfPower(hs,T)` (½·Hs²·T, arrondi au dixième comme à l'affichage
+— les seuils utilisateurs sont réglés sur des valeurs affichées) et `powerBand(p)`,
+qui devient la **source unique** des bandes `<1 minuscule / 1-5 surfable / 5-15 bon /
+>15 costaud` ; `_pwrHoverInfo` les recopiait en dur, il l'appelle désormais.
+
+`compass()` est **volontairement dupliqué** depuis `settings-utils.js` : `calcSurfScore`
+s'en sert dans ses `details` et settings-utils n'existe pas côté Node. Définition
+inconditionnelle et non `if (typeof compass !== 'function')` — le `var` hoisté rendrait
+ce test toujours vrai, c'est un faux ami. settings-utils étant chargé après, sa
+déclaration écrase celle-ci ; les deux sont identiques, donc sans effet.
+
+Parité vérifiée sur la même entrée : navigateur `5/Excellent`, Node `5/Excellent`,
+`compass(120)='ESE'` des deux côtés.
+
+## `.github/scripts/build-week.mjs` — le générateur
+
+Zéro dépendance npm (`https`/`fs`/`vm` seulement), zéro secret : `shared_spots` et le
+Worker se lisent en anon. `--dry-run` écrit dans `/tmp` sans toucher au repo.
+
+`package.json` déclare `"type":"module"`, donc un `require()` de `score-core.js` sort en
+`ERR_REQUIRE_ESM`. Résolu en l'évaluant dans un contexte `vm` avec un faux `module` —
+4 lignes, et surtout le fichier reste un script classique utilisable tel quel par la
+balise `<script>` de `previsions.html`, ce qui est tout l'intérêt de l'extraction.
+
+**Découverte utile** : `shared_spots` (id `default`) contient les 7 spots *avec* leurs
+`scoreParams` calibrés. Le brief supposait un calibrage « déjà en base par compte » —
+c'est faux (`saveScoreParams` écrit dans `localStorage['surf-spots-nc']`), mais le push
+best-effort vers `shared_spots` fait qu'un batch serveur dispose quand même du vrai
+calibrage, sans authentification.
+
+### Choix de source : meteo.nc, pas MFWAM — écart mesuré
+
+Première version branchée sur `model_forecast_cache` (MFWAM houle + GFS vent, J+9).
+Abandonnée : elle **contredisait** le bloc « Meilleurs créneaux » de `previsions.html`,
+qui lit meteo.nc (`_fetchSpotFcRaw` → `/forecast` → `forecast/marine`). Mesuré sur
+Dumbéa, aux mêmes instants les 07 et 08/08 :
+
+| source | houle primaire | période |
+|--------|----------------|---------|
+| meteo.nc | 1,4 – 1,6 m | **10 s** |
+| MFWAM (`partitions[1]`) | 0,97 – 1,18 m | **6,7 – 7,1 s** |
+
+Ce n'est pas un arrondi, c'est un classement de spots différent. Deux pages liées dans
+le même menu qui se contredisent seraient pires qu'une page absente → bascule sur
+meteo.nc, même source, même normalisation (repli `primary_swell_height` → `wave_height`,
+12 lignes sur 40 le 05/08 ; vent déjà en `wind_speed_kt`, aucune conversion ajoutée).
+
+### Horizon réel de meteo.nc : 5 jours utiles, pas 7
+
+Mesuré, pas supposé — échéances par jour NC, `/forecast` sur Dumbéa le 05/08 :
+
+```
+J+1  2 5 8 11 14 17 20 23      J+4  5 11 17 23      J+7  5 11 (→ 0 diurne)
+J+2  2 5 8 11 17 23            J+5  5 11 17 23
+J+3  5 11 17 23                J+6  5 11 17 23  →  au-delà de J+5 : 0 créneau 6h-17h
+```
+
+Au-delà de J+2 il ne reste que 4 pas par jour, et à J+6/J+7 **plus aucune échéance
+diurne**. La grille est donc **dynamique** : seules les colonnes où au moins un spot a
+un créneau sont rendues, et le sous-titre annonce la période réellement couverte. Une
+grille à 7 colonnes dont 2 vides aurait l'air cassée.
+
+Fenêtre retenue 6 h – 17 h : 6 écarte le pas de 5 h (nuit noire en hiver austral, lever
+~6 h 20), 17 garde la dernière session avant le coucher. Bornes fixes plutôt qu'un vrai
+calcul d'éphémérides — au pas de 3 h, l'affiner ne changerait aucun créneau.
+
+### Rendu
+
+Trois blocs : un « créneau de la semaine » en gros (repli « semaine calme » si le
+meilleur score reste sous 3), la grille spots × jours, puis 2 cartes — 3 créneaux max,
+un seul par spot (trois fois le même spot serait un dump, pas une sélection).
+
+Les cellules **sous le seuil affichent quand même leur hauteur, en gris** : un point
+vide dirait « pas d'information » alors qu'on en a une, et utile — « 0,4 m, juste sous
+ton seuil » n'est pas « on ne sait pas ».
+
+`color-mix()` **retiré** : Safari 16.2 minimum, alors que le projet vise explicitement
+les vieux iOS. Sur ces appareils la propriété serait ignorée et toutes les cellules
+sortiraient transparentes — grille entièrement grise. Les fonds sont donc mélangés en
+Node et écrits en `#rrggbb` figé.
+
+Vérifié à 500 px : aucun débordement horizontal (le tableau scrolle dans son propre
+conteneur si besoin, jamais le `body`).
+
+## ⚠ Bug préexistant trouvé au passage — NON corrigé
+
+`findSessionsForSpot` (`previsions.html`) appelle **`loadScoreParams(spot)`**, mais
+`loadScoreParams()` **ne prend aucun paramètre** : elle lit `SPOTS[currentSpot]`.
+Le Best Session Finder score donc les 7 spots avec le calibrage du **spot actuellement
+sélectionné**, pas celui de chaque spot. Même faute à `triggerBSF` ligne ~7975
+(`loadScoreParams(SPOTS[activeSpotBackup])`, où l'argument attendu serait un index).
+
+Conséquence observée : le site classe Ténia « Excellent » le 07/08 là où son propre
+calibrage (`swellDirIdeal:197` contre une houle à 135°) le met un cran plus bas —
+c'est ce que fait `semaine.html`, qui applique bien les params de chaque spot.
+
+Non corrigé volontairement : le fix change le classement affiché sur la page
+principale, ce qui déborde de ce chantier. À trancher.
+
+## Vérifications
+
+- `node --check` sur `score-core.js`, le bloc inline de `previsions.html` et le
+  générateur : OK.
+- Diagnostic runtime headless (injection + `--dump-dom`, 14 s d'attente) :
+  `calcSurfScore/SCORE_PARAMS/surfPower/powerBand/load+saveScoreParams` tous présents,
+  `calc:5/Excellent`, `compass:ESE`, **0 erreur**.
+- Capture de `previsions.html` : bloc « Meilleurs créneaux » rendu normalement.
+- Génération réelle : 7 spots, 5 jours utiles, podium cohérent avec le bloc du site.
+
+`CACHE_NAME` v65 → **v66**, `score-core.js` ajouté à `ASSETS` (sans lui,
+`previsions.html` lèverait un `ReferenceError` au 1er lancement hors-ligne — la page
+entière). `semaine.html` **pas** précachée volontairement : réécrite chaque lundi, le
+stale-while-revalidate suffit. Lien « 📅 La semaine » ajouté au menu ☰.
+
+## Suite le même jour — bug `loadScoreParams` corrigé, et accord des modèles
+
+### ✗ `loadScoreParams` ignorait son argument — CORRIGÉ
+
+Le bug signalé plus haut est corrigé (délégué à un agent, diff relu et revérifié) :
+
+```js
+function loadScoreParams(spot) {
+  if (!spot) spot = SPOTS[currentSpot];   // sans argument : comportement inchangé
+```
+
+**7 appelants** lui passaient un objet spot et étaient donc silencieusement sans
+effet : `findSessionsForSpot` (7282), 7569, 7612, 7703, 7932, et les deux de
+`triggerBSF` (7975, 7979). 5 autres appellent sans argument — rétrocompatibles.
+Aucun n'y passe un index nu, vérifié un par un.
+
+Contrôle headless après correctif : `Dumbéa=6.5/120`, tous les autres `5.8/197`,
+et `loadScoreParams()` sans argument rend bien `6.5` (spot actif). 0 erreur.
+
+### ⚠ Seuls 2 spots sur 7 sont calibrés — le classement en est faussé
+
+Mesuré dans `shared_spots` : seuls **Dumbéa** (`minPwr` 6,5) et **Ténia** (5,8)
+portent des `scoreParams`. Les 5 autres tombent sur `_DEFAULT_SCORE`, très
+permissif (`minPwr` 1, `minHs` 0,4). Le podium favorise donc **mécaniquement les
+spots non calibrés** : Ouano sort « Excellent » là où Dumbéa plafonne, non parce
+qu'il est meilleur mais parce qu'il est jugé moins sévèrement.
+
+Non corrigeable côté code — c'est un calibrage à faire. Rendu **visible** : les
+spots concernés portent un `°` orangé et un nom en retrait dans la grille, avec la
+note correspondante en pied de page. Même notion que `isCalibrated` dans
+`_describeSession`.
+
+### Accord des modèles — la dispersion comme indicateur de confiance
+
+Ajouté sous le créneau vedette (réglette + liste nommée) et sous les 2 cartes
+(réglette compacte). Les modèles ne sont **pas** moyennés : la houle affichée reste
+celle de meteo.nc, les autres ne servent qu'à dire si le chiffre est solide.
+Lecture par la dispersion des points, pas par leur position.
+
+`swell_primary` est le kind commun aux 7 modèles comparés (MARC, MFWAM, GFS, BOM,
+ECMWF, AIFS, LOTUS), ce qui évite de lire les partitions propres à chacun. Grilles
+horaires inégales (3 h pour MARC/MFWAM/GFS/BOM, 6 h pour ECMWF/AIFS, décalée de 3 h
+pour LOTUS) → pas le plus proche, abandon au-delà de 3 h d'écart.
+
+**Filtre de fraîcheur des runs — indispensable.** Constaté sur Ouano le 05/08 :
+BOM/GFS/MARC avaient un run `2026080504`, mais AIFS/ECMWF/MFWAM n'avaient que celui
+du **03/08**. Les comparer donnait une étendue 0,4–1,6 m qui mesurait surtout l'âge
+des runs, pas la houle. Tout modèle dont le run le plus récent a plus de 24 h de
+retard sur le meilleur disponible est écarté (id suffixé `_YYYYMMDDHH`). Après
+filtrage : 4 modèles, 0,9–1,6 m — un désaccord réel, celui-là.
+
+Verdict sur l'étendue **relative à la médiane** (0,3 m ne veut pas dire la même
+chose sur 0,5 m que sur 3 m) : `<25 %` accord, `<55 %` accord moyen, au-delà
+désaccord. Un seul appel Supabase par créneau retenu — 3 requêtes, pas 35, et une
+grille où chaque cellule porterait sa dispersion serait illisible.
+
+Rendu compact des cartes : le verdict textuel y est **omis**, la couleur le porte —
+la phrase entière passait à la ligne en laissant le « m » orphelin.

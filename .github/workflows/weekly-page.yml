@@ -1,0 +1,52 @@
+name: Page hebdo « La semaine »
+
+# Régénère semaine.html à partir du cache de prévisions déjà en base et la
+# committe : GitHub Pages la sert ensuite en statique. Aucun secret, aucune API
+# payante, aucun quota — la clé anon Supabase suffit en lecture.
+#
+# Dimanche 19:00 UTC = lundi 06:00 en Nouvelle-Calédonie (UTC+11 toute l'année,
+# pas d'heure d'été). Le cron GitHub n'est pas à la minute près : quelques
+# minutes de retard sont sans importance ici.
+#
+# Dépendance amont : cache-model-forecasts.yml doit avoir tourné (il l'est 3×/j),
+# sinon la page se génère sur des données de la veille — dégradé, pas cassé.
+
+on:
+  schedule:
+    - cron: '0 19 * * 0'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-page
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Aucun `npm install` : le script n'utilise que https/fs/vm.
+      - name: Générer semaine.html
+        run: node .github/scripts/build-week.mjs
+
+      - name: Committer si la page a changé
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # --quiet + exit code : si rien n'a bougé (relance manuelle le même
+          # jour), on sort sans créer un commit vide.
+          if git diff --quiet -- semaine.html; then
+            echo "semaine.html inchangée — pas de commit"
+            exit 0
+          fi
+          git add semaine.html
+          git commit -m "chore(semaine): régénération automatique de la page hebdo"
+          git push
