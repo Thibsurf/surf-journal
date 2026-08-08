@@ -48,6 +48,12 @@ jobs:
   # Actions) : COPERNICUSMARINE_SERVICE_USERNAME, COPERNICUSMARINE_SERVICE_PASSWORD.
   mfwam:
     runs-on: ubuntu-latest
+    # Filet de sécurité dur : un run sain tient en ~2-3 min, une vraie panne
+    # d'auth Copernicus Marine échoue en ~20 min (retry interne à la lib, cf.
+    # le commentaire dans fetch_mfwam.py) — 25 min couvre large sans laisser
+    # un futur aléa retourner au comportement observé le 08/08/2026 (job
+    # resté bloqué 56 min avant d'échouer).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

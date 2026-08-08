@@ -40,7 +40,6 @@ import json
 import logging
 import sys
 import tempfile
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -266,36 +265,33 @@ def run():
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir) / "mfwam.nc"
         logger.info("Téléchargement Copernicus Marine (%s, %s -> %s)...", DATASET_ID, start_dt, end_dt)
-        # Retry avec backoff : la connexion au serveur d'AUTHENTIFICATION
-        # Copernicus Marine échoue par intermittence (CouldNotConnectToAuthentication
-        # System, observé le 02/08/2026 sur un run alors qu'un run identique venait
-        # de passer 4/4) — coupure transitoire côté service, pas un bug de code ni
-        # d'identifiants. Sans retry, un seul aléa réseau fait échouer tout le job
-        # jusqu'au prochain cron (~8h) et fige la donnée MF. 3 tentatives, backoff
-        # 10s/20s, suffisant pour absorber un blip sans allonger déraisonnablement
-        # un job qui tourne 3×/jour.
-        last_err = None
-        for attempt in range(1, 4):
-            try:
-                copernicusmarine.subset(
-                    dataset_id=DATASET_ID,
-                    variables=VARS,
-                    minimum_longitude=bbox[0], maximum_longitude=bbox[1],
-                    minimum_latitude=bbox[2], maximum_latitude=bbox[3],
-                    start_datetime=start_dt, end_datetime=end_dt,
-                    output_directory=str(tmpdir), output_filename=out_path.name,
-                    disable_progress_bar=True,
-                    overwrite=True,
-                )
-                last_err = None
-                break
-            except Exception as e:
-                last_err = e
-                logger.warning("subset() tentative %d/3 échouée: %s", attempt, e)
-                if attempt < 3:
-                    time.sleep(10 * attempt)
-        if last_err is not None:
-            logger.error("Copernicus Marine injoignable après 3 tentatives — abandon (%s)", last_err)
+        # UN SEUL essai, pas de boucle de retry ici : copernicusmarine/urllib3
+        # retentent déjà en interne (5 tentatives, connect timeout 60s chacune)
+        # avant de laisser remonter une exception — un run KO met donc déjà
+        # ~20 min à échouer sans rien ajouter de notre côté. Une ancienne boucle
+        # de 3 tentatives (backoff 10s/20s) avait été ajoutée le 02/08/2026 en
+        # pensant absorber un simple blip, mais mesuré le 08/08/2026 : une vraie
+        # panne d'auth.marine.copernicus.eu dure largement plus longtemps que 3×
+        # ce budget interne (job resté bloqué 56 min, 3/3 tentatives KO, alors
+        # qu'AUCUN échec observé depuis le 30/07/2026 n'a jamais recouvré sur une
+        # tentative suivante) — ça ne fait que tripler le temps perdu et retarder
+        # d'autant la notification d'échec, sans jamais réussir. Le vrai filet de
+        # sécurité est le cron 3×/jour (~8h plus tard, cf. le run qui a suivi et
+        # réussi normalement) : même logique que fetch_marc.py/fetch_ecmwf.py/
+        # fetch_arome.py, qui n'ont pas de retry du tout.
+        try:
+            copernicusmarine.subset(
+                dataset_id=DATASET_ID,
+                variables=VARS,
+                minimum_longitude=bbox[0], maximum_longitude=bbox[1],
+                minimum_latitude=bbox[2], maximum_latitude=bbox[3],
+                start_datetime=start_dt, end_datetime=end_dt,
+                output_directory=str(tmpdir), output_filename=out_path.name,
+                disable_progress_bar=True,
+                overwrite=True,
+            )
+        except Exception as e:
+            logger.error("Copernicus Marine injoignable — abandon (%s)", e)
             sys.exit(1)
         ds = xr.open_dataset(out_path)
 
