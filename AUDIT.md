@@ -5379,3 +5379,51 @@ testable en direct sur ce poste) mais un vrai décalage pour tout appareil
 hors NC. Unifié dans `_tideEventMs()`.
 
 `CACHE_NAME` v70 → **v71**.
+
+---
+
+# 09/08/2026 (suite 3) — passe vérification/technique/design : marée (marqueurs orphelins)
+
+Demande explicite de l'utilisateur : « fait une passe de vérification,
+amélioration technique et design » sur le périmètre marée + comparatif
+AROME/modèles (choisi par l'utilisateur parmi 3 options proposées).
+
+## Capture avant/après (headless, Edge)
+
+Screenshot de la vue « 1 jour » avant retouche : un point ROUGE isolé
+« 0.38m 10h34 » flottait au milieu du graphe, visuellement déconnecté de la
+courbe (qui à cet instant est visuellement bien plus haute). Anomalie
+détectée par simple lecture de la capture, pas par un test automatisé.
+
+## Root cause : 2 implémentations de dessin lisaient les tableaux BRUTS
+
+`drawDot` (tous les jours) et `drawNcDot` (jour affiché, entièrement
+redondante avec `drawDot` pour ce jour) parcouraient directement
+`ncT.high_tide`/`low_tide` avec `new Date(ev.time).getTime()` — sans passer
+ni par `_tideEventMs()` (ajouté la veille) ni par le nettoyage anti-doublon
+(`relevant`/`clean`) qui sert à tracer la courbe. Un évènement écarté comme
+quasi-doublon pour la courbe restait donc dessiné en marqueur — orphelin.
+
+## Correctif : `_tideCleanEvents()`, une seule source de vérité
+
+Extrait le nettoyage (parse via `_tideEventMs` + dédup quasi-doublons <10 min
++ alternance stricte pm/bm) en une fonction unique, réutilisée aux 3 endroits
+qui en avaient chacun leur copie (jour affiché, jours suivants du graphe
+multi-jours, ET maintenant le dessin des marqueurs). `drawDot`/`drawNcDot`
+remplacés par une seule boucle par jour. Bonus trouvé au passage : le repli
+harmonique (meteo.nc indisponible) ne dessinait des extrema QUE pour le jour
+0 sur un graphe 3j/7j — corrigé (`findTideExtrema` appelé par jour).
+
+Vérifié : capture après correctif — le point orphelin a disparu ; vue 7
+jours — 14 marqueurs (2/jour) tous exactement sur la courbe, alternance
+pm/bm propre visuellement sur toute la semaine ; non-régression — le
+scénario « trou de fetch » de la veille reste sur repli harmonique (pas de
+plateau plat). Net -31 lignes.
+
+## Verdict design (zone marée)
+
+Après correctif, le rendu est jugé bon en l'état (courbe claire, bandes
+jour/nuit, densité d'étiquettes lisible même à 7 jours) — pas de changement
+visuel supplémentaire fait ici, le vrai gain était la correction technique.
+
+`CACHE_NAME` v71 → **v72**.
