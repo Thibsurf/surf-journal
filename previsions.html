@@ -13054,6 +13054,21 @@ function tideShift(d){
   });
 }
 
+// Parse l'heure d'un évènement PM/BM meteo.nc : le suffixe Z est TANTÔT de l'UTC
+// véritable, TANTÔT un Z abusif posé sur une heure déjà locale NC (cf.
+// _tideNormalizeDay plus haut). Un timestamp SANS Z/offset est donc une heure
+// locale NC naïve qu'il faut convertir à la main (+'Z' puis -11h) — jamais
+// laisser le moteur JS la parser en heure locale de L'APPAREIL, qui dépend de
+// son fuseau et n'a aucune raison d'être UTC+11. Partagé entre les deux blocs
+// ci-dessous (jour affiché / jours suivants du graphe multi-jours) : ils
+// avaient chacun leur copie, celle des jours suivants avait été oubliée lors
+// d'un ajout ultérieur (trouvé le 09/08/2026 en creusant le signalement
+// utilisateur « les courbes de marée ne forment plus des sinusoïdes »).
+function _tideEventMs(t) {
+  return (t && !t.endsWith('Z') && !t.match(/[+-]\d{2}:\d{2}$/))
+    ? new Date(t+'Z').getTime() - 11*3600000
+    : new Date(t).getTime();
+}
 function renderTideCurve(offset) {
   // Jour calendaire NC (+11h puis getUTC*), jamais le fuseau système du navigateur —
   // sinon la marée, le soleil, le crépuscule et la lune peuvent afficher le mauvais
@@ -13078,11 +13093,7 @@ function renderTideCurve(offset) {
     var allEv = [];
     function addEv(arr, type) {
       (arr||[]).forEach(function(e){
-        var t = e.time;
-        var ms = (t && !t.endsWith('Z') && !t.match(/[+-]\d{2}:\d{2}$/))
-          ? new Date(t+'Z').getTime() - 11*3600000
-          : new Date(t).getTime();
-        allEv.push({ms:ms, h:e.tidal_height, type:type});
+        allEv.push({ms:_tideEventMs(e.time), h:e.tidal_height, type:type});
       });
     }
     addEv(ncT.high_tide,'pm'); addEv(ncT.low_tide,'bm');
@@ -13131,22 +13142,16 @@ function renderTideCurve(offset) {
             var t = Math.max(0, Math.min(1, (curMs - prev.ms) / span));
             h = prev.h + (next.h - prev.h) * (1 - Math.cos(Math.PI * t)) / 2;
           }
-        } else if(prev && !next) {
-          var pn = relevant.length;
-          if(pn >= 2) {
-            var e0=relevant[pn-2], e1=relevant[pn-1];
-            var span2=e1.ms-e0.ms;
-            var t2=(curMs-e0.ms)/span2;
-            h=e0.h+(e1.h-e0.h)*(1-Math.cos(Math.PI*Math.min(t2,2)))/2;
-          } else h=prev.h;
-        } else if(!prev && next) {
-          if(relevant.length>=2) {
-            var e0=relevant[0], e1=relevant[1];
-            var span2=e1.ms-e0.ms;
-            var t2=(curMs-e0.ms)/span2;
-            h=e1.h+(e0.h-e1.h)*(1-Math.cos(Math.PI*(1-t2)))/2;
-          } else h=next.h;
-        } else h=0;
+        } else {
+          // Pas d'encadrement complet par deux évènements réels (prev et/ou next
+          // manquant — bord de la fenêtre chargée, ou trou dans le fetch) :
+          // repli sur le modèle harmonique pour CETTE minute, jamais une ligne
+          // plate ni une extrapolation par réflexion (l'ancienne version pouvait
+          // repartir en arrière jusqu'à l'ancien extremum puis geler — signalé
+          // par l'utilisateur : "les courbes de marée... ne forment plus des
+          // sinusoïdes"). Le modèle est une somme de cosinus, toujours lisse.
+          h = tideH((curMs - TIDE_EPOCH.getTime()) / 3600000);
+        }
         h = Math.max(0, Math.min(3.5, h));
         ptsNC.push({min:m, h:+h.toFixed(3)});
       }
@@ -13227,8 +13232,8 @@ function renderTideCurve(offset) {
         var dayStartUTC_di = Date.UTC(ny2,nm2-1,nd2,0,0,0) - 11*3600000;
         var ncT_di = _ncTideCache.properties.tide;
         var allEv_di=[];
-        (ncT_di.high_tide||[]).forEach(function(e){allEv_di.push({ms:new Date(e.time).getTime(),h:e.tidal_height,type:'pm'});});
-        (ncT_di.low_tide||[]).forEach(function(e){allEv_di.push({ms:new Date(e.time).getTime(),h:e.tidal_height,type:'bm'});});
+        (ncT_di.high_tide||[]).forEach(function(e){allEv_di.push({ms:_tideEventMs(e.time),h:e.tidal_height,type:'pm'});});
+        (ncT_di.low_tide||[]).forEach(function(e){allEv_di.push({ms:_tideEventMs(e.time),h:e.tidal_height,type:'bm'});});
         allEv_di.sort(function(a,b){return a.ms-b.ms;});
         var rel_di = allEv_di.filter(function(e){return e.ms>=dayStartUTC_di-864e5&&e.ms<=dayStartUTC_di+2*864e5;});
         // Dédupliquer + valider alternance
@@ -13242,7 +13247,12 @@ function renderTideCurve(offset) {
           for(var kk=0;kk<rel_di.length;kk++){if(rel_di[kk].ms<=curMs_di)prev_di=rel_di[kk];else if(!next_di){next_di=rel_di[kk];break;}}
           var hh_di;
           if(prev_di&&next_di){var sp=next_di.ms-prev_di.ms;var tt=Math.max(0,Math.min(1,(curMs_di-prev_di.ms)/sp));hh_di=prev_di.h+(next_di.h-prev_di.h)*(1-Math.cos(Math.PI*tt))/2;}
-          else if(prev_di){hh_di=prev_di.h;}else if(next_di){hh_di=next_di.h;}else{hh_di=0;}
+          // Pas d'encadrement complet (trou de fetch pour ce jour dans la fenêtre
+          // glissante, ou bord de fenêtre) : repli harmonique, jamais une ligne
+          // plate (même correctif que le bloc "jour affiché" plus haut — c'était
+          // cette copie-ci, oubliée lors de son ajout, qui produisait les
+          // plateaux plats signalés par l'utilisateur).
+          else { hh_di = tideH((curMs_di - TIDE_EPOCH.getTime()) / 3600000); }
           dayPts.push({min:mm,h:Math.max(0,Math.min(3.5,+hh_di.toFixed(3)))});
         }
       } else {
