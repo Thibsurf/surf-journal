@@ -5201,3 +5201,62 @@ erreurs:aucune
 ```
 
 `CACHE_NAME` v67 → **v68**.
+
+---
+
+# 09/08/2026 — AROME/ECMWF/AIFS « archive introuvable » : id reconstruit sans le tag de run
+
+Question de l'utilisateur : « pourquoi y a-t-il des spots sans arome alors qu'on a
+un script pour extraire même si y'a pas windguru ? ».
+
+## Root cause : régression du 03/08 (dee40240), jamais propagée au front
+
+`dee40240` a suffixé les ids `aro_wind`/`ecmwf_wave`/`ecmwf_wind`/`aifs_wave`/
+`aifs_wind` par le tag de run (`_{YYYYMMDDHH}`) côté ingestion (pour garder
+plusieurs runs par date-cible, cf. entrée du 03/08). Mais **4 lectures** dans
+`previsions.html` reconstruisaient encore l'id SANS ce suffixe
+(`date_lat_lon_modèle_kind`) pour interroger `model_forecast_cache` par
+`.in('id', ids)` — comparaison stricte qui ne matche donc plus RIEN depuis
+6 jours :
+
+- `_fetchAromeArchive` (carte AROME du spot) + le comparatif vent « à la
+  station » (même id `_aro_wind`) : masqué pour les spots liés à un id
+  Windguru par le repli séquentiel déjà en place (`_loadAromeWidget`), mais
+  les spots **sans** Windguru (Passe de Dumbéa, Ilot Ténia…) se retrouvaient
+  avec « pas de correspondance Windguru pour ce spot » alors que l'archive
+  GRIB2 existait réellement — exactement le symptôme signalé.
+- `_fetchOpenDataArchive`/`_fetchOpenDataWind` (ECMWF+AIFS, houle ET vent) :
+  ces caches n'ont **aucun** repli live (décision assumée à leur intro,
+  30/07) → invisibles pour TOUS les spots depuis le 03/08, silencieusement,
+  sans qu'aucun message ne le signale (l'utilisateur ne l'avait pas encore
+  remarqué).
+
+## Correctif
+
+Dans les 4 fonctions : remplacement de la reconstruction d'id par un filtre
+sur les colonnes réelles de la table (`model`/`kind`/`date` + tolérance
+lat/lon ±0,05°, même tolérance que `_renderCachedModelsBlock`) — même
+principe que ce bloc, qui lui n'avait jamais eu ce bug puisqu'il a toujours
+filtré par colonnes. Ajout d'un dédoublonnage « run le plus frais
+(`issued_at`) par date » (plusieurs runs taggés coexistent désormais pour
+une même date-cible) pour ne pas mélanger les heures de deux runs dans la
+même série.
+
+## Vérification (headless, injection directe des fonctions)
+
+Spot de test « Passe de Dumbéa » (sans `wgId`) :
+
+```
+supabaseSdkLoaded=true
+aro: ok=true, model="AROME OM NC (archive GRIB2 Météo-France, décodée directement)", nHours=49
+ecmwfWave: ok=true, nPts=25
+aifsWind: ok=true, nPts=25
+```
+
+Confirmé aussi directement contre Supabase (requête équivalente à celle du
+code corrigé) : les ids réels en base portent bien le tag
+(`..._aro_wind_2026080800`, `..._ecmwf_wave_2026080806`…), et deux runs
+différents (00h/18h) coexistaient déjà pour certaines dates — le
+dédoublonnage n'était pas une précaution superflue.
+
+`CACHE_NAME` v68 → **v69** (previsions.html précaché).
