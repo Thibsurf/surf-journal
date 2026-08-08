@@ -5427,3 +5427,31 @@ jour/nuit, densité d'étiquettes lisible même à 7 jours) — pas de changemen
 visuel supplémentaire fait ici, le vrai gain était la correction technique.
 
 `CACHE_NAME` v71 → **v72**.
+
+## Second volet : comparatif AROME/modèles — vérifié sain, rien corrigé
+
+Même passe sur le second périmètre choisi par l'utilisateur. Contrairement à
+la marée, aucun bug trouvé ici — documenté pour éviter de ré-auditer ce même
+périmètre à l'identique dans une session future :
+
+- **Lecture de code** (`_loadAromeWidget`, `_fetchAromeArchive`,
+  `_renderAromeCompare`, `_renderAromeCardData`, `_aromeCmpShellHtml`,
+  `_drawAromeCompareFromCache`, `biasVsObs`/`dirBiasVsObs`) : code mature,
+  déjà abondamment itéré (nombreux commentaires « signalé par l'utilisateur,
+  corrigé le XX/XX »), pas de pattern « implémentation dupliquée qui lit des
+  données brutes » comme celui trouvé côté marée.
+- **Interactions** (headless, capture window.onerror/unhandledrejection/
+  console.error) : bascule spot↔station, afficher/masquer l'historique
+  archivé, masquer un modèle dans la légende, zoom molette sur le
+  graphe — **0 erreur** sur l'ensemble.
+- **Perf** : craignait un coût O(n×m) dans `biasVsObs`/`dirBiasVsObs`
+  (recherche du point le plus proche par boucle imbriquée) à pleine échelle
+  historique (8j). Mesuré en réel : ~135 points mesurés, 12-45 points par
+  modèle archivé, redessin < 1 ms — non significatif à ce volume, pas
+  d'optimisation nécessaire.
+- **Design** : rose de direction + légende + tableau + graphe vérifiés
+  lisibles sur capture (zoom rose incl.), palette de couleurs par modèle
+  (`MODEL_STYLE`) déjà volontairement synchronisée avec index.html (évite
+  qu'un même modèle change de couleur d'une page à l'autre, cf. commentaire
+  LOTUS). Rien de concret à améliorer sans re-designer un système déjà
+  déployé et validé au fil de nombreuses itérations passées.
