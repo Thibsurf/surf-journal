@@ -13069,6 +13069,41 @@ function _tideEventMs(t) {
     ? new Date(t+'Z').getTime() - 11*3600000
     : new Date(t).getTime();
 }
+// Assainit les évènements PM/BM meteo.nc d'UNE fenêtre : parse via _tideEventMs
+// (gère le format naïf/Z), déduplique les quasi-doublons même type à <10 min
+// d'écart (sur TOUT l'historique dispo, puis SEULEMENT ensuite fenêtré — un
+// quasi-doublon à cheval sur le bord de fenêtre doit quand même fusionner),
+// puis force l'ALTERNANCE stricte pm/bm (un jour dont le fetch a mal tourné
+// peut renvoyer deux pm à la suite : on garde le plus extrême). Résultat trié,
+// jamais deux évènements consécutifs du même type — ce qui garantit à la fois
+// une interpolation cosinus propre ET des marqueurs toujours SUR la courbe.
+// Centralisé ici le 09/08/2026 : ce nettoyage existait en 2 copies quasi
+// identiques (jour affiché / jours suivants du graphe multi-jours) tandis que
+// les marqueurs eux-mêmes étaient dessinés depuis les tableaux BRUTS non
+// nettoyés par 2 AUTRES implémentations séparées (drawDot/drawNcDot) — un
+// évènement écarté comme quasi-doublon pour tracer la courbe restait quand
+// même affiché en marqueur, visuellement déconnecté de la courbe réellement
+// tracée (bug repéré en vérifiant le rendu, cf. AUDIT.md 09/08/2026).
+function _tideCleanEvents(ncT, winStartMs, winEndMs) {
+  var all = [];
+  (ncT.high_tide||[]).forEach(function(e){ all.push({ms:_tideEventMs(e.time), h:e.tidal_height, type:'pm'}); });
+  (ncT.low_tide||[]).forEach(function(e){ all.push({ms:_tideEventMs(e.time), h:e.tidal_height, type:'bm'}); });
+  all.sort(function(a,b){return a.ms-b.ms;});
+  var seen = [];
+  all = all.filter(function(e){
+    var dup = seen.some(function(d){ return d.type===e.type && Math.abs(d.ms-e.ms)<10*60000; });
+    if(!dup) seen.push(e);
+    return !dup;
+  });
+  var win = all.filter(function(e){ return e.ms >= winStartMs && e.ms <= winEndMs; });
+  var clean = [];
+  win.forEach(function(e){
+    var last = clean[clean.length-1];
+    if(!last || last.type !== e.type) clean.push(e);
+    else if((e.type==='pm' && e.h >= last.h) || (e.type==='bm' && e.h <= last.h)) clean[clean.length-1] = e;
+  });
+  return clean;
+}
 function renderTideCurve(offset) {
   // Jour calendaire NC (+11h puis getUTC*), jamais le fuseau système du navigateur —
   // sinon la marée, le soleil, le crépuscule et la lune peuvent afficher le mauvais
@@ -13087,42 +13122,8 @@ function renderTideCurve(offset) {
   var usingNcTide = false;
 
   if (_ncTideCache && _ncTideCache.properties && _ncTideCache.properties.tide) {
-    var ncT = _ncTideCache.properties.tide;
     var dayStartUTC = Date.UTC(ty, tm-1, td, 0, 0, 0) - 11*3600000;
-
-    var allEv = [];
-    function addEv(arr, type) {
-      (arr||[]).forEach(function(e){
-        allEv.push({ms:_tideEventMs(e.time), h:e.tidal_height, type:type});
-      });
-    }
-    addEv(ncT.high_tide,'pm'); addEv(ncT.low_tide,'bm');
-    allEv.sort(function(a,b){return a.ms-b.ms;});
-
-    var seen = [];
-    allEv = allEv.filter(function(e){
-      var dup = seen.some(function(d){ return d.type===e.type && Math.abs(d.ms-e.ms)<10*60000; });
-      if(!dup) seen.push(e);
-      return !dup;
-    });
-
-    var relevant = allEv.filter(function(e){
-      return e.ms >= dayStartUTC - 86400000 && e.ms <= dayStartUTC + 2*86400000;
-    });
-
-    relevant.sort(function(a,b){return a.ms-b.ms;});
-    var clean = [];
-    relevant.forEach(function(e){
-      var last = clean[clean.length-1];
-      if(!last || last.type !== e.type) {
-        clean.push(e);
-      } else {
-        if((e.type==='pm' && e.h >= last.h) || (e.type==='bm' && e.h <= last.h)) {
-          clean[clean.length-1] = e;
-        }
-      }
-    });
-    relevant = clean;
+    var relevant = _tideCleanEvents(_ncTideCache.properties.tide, dayStartUTC - 86400000, dayStartUTC + 2*86400000);
 
     if (relevant.length >= 2) {
       usingNcTide = true;
@@ -13230,16 +13231,7 @@ function renderTideCurve(offset) {
       if(_ncTideCache && _ncTideCache.properties && _ncTideCache.properties.tide) {
         // Réutiliser les données NC déjà chargées (elles couvrent plusieurs jours)
         var dayStartUTC_di = Date.UTC(ny2,nm2-1,nd2,0,0,0) - 11*3600000;
-        var ncT_di = _ncTideCache.properties.tide;
-        var allEv_di=[];
-        (ncT_di.high_tide||[]).forEach(function(e){allEv_di.push({ms:_tideEventMs(e.time),h:e.tidal_height,type:'pm'});});
-        (ncT_di.low_tide||[]).forEach(function(e){allEv_di.push({ms:_tideEventMs(e.time),h:e.tidal_height,type:'bm'});});
-        allEv_di.sort(function(a,b){return a.ms-b.ms;});
-        var rel_di = allEv_di.filter(function(e){return e.ms>=dayStartUTC_di-864e5&&e.ms<=dayStartUTC_di+2*864e5;});
-        // Dédupliquer + valider alternance
-        var seen_di=[]; rel_di=rel_di.filter(function(e){var dup=seen_di.some(function(d){return d.type===e.type&&Math.abs(d.ms-e.ms)<10*60000;});if(!dup)seen_di.push(e);return !dup;});
-        var cl_di=[]; rel_di.forEach(function(e){var last=cl_di[cl_di.length-1];if(!last||last.type!==e.type){cl_di.push(e);}else if((e.type==='pm'&&e.h>=last.h)||(e.type==='bm'&&e.h<=last.h)){cl_di[cl_di.length-1]=e;}});
-        rel_di=cl_di;
+        var rel_di = _tideCleanEvents(_ncTideCache.properties.tide, dayStartUTC_di - 864e5, dayStartUTC_di + 2*864e5);
         dayPts=[];
         for(var mm=0;mm<=1440;mm+=3){
           var curMs_di=dayStartUTC_di+mm*60000;
@@ -13375,33 +13367,42 @@ function renderTideCurve(offset) {
     }
   }
 
-  // Points extrêmes sur tous les jours
+  // Points extrêmes — UNE SEULE passe pour tous les jours affichés, qui
+  // réutilise les évènements NETTOYÉS (_tideCleanEvents, même filtre que pour
+  // tracer la courbe) plutôt que les tableaux BRUTS meteo.nc : avant ce
+  // chantier, ce bloc et un second bloc plus bas (drawNcDot, redondant pour
+  // le jour 0) relisaient chacun les tableaux non dédupliqués sans passer par
+  // _tideEventMs — un évènement écarté comme quasi-doublon pour tracer la
+  // courbe restait affiché en marqueur, visuellement déconnecté de la courbe
+  // réellement tracée (bug repéré en vérifiant le rendu, AUDIT.md 09/08/2026).
   for(var dpe=0;dpe<nDays;dpe++){
     var dpeDate=new Date(tgt.getTime()+dpe*864e5);
     var dpeY=dpeDate.getUTCFullYear(), dpeM=dpeDate.getUTCMonth()+1, dpeD=dpeDate.getUTCDate();
     var dpeDSU=Date.UTC(dpeY,dpeM-1,dpeD,0,0,0)-11*3600000;
-    if(usingNcTide&&_ncTideCache&&_ncTideCache.properties&&_ncTideCache.properties.tide){
-      var ncTd=_ncTideCache.properties.tide;
-      function drawDot(arr,col,dir2){
-        (arr||[]).forEach(function(ev){
-          var ms2=new Date(ev.time).getTime();
-          var mn2=Math.round((ms2-dpeDSU)/60000);
-          if(mn2<-30||mn2>1470) return;
-          var px3=txM(dpe*1440+Math.max(0,mn2)), py3=tyH(ev.tidal_height);
-          ctx.beginPath(); ctx.arc(px3,py3,5,0,2*Math.PI);
-          ctx.fillStyle=col; ctx.fill();
-          ctx.strokeStyle='rgba('+_panelGridRGB()+',0.5)'; ctx.lineWidth=1.5; ctx.stroke();
-          ctx.font='bold 9px DM Sans,sans-serif'; ctx.fillStyle=col; ctx.textAlign='center';
-          ctx.fillText(ev.tidal_height.toFixed(2)+'m',px3,dir2==='up'?py3-9:py3+15);
-          var hNC=Math.floor((ms2+11*3600000)%(86400000)/3600000);
-          var minNC2=Math.floor(((ms2+11*3600000)%3600000)/60000);
-          ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle=_panelLight()?'rgba(60,80,95,0.8)':'rgba(255,255,255,0.4)';
-          ctx.fillText(String(hNC).padStart(2,'0')+'h'+String(minNC2).padStart(2,'0'),px3,dir2==='up'?py3-19:py3+25);
-        });
-      }
-      drawDot(ncTd.high_tide,_panelLight()?'#1a729b':'#4fa3c7','up');
-      drawDot(ncTd.low_tide,_panelLight()?'#c73e3e':'#e05c5c','down');
+    var dpeExtr;
+    if(usingNcTide && _ncTideCache && _ncTideCache.properties && _ncTideCache.properties.tide){
+      dpeExtr = _tideCleanEvents(_ncTideCache.properties.tide, dpeDSU-864e5, dpeDSU+2*864e5)
+        .filter(function(e){ return e.ms>=dpeDSU && e.ms<dpeDSU+86400000; })
+        .map(function(e){ return {min:Math.round((e.ms-dpeDSU)/60000), h:e.h, type:e.type}; });
+    } else {
+      // Repli harmonique (token NC expiré, ou ce jour hors couverture meteo.nc) :
+      // pts n'est déjà calculé que pour le jour 0 affiché, les suivants doivent
+      // être régénérés — sinon un graphe 3j/7j perdait tous ses triangles PM/BM
+      // au-delà du 1er jour dès que meteo.nc était indisponible.
+      dpeExtr = findTideExtrema(dpe===0 ? pts : tidePointsForDate(dpeY,dpeM,dpeD));
     }
+    dpeExtr.forEach(function(e){
+      var px3=txM(dpe*1440+e.min), py3=tyH(e.h);
+      var col = e.type==='pm' ? (_panelLight()?'#1a729b':'#4fa3c7') : (_panelLight()?'#c73e3e':'#e05c5c');
+      var dir2 = e.type==='pm' ? 'up' : 'down';
+      ctx.beginPath(); ctx.arc(px3,py3,5,0,2*Math.PI);
+      ctx.fillStyle=col; ctx.fill();
+      ctx.strokeStyle='rgba('+_panelGridRGB()+',0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.font='bold 9px DM Sans,sans-serif'; ctx.fillStyle=col; ctx.textAlign='center';
+      ctx.fillText(e.h.toFixed(2)+'m',px3,dir2==='up'?py3-9:py3+15);
+      ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle=_panelLight()?'rgba(60,80,95,0.8)':'rgba(255,255,255,0.4)';
+      ctx.fillText(String(e.min/60|0).padStart(2,'0')+'h'+String(e.min%60).padStart(2,'0'),px3,dir2==='up'?py3-19:py3+25);
+    });
   }
 
   // ═══ HOVER INTERACTIF ═══
@@ -13482,38 +13483,6 @@ function renderTideCurve(offset) {
     });
   }
 
-  // Points extrêmes
-  if(usingNcTide){
-    function drawNcDot(arr,col,dir){
-      (arr||[]).forEach(function(ev){
-        var ms=new Date(ev.time).getTime();
-        var dayStartUTC2=Date.UTC(ty,tm-1,td,0,0,0)-11*3600000;
-        var minNC=Math.round((ms-dayStartUTC2)/60000);
-        if(minNC<0||minNC>1440) return;
-        var px2=txM(minNC), py2=tyH(ev.tidal_height);
-        ctx.beginPath(); ctx.arc(px2,py2,5,0,2*Math.PI);
-        ctx.fillStyle=col; ctx.fill();
-        ctx.beginPath(); ctx.arc(px2,py2,5,0,2*Math.PI);
-        ctx.strokeStyle='rgba('+_panelGridRGB()+',0.6)'; ctx.lineWidth=1.5; ctx.stroke();
-        ctx.font='bold 9px DM Sans,sans-serif'; ctx.fillStyle=col; ctx.textAlign='center';
-        ctx.fillText(ev.tidal_height.toFixed(2)+'m',px2,dir==="up"?py2-10:py2+16);
-      });
-    }
-    var ncT2=_ncTideCache.properties.tide;
-    drawNcDot(ncT2.high_tide,_panelLight()?'#1a729b':'#4fa3c7','up');
-    drawNcDot(ncT2.low_tide,_panelLight()?'#c73e3e':'#e05c5c','down');
-  } else {
-    extr.forEach(function(e){
-      // tx()/ty2() n'ont jamais existé (ReferenceError) : la branche de repli
-      // harmonique — celle qui sert justement quand le cache marée meteo.nc est
-      // vide (token expiré) — plantait donc au tracé des extremes. Les
-      // projections réelles sont txM()/tyH(), comme la branche NC juste au-dessus.
-      var px2=txM(e.min), py2=tyH(e.h);
-      ctx.beginPath(); ctx.arc(px2,py2,5,0,2*Math.PI);
-      ctx.fillStyle=e.type==='pm'?(_panelLight()?'#1a729b':'#4fa3c7'):(_panelLight()?'#c73e3e':'#e05c5c'); ctx.fill();
-      ctx.strokeStyle='rgba('+_panelGridRGB()+',0.5)'; ctx.lineWidth=1.5; ctx.stroke();
-    });
-  }
 }
 
 // ─── SCORE PECHE ─────────────────────────────────────────────────────────
