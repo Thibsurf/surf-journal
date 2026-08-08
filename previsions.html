@@ -4743,18 +4743,29 @@ function _fetchOpenDataArchive(cacheKey, spot) {
   return (async function() {
     try {
       if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
-      var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
-      var ids = [], nowA = new Date();
+      var dates = [], nowA = new Date();
       // -1..+6j : couvre la fenêtre écrite par fetch_ecmwf.py (steps 0-144h,
       // cf. son docstring) avec une marge d'un jour de chaque côté.
       for (var dd = -1; dd <= 6; dd++) {
         var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000);
-        ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_' + cacheKey + '_wave');
+        dates.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0'));
       }
-      var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+      // Filtre par colonnes, pas par id reconstruit — depuis le tag de run ajouté
+      // le 03/08/2026 (dee40240, id suffixé par `_{tag}`), l'id `..._wave` bâti ici
+      // ne correspondait plus JAMAIS à une ligne réelle, et ce cache n'a pas de
+      // repli live (cf. commentaire plus haut) : ECMWF/AIFS houle étaient donc
+      // invisibles pour TOUS les spots depuis cette date (signalé par
+      // l'utilisateur le 09/08/2026, à l'origine à propos d'AROME — même bug).
+      var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at')
+        .eq('model', cacheKey).eq('kind', 'wave').in('date', dates)
+        .gte('lat', spot.lat - 0.05).lte('lat', spot.lat + 0.05)
+        .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05)
+        .order('issued_at', { ascending: false });
       if (!r || !r.data || !r.data.length) return null;
+      var seenDate = {}, rows = [];
+      r.data.forEach(function(row) { if (!seenDate[row.date]) { seenDate[row.date] = true; rows.push(row); } });
       var primary = [];
-      r.data.forEach(function(row) {
+      rows.forEach(function(row) {
         var p = row.date.split('-');
         (row.hours || []).forEach(function(hh) {
           // hh.hour == null : même garde que _fetchEcmwfWind contre une ligne
@@ -9620,21 +9631,30 @@ async function _fetchWindAtStation(stLat, stLon) {
     (async function(){
       try {
         if (typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return;
-        var la = stLat.toFixed(3), lo = stLon.toFixed(3);
-        var ids = [], nowSt = new Date();
+        var dates = [], nowSt = new Date();
         for (var dd = -8; dd <= 2; dd++) {
           var d0 = new Date(nowSt.getTime() + dd * 864e5 + 11 * 3600000); // jour NC-local
-          ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_aro_wind');
+          dates.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0'));
         }
-        var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
-        if (r && r.data) r.data.forEach(function(row) {
-          var p = row.date.split('-');
-          (row.hours || []).forEach(function(hh) {
-            if (!hh || hh.h == null || hh.val == null) return;
-            var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.h), Math.round((hh.h % 1) * 60)) - 11 * 3600000;
-            out.aro.push({ ms: ms, kt: hh.val, dir: hh.dir, gust: hh.gust });
+        // Filtre par colonnes, pas par id reconstruit — même correctif que
+        // _fetchAromeArchive (id taggé depuis le 03/08/2026, cf. son commentaire).
+        var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at')
+          .eq('model', 'aro').eq('kind', 'wind').in('date', dates)
+          .gte('lat', stLat - 0.05).lte('lat', stLat + 0.05)
+          .gte('lon', stLon - 0.05).lte('lon', stLon + 0.05)
+          .order('issued_at', { ascending: false });
+        if (r && r.data) {
+          var seenDate = {};
+          r.data.forEach(function(row) {
+            if (seenDate[row.date]) return; seenDate[row.date] = true;
+            var p = row.date.split('-');
+            (row.hours || []).forEach(function(hh) {
+              if (!hh || hh.h == null || hh.val == null) return;
+              var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.h), Math.round((hh.h % 1) * 60)) - 11 * 3600000;
+              out.aro.push({ ms: ms, kt: hh.val, dir: hh.dir, gust: hh.gust });
+            });
           });
-        });
+        }
       } catch(e) {}
     })()
   ]);
@@ -9807,16 +9827,32 @@ async function _loadAromeWidget(wgId, spot, station) {
 async function _fetchAromeArchive(spot) {
   try {
     if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
-    var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
-    var ids = [], nowA = new Date();
+    var dates = [], nowA = new Date();
     for (var dd = -1; dd <= 2; dd++) {
       var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000); // jour NC-local
-      ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_aro_wind');
+      dates.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0'));
     }
-    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+    // Filtre par colonnes (date/model/kind/lat/lon), pas par id reconstruit : depuis
+    // le tag de run ajouté le 03/08/2026 (dee40240, id suffixé par `_{tag}`), l'id
+    // `date_lat_lon_aro_wind` bâti ici ne correspondait plus JAMAIS à une ligne
+    // réelle -> cette fonction renvoyait toujours null, masqué pour les spots liés
+    // Windguru par le repli séquentiel juste après (_loadAromeWidget), mais les
+    // spots SANS Windguru se retrouvaient sans AROME alors que l'archive existait
+    // bel et bien (signalé par l'utilisateur le 09/08/2026). Tolérance lat/lon
+    // ±0,05° : même pattern que _renderCachedModelsBlock (dérive possible entre
+    // écriture cron et lecture). order+dedup : plusieurs runs par date coexistent
+    // désormais (id taggé) — on garde le plus frais (issued_at) par date pour ne
+    // pas mélanger les heures de deux runs dans la même série.
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at')
+      .eq('model', 'aro').eq('kind', 'wind').in('date', dates)
+      .gte('lat', spot.lat - 0.05).lte('lat', spot.lat + 0.05)
+      .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05)
+      .order('issued_at', { ascending: false });
     if (!r || !r.data || !r.data.length) return null;
+    var seenDate = {}, rows = [];
+    r.data.forEach(function(row) { if (!seenDate[row.date]) { seenDate[row.date] = true; rows.push(row); } });
     var pts = [];
-    r.data.forEach(function(row) {
+    rows.forEach(function(row) {
       var p = row.date.split('-');
       (row.hours || []).forEach(function(hh) {
         if (!hh || hh.h == null) return;
@@ -10217,16 +10253,23 @@ function _fetchOpenDataWind(cacheKey, spot) {
   return (async function() {
     try {
       if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return [];
-      var la = spot.lat.toFixed(3), lo = spot.lon.toFixed(3);
-      var ids = [], nowA = new Date();
+      var dates = [], nowA = new Date();
       for (var dd = -1; dd <= 6; dd++) {
         var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000);
-        ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_' + cacheKey + '_wind');
+        dates.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0'));
       }
-      var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+      // Filtre par colonnes, pas par id reconstruit — même correctif que
+      // _fetchOpenDataArchive ci-dessus (id taggé depuis le 03/08/2026).
+      var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at')
+        .eq('model', cacheKey).eq('kind', 'wind').in('date', dates)
+        .gte('lat', spot.lat - 0.05).lte('lat', spot.lat + 0.05)
+        .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05)
+        .order('issued_at', { ascending: false });
       if (!r || !r.data || !r.data.length) return [];
+      var seenDate = {}, rows = [];
+      r.data.forEach(function(row) { if (!seenDate[row.date]) { seenDate[row.date] = true; rows.push(row); } });
       var pts = [];
-      r.data.forEach(function(row) {
+      rows.forEach(function(row) {
         var p = row.date.split('-');
         (row.hours || []).forEach(function(hh) {
           // hh.hour == null : garde contre une ligne d'une ANCIENNE archive
