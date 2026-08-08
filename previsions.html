@@ -10462,18 +10462,46 @@ async function _renderAromeCompare(j) {
       // Sans ça, le badge de corrélation n'avait quasi aucune chance d'avoir
       // 3 points concordants pour BOM/ECMWF (fenêtre live seulement).
       if (await _hasModelCacheTable()) {
-        var mIds = [];
-        ['gfs', 'bom', 'ecmwf', 'aifs', 'marc'].forEach(function(mk) { dayIds.forEach(function(ds) { mIds.push(ds + '_' + mk + '_wind'); }); });
-        var mRes = await _tokenSbClient.from('model_forecast_cache').select('id,hours').in('id', mIds);
-        if (mRes && mRes.data) mRes.data.forEach(function(row) {
-          var parts = row.id.split('_'); // ds_la_lo_model_kind
-          var p = parts[0].split('-'), mk = parts[3];
-          var dst = mk === 'gfs' ? gfsCachePts : mk === 'bom' ? bomCachePts : mk === 'ecmwf' ? ecmwfCachePts : mk === 'aifs' ? aifsCachePts : marcCachePts;
-          (row.hours || []).forEach(function(hhh) {
-            if (!hhh || hhh.h == null || hhh.val == null) return;
-            var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)) - 11 * 3600000;
-            if (ms > now) return;
-            dst.push({ ms: ms, kt: hhh.val });
+        var mDates = dayIds.map(function(ds) { return ds.split('_')[0]; });
+        // Filtre par colonnes, pas par id reconstruit (id `date_lat_lon_modele_wind`
+        // SANS tag) : gfs/bom/marc portent un tag de run depuis toujours
+        // (cache-model-forecasts.mjs/_cacheModelPoints), ecmwf/aifs depuis le
+        // 03/08/2026 (dee40240) — cette lecture ne matchait donc jamais rien pour
+        // AUCUN des 5 modèles. Trouvé le 09/08/2026 en vérifiant que ce comparatif
+        // reste bien indépendant d'AROME (question de l'utilisateur) : bug distinct
+        // de celui corrigé la veille sur _fetchAromeArchive/_fetchOpenDataArchive
+        // (même famille, mais cette lecture-ci n'avait jamais eu d'id sans tag
+        // valide, pas seulement depuis le 03/08).
+        // UNE REQUÊTE PAR MODÈLE (pas un seul .in('model', [...])) : testé le
+        // 09/08/2026, les 5 modèles + les 9 dates + la plage lat/lon DANS LA MÊME
+        // requête déclenchent un statement timeout côté Supabase (table non
+        // purgée, cf. AUDIT.md 03/08 — compaction P1 pas encore activée) ; le même
+        // filtre dates+lat/lon limité à UN modèle répond en ~1-2s (vérifié) — 5
+        // requêtes en parallèle (Promise.all) restent donc plus sûres qu'une
+        // grosse requête, pour le même total réseau.
+        var mModels = ['gfs', 'bom', 'ecmwf', 'aifs', 'marc'];
+        var mResAll = await Promise.all(mModels.map(function(mk) {
+          return _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at')
+            .eq('model', mk).eq('kind', 'wind').in('date', mDates)
+            .gte('lat', s0.lat - 0.05).lte('lat', s0.lat + 0.05)
+            .gte('lon', s0.lon - 0.05).lte('lon', s0.lon + 0.05)
+            .order('issued_at', { ascending: false })
+            .then(function(res) { return { mk: mk, data: res && res.data }; })
+            .catch(function() { return { mk: mk, data: null }; });
+        }));
+        mResAll.forEach(function(entry) {
+          if (!entry.data) return;
+          var dst = entry.mk === 'gfs' ? gfsCachePts : entry.mk === 'bom' ? bomCachePts : entry.mk === 'ecmwf' ? ecmwfCachePts : entry.mk === 'aifs' ? aifsCachePts : marcCachePts;
+          var seenDate = {};
+          entry.data.forEach(function(row) {
+            if (seenDate[row.date]) return; seenDate[row.date] = true;
+            var p = row.date.split('-');
+            (row.hours || []).forEach(function(hhh) {
+              if (!hhh || hhh.h == null || hhh.val == null) return;
+              var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)) - 11 * 3600000;
+              if (ms > now) return;
+              dst.push({ ms: ms, kt: hhh.val });
+            });
           });
         });
       }
