@@ -5260,3 +5260,60 @@ différents (00h/18h) coexistaient déjà pour certaines dates — le
 dédoublonnage n'était pas une précaution superflue.
 
 `CACHE_NAME` v68 → **v69** (previsions.html précaché).
+
+---
+
+# 09/08/2026 (suite) — même famille de bug, 5e site (badge de corrélation)
+
+Question de suivi de l'utilisateur : « et si arome (le tableau) est pas
+chargé les courbes de vent des autres modèles ne sont pas accessibles/
+visibles ? ».
+
+## Réponse de fond, vérifiée : non, elles restent visibles
+
+`_renderAromeCompare(j)` accepte déjà `j = null` explicitement (commentaire
+en place : « le reste du comparatif doit s'afficher quand même, avec juste
+une série AROME vide plutôt qu'un throw ») — les autres modèles (obs/nc/gfs/
+bom/ecmwf/aifs/marc/lotus) sont fetchés indépendamment, AVANT même de savoir
+si `j` est disponible. Comportement déjà correct, issu d'un bug similaire
+signalé et corrigé avant cette session.
+
+Vérifié en forçant le scénario en headless sur la page réelle (Passe de
+Boulari, sans wgId) : `_aromeData = null` + `_renderAromeCompare(null)`
+appelés directement → le canvas `#arome-cmp` dessine **93 825 px non
+transparents** sur 135 660 (646×210), et `#arome-cmp-st` affiche une vraie
+station (« Phare Amédée · ~4.8 km du spot ») — la figure est bien complète
+sans AROME.
+
+## Mais en vérifiant, un 5e site avec le MÊME bug d'id (plus ancien, plus large)
+
+En auditant tous les points d'accès à `model_forecast_cache` (14 au total)
+pour être sûr de ne rien avoir raté la veille : le bloc « points historiques »
+de `_renderAromeCompare` (alimente `gfsCachePts`/`bomCachePts`/
+`ecmwfCachePts`/`aifsCachePts`/`marcCachePts`, sert au badge de corrélation)
+construisait aussi un id `date_lat_lon_modele_wind` **sans tag**, mais cette
+fois pour LES 5 MODÈLES — invisible au grep de la veille (`_gfs_wind` etc. en
+sous-chaîne littérale) car l'id était bâti via `mk + '_wind'` avec `mk`
+variable de boucle.
+
+Différence importante avec le bug de la veille : gfs/bom/marc ont un tag de
+run **depuis toujours** (`cache-model-forecasts.mjs`/`_cacheModelPoints`,
+antérieur à `dee40240`) — cette lecture-ci n'a donc probablement JAMAIS
+fonctionné, pas seulement depuis le 03/08. Confirmé contre la base réelle :
+`..._gfs_wind_2026080813`, `..._bom_wind_...`, `..._marc_wind_...` portent
+tous un tag.
+
+### Piège de perf trouvé en vérifiant le correctif
+
+Premier correctif (filtre colonnes `model IN (...)` + `date IN (...)` + plage
+lat/lon, tout dans une seule requête) : **timeout côté Supabase**
+(`57014 canceling statement due to statement timeout`) — la table
+`model_forecast_cache` n'est pas purgée (compaction P1 pas encore activée,
+cf. entrée du 03/08), et ce croisement à 3 filtres est trop coûteux. Testé
+isolément : 1 modèle + 9 dates + plage lat/lon = 1,6 s ; 5 modèles + 1 date +
+plage = 1,1 s ; 5 modèles + 9 dates SANS plage = 0,4 s ; les trois ensemble =
+timeout. Corrigé en repassant à **5 requêtes parallèles, une par modèle**
+(`Promise.all`) — même filtre dates+lat/lon mais un seul modèle à la fois :
+~2,1 s au total pour les 5 en parallèle, aucun timeout.
+
+`CACHE_NAME` v69 → **v70**.
