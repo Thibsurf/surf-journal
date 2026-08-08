@@ -5317,3 +5317,65 @@ timeout. Corrigé en repassant à **5 requêtes parallèles, une par modèle**
 ~2,1 s au total pour les 5 en parallèle, aucun timeout.
 
 `CACHE_NAME` v69 → **v70**.
+
+---
+
+# 09/08/2026 (suite 2) — courbe de marée : plus une sinusoïde, parfois
+
+Signalement utilisateur : « parfois les courbes de marées de la page
+prévisions ne forment plus des sinusoïdes ».
+
+## Deux défauts dans `renderTideCurve`, quand la vraie donnée n'encadre pas complètement une minute
+
+La courbe réelle (meteo.nc) interpole en cosinus ENTRE deux évènements PM/BM
+consécutifs — ça, c'est correct et ça reste une belle sinusoïde. Le problème
+est aux BORDS : quand une minute donnée n'a pas à la fois un évènement avant
+ET après elle (bord de la fenêtre de fetch, ou un jour dont le fetch a raté
+dans la fenêtre glissante de 9 requêtes — `_tideFetchRange` récupère
+`[offset-1 .. offset+nDays]` jour par jour, chacun pouvant échouer
+indépendamment) :
+
+- **Jour affiché (di=0)** : extrapolait par réflexion cosinus au-delà du
+  dernier évènement connu (`t` autorisé jusqu'à 2× l'intervalle) — ça
+  repart en arrière vers l'ancien extremum puis **gèle** au-delà. Une
+  fausse sinusoïde qui rebrousse chemin, pas un vrai signal.
+- **Jours suivants (di>0, boucle DUPLIQUÉE pour le graphe 3j/7j)** : encore
+  plus direct — une **ligne plate** à la hauteur du dernier évènement connu
+  dès qu'il n'y avait pas de "next" (ou l'inverse). C'est très probablement
+  celle-ci que l'utilisateur a vue : le graphe 7j est le mode le plus
+  exposé aux trous de fetch (9 requêtes réseau indépendantes par rendu).
+
+Prouvé avant correctif avec un scénario synthétique (Node, hors page — un
+jour sans aucun évènement propre dans la fenêtre) : **481 échantillons à
+1.400 m pile, variation 0.000 m sur toute la journée**.
+
+## Correctif : repli sur le modèle harmonique, jamais une ligne plate
+
+Les deux branches remplacées par un appel à `tideH()` (déjà le repli du
+site quand AUCUNE donnée réelle n'existe pour tout le jour) pour la minute
+concernée seulement — une somme de cosinus, donc TOUJOURS lisse. Un
+helper `_tideEventMs()` factorise au passage le parsing des horaires
+(partagé entre les deux blocs, qui avaient chacun leur copie).
+
+Vérifié après correctif :
+- Même scénario synthétique : **variation 1.025 m, 377 valeurs distinctes**
+  (au lieu de 0.000 m / 1 valeur).
+- Headless sur la page réelle, trou simulé sur le jour+3 d'un graphe 7j :
+  la colonne du jour concerné garde **116 px de variation Y** sur le
+  canvas (18 positions distinctes) au lieu d'un plateau.
+- Cas normal (bien encadré) : valeurs inchangées, sanity-check passé.
+
+## Bonus trouvé au passage : parsing d'horaire divergent entre les deux copies
+
+La boucle `di>0` parsait les horaires PM/BM avec `new Date(e.time)` brut —
+or `_tideNormalizeDay` documente qu'un timestamp SANS suffixe Z/offset est
+un cas **normal** (heure locale NC naïve), que `di===0` gère déjà
+explicitement (+'Z' puis -11h) mais que `di>0` ne gérait pas : sur un
+timestamp naïf, `new Date(t)` est interprété en heure locale de
+**l'appareil**, pas NC. Invisible dans ce sandbox (fuseau système figé à
+UTC+11, coïncide avec NC — confirmé, et `TZ=` en préfixe Bash ne parvient
+pas à le surcharger pour le binaire Node Windows utilisé ici, donc pas
+testable en direct sur ce poste) mais un vrai décalage pour tout appareil
+hors NC. Unifié dans `_tideEventMs()`.
+
+`CACHE_NAME` v70 → **v71**.
