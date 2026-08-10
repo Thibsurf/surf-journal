@@ -173,7 +173,10 @@ function _tideEventsToPoints(tide) {
     var h = e.tidal_height != null ? e.tidal_height : e.h;
     var ms = Date.parse(e.time);
     if (isNaN(ms) || h == null) continue;
-    pts.push({ ms: ms, h: +h });
+    // `hi` conservé sur le point (ajouté pour build-week.mjs, qui affiche PM/BM
+    // dans le météogramme hebdo) : n'affecte aucun consommateur existant, qui ne
+    // lisait que .ms/.h.
+    pts.push({ ms: ms, h: +h, hi: hi });
     costUtc   += _tidePhaseCost(ms, hi);
     costLocal += _tidePhaseCost(ms - 11 * 36e5, hi);
     n++;

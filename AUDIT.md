@@ -5811,3 +5811,123 @@ par simulation : `fetch_model` remplacé pour faire échouer `ecmwf` et réussir
 normalement avec la ligne AIFS upsertée et le job vert).
 
 Aucun fichier d'`assets/` touché ; pas de bump `CACHE_NAME`.
+
+## 10/08/2026 — météogramme hebdo intégré à `semaine.html`, données réelles (v75)
+
+Point de départ : un prototype « façon Yadusurf » sauvegardé la veille dans
+`devs/tmp_meteogramme_yadusurf/` (commit `52ea4f8b`), entièrement en données
+inventées (`genForecast()`, marée sinusoïdale, bathymétrie de lagon fictive).
+Revue à froid : bon squelette (ciel/houle/marée en un seul graphe continu,
+ES5 déjà propre), mais dix défauts réels — légende houle contredisant le sens
+de la flèche dessinée, cadre houle étiqueté avec un créneau différent de celui
+où il est posé, tout le ciel d'un jour tiré d'un seul créneau (contredisant la
+rangée de vent et le survol, tous deux par créneau), ordre de tracé du lagon
+qui repeint le récif par-dessus l'eau, texte blanc en dur invisible en thème
+clair, vague qui ne décroît pas après déferlement, mois « août » câblé en dur
+à 4 endroits, aucun support tactile, deux ascenseurs horizontaux (météogramme
+et marées) non synchronisés, et un fond de police base64 de 100 Ko pour ~800
+lignes de logique. Le tout sur des données 100 % fictives.
+
+**Décision prise avant d'écrire du code : pas de coupe du lagon dans
+l'intégration.** Sa physique (dispersion + cambrure) est réutilisable telle
+quelle, mais le profil bathymétrique (`REEF_PTS`) qu'elle superpose est
+générique et non mesuré — l'embarquer dans une page de production sous une
+forme qui a l'air réelle violerait la règle du projet (« ne rien inventer sur
+les données », CLAUDE.md). Repoussée à un chantier ultérieur, si une vraie
+bathymétrie par spot devient disponible.
+
+### Données réelles branchées dans `build-week.mjs`
+
+meteo.nc/`forecast/marine` ne fournit ni nébulosité, ni précipitation, ni
+température de l'air (vérifié en direct sur le Worker le 10/08/2026 :
+`properties.marine` ne porte que vent + houle). Trois sources ajoutées, en
+lecture seule, aucune n'entre dans `calcSurfScore` :
+
+- **Ciel par ALTITUDE** (`fetchSky`) : Open-Meteo `cloud_cover_low/mid/high` +
+  `precipitation` + `weather_code` (WMO) + `temperature_2m`, modèle
+  `gfs_seamless`. Les nuages bas pèsent le plus sur la teinte du ciel (ce sont
+  eux qui amènent la pluie), les hauts (cirrus) presque pas — rendus en trois
+  styles distincts (traits fins clairsemés en haut, puffs discrets au milieu,
+  puffs sombres et denses en bas), pas un seul pourcentage agrégé. Tmax/Tmin
+  calculés sur les 24 h complètes du jour NC, pas seulement les créneaux 6-17 h
+  retenus pour le reste (sinon un minimum nocturne aurait pu manquer).
+- **Houle secondaire** (`fetchSecondary`) : Open-Meteo marine
+  `secondary_swell_wave_*`, même source que previsions.html pour ce champ.
+- **Marée réelle** (`fetchTideDay`) : réutilise `assets/tide-harmonics.js`
+  tel quel via `vm.runInNewContext` (même trick que `score-core.js` déjà
+  utilisé plus haut dans ce fichier), avec un `fetch` shim en `https` natif —
+  aucune formule de marée dupliquée, conformément à « source unique du
+  projet ». Piège trouvé et corrigé en vérifiant : `date=` côté meteo.nc filtre
+  sur le jour calendaire **UTC**, pas NC — `date=2026-08-11` renvoie les
+  événements de 2026-08-11T00:00Z à 23:59Z, soit 11 h NC le 11 → 11 h NC le 12.
+  Un seul appel manquait donc la moitié matinale du jour NC demandé. Corrigé en
+  interrogeant aussi le jour UTC précédent puis en filtrant sur la vraie
+  fenêtre NC — vérifié : chaque jour ressort maintenant avec ses 4 extrema
+  semi-diurnes, tous dans [0h, 24h[.
+  `tide-harmonics.js` modifié d'une ligne (`hi` conservé sur chaque point
+  extremum) pour que build-week.mjs sache distinguer PM/BM — non-brisant pour
+  ses autres appelants, qui ne lisaient que `.ms`/`.h`.
+
+### Rendu (`clientScript()`, ES5, ~350 lignes ajoutées)
+
+Bloc **permanent**, câblé une fois par `initMeteogram()`, jamais depuis
+`render()` : la grille de score se reconstruit à chaque glissement de
+curseur de calibrage, mais rien de ce que montre le météogramme n'en dépend
+— le reconstruire à chaque tick aurait perdu le spot choisi et redessiné deux
+fois le canvas pour rien (le piège « gabarits rendus une seule fois » déjà
+documenté pour previsions.html, ici dans l'autre sens : c'est le météogramme
+qui doit rester permanent, pas la grille).
+
+Chaque jour est divisé en autant de micro-segments que de créneaux réels
+disponibles (0 à 4 selon l'horizon) : le ciel varie donc VRAIMENT dans la
+journée au lieu d'être tiré d'un seul créneau — ça corrige le bug n°3 du
+prototype par la donnée, pas juste par un correctif cosmétique. Le cadre houle
+lit un seul objet `peak` pour sa position ET son étiquette (bug n°2 réglé).
+La convention de flèche (`fromDeg+180`, « vers où ça va ») est la MÊME que
+`svgArrow()`/`windArrowIcon()` de previsions.html, vérifiée par grep avant
+d'écrire quoi que ce soit — le prototype dessinait déjà juste, seule sa
+légende texte prétendait l'inverse pour la houle ; corrigé côté texte.
+Marée réelle affichée sans coefficient : `tidal_coefficient` vaut
+systématiquement 0 sur ce endpoint (vérifié en direct sur 3 dates), l'afficher
+aurait fait passer un champ absent pour une vraie donnée.
+
+Tactile : `touchstart` en plus de `mousemove`/`click`, `tabindex`+`keydown`
+(Entrée/Espace) sur les cellules de jour pour le clavier, cibles à 44 px
+(même minimum que `.stp`/`.calbtn` ailleurs dans ce fichier). Un seul
+défilement horizontal pour tout le bloc (jour/vent/ciel-houle/marée dans le
+même `.mg-scroll`) — le prototype en avait deux non synchronisés, qui
+désalignaient les PM/BM des jours dès qu'on faisait défiler l'un sans l'autre.
+Palette : couleurs CSS déjà auditées AA du fichier (`--muted`/`--faint`/
+`--accent`), aucune nouvelle couleur inventée ; pas de branche thème clair à
+gérer, `semaine.html` est mono-thème sombre.
+
+Pied de page mis à jour : la marée est désormais affichée, mais toujours
+absente de `calcSurfScore` — la phrase qui disait « pas de marée » a été
+reformulée pour ne pas laisser croire le contraire.
+
+### Vérifié
+
+`node --check` sur le script de build et sur le JS client réellement
+extrait de `semaine.html` généré. `--dry-run` puis build réel : JSON `WEEK`
+inspecté (tide/daily/slots bien peuplés, filtrés aux jours retenus). Chrome
+headless 500×2600 avec un `window.onerror` injecté (`__test.html`, supprimé
+ensuite) : zéro erreur. Sélecteur de spot et tap sur un jour testés par
+dispatch d'événements réels (`change`/`click`) : `MG_SPOT`/`MG_HOVER` et le
+texte du détail se mettent bien à jour. Capture à 500 px (le plancher fiable
+en headless, cf. plus haut) : ciel multi-altitude visible, chip houle
+primaire+secondaire, tempatures, marée alignée sous les bons jours.
+
+**Correctif additionnel, dans les deux fichiers à la fois** : `windCol(v)`
+(`assets/settings-utils.js` et sa copie dans `build-week.mjs`) traitait un
+vent à 0 nd comme une valeur absente (`!v` est vrai pour `0`), donc un jour
+calme plat affichait la couleur « pas de donnée » au lieu du vert « calme ».
+`!v` remplacé par `v==null` dans les deux fichiers en même temps — corriger
+un seul des deux aurait recréé l'incohérence inter-pages que le commentaire
+de `build-week.mjs` (« même couleur ici et sur previsions.html ») existe pour
+éviter. Vérifié : `windCol(0)` renvoie désormais la couleur « calme »
+(`#3dba8a`/`#127a4e` selon le thème) alors que `windCol(null)` renvoie
+toujours la couleur « pas de donnée » (`#3d5468`/`#5c7080`) — et previsions.html
+recharge sans erreur avec le fichier modifié.
+`CACHE_NAME` rebumpé `v75` → `v76` (`assets/settings-utils.js` modifié).
+
+`CACHE_NAME` bumpé `v74` → `v75` (assets/tide-harmonics.js modifié).

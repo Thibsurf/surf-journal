@@ -283,9 +283,15 @@ function hsCol(v){return _suLight()
 // windCol() distinctes avaient des seuils différents (7/12/17/23 vs 5/12/20) : un vent
 // de 21 nds était orange dans un tableau, rouge dans l'autre (AUDIT-previsions.md §3.1).
 var WIND_COL_THRESHOLDS = [7, 12, 17, 23]; // calme·léger·modéré·frais·fort, ~seuils Beaufort 3/4/5/6
+// `v==null` et non `!v` : un vent de 0 nd (calme plat, ça arrive vraiment le
+// matin en NC) est une valeur réelle, pas une absence de donnée. `!v` la
+// confondait avec `null`/`undefined` et affichait la couleur "pas de donnée"
+// sur un jour parfaitement calme — trouvé le 10/08/2026 en câblant les flèches
+// de vent du météogramme de semaine.html (build-week.mjs en gardait une copie
+// synchronisée, corrigée à l'identique).
 function windCol(v){var t=WIND_COL_THRESHOLDS;return _suLight()
-  ? (!v?'#5c7080':v<t[0]?'#127a4e':v<t[1]?'#1a729b':v<t[2]?'#a8631f':v<t[3]?'#b45309':'#c73e3e')
-  : (!v?'#3d5468':v<t[0]?'#3dba8a':v<t[1]?'#4fa3c7':v<t[2]?'#e8a057':v<t[3]?'#e8874a':'#e05c5c');}
+  ? (v==null?'#5c7080':v<t[0]?'#127a4e':v<t[1]?'#1a729b':v<t[2]?'#a8631f':v<t[3]?'#b45309':'#c73e3e')
+  : (v==null?'#3d5468':v<t[0]?'#3dba8a':v<t[1]?'#4fa3c7':v<t[2]?'#e8a057':v<t[3]?'#e8874a':'#e05c5c');}
 function pwrCol(v){return _suLight()
   ? (!v?'#5c7080':v<1?'#4f6373':v<5?'#1a729b':v<15?'#127a4e':v<30?'#a8631f':'#5b3fc4')
   : (!v?'#3d5468':v<1?'#7a94aa':v<5?'#4fa3c7':v<15?'#3dba8a':v<30?'#e8a057':'#7b6cf6');}
