@@ -5917,6 +5917,8 @@ texte du détail se mettent bien à jour. Capture à 500 px (le plancher fiable
 en headless, cf. plus haut) : ciel multi-altitude visible, chip houle
 primaire+secondaire, tempatures, marée alignée sous les bons jours.
 
+`CACHE_NAME` bumpé `v74` → `v75` (`assets/tide-harmonics.js` modifié).
+
 **Correctif additionnel, dans les deux fichiers à la fois** : `windCol(v)`
 (`assets/settings-utils.js` et sa copie dans `build-week.mjs`) traitait un
 vent à 0 nd comme une valeur absente (`!v` est vrai pour `0`), donc un jour
@@ -5930,4 +5932,59 @@ toujours la couleur « pas de donnée » (`#3d5468`/`#5c7080`) — et previsions
 recharge sans erreur avec le fichier modifié.
 `CACHE_NAME` rebumpé `v75` → `v76` (`assets/settings-utils.js` modifié).
 
-`CACHE_NAME` bumpé `v74` → `v75` (assets/tide-harmonics.js modifié).
+## 10/08/2026 — météogramme : largeur bureau, badges ronds, échelle houle
+
+Trois retours après un premier coup d'œil au rendu réel (pas seulement en
+maquette) : le graphe restait à la largeur mobile (~560 px) même sur grand
+écran, les repères vent/houle étaient de simples étiquettes texte là où un
+rendu « rond, direction + valeur » avait été demandé (référence Yadusurf), et
+l'axe vertical de la houle semblait suivre une échelle non-linéaire.
+
+**Largeur bureau.** `.mg-bleed` (nouvelle classe, media query ≥641px) fait
+sortir le météogramme du cadre à 560px de `body` par la technique classique
+`left:50%;margin-left:-50vw;width:100vw`, plafonné à 1180px et recentré. En
+dessous de 641px, no-op : le format mobile ne change pas. `MG_DAY_W` n'est
+plus une constante : `mgComputeLayout()` la recalcule depuis la largeur
+réelle de `#mgCard` (jusqu'à 230px/jour, contre 104px fixes avant), avec un
+`MG_SCALE` qui grossit polices/badges en conséquence — la hauteur de la scène
+suit un facteur plus prudent (max ×1,55) que la largeur (max ×2,3) pour ne
+pas produire un graphe démesurément haut avec le même nombre de créneaux.
+Recalculé au redimensionnement (`mgRelayout()`, qui contrairement à
+`mgRender()` ne réinitialise pas le jour pointé).
+Piège trouvé en cours de route : `mgRenderHeadWind()` lisait `MG_DAY_W` AVANT
+que `mgComputeLayout()` (appelé depuis `mgEnsureCanvasSize()`, plus bas dans
+la même fonction) ne le recalcule — la rangée de vent se dimensionnait donc
+sur la mise en page du tour précédent. Corrigé en sortant l'appel à
+`mgComputeLayout()` en tête de `mgRender()`/`mgRelayout()`.
+
+**Badges ronds.** Vent : repris du gabarit SVG de `windArrowIcon()`
+(previsions.html, marqueurs de la carte des spots) — même viewBox 36×46,
+seuls `width`/`height` changent selon la place disponible par créneau, donc
+un seul dessin de référence pour tout le site plutôt qu'une variante de plus.
+Houle : nouveau badge canvas (`mgSwellBadge`) — cercle, flèche, hauteur au
+centre, période en légende dessous ; primaire en bleu (accent), secondaire
+(si notable) accroché en haut à droite en plus petit et orange (warm), même
+distinction de couleur que les badges Tmax/Tmin. Assez serré en houle
+secondaire au format mobile le plus étroit (deux cercles proches) — lisible,
+mais perfectible si besoin.
+
+**Échelle houle.** Le symptôme n'était pas l'échelle (linéaire) mais son
+étiquetage : les deux seules graduations tracées valaient 50 % et 100% d'un
+plafond déjà gonflé de 20 % (`mgNiceMax`), donnant par exemple 1,5 m et 3 m
+pour une houle à 0,6-1,9 m — deux valeurs qui ne correspondent à rien de
+rond ni de régulièrement espacé à l'œil. `mgGridSteps()` calcule maintenant
+des graduations à des mètres ronds (demis en dessous de 2 m, entiers
+au-delà). Corrigé une seconde fois en cours de route : une fois les
+graduations rendues correctes, le badge houle du 1er jour (le seul assez à
+gauche pour empiéter sur la colonne des repères) les recouvrait complètement
+quand son cercle a grandi sur grand écran — étiquettes désormais dessinées
+en DERNIER (après les badges, jamais l'inverse) et le badge du jour 1 décalé
+d'au moins `R+40px` pour ne plus jamais chevaucher cette colonne.
+
+Vérifié : `node --check` sur le générateur et sur le JS client extrait du
+fichier généré ; Chrome headless à 500px ET 1400px avec `window.onerror`
+injecté (zéro erreur aux deux largeurs) ; `MG_DAY_W`/`MG_SCALE` mesurés en
+sortie (104px/×1 à 500px, 230px/×2,21 à 1400px, cadre à 1180px) ; capture
+d'écran aux deux largeurs.
+
+Aucun fichier d'`assets/` touché ce tour-ci — pas de bump `CACHE_NAME`.

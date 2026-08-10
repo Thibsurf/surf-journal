@@ -710,7 +710,15 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 
 /* ── Météogramme : ciel réel (3 altitudes), houle primaire+secondaire, marée
    réelle — bloc PERMANENT (cf. le commentaire au-dessus de son init côté JS),
-   indépendant de la grille de score et de son panneau de calibrage. */
+   indépendant de la grille de score et de son panneau de calibrage.
+   .mg-bleed le fait déborder du cadre à 560px de body sur grand écran —
+   sinon le seul graphe de toute la page qui mérite d'être grand reste coincé
+   à la largeur mobile même sur un moniteur large (signalé le 10/08/2026). En
+   dessous de 641px, no-op : le format mobile actuel ne change pas. */
+@media (min-width:641px){
+  .mg-bleed{position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw}
+  .mg-bleed .mg-card{max-width:1180px;margin-left:auto;margin-right:auto}
+}
 .mg-card{background:var(--deep);border-radius:12px;padding:14px 14px 12px;margin:20px 0}
 .mg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
 .mg-title{font:600 15px/1.2 Georgia,serif}
@@ -727,9 +735,13 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .mg-day:last-child{border-right:none}
 .mg-day .dn{font-size:12px;font-weight:600}
 .mg-day .dd{font-size:9.5px;color:var(--faint);margin-top:1px}
+@media (min-width:641px){
+  .mg-day .dn{font-size:15px} .mg-day .dd{font-size:11.5px}
+}
 .mg-wind{background:rgba(255,255,255,.02)}
-.mg-wind .mg-day{flex-direction:row;justify-content:space-evenly;min-height:30px;cursor:default}
+.mg-wind .mg-day{flex-direction:row;justify-content:space-evenly;min-height:30px;cursor:default;flex-wrap:wrap;gap:2px}
 .mg-wind .mg-day svg{display:block}
+.mg-wbadge{display:inline-flex}
 canvas#mgCanvas{display:block;touch-action:pan-y}
 .mg-readout{margin-top:9px;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.03);
   font-size:11.5px;color:var(--muted);min-height:18px;line-height:1.6}
@@ -776,7 +788,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
      commentaire au-dessus de son init côté JS) — sinon changer un curseur de
      calibrage effacerait le spot choisi et redessinerait le canvas pour rien,
      alors qu'aucune de ses données ne dépend des seuils de score. -->
-<div class="mg-card" id="mgCard">
+<div class="mg-bleed"><div class="mg-card" id="mgCard">
   <div class="mg-top">
     <div class="mg-title">🌤️ Météogramme</div>
     <select id="mgSel" aria-label="Choisir un spot"></select>
@@ -800,7 +812,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
     <div><b>Traits obliques</b> = précipitation réelle · <b>éclair</b> = orage</div>
     <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc — affichée ici, mais n'entre pas dans le score ci-dessous</div>
   </div>
-</div>
+</div></div>
 
 <div class="calbar"><button class="calbtn" id="cal-toggle" type="button"
   aria-expanded="false" aria-controls="cal">🎯 Calibrer</button></div>
@@ -910,11 +922,34 @@ function dayParts(k) {
 // piège « gabarits rendus une seule fois » documenté pour previsions.html,
 // ici dans l'autre sens : c'est LUI qui doit rester permanent.
 // ═══════════════════════════════════════════════════════════════════════════
-var MG_DAY_W = 104;
-var MG_SKY_H = 112, MG_SWELL_H = 60, MG_AXIS_H = 16;
+// Dimensions de RÉFÉRENCE (format mobile, ~360-560 px de large) — mgComputeLayout()
+// les fait grandir sur un écran plus large (cf. .mg-bleed en CSS) : sans ça le
+// seul graphe de toute la page qui mérite d'être grand restait coincé à la
+// largeur mobile même sur un moniteur large (signalé le 10/08/2026).
+var MG_DAY_W0 = 104, MG_SKY_H0 = 112, MG_SWELL_H0 = 60, MG_AXIS_H0 = 16;
+var MG_DAY_W = MG_DAY_W0, MG_SCALE = 1;
+var MG_SKY_H = MG_SKY_H0, MG_SWELL_H = MG_SWELL_H0, MG_AXIS_H = MG_AXIS_H0;
 var MG_SCENE_H = MG_SKY_H + MG_SWELL_H + MG_AXIS_H;
 var MG_SPOT = 0, MG_HOVER = -1, MG_DPR = 1;
 var M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+// Recalcule DAY_W/l'échelle depuis la largeur RÉELLEMENT disponible (variable :
+// .mg-bleed s'étire jusqu'à 1180px sur grand écran, cf. CSS). MG_SCALE grandit
+// la largeur des jours plus vite que la hauteur de la scène (x2,3 max contre
+// x1,55) : sur un très grand écran on veut plus de place PAR jour, pas une
+// scène démesurément haute pour le même nombre de créneaux.
+function mgComputeLayout() {
+  var card = document.getElementById('mgCard');
+  var avail = (card && card.clientWidth) || window.innerWidth - 32 || 500;
+  var n = Math.max(1, WEEK.days.length);
+  MG_DAY_W = Math.max(MG_DAY_W0, Math.min(230, Math.floor(avail / n)));
+  MG_SCALE = Math.min(2.3, MG_DAY_W / MG_DAY_W0);
+  var hScale = Math.min(1.55, MG_SCALE);
+  MG_SKY_H = Math.round(MG_SKY_H0 * hScale);
+  MG_SWELL_H = Math.round(MG_SWELL_H0 * hScale);
+  MG_AXIS_H = Math.round(MG_AXIS_H0 * Math.min(1.25, hScale));
+  MG_SCENE_H = MG_SKY_H + MG_SWELL_H + MG_AXIS_H;
+}
 
 function mgDayParts(k) {
   var p = k.split('-');
@@ -959,6 +994,17 @@ function mgNiceMax(v) {
   var steps = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8], i;
   for (i = 0; i < steps.length; i++) if (v <= steps[i] * .92) return steps[i];
   return Math.ceil(v);
+}
+// Graduations RONDES pour l'axe houle — jamais 50%/100% d'un plafond gonflé
+// (cf. le commentaire sur son appel) : toujours des mètres entiers (ou des
+// demis en dessous de 2 m), toujours régulièrement espacées.
+function mgGridSteps(maxV) {
+  if (maxV <= 0.5) return [0.5];
+  if (maxV <= 1) return [0.5, 1];
+  if (maxV <= 1.5) return [0.5, 1, 1.5];
+  var step = maxV > 5 ? 2 : 1, steps = [], v;
+  for (v = step; v <= maxV + 1e-6; v += step) steps.push(v);
+  return steps;
 }
 function mgCatmull(p0, p1, p2, p3, t) {
   var t2 = t * t, t3 = t2 * t;
@@ -1005,13 +1051,53 @@ function mgLightning(ctx, x, y, scale, fill) {
   ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
 }
 function mgTempBadge(ctx, x, y, label, rgb) {
+  var r = 9 * MG_SCALE;
   ctx.save();
-  ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fillStyle = mgRgba(rgb, .92); ctx.fill();
-  ctx.fillStyle = '#08141f'; ctx.font = '800 8.5px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = mgRgba(rgb, .92); ctx.fill();
+  ctx.fillStyle = '#08141f'; ctx.font = '800 ' + Math.round(8.5 * MG_SCALE) + 'px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(label, x, y + .5); ctx.restore();
+}
+// Badge houle rond : flèche (direction) + hauteur au centre, période en légende
+// dessous — remplace l'ancienne étiquette rectangulaire, façon "rond avec
+// direction et période" (référence demandée le 10/08/2026). col = tableau RGB.
+function mgSwellBadge(ctx, cx, cy, r, hTxt, pTxt, fromDeg, col) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7);
+  ctx.fillStyle = 'rgba(6,16,30,.88)'; ctx.fill();
+  ctx.lineWidth = Math.max(1.4, r * .1); ctx.strokeStyle = mgRgba(col); ctx.stroke();
+  if (fromDeg != null) mgArrow(ctx, cx, cy - r * .38, fromDeg, r * .4, mgRgba(col));
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff';
+  ctx.font = '800 ' + Math.max(9, Math.round(r * .58)) + 'px sans-serif';
+  ctx.fillText(hTxt, cx, cy + r * .52);
+  ctx.restore();
+  if (pTxt) {
+    ctx.textAlign = 'center'; ctx.fillStyle = mgRgba(col);
+    ctx.font = '700 ' + Math.max(9, Math.round(r * .34)) + 'px sans-serif';
+    ctx.fillText(pTxt, cx, cy + r + Math.max(11, r * .48));
+  }
+}
+// Badge vent rond — même gabarit SVG que windArrowIcon() (previsions.html,
+// marqueurs de la carte des spots) : viewBox fixe 36×46, seuls width/height
+// changent, donc un seul dessin de référence pour tout le site. propDeg =
+// même convention +180° que mgArrow()/svgArrow().
+function mgWindBadgeSvg(ws, wd, size) {
+  var col = windCol(ws);
+  var propDeg = ((wd || 0) + 180) % 360;
+  var ktStr = ws == null ? '—' : Math.round(ws) + '';
+  return '<svg width="' + size + '" height="' + Math.round(size * 46 / 36) + '" viewBox="0 0 36 46" aria-hidden="true">'
+    + '<circle cx="18" cy="17" r="15" fill="rgba(6,16,30,.90)" stroke="' + col + '" stroke-width="1.4"/>'
+    + '<g transform="rotate(' + propDeg + ',18,17)">'
+    + '<line x1="18" y1="27" x2="18" y2="9" stroke="' + col + '" stroke-width="2" stroke-linecap="round"/>'
+    + '<polygon points="18,4 15,11 18,9 21,11" fill="' + col + '"/>'
+    + '</g>'
+    + '<rect x="4" y="34" width="28" height="11" rx="5" fill="rgba(6,16,30,.85)" stroke="' + col + '" stroke-width="0.8"/>'
+    + '<text x="18" y="43" text-anchor="middle" font-size="8.5" font-family="monospace" fill="' + col + '" font-weight="700">' + ktStr + '</text>'
+    + '</svg>';
 }
 
 function mgEnsureCanvasSize() {
+  mgComputeLayout();
   var cv = document.getElementById('mgCanvas');
   var totalW = MG_DAY_W * WEEK.days.length;
   MG_DPR = Math.min(2, window.devicePixelRatio || 1);
@@ -1035,13 +1121,13 @@ function mgRenderHeadWind() {
       + ' aria-label="Détail du ' + J_LONG[p.dow] + ' ' + p.d + '">'
       + '<span class="dn">' + J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + M_SHORT[p.mo] + '</span></div>';
     var ds = byDay[k] || [];
+    // Taille du badge = largeur dispo par créneau (autant de badges que de
+    // créneaux réels ce jour-là, 0 à 4 selon l'horizon), donc mobile serré et
+    // desktop large donnent chacun un rendu propre sans code séparé.
+    var badgeSize = Math.max(20, Math.min(46, Math.floor((MG_DAY_W / Math.max(1, ds.length)) * .8)));
     var arrows = ds.length ? ds.map(function (s) {
-      var size = s.ws == null ? 16 : Math.min(30, 16 + s.ws * 0.55);
-      var col = windCol(s.ws);
-      return '<span title="' + s.h + ' h — ' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '">'
-        + '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true"'
-        + ' style="transform:rotate(' + ((s.wd || 0) + 180) + 'deg)">'
-        + '<path d="M12 1 L20 16 L12 12.4 L4 16 Z" fill="' + col + '" stroke="rgba(0,0,0,.25)" stroke-width="0.7"/></svg></span>';
+      return '<span class="mg-wbadge" title="' + s.h + ' h — ' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '">'
+        + mgWindBadgeSvg(s.ws, s.wd, badgeSize) + '</span>';
     }).join('') : '<span style="color:var(--faint);font-size:11px">·</span>';
     windHtml += '<div class="mg-day">' + arrows + '</div>';
   });
@@ -1098,7 +1184,7 @@ function mgDraw() {
     var x0 = d * MG_DAY_W, ds = byDay[k] || [];
     if (!ds.length) {
       ctx.fillStyle = 'rgba(255,255,255,.03)'; ctx.fillRect(x0, 0, MG_DAY_W, MG_SKY_H + MG_SWELL_H);
-      ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.font = '600 9.5px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.font = '600 ' + Math.round(9.5 * MG_SCALE) + 'px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('pas de donnée', x0 + MG_DAY_W / 2, MG_SKY_H / 2);
       ctx.textAlign = 'left';
       return;
@@ -1221,14 +1307,18 @@ function mgDraw() {
     ctx.beginPath(); surf.forEach(function (p, pi) { pi ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
     ctx.strokeStyle = mgRgba(mgLerp(accentRgb, [255, 255, 255], .6)); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
   }
-  ctx.font = '600 9px sans-serif'; ctx.textAlign = 'left';
-  [maxV * .5, maxV].forEach(function (v) {
+  // Graduations à des mètres RONDS (1/2/3…), pas à 50%/100% d'un plafond déjà
+  // gonflé de 20% : sur une houle à 0,6-1,9 m, l'ancien calcul plaçait ses deux
+  // seules lignes à 1,5 m et 3 m — au-dessus de tout point réel du graphe, lu à
+  // tort comme une échelle non-linéaire (signalé le 10/08/2026). Seuls les
+  // TRAITS sont tracés ici ; les ÉTIQUETTES sont dessinées plus bas, APRÈS les
+  // badges houle — sinon le badge du 1er jour (le seul assez à gauche pour les
+  // chevaucher) les recouvrait quand son cercle grandissait sur grand écran.
+  var mgYSteps = mgGridSteps(maxV);
+  mgYSteps.forEach(function (v) {
     var gy = waterY(v) + .5;
     ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(totalW, gy); ctx.stroke();
-    var lbl = (v < 1 ? v.toFixed(1) : v.toFixed(0)) + 'm', lw = ctx.measureText(lbl).width;
-    ctx.fillStyle = 'rgba(8,20,34,.55)'; ctx.fillRect(3, gy - 10, lw + 6, 12);
-    ctx.fillStyle = '#fff'; ctx.fillText(lbl, 6, gy - 1);
   });
   ctx.restore();
 
@@ -1237,53 +1327,61 @@ function mgDraw() {
     if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(d * MG_DAY_W + .5, MG_SKY_H); ctx.lineTo(d * MG_DAY_W + .5, MG_SKY_H + MG_SWELL_H); ctx.stroke(); }
   });
 
-  // ── Cadre houle par jour : flèche + taille + période, posé au pic du jour
-  // et étiqueté avec LA VALEUR DE CE MÊME POINT (le prototype d'origine
-  // positionnait le cadre sur le pic mais l'étiquetait avec un autre créneau
-  // — corrigé en ne lisant jamais qu'UN seul objet "peak" pour les deux). ──
+  // ── Badge houle rond par jour : posé au pic du jour et LU SUR CE MÊME POINT
+  // pour sa position ET son contenu (le prototype d'origine positionnait le
+  // cadre sur le pic mais l'étiquetait avec un autre créneau — corrigé en ne
+  // lisant jamais qu'UN seul objet "peak" pour les deux). Secondaire (si
+  // notable) en plus petit, accroché en haut à droite du principal — bleu
+  // (accent) pour la primaire, orange (warm) pour la secondaire, même
+  // distinction de couleur que les badges Tmax/Tmin plus haut. ──
   WEEK.days.forEach(function (k, d) {
     var ds = byDay[k]; if (!ds || !ds.length) return;
     var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
     var pi2 = ds.indexOf(peak), segW2 = MG_DAY_W / ds.length;
     var px = d * MG_DAY_W + (pi2 + .5) * segW2;
     var showSec = peak.hs2 != null && peak.hs2 > 0.4;
-    var py = Math.max(MG_SKY_H + 13, waterY(peak.hs) - (showSec ? 22 : 11));
-
-    var hTxt = peak.hs.toFixed(1) + 'm', pTxt = ' ' + Math.round(peak.t) + 's';
-    ctx.font = '800 10.5px sans-serif'; var wH = ctx.measureText(hTxt).width;
-    ctx.font = '700 9px sans-serif'; var wP = ctx.measureText(pTxt).width;
-    var arrowW = 12, line1W = arrowW + wH + wP + 8;
-    var sTxt = showSec ? ('+' + peak.hs2.toFixed(1) + 'm/' + Math.round(peak.per2) + 's') : '';
-    ctx.font = '700 8.5px sans-serif'; var wS = ctx.measureText(sTxt).width;
-    var line2W = arrowW + wS + 6, total = Math.max(line1W, line2W);
-    var leftB = d * MG_DAY_W + 3, rightB = (d + 1) * MG_DAY_W - total - 3;
-    var x0c = Math.max(leftB, Math.min(rightB, px - total / 2));
+    var R = Math.max(15, Math.min(30, MG_DAY_W * .155));
+    // Le 1er jour est le seul assez à gauche pour chevaucher la colonne des
+    // graduations (x<40) : on y décale le centre du badge d'au moins R+40 pour
+    // ne jamais la recouvrir (les jours suivants sont hors de portée).
+    if (d === 0) px = Math.max(px, R + 40);
+    var margin = R + Math.max(11, R * .48) + 2;
+    var py = Math.min(Math.max(waterY(peak.hs), MG_SKY_H + margin), MG_SKY_H + MG_SWELL_H - margin * .55);
 
     ctx.save();
     ctx.beginPath(); ctx.rect(d * MG_DAY_W + 1, 0, MG_DAY_W - 2, MG_SKY_H + MG_SWELL_H); ctx.clip();
-    ctx.fillStyle = 'rgba(8,20,34,.66)'; ctx.fillRect(x0c, py - 10, total, showSec ? 25 : 13);
-    mgArrow(ctx, x0c + 7, py - 3, peak.sd, 5, '#fff');
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#fff'; ctx.font = '800 10.5px sans-serif'; ctx.fillText(hTxt, x0c + arrowW + 2, py);
-    ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.font = '700 9px sans-serif'; ctx.fillText(pTxt, x0c + arrowW + 2 + wH, py);
+    mgSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', Math.round(peak.t) + 's', peak.sd, accentRgb);
     if (showSec) {
-      var py2 = py + 12;
-      mgArrow(ctx, x0c + 7, py2 - 3, peak.sd2, 3.6, 'rgba(255,255,255,.65)');
-      ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.font = '700 8.5px sans-serif'; ctx.fillText(sTxt, x0c + arrowW + 2, py2);
+      var R2 = R * .6;
+      mgSwellBadge(ctx, px + R * .82, py - R * .82, R2, '+' + peak.hs2.toFixed(1) + 'm', Math.round(peak.per2) + 's', peak.sd2, warmRgb);
     }
     ctx.restore();
   });
   ctx.textAlign = 'center';
 
+  // Étiquettes des graduations houle — dessinées EN DERNIER (cf. plus haut) :
+  // toujours lisibles par-dessus les badges, jamais l'inverse.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, MG_SKY_H, totalW, MG_SWELL_H); ctx.clip();
+  ctx.font = '600 ' + Math.round(9 * MG_SCALE) + 'px sans-serif'; ctx.textAlign = 'left';
+  mgYSteps.forEach(function (v) {
+    var gy = waterY(v) + .5;
+    var lbl = (v < 1 ? v.toFixed(1) : v.toFixed(0)) + 'm', lw = ctx.measureText(lbl).width;
+    ctx.fillStyle = 'rgba(8,20,34,.88)'; ctx.fillRect(3, gy - 10 * MG_SCALE, lw + 6, 12 * MG_SCALE);
+    ctx.fillStyle = '#fff'; ctx.fillText(lbl, 6, gy - 1);
+  });
+  ctx.restore();
+  ctx.textAlign = 'center';
+
   // ── Axe horaire ──
   ctx.fillStyle = '#0d1f3c'; ctx.fillRect(0, MG_SKY_H + MG_SWELL_H, totalW, MG_AXIS_H);
   ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(0, MG_SKY_H + MG_SWELL_H + .5); ctx.lineTo(totalW, MG_SKY_H + MG_SWELL_H + .5); ctx.stroke();
-  ctx.fillStyle = '#7d94ab'; ctx.font = '500 9px sans-serif';
+  ctx.fillStyle = '#7d94ab'; ctx.font = '500 ' + Math.round(9 * MG_SCALE) + 'px sans-serif';
   WEEK.days.forEach(function (k, d) {
     var ds = byDay[k] || [];
     if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(d * MG_DAY_W + .5, MG_SKY_H + MG_SWELL_H); ctx.lineTo(d * MG_DAY_W + .5, MG_SCENE_H); ctx.stroke(); }
     var segW3 = MG_DAY_W / (ds.length || 1);
-    ds.forEach(function (s, si) { ctx.fillText(s.h + 'h', d * MG_DAY_W + (si + .5) * segW3, MG_SKY_H + MG_SWELL_H + 13); });
+    ds.forEach(function (s, si) { ctx.fillText(s.h + 'h', d * MG_DAY_W + (si + .5) * segW3, MG_SKY_H + MG_SWELL_H + MG_AXIS_H * .75); });
   });
 }
 
@@ -1334,12 +1432,29 @@ function mgSetHover(dayIdx) {
   mgDraw();
 }
 
+// mgComputeLayout() DOIT s'exécuter avant mgRenderHeadWind() : ce dernier lit
+// MG_DAY_W/MG_SCALE pour dimensionner les badges de vent. Les appeler dans
+// l'autre ordre (comme une première version le faisait) dimensionnait la
+// rangée de vent sur la mise en page du tour précédent, un cran en retard.
 function mgRender() {
+  mgComputeLayout();
   mgRenderHeadWind();
   mgEnsureCanvasSize();
   mgDraw();
   mgRenderTide();
   mgUpdateReadout(null);
+}
+
+// Recalcule toute la mise en page (largeur de jour, badges, canvas, marées)
+// SANS réinitialiser le jour pointé — appelé au redimensionnement. mgRender()
+// remet le survol à zéro, ce qui conviendrait mal ici : agrandir la fenêtre
+// ne doit pas fermer le détail qu'on est en train de lire.
+function mgRelayout() {
+  mgComputeLayout();
+  mgRenderHeadWind();
+  mgEnsureCanvasSize();
+  mgDraw();
+  mgRenderTide();
 }
 
 function mgAttachEvents() {
@@ -1376,7 +1491,7 @@ function mgAttachEvents() {
   }, { passive: true });
 
   document.getElementById('mgSel').addEventListener('change', function () { MG_SPOT = +this.value; mgRender(); });
-  window.addEventListener('resize', function () { mgEnsureCanvasSize(); mgDraw(); });
+  window.addEventListener('resize', mgRelayout);
 }
 
 function initMeteogram() {
