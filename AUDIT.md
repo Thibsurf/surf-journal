@@ -5988,3 +5988,84 @@ sortie (104px/×1 à 500px, 230px/×2,21 à 1400px, cadre à 1180px) ; capture
 d'écran aux deux largeurs.
 
 Aucun fichier d'`assets/` touché ce tour-ci — pas de bump `CACHE_NAME`.
+
+## 10/08/2026 — coupe du lagon (illustration), UV réel, marée continue par créneau
+
+Demande de départ : redonner vie à la coupe du lagon écartée le 10/08/2026 au
+matin (bathymétrie inventée), plus lune→poissons, moutons au vent, reflets
+soleil/nuages, UV. Décision prise AVANT d'écrire du code (validée par
+l'utilisateur) : le profil récif/lagon reste un **profil générique, non
+mesuré**, mais tout ce qui est dessiné DESSUS (niveau d'eau, houle, vent,
+ciel, UV) est réel — dit explicitement dans la légende de la carte, pas
+seulement en commentaire de code.
+
+**Bug important trouvé en cours de route, indépendant de la coupe du lagon**.
+`fetchSky()`/`fetchSecondary()` (chantier du matin même) faisaient
+`Date.parse(iso)` sur des horodatages Open-Meteo `&timezone=GMT`, qui
+n'ont PAS de suffixe `Z` (`"2026-08-11T00:00"`). Un tel horodatage est lu par
+la spec ECMA-262 en heure LOCALE de la machine s'il n'est pas suffixé — juste
+par hasard sur un runner GitHub Actions (UTC par défaut, donc heure locale =
+UTC), mais faux de 11 h tapantes sur ce poste de dev (`Pacific/Noumea`, cf.
+CLAUDE.md et `TZ` du sandbox). Invisible sur `cloud_cover`/`temperature_2m`
+(variation lente, un décalage de 11 h reste crédible) — révélé instantanément
+par l'UV, dont le signal jour/nuit est un vrai tout-ou-rien : chaque créneau
+affichait `uv:0`, y compris à midi NC en plein hiver austral où l'UV réel
+culmine à 5-6. Corrigé par `Date.parse(iso + 'Z')` dans les deux fonctions.
+Portée réelle : la nébulosité/précipitation/température du chantier du matin
+étaient probablement correctes en production (runner GitHub Actions = UTC),
+mais reposaient sur un hasard d'environnement, pas une garantie — le
+correctif les met à l'abri pour de bon, quel que soit le runner futur.
+
+**Marée continue par créneau** (`s.tide`, pas seulement les PM/BM déjà
+affichés) : réutilise encore `tideHeightAt()` de tide-harmonics.js — cette
+fonction n'accepte qu'un nom de « port » (table `TIDE_PORT_REF`), pas un id de
+station brut, donc `tideHeightForSlot()` enregistre un port SYNTHÉTIQUE
+`_sp_<stationId>` une fois par station plutôt que dupliquer l'interpolation
+demi-cosinus. `tideFetchDay()` précharge maintenant aussi le jour UTC SUIVANT
+(en plus de précédent+courant) : l'interpolation regarde ds-1/ds/ds+1 en jours
+NC, et sans ce 3ᵉ jour les créneaux de fin de journée (23 h) retombaient sur
+le modèle harmonique faute de point réel après eux.
+
+**UV réel** : `uv_index` ajouté à l'appel Open-Meteo GFS déjà en place pour le
+ciel (aucun appel supplémentaire). Catégories OMS standard (0-2 faible,
+3-5 modéré, 6-7 élevé, 8-10 très élevé, 11+ extrême) — pas une échelle maison.
+
+**La coupe elle-même** (`lgDraw()`, ~260 lignes) : reprend la physique de
+propagation du prototype Yadusurf (dispersion + cambrure, déjà validée,
+cf. AUDIT.md du 10/08 matin) sur le profil `LG_REEF_PTS` générique, mais
+alimentée par des créneaux RÉELS — houle, période, direction, vent, ciel,
+UV du jour/heure pointés dans le météogramme au-dessus (même critère "peak"
+que son badge houle, pas de sélecteur séparé). Bloc permanent synchronisé via
+`mgSetHover()`/`mgRender()`/`mgRelayout()`, qui appellent toutes `lgDraw()`
+en plus de leur propre rendu.
+- **Bateau au mouillage** : décor, mais la chaîne dessinée fait la longueur
+  de la VRAIE profondeur du moment (`tideM - lgBedElevation(boatXf)`).
+- **Moutons** : écume dès que le vent RÉEL du créneau dépasse ~12 nds (force 4
+  Beaufort), densité proportionnelle à l'excédent — vérifié sur un créneau
+  réel à 14-16 nds (Dumbéa/Ouano, 14/08).
+- **Reflet de soleil** : visible seulement si la nébulosité basse RÉELLE de ce
+  créneau est faible (même seuil que le soleil du météogramme).
+- **Lune → poissons** : `lgMoonPhase()` est un calcul astronomique réel (pas
+  une donnée inventée), mais le NOMBRE de poissons qui en découle est un
+  repère ludique — dit explicitement dans la légende ET dans le survol
+  (« repère ludique »), jamais présenté comme une mesure.
+
+Deux bugs de calage trouvés et corrigés PENDANT la vérification visuelle (pas
+en réfléchissant dans le vide — capture d'écran, puis correctif) :
+1. L'étiquette « X m d'eau » était accrochée à `yOf(tideM)`, donc sortait du
+   canvas par le haut à marée haute sur un petit format — sortie en badge à
+   position FIXE, dessiné en dernier (même famille de correctif que les
+   étiquettes d'axe du météogramme le matin même).
+2. Le badge UV (coin haut-droit, position fixe) et le bateau (ancré près du
+   bord droit) se chevauchaient à marée haute — bateau déplacé de `xf=0.82`
+   à `xf=0.78`.
+
+Vérifié : `node --check` sur le générateur et le JS client extrait du fichier
+généré ; Chrome headless 500px et 1400px avec `window.onerror` injecté (zéro
+erreur aux deux largeurs) ; pixels non transparents du canvas comptés (rendu
+réel, pas un canvas vide) ; `mgSetHover(3)` simulé par dispatch pour pointer
+un jour à vent réel ≥12 nds et confirmer visuellement les moutons ; UV et
+marée vérifiés valeur par valeur contre un appel Open-Meteo direct sur les
+mêmes coordonnées/dates.
+
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.

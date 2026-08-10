@@ -398,7 +398,7 @@ async function modelsForSpot(spot, days) {
 // heures, c'est ce script qui applique la convention NC (+11 h) partout.
 async function fetchSky(spot) {
   const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + spot.lat + '&longitude=' + spot.lon
-    + '&hourly=cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,weather_code,temperature_2m'
+    + '&hourly=cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,weather_code,temperature_2m,uv_index'
     + '&models=gfs_seamless&forecast_days=8&timezone=GMT';
   const j = await httpJson(url);
   const h = j.hourly || {};
@@ -408,7 +408,14 @@ async function fetchSky(spot) {
   // de sieste manquerait selon l'heure du pic.
   const daily = {};
   (h.time || []).forEach((iso, i) => {
-    const ms = Date.parse(iso);
+    // `+ 'Z'` INDISPENSABLE : avec `&timezone=GMT`, Open-Meteo renvoie des
+    // horodatages SANS suffixe (`2026-08-11T00:00`), qu'ECMA-262 fait lire en
+    // heure LOCALE de la machine si on ne le précise pas — correct par hasard
+    // sur un runner GitHub Actions (UTC par défaut), mais faux de 11h sur ce
+    // poste de dev (Pacific/Noumea, cf. CLAUDE.md) : trouvé le 10/08/2026 sur
+    // l'UV, dont le signal jour/nuit très marqué rendait le décalage évident
+    // là où cloud_cover/temperature_2m, plus lisses, le masquaient.
+    const ms = Date.parse(iso + 'Z');
     if (!ms) return;
     const hourNc = new Date(ms + NC).getUTCHours();
     const dayKey = ncDayKey(ms);
@@ -424,7 +431,8 @@ async function fetchSky(spot) {
       ch: h.cloud_cover_high != null ? h.cloud_cover_high[i] : null,
       precip: h.precipitation != null ? h.precipitation[i] : null,
       code: h.weather_code != null ? h.weather_code[i] : null,
-      at: at
+      at: at,
+      uv: h.uv_index != null ? h.uv_index[i] : null
     };
   });
   return { bySlot, daily };
@@ -443,7 +451,9 @@ async function fetchSecondary(spot) {
   const h = j.hourly || {};
   const bySlot = {};
   (h.time || []).forEach((iso, i) => {
-    const ms = Date.parse(iso);
+    // `+ 'Z'` : même piège que fetchSky() ci-dessus (timestamps GMT sans
+    // suffixe, lus en heure locale de la machine sinon).
+    const ms = Date.parse(iso + 'Z');
     if (!ms) return;
     const hs2 = h.secondary_swell_wave_height != null ? h.secondary_swell_wave_height[i] : null;
     if (hs2 == null) return;
@@ -503,8 +513,15 @@ async function fetchTideDay(stationId, ds) {
   if (midnight == null) return [];
   const [Y, M, D] = ds.split('-').map(Number);
   const prevKey = new Date(Date.UTC(Y, M - 1, D) - 86400000).toISOString().slice(0, 10);
+  // Le jour UTC SUIVANT est aussi préchargé (mais pas utilisé pour les
+  // extrema ci-dessous, déjà complets avec prevKey+ds) : tideHeightForSlot()
+  // interpolera plus tard une hauteur continue via TIDE.tideHeightAt(), qui
+  // regarde ds-1/ds/ds+1 en jours NC — sans ce préchargement, les créneaux de
+  // fin de journée (23h) retomberaient sur le modèle harmonique faute de
+  // point réel après eux. tideFetchDay() dédoublonne déjà par (station, jour).
+  const nextKey = new Date(Date.UTC(Y, M - 1, D) + 86400000).toISOString().slice(0, 10);
   let pts = [];
-  for (const day of [prevKey, ds]) {
+  for (const day of [prevKey, ds, nextKey]) {
     try {
       const p = await TIDE.tideFetchDay(stationId, day);
       if (p) pts = pts.concat(p);
@@ -514,6 +531,24 @@ async function fetchTideDay(stationId, ds) {
   return pts.filter((p) => p.ms >= midnight && p.ms < end)
     .sort((a, b) => a.ms - b.ms)
     .map((p) => ({ h: (p.ms - midnight) / 3600000, type: p.hi ? 'haute' : 'basse', height: +p.h.toFixed(2) }));
+}
+
+// Hauteur d'eau RÉELLE (m) à une heure NC précise d'un jour — réutilise
+// tideHeightAt() de tide-harmonics.js (même interpolation demi-cosinus que
+// previsions.html, repli sur le modèle harmonique si meteo.nc n'a pas ce
+// jour) via un port SYNTHÉTIQUE enregistré une fois par station : la fonction
+// n'accepte qu'un nom de port (TIDE_PORT_REF), pas un id brut, et on ne
+// duplique pas sa logique pour si peu. Sert au bateau au mouillage de la
+// coupe lagon (chaîne dimensionnée sur la VRAIE profondeur du moment), pas au
+// score.
+const _tidePortSeen = {};
+function tideHeightForSlot(stationId, ds, hour) {
+  const port = '_sp_' + stationId;
+  if (!_tidePortSeen[port]) {
+    TIDE.TIDE_PORT_REF[port] = { id: stationId, sameStation: true };
+    _tidePortSeen[port] = true;
+  }
+  return TIDE.tideHeightAt(ds, hour, port);
 }
 
 function esc(s) {
@@ -756,6 +791,12 @@ canvas#mgCanvas{display:block;touch-action:pan-y}
 .mg-leg{display:flex;flex-wrap:wrap;gap:9px 16px;margin-top:11px;font-size:10.5px;color:var(--faint);line-height:1.5}
 .mg-leg b{color:var(--muted);font-weight:600}
 
+/* ── Coupe du lagon (récif générique + données réelles dessus) ── */
+.lg-state{font:600 11px var(--font-b,inherit);padding:5px 12px;border-radius:20px;
+  background:rgba(255,255,255,.06);color:var(--text);white-space:nowrap}
+#lgCanvas{display:block;width:100%;border-radius:10px;touch-action:pan-y}
+.mg-card #lgReadout{margin-top:9px}
+
 .cta{display:block;text-align:center;margin-top:22px;padding:13px;border-radius:10px;
      background:var(--accent);color:#06131f;font-weight:600;font-size:15px}
 footer{margin-top:20px;font-size:11px;line-height:1.6;color:var(--faint);
@@ -811,6 +852,27 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
     <div><b>Ciel</b> = nuages bas/moyens/hauts réels (Open-Meteo GFS) — les bas sont ceux qui amènent la pluie</div>
     <div><b>Traits obliques</b> = précipitation réelle · <b>éclair</b> = orage</div>
     <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc — affichée ici, mais n'entre pas dans le score ci-dessous</div>
+  </div>
+</div></div>
+
+<!-- Coupe du lagon : le récif/lagon dessiné est UN PROFIL GÉNÉRIQUE (pas
+     mesuré, pas propre à ce spot — aucune bathymétrie par spot n'existe dans
+     ce projet, cf. AUDIT.md 10/08/2026) ; niveau d'eau, houle, vent, ciel et
+     UV affichés dessus sont en revanche RÉELS (jour/heure pointés dans le
+     météogramme ci-dessus). Bloc permanent au même titre que le météogramme,
+     synchronisé sur son spot et son jour pointé plutôt que dupliqués. -->
+<div class="mg-bleed"><div class="mg-card" id="lgCard">
+  <div class="mg-top">
+    <div class="mg-title">🌊 Coupe du lagon</div>
+    <div class="lg-state" id="lgState">—</div>
+  </div>
+  <canvas id="lgCanvas"></canvas>
+  <div class="mg-readout" id="lgReadout"></div>
+  <div class="mg-leg">
+    <div><b>Récif/lagon</b> = illustration générique — ce n'est PAS le profil réel de ce spot (non mesuré)</div>
+    <div><b>Niveau d'eau, houle, vent, ciel, UV</b> = réels, au jour/heure pointés ci-dessus</div>
+    <div><b>Bateau au mouillage</b> = repère : longueur de chaîne à l'échelle de la vraie profondeur du moment</div>
+    <div><b>Moutons</b> = écume au vent réel · <b>Poissons</b> = liés à la phase de lune réelle, mais un repère ludique, pas une donnée</div>
   </div>
 </div></div>
 
@@ -1430,6 +1492,7 @@ function mgSetHover(dayIdx) {
   MG_HOVER = dayIdx;
   mgUpdateReadout(dayIdx >= 0 ? WEEK.days[dayIdx] : null);
   mgDraw();
+  lgDraw(); // la coupe du lagon suit le jour pointé ici, pas de sélecteur séparé
 }
 
 // mgComputeLayout() DOIT s'exécuter avant mgRenderHeadWind() : ce dernier lit
@@ -1443,6 +1506,7 @@ function mgRender() {
   mgDraw();
   mgRenderTide();
   mgUpdateReadout(null);
+  lgDraw(); // le spot vient de changer : la coupe du lagon doit suivre
 }
 
 // Recalcule toute la mise en page (largeur de jour, badges, canvas, marées)
@@ -1455,6 +1519,7 @@ function mgRelayout() {
   mgEnsureCanvasSize();
   mgDraw();
   mgRenderTide();
+  lgDraw(); // redimensionne aussi la coupe du lagon (lgEnsureCanvasSize() en tête de lgDraw())
 }
 
 function mgAttachEvents() {
@@ -1500,6 +1565,325 @@ function initMeteogram() {
   sel.innerHTML = WEEK.spots.map(function (sp, i) { return '<option value="' + i + '">' + esc(sp.short) + '</option>'; }).join('');
   mgAttachEvents();
   mgRender();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COUPE DU LAGON — illustration. Le profil récif/lagon (LG_REEF_PTS) est
+// GÉNÉRIQUE : aucune bathymétrie mesurée par spot n'existe dans ce projet
+// (cf. AUDIT.md 10/08/2026), donc AUCUN chiffre de profondeur relative au
+// récif n'est propre à ce spot — c'est une convention illustrative, dite
+// comme telle dans la légende de la carte, jamais présentée comme mesurée.
+// Ce qui EST réel et dessiné dessus : le niveau d'eau (marée interpolée du
+// jour/heure pointés dans le météogramme), la houle et le vent de ce même
+// créneau, la nébulosité (pour le reflet de soleil) et l'UV. La physique de
+// propagation (dispersion + cambrure, Fenton & McKee) est la même que celle
+// déjà utilisée ailleurs dans ce projet, appliquée ici à des entrées réelles
+// sur un fond générique — pas une formule inventée pour l'occasion.
+// Synchronisée sur le spot/jour du météogramme (pas de sélecteur séparé) :
+// mgSetHover()/mgRender()/mgRelayout() appellent lgDraw() en plus des leurs.
+// ═══════════════════════════════════════════════════════════════════════════
+var LG_GRAV = 9.81, LG_DPR = 1;
+function lgClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function lgDeepWaveLength(T) { return LG_GRAV * T * T / (2 * Math.PI); }
+function lgLocalWaveLength(T, d) {
+  if (d <= 0.02) return lgDeepWaveLength(T) * 0.05;
+  var L0 = lgDeepWaveLength(T), w = 2 * Math.PI / T;
+  var arg = Math.pow(w * w * d / LG_GRAV, 0.75);
+  return L0 * Math.pow(Math.tanh(arg), 2 / 3);
+}
+function lgShoalCoeff(T, d) {
+  if (d <= 0.02) return 0;
+  var L = lgLocalWaveLength(T, d), k = 2 * Math.PI / L, kd = k * d;
+  var n = 0.5 * (1 + (2 * kd) / Math.max(0.02, Math.sinh(Math.min(2 * kd, 30))));
+  var Cg = n * (L / T), Cg0 = 0.5 * lgDeepWaveLength(T) / T;
+  return lgClamp(Math.sqrt(Cg0 / Math.max(0.03, Cg)), 0.35, 3.2);
+}
+// Profil GÉNÉRIQUE (mètres relatifs au sommet du platier = 0) — illustratif.
+var LG_REEF_PTS = [[0, -10], [0.14, -7.5], [0.3, -3.8], [0.42, -1.2], [0.5, 0.05], [0.58, -0.1], [0.72, -0.15], [0.86, -0.7], [1, -1.6]];
+function lgBedElevation(xf) {
+  var i;
+  for (i = 0; i < LG_REEF_PTS.length - 1; i++) {
+    if (xf <= LG_REEF_PTS[i + 1][0]) {
+      var f = (xf - LG_REEF_PTS[i][0]) / (LG_REEF_PTS[i + 1][0] - LG_REEF_PTS[i][0]);
+      f = f * f * (3 - 2 * f);
+      return LG_REEF_PTS[i][1] + (LG_REEF_PTS[i + 1][1] - LG_REEF_PTS[i][1]) * f;
+    }
+  }
+  return LG_REEF_PTS[LG_REEF_PTS.length - 1][1];
+}
+function lgReefState(depth) { return depth > 0.35 ? 'recouvert' : (depth > 0.03 ? 'affleurant' : 'à sec'); }
+function lgReefCol(s) { return s === 'recouvert' ? '#3dba8a' : (s === 'affleurant' ? '#e0a13f' : '#e0705c'); }
+
+// Phase lunaire : calcul astronomique réel (pas une donnée inventée). Le
+// nombre de poissons qui en découle plus bas EST en revanche un repère
+// ludique, explicitement dit comme tel dans la légende et le survol.
+function lgMoonPhase(dateMs) {
+  var synodic = 29.530588 * 86400000, refNewMoon = Date.UTC(2000, 0, 6, 18, 14);
+  var frac = (((dateMs - refNewMoon) % synodic) + synodic) % synodic / synodic;
+  return { frac: frac, illum: (1 - Math.cos(frac * 2 * Math.PI)) / 2 };
+}
+function lgMoonName(frac) {
+  if (frac < 0.03 || frac > 0.97) return 'nouvelle lune';
+  if (frac < 0.22) return 'premier croissant';
+  if (frac < 0.28) return 'premier quartier';
+  if (frac < 0.47) return 'lune gibbeuse';
+  if (frac < 0.53) return 'pleine lune';
+  if (frac < 0.72) return 'lune gibbeuse';
+  if (frac < 0.78) return 'dernier quartier';
+  return 'dernier croissant';
+}
+// Catégories UV de l'OMS (0-2/3-5/6-7/8-10/11+) — standard, pas une échelle
+// maison — appliquées à l'UV réel du créneau (Open-Meteo GFS).
+function lgUvBand(uv) {
+  if (uv == null) return null;
+  return uv < 3 ? { t: 'faible', c: '#3dba8a' } : uv < 6 ? { t: 'modéré', c: '#e8c44a' }
+    : uv < 8 ? { t: 'élevé', c: '#e8874a' } : uv < 11 ? { t: 'très élevé', c: '#e05c5c' } : { t: 'extrême', c: '#c04fd8' };
+}
+
+function lgDrawFish(ctx, x, y, scale, dir, fill) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(dir * scale, scale);
+  ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(6,16,28,.35)'; ctx.lineWidth = .8; ctx.fillStyle = fill;
+  ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(-9, -3.4); ctx.lineTo(-9, 3.4); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, 0, 5.5, 2.6, 0, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(1.3, -.8, 1.4, .7, 0, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function lgReefDome(ctx, cx, baseY, topY, mw, j) {
+  var mh = baseY - topY;
+  ctx.beginPath(); ctx.moveTo(cx - mw, baseY);
+  ctx.bezierCurveTo(cx - mw * .7, topY + mh * .28, cx - mw * .4, topY + j, cx, topY);
+  ctx.bezierCurveTo(cx + mw * .4, topY + j, cx + mw * .7, topY + mh * .28, cx + mw, baseY);
+  ctx.closePath();
+}
+function lgReefMasses(W) {
+  var rng = mgRng(0xB16B00B5), arr = [], i;
+  for (i = 0; i < 4; i++) {
+    var frac = 0.56 + (i + 0.5) / 4 * 0.4 + (rng() - .5) * 0.04;
+    arr.push({ cx: frac * W, mw: W * (0.045 + rng() * 0.035), rel: 0.4 + rng() * 0.55, j: (rng() - .5) * 6 });
+  }
+  return arr;
+}
+// Bateau au mouillage : décor, mais la LONGUEUR de chaîne dessinée suit la
+// VRAIE profondeur du moment (interpolée depuis la marée réelle), pas figée.
+function lgDrawBoat(ctx, x, waterY, seabedY, col) {
+  var hullW = 26, hullH = 9;
+  ctx.save(); ctx.translate(x, waterY);
+  ctx.strokeStyle = 'rgba(6,16,28,.4)'; ctx.lineWidth = 1; ctx.fillStyle = '#e9eff5';
+  ctx.beginPath();
+  ctx.moveTo(-hullW / 2, 0); ctx.lineTo(hullW / 2, 0);
+  ctx.lineTo(hullW / 2 - 4, hullH); ctx.lineTo(-hullW / 2 + 4, hullH); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(233,239,245,.85)'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(-2, -16); ctx.lineTo(9, -6); ctx.closePath(); ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.strokeStyle = col; ctx.lineWidth = 1.3; ctx.setLineDash([3, 2]);
+  ctx.beginPath(); ctx.moveTo(x - hullW / 2 + 3, waterY + hullH * .6);
+  ctx.quadraticCurveTo(x - hullW / 2 - 8, (waterY + seabedY) / 2, x - 4, seabedY - 2);
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.arc(x - 4, seabedY, 2.4, 0, 7); ctx.fillStyle = col; ctx.fill();
+  ctx.restore();
+}
+
+function lgEnsureCanvasSize() {
+  var cv = document.getElementById('lgCanvas');
+  var card = document.getElementById('lgCard');
+  var w = Math.max(280, (card && card.clientWidth) || 500);
+  var H = Math.round(lgClamp(w * .34, 170, 300));
+  LG_DPR = Math.min(2, window.devicePixelRatio || 1);
+  cv.style.height = H + 'px';
+  cv.width = Math.round(w * LG_DPR); cv.height = Math.round(H * LG_DPR);
+  return { w: w, h: H };
+}
+
+// Jour pointé dans le météogramme (MG_HOVER, -1 => 1er jour par défaut) et
+// son créneau de pic — même critère "peak" que le badge houle du météogramme,
+// pour que les deux graphes désignent le même instant sans widget séparé.
+function lgCurrentSlot() {
+  var sp = WEEK.spots[MG_SPOT];
+  var dayIdx = MG_HOVER >= 0 ? MG_HOVER : 0;
+  var k = WEEK.days[dayIdx];
+  var ds = sp.slots.filter(function (s) { return s.d === k; });
+  if (!ds.length) return null;
+  var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
+  return { day: k, slot: peak };
+}
+
+function lgDraw() {
+  var cv = document.getElementById('lgCanvas');
+  var geo = lgEnsureCanvasSize(), W = geo.w, H = geo.h;
+  var ctx = cv.getContext('2d');
+  ctx.setTransform(LG_DPR, 0, 0, LG_DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  var cur = lgCurrentSlot();
+  var stEl = document.getElementById('lgState'), roEl = document.getElementById('lgReadout');
+  if (!cur) {
+    ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.font = '600 12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('pas de donnée ce jour-là', W / 2, H / 2);
+    if (stEl) stEl.textContent = '—';
+    if (roEl) roEl.innerHTML = '';
+    return;
+  }
+  var s = cur.slot, p = mgDayParts(cur.day);
+  var tideM = s.tide != null ? s.tide : 0.9;
+  var pxPerM = Math.min(34, H * .16), seaLevelY = H * .22;
+  function yOf(elevM) { return seaLevelY - elevM * pxPerM; }
+
+  var N = 140, gamma = .55, prof = [], broken = false, breakXf = null, breakH = 0, i;
+  for (i = 0; i <= N; i++) {
+    var xf = i / N, bed = lgBedElevation(xf), depth = tideM - bed, Hloc = 0;
+    if (depth > 0.05) {
+      if (!broken) {
+        var Ks = lgShoalCoeff(s.t || 10, depth);
+        Hloc = (s.hs || 0.5) * Ks;
+        if (Hloc > gamma * depth) { broken = true; breakXf = xf; breakH = Hloc; }
+      }
+      if (broken) Hloc = Math.min(gamma * depth, (s.hs || 0.5) * 2.2);
+    }
+    prof.push({ xf: xf, bed: bed, depth: depth, H: Hloc });
+  }
+  var flatDepth = prof[Math.round(.5 * N)].depth;
+  var state = lgReefState(flatDepth);
+  if (stEl) {
+    stEl.textContent = state === 'recouvert' ? ('Récif recouvert · ' + flatDepth.toFixed(1) + ' m')
+      : state === 'affleurant' ? ('Récif affleurant · ' + Math.max(flatDepth, 0).toFixed(2) + ' m')
+      : 'Récif à sec';
+    stEl.style.background = lgReefCol(state);
+  }
+
+  var moon = lgMoonPhase(Date.UTC(+cur.day.slice(0, 4), +cur.day.slice(5, 7) - 1, +cur.day.slice(8, 10)) - 11 * 3600000);
+  var fishN = Math.round(1 + moon.illum * 5);
+
+  var PROFILE_M = 260, mPerPx = PROFILE_M / W, DISPLAY_AMP = 2.1, phase = 0, prevK = null;
+  var surfPts = prof.map(function (pt, idx) {
+    var x = pt.xf * W;
+    if (pt.depth <= 0.05) return { x: x, y: yOf(pt.bed), wet: false };
+    var L = lgLocalWaveLength(s.t || 10, Math.max(pt.depth, 0.08)), k = 2 * Math.PI / L;
+    if (idx > 0 && prevK != null) { var dxM = (x - prof[idx - 1].xf * W) * mPerPx; phase += (k + prevK) / 2 * dxM; }
+    prevK = k;
+    var elev = tideM + (pt.H * DISPLAY_AMP / 2) * Math.sin(phase);
+    return { x: x, y: yOf(Math.min(elev, pt.bed + pt.depth + pt.H * DISPLAY_AMP / 2 + 3)), wet: true };
+  });
+
+  var accentRgb = [79, 163, 199], deepRgb = [6, 18, 34], paleRgb = [70, 150, 160];
+  var reefC = [46, 70, 64], reefDark = [24, 40, 38], sandC = [86, 84, 64];
+
+  ctx.beginPath(); ctx.moveTo(0, H);
+  prof.forEach(function (pt) { ctx.lineTo(pt.xf * W, yOf(pt.bed)); });
+  ctx.lineTo(W, H); ctx.closePath();
+  var bg = ctx.createLinearGradient(0, 0, W, 0);
+  bg.addColorStop(0, mgRgba(sandC, .35)); bg.addColorStop(.42, mgRgba(reefC, .55));
+  bg.addColorStop(.62, mgRgba(reefC, .85)); bg.addColorStop(1, mgRgba(sandC, .5));
+  ctx.fillStyle = bg; ctx.fill();
+  lgReefMasses(W).forEach(function (m) {
+    var mbed = lgBedElevation(m.cx / W), mh = 4 + m.rel * 9;
+    lgReefDome(ctx, m.cx, yOf(mbed) + 3, yOf(mbed) - mh, m.mw, m.j);
+    ctx.fillStyle = mgRgba(reefDark, .5); ctx.fill();
+  });
+
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(0, H);
+  surfPts.forEach(function (pt) { ctx.lineTo(pt.x, pt.wet ? pt.y : yOf(lgBedElevation(pt.x / W))); });
+  ctx.lineTo(W, H); ctx.closePath();
+  var wg = ctx.createLinearGradient(0, 0, W, 0);
+  wg.addColorStop(0, mgRgba(deepRgb, .88));
+  wg.addColorStop(.45, mgRgba(mgLerp(deepRgb, accentRgb, .6), .8));
+  wg.addColorStop(.75, mgRgba(mgLerp(accentRgb, paleRgb, .7), .62));
+  wg.addColorStop(1, mgRgba(paleRgb, .4));
+  ctx.fillStyle = wg; ctx.fill(); ctx.clip();
+  var depthVeil = ctx.createLinearGradient(0, 0, W * .4, 0);
+  depthVeil.addColorStop(0, 'rgba(0,10,20,.22)'); depthVeil.addColorStop(1, 'rgba(0,10,20,0)');
+  ctx.fillStyle = depthVeil; ctx.fillRect(0, 0, W, H);
+
+  // Reflet de soleil — seulement si le ciel RÉEL de ce créneau est dégagé
+  // (nuages bas faibles), même seuil que le soleil du météogramme.
+  if (s.cl != null && s.cl < 45) {
+    var glintY = yOf(tideM) - 2, gi = Math.max(.15, 1 - s.cl / 45);
+    var glint = ctx.createLinearGradient(W * .1, 0, W * .32, 0);
+    glint.addColorStop(0, 'rgba(255,255,255,0)');
+    glint.addColorStop(.5, 'rgba(255,244,210,' + (.5 * gi).toFixed(2) + ')');
+    glint.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = glint; ctx.fillRect(W * .1, glintY - 10, W * .22, 20);
+  }
+
+  var frng = mgRng(mgSeed(cur.day) + 613), fi;
+  for (fi = 0; fi < fishN; fi++) {
+    var fx = W * (.58 + frng() * .34), fyFrac = .35 + frng() * .45;
+    var fy = seaLevelY + (H - seaLevelY) * fyFrac;
+    lgDrawFish(ctx, fx, fy, 1 + frng() * .8, frng() > .5 ? 1 : -1, mgRgba([255, 224, 170], .92));
+  }
+  ctx.restore();
+
+  if (broken) {
+    var brng = mgRng(Math.floor(breakXf * 9999)), s2;
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    for (s2 = 0; s2 < N; s2++) {
+      var xfP = s2 / N; if (xfP < breakXf) continue;
+      var pp = prof[s2]; if (pp.depth <= .05) continue;
+      if (brng() > .72) { var fx2 = xfP * W + (brng() - .5) * 6, fy2 = yOf(tideM) - 1 + brng() * 3; ctx.fillRect(fx2, fy2, 1.6, 1.6); }
+    }
+  }
+
+  ctx.beginPath(); var started = false;
+  surfPts.forEach(function (pt) { if (!pt.wet) return; if (!started) { ctx.moveTo(pt.x, pt.y); started = true; } else ctx.lineTo(pt.x, pt.y); });
+  ctx.strokeStyle = mgRgba(mgLerp(accentRgb, [255, 255, 255], .5), .95); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+
+  // Moutons — vent RÉEL du créneau : au-delà de ~12 nds (force 4 Beaufort),
+  // la mer prend en large avant le récif.
+  if (s.ws != null && s.ws >= 12) {
+    var wrng = mgRng(mgSeed(cur.day) + 4242), wn = Math.round((s.ws - 11) * 1.6), wi;
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    for (wi = 0; wi < wn; wi++) {
+      var wxf = wrng() * Math.min(.46, breakXf || .46), wx = wxf * W, wy = yOf(tideM) - 6 - wrng() * 14;
+      ctx.beginPath(); ctx.ellipse(wx, wy, 3 + wrng() * 2, 1.1, 0, 0, 7); ctx.fill();
+    }
+  }
+
+  // Bateau décalé de la colonne du bord (0.78 et non 0.9+) : à marée haute et
+  // petit canvas, un ancrage collé au coin droit finissait sous le badge UV.
+  var boatXf = .78, boatDepth = Math.max(0.3, tideM - lgBedElevation(boatXf));
+  lgDrawBoat(ctx, boatXf * W, yOf(tideM), yOf(tideM) + boatDepth * pxPerM, mgRgba(accentRgb, .8));
+
+  if (broken) {
+    var bx = breakXf * W;
+    ctx.strokeStyle = 'rgba(224,92,76,.85)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.moveTo(bx, 8); ctx.lineTo(bx, H - 12); ctx.stroke(); ctx.setLineDash([]);
+    ctx.textAlign = 'center'; ctx.font = '700 10px sans-serif';
+    ctx.fillStyle = 'rgba(8,20,34,.68)'; ctx.fillRect(bx - 34, 4, 68, 14);
+    ctx.fillStyle = '#ff9a86'; ctx.fillText('déferle · ' + breakH.toFixed(1) + ' m', bx, 14);
+  }
+
+  // Badges d'info EN DERNIER, position FIXE (jamais accrochée à la hauteur du
+  // ruban) : posé sur yOf(tideM) comme une 1ʳᵉ version le faisait, le libellé
+  // sortait du canvas par le haut à marée haute sur un petit format (mesuré
+  // le 10/08/2026) — même piège que les étiquettes d'axe du météogramme,
+  // réglé de la même façon (dernier, opaque, position qui ne dépend pas de la
+  // donnée qu'il annonce).
+  ctx.fillStyle = 'rgba(8,20,34,.72)'; ctx.fillRect(6, 6, 92, 20);
+  ctx.textAlign = 'left'; ctx.font = '700 11px sans-serif'; ctx.fillStyle = '#fff';
+  ctx.fillText(tideM.toFixed(2) + ' m d\'eau', 11, 20);
+
+  var uvBand = lgUvBand(s.uv);
+  if (uvBand) {
+    ctx.fillStyle = 'rgba(8,20,34,.72)'; ctx.fillRect(W - 74, 6, 68, 26);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = uvBand.c; ctx.font = '800 11px sans-serif'; ctx.fillText('UV ' + s.uv.toFixed(0), W - 10, 20);
+    ctx.font = '600 8.5px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(uvBand.t, W - 10, 30);
+  }
+
+  ctx.textAlign = 'left'; ctx.font = '600 9.5px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)';
+  ctx.fillText('large', 6, H - 6);
+  ctx.textAlign = 'right'; ctx.fillText('lagon →', W - 6, H - 6);
+  ctx.textAlign = 'center'; ctx.fillText('platier', W * .55, H - 6);
+
+  if (roEl) {
+    roEl.innerHTML = '<b>' + J_LONG[p.dow] + ' ' + p.d + ' ' + M_SHORT[p.mo] + ', ' + s.h + ' h</b> — '
+      + s.hs.toFixed(1) + ' m/' + Math.round(s.t) + 's ' + compass(s.sd)
+      + ' · <span style="color:' + windCol(s.ws) + '">' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds</span>'
+      + ' · 🌙 ' + lgMoonName(moon.frac) + ' (' + Math.round(moon.illum * 100) + '%) · ' + fishN + ' poisson' + (fishN > 1 ? 's' : '')
+      + ' <span class="hint">(repère ludique)</span>';
+  }
 }
 
 // ─── Paramètres ─────────────────────────────────────────────────────────────
@@ -2027,7 +2411,7 @@ async function main() {
     slots.forEach((s) => {
       const key = s.d + '|' + s.h;
       const sk = sky.bySlot[key];
-      if (sk) { s.cl = sk.cl; s.cm = sk.cm; s.ch = sk.ch; s.precip = sk.precip; s.code = sk.code; s.at = sk.at; }
+      if (sk) { s.cl = sk.cl; s.cm = sk.cm; s.ch = sk.ch; s.precip = sk.precip; s.code = sk.code; s.at = sk.at; s.uv = sk.uv; }
       const sc = secondary[key];
       if (sc) { s.hs2 = sc.hs2; s.per2 = sc.per2; s.sd2 = sc.sd2; }
     });
@@ -2039,6 +2423,9 @@ async function main() {
     for (const ds of days) {
       tide[ds] = await fetchTideDay(sp.tideId, ds);
     }
+    // Hauteur d'eau réelle par créneau (interpolée, cf. tideHeightForSlot) :
+    // le cache est chaud après la boucle ci-dessus, donc purement synchrone.
+    slots.forEach((s) => { const h = tideHeightForSlot(sp.tideId, s.d, s.h); if (h != null) s.tide = +h.toFixed(2); });
 
     const covered = {};
     slots.forEach((s) => { covered[s.d] = 1; });
