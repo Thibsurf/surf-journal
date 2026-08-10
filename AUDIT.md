@@ -6162,3 +6162,55 @@ plutôt que de deviner ; capture d'écran avant/après chaque correctif
 (mgSetHover(3) simulé pour pointer un jour réel à vent ≥12 nds).
 
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+## 10/08/2026 — coupe du lagon retirée, flèches de vent refaites façon Yadusurf
+
+Après trois passes de retouche visuelle (v75/v76, chantiers précédents du
+même jour) qui ne convenaient toujours pas — « pas beau, moutons et vagues
+pas propres » —, décision explicite de l'utilisateur : retirer la coupe du
+lagon plutôt que retenter une simplification. Retirée intégralement de
+`build-week.mjs` : bloc HTML (`#lgCard`), CSS (`.lg-state`, `#lgCanvas`),
+tout le JS (`lgDraw` et ses ~20 fonctions/constantes support — physique de
+houle, récif générique, bateau, poissons, phase de lune, catégories UV), et
+les 3 appels `lgDraw()` dans `mgSetHover`/`mgRender`/`mgRelayout`. Le
+météogramme (ciel/houle/vent/marée) n'est pas concerné, il reste tel quel.
+
+Nettoyage des données qui n'existaient QUE pour la coupe du lagon,
+maintenant orphelines : `uv_index` retiré de l'appel Open-Meteo GFS (aucune
+requête économisée, c'était le même appel que le ciel — juste un champ en
+moins dans la réponse gardée) ; `tideHeightForSlot()` (hauteur de marée
+continue interpolée par créneau, via le port synthétique sur
+`tide-harmonics.js`) supprimée avec son appel — `fetchTideDay()` revient à
+son préchargement à 2 jours (prev+courant) au lieu de 3 (prev+courant+
+suivant), ce 3ᵉ jour n'ayant servi qu'à cette interpolation. Les extrema
+PM/BM par jour (`sp.tide`, la rangée de marée déjà affichée sous le
+météogramme) sont inchangés et continuent de fonctionner — c'est une donnée
+distincte de la hauteur continue par créneau qui vient d'être retirée.
+
+**Flèches de vent redessinées.** Référence fournie par l'utilisateur :
+https://www.yadusurf.com/METEO-SURF-REPORT/Teahupoo — page dont le
+météogramme est une image serveur (`SurfDayImage?...&Options=
+VINCENTMARQUESDESIGN`, déjà noté dans le prototype d'origine), donc rien à
+« trouver comme code » côté client : l'image elle-même a été téléchargée
+(`curl` sur l'URL `SurfDayImage` extraite de la page via WebFetch) et
+regardée directement pour en tirer le STYLE. Constat : une flèche pleine
+épaisse à encoche (silhouette façon chevron/flèche de bande dessinée), pas
+un rond avec une tige comme la version précédente — et le chiffre de force
+est posé DANS la forme, pas dans un badge séparé en dessous. Couleur : la
+référence utilise un jaune/orange/rouge par force ; gardé `windCol()` (le
+dégradé vert/bleu/orange/rouge déjà utilisé partout ailleurs dans ce
+fichier) plutôt que copier leur palette, pour rester cohérent avec le reste
+du site plutôt que d'introduire une 2ᵉ convention de couleur vent.
+`mgWindBadgeSvg()` : viewBox carrée 24×24 (au lieu de 36×46), un seul
+`<path>` (flèche + encoche) dans un `<g>` tourné à `wd+180°` (même
+convention que partout ailleurs), chiffre HORS du `<g>` et posé au centre de
+rotation (12,12) — et non sur un point du tracé, qui se serait déplacé par
+rapport au chiffre selon la direction pointée.
+
+Vérifié : `node --check` sur le générateur et le JS client extrait du
+fichier généré ; Chrome headless 500px et 1400px, `window.onerror` injecté
+(zéro erreur) ; `document.getElementById('lgCard')` confirmé `null` après
+retrait ; capture d'écran des flèches aux deux largeurs, y compris le cas le
+plus serré (4 flèches/jour, ~20px chacune).
+
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
