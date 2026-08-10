@@ -5455,3 +5455,126 @@ périmètre à l'identique dans une session future :
   qu'un même modèle change de couleur d'une page à l'autre, cf. commentaire
   LOTUS). Rien de concret à améliorer sans re-designer un système déjà
   déployé et validé au fil de nombreuses itérations passées.
+
+# 10/08/2026 — `semaine.html` : revue produit + audit mobile (v69)
+
+Trois sous-agents lancés en parallèle sur des angles disjoints : revue produit,
+audit véracité des données, audit mobile/accessibilité. **L'audit véracité n'a pas
+abouti** (limite de session atteinte côté agent) — il reste à faire, c'est le seul
+des trois à ne pas avoir rendu. Les deux autres ont produit des constats mesurés,
+tous revérifiés à la main avant application : sur les points chiffrés l'audit
+mobile était juste au centième, mais son correctif proposé était insuffisant (cf.
+ci-dessous), et la revue produit surestimait la facilité du lien profond.
+
+## ✗ Contraste des cellules — le correctif proposé ne suffisait pas
+
+Mesures confirmées : sous-texte `.cell s` (période + vent, 9,5 px) à **2,77:1** sur
+les scores 4-5, **2,81:1** sur le score 3, contre 4,5:1 exigés par WCAG AA. Et
+`.cell.off s` (`#4a6076`) à **2,57:1**.
+
+L'agent proposait de passer le texte à `rgba(255,255,255,.85)`. Recalculé : ça ne
+donne que **3,98:1** sur les scores 3 et 4 — toujours non conforme. La cause n'est
+pas l'opacité du texte mais la **clarté des fonds** : `mix(col, 0.16 + 0.10×score)`
+produit des fonds jusqu'à `#287668`, trop clairs pour du texte clair.
+
+Correctif retenu, calculé sur les cinq fonds réels : fonds `mix(col, 0.12 + 0.07×score)`
+et sous-texte à `rgba(255,255,255,.86)` → **pire cas 6,07:1** (mesuré 6,85:1 dans
+le DOM rendu). La bordure colorée reste à 4,5-10,7:1 sur le fond de page, donc le
+code couleur du score continue d'être porté. `.cell.off s` → `#8aa2b8` (6,32:1).
+
+`--faint` passé de `#728aa1` à `#7d94ab` : 4,59:1 ne dépassait le seuil que de
+0,09 point, sans aucune marge.
+
+## ✗ Cibles tactiles sous les 44 px d'Apple
+
+Mesuré en headless : `.stp` **26×26** (39 % de la surface utile), bouton Calibrer
+**73,5×21**, boutons de mode **211,5×29**. Or les −/+ sont le seul moyen de régler
+finement sur mobile — il n'y a pas de molette sur un écran tactile. Tous portés à
+44 px de hauteur mini, vérifié après coup : `stp=44x44`, `calbtn=86x44`,
+`mode-btn=209x44`.
+
+## ✗ `gap` en flexbox n'existe pas avant iOS 14.5
+
+Quatre règles `display:flex;gap:…` sans repli (`.top`, `.cal-mode`, `.cal-seed`,
+`.row-c`), alors que la propriété n'arrive qu'avec Safari 14.1 — soit **après** la
+plage d'iOS que ce projet vise explicitement. Sur ces appareils les boutons de mode
+se touchaient bord à bord et les −/+ collaient à la piste du curseur. Replis
+`> * + * { margin-left }` ajoutés, même démarche que le retrait de `color-mix()`.
+(`.cards` est en grid, où `gap` est supporté depuis Safari 10.1 : rien à faire.)
+
+## ✗ Le score n'était porté que par la couleur
+
+Le libellé qualitatif (« Excellent »…) ne vivait que dans `title=`, qui ne
+s'affiche jamais au tactile et n'est pas lu par VoiceOver quand l'élément contient
+déjà du texte — violation WCAG 1.4.1. `aria-label` ajouté sur les 20 cellules,
+`scope="col"`/`scope="row"` sur les en-têtes, `aria-expanded`/`aria-controls` sur
+le bouton Calibrer.
+
+## ✗ Le créneau vedette ne portait pas ses propres réserves
+
+Constat produit le plus juste du lot : la page affichait « Excellent » en gros sur
+un spot marqué `°` dans la grille, avec juste en dessous une réglette annonçant
+« modèles en désaccord 0,9-1,6 m » — presque du simple au double. L'élément le
+plus lu était le moins fiable, sans que rien ne le dise à cet endroit.
+
+Le hero reprend désormais le `°` du spot non calibré et affiche la réserve en
+clair (« — à reconfirmer la veille » quand les modèles divergent). Et l'heure est
+annoncée « **vers** 17 h » : le pas de meteo.nc est de 3 h, 6 h au-delà de J+2 —
+« 17 h » était une fausse précision.
+
+## ✗ Aucune balise de partage, sur la page faite pour être partagée
+
+`semaine.html` était la **seule** des cinq pages du site sans `og:`/`twitter:`
+(les autres en ont 6 + 4), alors que c'est précisément celle pensée pour être
+collée dans WhatsApp : le lien s'affichait en URL nue. Balises ajoutées, avec la
+période de la semaine dans `og:description` et la même image que `previsions.html`.
+
+## Lien profond `?spot=&date=&hour=` — chemin séparé du vote
+
+La revue produit proposait de réutiliser `?voteSpot=&voteDate=&voteHour=`. Vérifié :
+ce handler exige `voteSession` ou `votePending=1`, pose `_pendingVote` et appelle
+`_renderVoteUI()` — il aurait affiché un **formulaire de vote de houle** à qui veut
+seulement consulter ses prévisions. Ce n'était donc pas le « juste à découpler »
+annoncé.
+
+`_initSpotFromUrl()` ajouté dans `previsions.html` : chemin distinct, qui ne fait
+que ce que le lien promet (sélection du spot + curseur sur le créneau), mais
+réutilise `_findSpotIdxForName` et `bsfSelectSpot` — aucune logique dupliquée.
+Contrôlé en headless sur `?spot=Ilot%20Ténia&date=2026-08-13&hour=17` :
+`spot-actif=Ilot Ténia`, `_pendingVote=null`, aucune UI de vote visible, et la
+résolution fonctionne aussi pour un nom de spot de surf (« Gros nem » → Ténia).
+
+## Pied de page ramené de 7 paragraphes à 2 lignes
+
+Sept blocs au même niveau visuel contredisaient la consigne « très concis ».
+L'essentiel reste visible (source + date de génération, ce qui fonde la confiance),
+le reste passe sous un `<details>` — « Comment cette page est faite, et ce qu'elle
+ne dit pas ». La **marée** y est désormais nommée explicitement comme manque connu,
+au lieu d'être passée sous silence.
+
+## Propositions écartées
+
+- **Comparer à la semaine précédente** via un fichier d'état commité : ajoute un
+  état persistant et un risque de conflit avec le commit automatique du workflow,
+  pour un gain d'accroche hypothétique.
+- **Panneau « avancé »** séparant 3 curseurs simples des 7 autres : le panneau est
+  replié par défaut, le coût pour qui ne l'ouvre pas est nul.
+- **Scorer la marée** : toucherait `calcSurfScore`, partagé avec `previsions.html`.
+  Vrai manque produit, mais chantier à part — inscrit ici, pas bricolé.
+- `accent-color` (Safari 15.4) et `touch-action` (Safari 13) laissés tels quels :
+  dégradation gracieuse, aucune perte fonctionnelle.
+
+## Vérifications finales (DOM rendu)
+
+```
+og=6 twitter=4 | details-footer=oui | aria-expanded false→true, aria-controls=cal
+stp=44x44 | calbtn=86x44 | mode-btn=209x44
+scope-col=5 scope-row=4 | aria-label-cellules=20
+hero-heure="jeudi 13, vers 17 h" | hero-reserve="— à reconfirmer la veille"
+hero-href=previsions.html?spot=Ilot%20T%C3%A9nia&date=2026-08-13&hour=17
+contraste-sous-texte=6.85:1 (AA=4.5)   ← était 2,77:1
+body-scrollX=ok | erreurs=aucune
+```
+
+`CACHE_NAME` v68 → **v69**. Reste à faire : l'audit de véracité des données, non
+abouti.

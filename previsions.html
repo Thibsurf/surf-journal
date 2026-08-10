@@ -6215,6 +6215,41 @@ function _initSwellVoteFromUrl() {
   } catch (e) { console.warn('[voteFromUrl]', e && e.message); }
 }
 
+// Lien profond de consultation, posé pour semaine.html (05/08/2026) :
+// ?spot=<nom>&date=YYYY-MM-DD&hour=H → sélectionne le spot et cale le curseur sur
+// le créneau. Volontairement séparé de _initSwellVoteFromUrl() : ce dernier exige
+// un voteSession/votePending et déclenche _renderVoteUI(), ce qui n'a aucun sens
+// pour un lien de lecture partagé par WhatsApp. Réutilise en revanche la même
+// résolution de nom (_findSpotIdxForName gère aussi les surfSpots rattachés) et
+// le même bsfSelectSpot(), donc rien n'est dupliqué côté logique.
+function _initSpotFromUrl() {
+  var p = new URLSearchParams(location.search);
+  var spot = p.get('spot'), date = p.get('date');
+  if (!spot || !date) return;
+  var hour = p.get('hour');
+  hour = (hour !== null && hour !== '') ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 9;
+  // Date+heure NC explicites (UTC+11, jamais d'heure d'été) → ms UTC réelles,
+  // comparables aux séries. Le suffixe +11:00 évite toute lecture locale.
+  var targetMs = new Date(date + 'T' + String(hour).padStart(2, '0') + ':00:00+11:00').getTime();
+  if (isNaN(targetMs)) return;
+  var spotIdx = _findSpotIdxForName(spot);
+  if (spotIdx < 0) return;
+  bsfSelectSpot(spotIdx, targetMs).then(function() {
+    // Même attente que pour le vote : _renderSwellCompare() n'est pas attendu par
+    // bsfSelectSpot, il faut que _swellCache soit prêt avant de bouger le curseur.
+    var tries = 0;
+    var iv = setInterval(function() {
+      tries++;
+      if (_swellCache) {
+        clearInterval(iv);
+        if (window._swellCmpCursorTo) window._swellCmpCursorTo(targetMs);
+        var card = document.getElementById('swell-cmp-card');
+        if (card) setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+      } else if (tries > 40) { clearInterval(iv); } // ~10 s, abandon silencieux
+    }, 250);
+  });
+}
+
 // Cherche l'index SPOTS correspondant à un nom de spot venant du Journal —
 // soit le point de prévision lui-même (SPOTS[i].name), soit un des surfSpots
 // qui lui sont rattachés (ex: "Gros nem" → point "Ilot Ténia").
@@ -16011,6 +16046,15 @@ function openNavBMSDetail() {
   // chargement du token qui relance loadForecast(currentSpot)).
   if (location.search.indexOf('voteSession=') >= 0 || location.search.indexOf('votePending=') >= 0) {
     setTimeout(function() { try { _initSwellVoteFromUrl(); } catch(e) { console.warn('[voteFromUrl]', e && e.message); } }, 900);
+  }
+
+  // Lien profond SANS vote, venu de semaine.html : ?spot=<nom>&date=YYYY-MM-DD&hour=H.
+  // Chemin distinct de _initSwellVoteFromUrl() à dessein — celui-ci pose _pendingVote
+  // et appelle _renderVoteUI(), donc afficherait un formulaire de vote de houle à
+  // quelqu'un qui veut seulement consulter ses prévisions. Ici on ne fait que ce que
+  // le lien promet : sélectionner le spot et se positionner sur le créneau.
+  if (location.search.indexOf('spot=') >= 0 && location.search.indexOf('date=') >= 0) {
+    setTimeout(function() { try { _initSpotFromUrl(); } catch(e) { console.warn('[spotFromUrl]', e && e.message); } }, 900);
   }
 
   // Graphiques comparatif houle/vent dessinés une seule fois avec la largeur

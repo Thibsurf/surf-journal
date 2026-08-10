@@ -306,16 +306,39 @@ function render(data, generatedMs) {
 <title>La semaine — Surf NC</title>
 <meta name="description" content="Les meilleurs créneaux de surf de la semaine en Nouvelle-Calédonie, ${esc(periode)}.">
 <meta name="theme-color" content="#0a1628">
+<!-- Partage : les 4 autres pages du site ont ces balises, pas celle-ci — or c'est
+     LA page pensée pour être collée dans WhatsApp. Sans elles, le lien s'affiche
+     en URL nue. Mêmes valeurs et même image que previsions.html. -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://thibsurf.github.io/surf-journal/semaine.html">
+<meta property="og:title" content="🏄 La semaine — Surf NC">
+<meta property="og:description" content="Les meilleurs créneaux de surf ${esc(periode)} en Nouvelle-Calédonie : houle, vent et accord des modèles, spot par spot.">
+<meta property="og:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="🏄 La semaine — Surf NC">
+<meta name="twitter:description" content="Les meilleurs créneaux de surf ${esc(periode)} en Nouvelle-Calédonie.">
+<meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 <link rel="icon" href="favicon.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--ocean:#0a1628;--deep:#0d1f3c;--text:#e8eef4;--muted:#7a94aa;--faint:#728aa1;
+:root{--ocean:#0a1628;--deep:#0d1f3c;--text:#e8eef4;--muted:#7a94aa;--faint:#7d94ab;
       --border:rgba(255,255,255,.08);--accent:#4fa3c7;--warm:#e8a057}
+/* --faint mesuré à 4,59:1 sur --deep : conforme AA d'un cheveu, sans marge.
+   #7d94ab le porte à 5,24:1 tout en restant plus discret que --muted. */
 body{background:var(--ocean);color:var(--text);
      font:15px/1.45 'DM Sans',system-ui,-apple-system,sans-serif;
      padding:20px 14px 40px;max-width:560px;margin:0 auto;-webkit-text-size-adjust:100%}
 a{color:inherit;text-decoration:none}
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:16px}
+/* La propriété gap en flexbox n'existe qu'à partir de Safari 14.1 (iOS 14.5) — soit APRÈS
+   la plage d'iOS que ce projet vise. Sans ces replis, les boutons de mode se
+   touchent bord à bord et les boutons -/+ collent à la piste du curseur. Même démarche
+   que le retrait de color-mix(). */
+.top > * + *{margin-left:8px}
+.cal-mode > * + *{margin-left:6px}
+.cal-seed > * + *{margin-left:8px}
+.row-c > * + *{margin-left:8px}
 h1{font:600 20px/1.2 Georgia,serif;letter-spacing:.2px}
 .per{font-size:12px;color:var(--muted);white-space:nowrap}
 
@@ -330,6 +353,8 @@ h1{font:600 20px/1.2 Georgia,serif;letter-spacing:.2px}
 .hero-m{font-size:16px}
 .hero-m b{color:var(--c,#3dba8a)}
 .hero-b{font-size:12px;color:var(--faint);margin-top:5px}
+.hero-w{color:var(--warm)}
+.hero-s sup{font-size:13px;color:var(--warm);vertical-align:super}
 
 h2{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint);
    margin:22px 0 9px;display:flex;justify-content:space-between;align-items:center}
@@ -370,11 +395,17 @@ th.sp sup{font-size:9px;color:var(--warm);margin-left:1px;vertical-align:super}
 .cell{display:flex;flex-direction:column;align-items:center;justify-content:center;
       height:44px;border-radius:7px;font-style:normal}
 .cell b{font-size:12.5px;font-weight:600;line-height:1.15}
-.cell s{font-size:9.5px;text-decoration:none;line-height:1.2;color:rgba(232,238,244,.62)}
+/* Sous-texte à 86 % de blanc, sur des fonds volontairement plus sombres (cf.
+   mix() dans le script) : à l'ancien couple (opacité .62, fonds .16+.10×score)
+   le contraste mesuré tombait à 2,77:1 sur les scores 4 et 5, soit très en
+   dessous des 4,5:1 exigés par WCAG AA pour du petit texte. Le pire cas est
+   maintenant à 6,07:1, et la bordure colorée (4,5 à 10,7:1 sur le fond de page)
+   continue de porter le code couleur. */
+.cell s{font-size:9.5px;text-decoration:none;line-height:1.2;color:rgba(255,255,255,.86)}
 .cell em{font-style:normal;font-weight:600}
 .cell.off{background:rgba(255,255,255,.035)}
 .cell.off b{font-weight:400;color:#7a94aa}
-.cell.off s{color:#4a6076}
+.cell.off s{color:#8aa2b8}   /* 2,57:1 → 6,32:1 sur le fond composite des cases éteintes */
 .cell.nil{background:rgba(255,255,255,.02);color:#3d5468;font-size:13px}
 td{width:13%}
 .leg{font-size:10.5px;color:var(--faint);margin-top:7px;line-height:1.5}
@@ -393,7 +424,7 @@ td{width:13%}
 /* Panneau de calibrage. Replié par défaut : la page doit rester lisible en dix
    secondes, les réglages sont un second temps. */
 .calbtn{background:none;border:1px solid var(--border);color:var(--muted);
-        padding:3px 10px;border-radius:8px;cursor:pointer;font-size:11px;
+        padding:0 14px;min-height:44px;border-radius:10px;cursor:pointer;font-size:12px;
         font-family:inherit;letter-spacing:0;text-transform:none}
 .calbtn:hover{border-color:rgba(255,255,255,.16);color:var(--text)}
 .cal{background:var(--deep);border-radius:12px;padding:14px;margin-bottom:6px;display:none}
@@ -411,8 +442,8 @@ td{width:13%}
 input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .cal-mode{display:flex;gap:6px;margin-bottom:14px}
 .cal-mode button{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border);
-                 color:var(--muted);border-radius:8px;padding:7px 4px;cursor:pointer;
-                 font-size:11px;font-family:inherit}
+                 color:var(--muted);border-radius:8px;padding:0 6px;min-height:44px;
+                 cursor:pointer;font-size:11.5px;font-family:inherit}
 .cal-mode button.on{background:var(--accent);border-color:var(--accent);color:#06131f;
                     font-weight:600}
 .cal-note{font-size:10.5px;color:var(--faint);line-height:1.5;margin-top:12px}
@@ -427,8 +458,11 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .row:hover{background:rgba(255,255,255,.03)}
 .row-c{display:flex;align-items:center;gap:8px}
 .row-h{font-size:10px;color:var(--faint);margin-top:3px;line-height:1.4}
-.stp{flex:0 0 26px;height:26px;background:rgba(255,255,255,.05);border:1px solid var(--border);
-     color:var(--muted);border-radius:7px;cursor:pointer;font-size:15px;line-height:1;
+/* 44×44 px : recommandation Apple HIG. À 26×26 px on visait 39 % de la surface
+   utile, ce qui rend le réglage au cran près pénible au pouce — or c'est
+   précisément le seul moyen de régler finement sur mobile (pas de molette). */
+.stp{flex:0 0 44px;height:44px;background:rgba(255,255,255,.05);border:1px solid var(--border);
+     color:var(--muted);border-radius:9px;cursor:pointer;font-size:17px;line-height:1;
      font-family:inherit;padding:0}
 .stp:hover{border-color:var(--accent);color:var(--accent)}
 .cal-live{font-size:11.5px;color:var(--muted);margin-top:14px;padding-top:11px;
@@ -443,6 +477,9 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
      background:var(--accent);color:#06131f;font-weight:600;font-size:15px}
 footer{margin-top:20px;font-size:11px;line-height:1.6;color:var(--faint);
        border-top:1px solid var(--border);padding-top:12px}
+footer details{margin-top:8px}
+footer summary{cursor:pointer;color:var(--muted);padding:6px 0;min-height:32px}
+footer details p{margin-top:8px}
 noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
          font-size:13px;color:var(--muted)}
 @media (max-width:400px){
@@ -464,30 +501,36 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
   sur <a href="previsions.html" style="color:#4fa3c7">les prévisions</a>.</noscript>
 </div>
 
-<div class="calbar"><button class="calbtn" id="cal-toggle" type="button">🎯 Calibrer</button></div>
+<div class="calbar"><button class="calbtn" id="cal-toggle" type="button"
+  aria-expanded="false" aria-controls="cal">🎯 Calibrer</button></div>
 <div class="cal" id="cal"></div>
 
 <a class="cta" href="previsions.html">Voir le détail heure par heure →</a>
 
 <footer>
-  Houle et vent&nbsp;: <b>meteo.nc</b> — la même source que le bloc «&nbsp;Meilleurs
-  créneaux&nbsp;» des prévisions, pour que les deux pages ne se contredisent jamais.
-  Le meilleur créneau de chaque journée est retenu entre ${HOUR_MIN}&nbsp;h et ${HOUR_MAX}&nbsp;h.
-  <br>Seuls les spots où tu as <b>déjà surfé</b> figurent ici — les points de prévision
-  jamais utilisés (Mato, Îlot Maître, Ste Marie…) sont écartés automatiquement à partir
-  du journal de sessions.
-  <br>La réglette sous chaque créneau compare cette prévision à MARC, MFWAM, GFS, BOM,
-  ECMWF, AIFS et LOTUS&nbsp;: elle ne sert pas à moyenner les modèles mais à dire si on
-  peut s'engager. Points serrés&nbsp;= houle certaine, points étalés&nbsp;= à
-  reconfirmer la veille. Les modèles dont le run a plus de 24&nbsp;h de retard sont écartés.
-  <br>Les spots marqués <sup style="color:var(--warm)">°</sup> n'ont <b>pas de calibrage
-  propre</b>&nbsp;: ils sont notés avec les seuils par défaut, plus permissifs. Passe en
-  «&nbsp;réglages communs&nbsp;» pour les comparer à armes égales.
-  <br>Deux limites&nbsp;: meteo.nc ne fournit <b>pas de rafales</b> (un créneau rafaleux
-  peut donc paraître un cran meilleur qu'il ne l'est, et le seuil de rafales n'est pas
-  proposé en réglage), et au-delà de J+2 il ne sort plus que 4&nbsp;échéances par jour —
-  l'heure affichée est alors la meilleure <i>parmi celles disponibles</i>.
-  <br>Page regénérée automatiquement chaque lundi matin — dernière fois le ${genTxt} (heure NC).
+  Houle et vent&nbsp;: <b>meteo.nc</b>, la même source que les prévisions du site.
+  Régénéré chaque lundi matin — dernière fois le ${genTxt} (heure NC).
+  <details>
+    <summary>Comment cette page est faite, et ce qu'elle ne dit pas</summary>
+    <p>Le meilleur créneau de chaque journée est retenu entre ${HOUR_MIN}&nbsp;h et
+    ${HOUR_MAX}&nbsp;h. La source est celle du bloc «&nbsp;Meilleurs créneaux&nbsp;» des
+    prévisions, pour que les deux pages ne se contredisent jamais.</p>
+    <p>Seuls les spots où tu as <b>déjà surfé</b> figurent ici — les points de prévision
+    jamais utilisés (Mato, Îlot Maître, Ste Marie…) sont écartés automatiquement à partir
+    du journal de sessions.</p>
+    <p>La réglette compare la prévision à MARC, MFWAM, GFS, BOM, ECMWF, AIFS et LOTUS.
+    Elle ne moyenne pas les modèles&nbsp;: elle dit si on peut s'engager. Points
+    serrés&nbsp;= houle certaine, points étalés&nbsp;= à reconfirmer la veille. Les
+    modèles dont le run a plus de 24&nbsp;h de retard sont écartés.</p>
+    <p>Les spots marqués <sup style="color:var(--warm)">°</sup> n'ont <b>pas de calibrage
+    propre</b>&nbsp;: ils sont notés avec les seuils par défaut, plus permissifs. Passe en
+    «&nbsp;réglages communs&nbsp;» pour les comparer à armes égales.</p>
+    <p>Ce que la page ne dit pas&nbsp;: meteo.nc ne fournit <b>pas de rafales</b> (un
+    créneau rafaleux peut paraître un cran meilleur qu'il ne l'est), <b>pas de marée</b>
+    — déterminante sur ces passes, à vérifier sur les prévisions — et au-delà de J+2 il
+    ne sort plus que 4&nbsp;échéances par jour&nbsp;: l'heure affichée est alors la
+    meilleure <i>parmi celles disponibles</i>, d'où le «&nbsp;vers&nbsp;».</p>
+  </details>
 </footer>
 
 <!-- Le moteur de score, le MÊME fichier que celui chargé par previsions.html :
@@ -675,6 +718,17 @@ function spreadHtml(sp, compact) {
 }
 
 // ─── Rendu ──────────────────────────────────────────────────────────────────
+// Lien profond vers previsions.html, sur le spot, le jour et l'heure du créneau.
+// Sans lui, cliquer « Passe de Ouano vendredi vers 8 h » ouvrait la vue par défaut :
+// mauvais spot, mauvais jour, tout à re-chercher. Le nom du point suffit,
+// previsions.html sait le résoudre (il gère aussi les surfSpots rattachés).
+// Volontairement PAS les paramètres voteXxx : ils déclenchent l'interface de vote
+// de houle, hors sujet pour qui veut juste consulter ses prévisions.
+function deepLink(sp, day, hour) {
+  return 'previsions.html?spot=' + encodeURIComponent(sp.name)
+    + '&date=' + day + '&hour=' + hour;
+}
+
 function windTxt(ws, wd) {
   if (ws == null) return 'vent —';
   return Math.round(ws) + ' nds' + (wd != null ? ' ' + compass(wd) : '');
@@ -688,15 +742,29 @@ function render() {
   // de la page — la grille en dessous ne fait que justifier ce choix.
   if (t0 && t0.c.score >= 3) {
     var sp0 = WEEK.spots[t0.si], p0 = dayParts(t0.day);
-    html += '<a class="hero" href="previsions.html" style="--c:' + t0.c.col + '">'
+    var sprd = spreadAt(t0.si, t0.day, t0.c.h, t0.c.hs);
+    // Les réserves qui valent pour la grille valent d'abord pour LE créneau mis en
+    // avant : sans ça la page affichait « Excellent » en gros sur un spot non
+    // calibré dont les modèles divergeaient du simple au double, la nuance
+    // n'apparaissant qu'en dessous et en petit. C'est l'élément le plus lu.
+    var caveats = [];
+    if (MODE === 'spot' && !sp0.cal) caveats.push('seuils par défaut sur ce spot');
+    if (sprd && sprd.verdict.txt === 'modèles en désaccord') caveats.push('à reconfirmer la veille');
+    html += '<a class="hero" href="' + deepLink(sp0, t0.day, t0.c.h) + '" style="--c:' + t0.c.col + '">'
       + '<div class="hero-k">Le créneau de la semaine</div>'
-      + '<div class="hero-d">' + J_LONG[p0.dow] + ' ' + p0.d + ', ' + t0.c.h + ' h</div>'
-      + '<div class="hero-s">' + esc(sp0.name) + '</div>'
+      // « vers » et non une heure sèche : le pas de meteo.nc est de 3 h, et de 6 h
+      // au-delà de J+2. Annoncer « 8 h » laisse croire à une précision inexistante.
+      + '<div class="hero-d">' + J_LONG[p0.dow] + ' ' + p0.d + ', vers ' + t0.c.h + ' h</div>'
+      + '<div class="hero-s">' + esc(sp0.name)
+      +   (MODE === 'spot' && !sp0.cal ? '<sup title="pas de calibrage propre — seuils par défaut, plus permissifs">°</sup>' : '')
+      +   '</div>'
       + '<div class="hero-m"><b>' + f1(t0.c.hs) + ' m</b> · ' + Math.round(t0.c.t) + ' s · '
       +   '<span style="color:' + windCol(t0.c.ws) + '">' + windTxt(t0.c.ws, t0.c.wd) + '</span></div>'
-      + '<div class="hero-b">' + esc(t0.c.label) + ' · ' + f1(t0.c.pwr) + ' kW/m</div>'
+      + '<div class="hero-b">' + esc(t0.c.label) + ' · ' + f1(t0.c.pwr) + ' kW/m'
+      +   (caveats.length ? '<span class="hero-w"> — ' + caveats.join(', ') + '</span>' : '')
+      +   '</div>'
       + '</a>'
-      + spreadHtml(spreadAt(t0.si, t0.day, t0.c.h, t0.c.hs), false);
+      + spreadHtml(sprd, false);
   } else {
     html += '<div class="hero flat" style="margin-bottom:18px">'
       + '<div class="hero-k">Semaine calme</div>'
@@ -710,7 +778,8 @@ function render() {
   var head = '<th></th>';
   WEEK.days.forEach(function (k) {
     var p = dayParts(k);
-    head += '<th><span class="dw">' + J_SHORT[p.dow] + '</span><span class="dn">' + p.d + '</span></th>';
+    head += '<th scope="col"><span class="dw">' + J_SHORT[p.dow] + '</span><span class="dn">'
+      + p.d + '</span></th>';
   });
   var body = '';
   WEEK.spots.forEach(function (sp, si) {
@@ -722,20 +791,25 @@ function render() {
         + (c.ws == null ? '—' : Math.round(c.ws)) + '</em>';
       var ttl = esc(sp.name) + ' ' + k + ' ' + c.h + 'h — ' + esc(c.label)
         + ' · ' + f1(c.hs) + ' m ' + Math.round(c.t) + ' s · ' + windTxt(c.ws, c.wd);
+      // Le libellé du score ne vivait que dans title=, qui ne s'affiche jamais
+      // au tactile et n'est pas lu par VoiceOver quand l'élément a déjà du texte :
+      // le score n'était alors porté que par la couleur (WCAG 1.4.1). aria-label
+      // le rend accessible sans rien ajouter à l'écran.
+      var aria = ' aria-label="' + ttl + '"';
       if (!c.score) {
         // Score 0 : on montre quand même la hauteur, en gris. Un point vide dirait
         // « pas d'information » alors qu'on en a une, et utile — « 0,4 m, juste
         // sous ton seuil » n'est pas la même chose que « on ne sait pas ».
-        tds += '<td><i class="cell off" title="' + ttl + '"><b>' + f1(c.hs) + '</b>'
+        tds += '<td><i class="cell off" title="' + ttl + '"' + aria + '><b>' + f1(c.hs) + '</b>'
           + '<s>' + sub + '</s></i></td>';
       } else {
-        tds += '<td><i class="cell" style="background:' + mix(c.col, 0.16 + 0.1 * c.score)
-          + ';box-shadow:inset 0 0 0 1px ' + c.col + '" title="' + ttl + '">'
+        tds += '<td><i class="cell" style="background:' + mix(c.col, 0.12 + 0.07 * c.score)
+          + ';box-shadow:inset 0 0 0 1px ' + c.col + '" title="' + ttl + '"' + aria + '>'
           + '<b>' + f1(c.hs) + '</b><s>' + sub + '</s></i></td>';
       }
     });
     var unc = (MODE === 'spot' && !sp.cal);
-    body += '<tr><th class="sp' + (unc ? ' unc' : '') + '">' + esc(sp.short)
+    body += '<tr><th scope="row" class="sp' + (unc ? ' unc' : '') + '">' + esc(sp.short)
       + (unc ? '<sup title="pas de calibrage propre — seuils par défaut, plus permissifs">°</sup>' : '')
       + '</th>' + tds + '</tr>';
   });
@@ -751,8 +825,8 @@ function render() {
   // Les 2 suivants, en cartes courtes. 3 créneaux max — pas un tableau météo.
   var others = r.picked.slice(1, 3).map(function (t) {
     var sp = WEEK.spots[t.si], p = dayParts(t.day);
-    return '<a class="card" href="previsions.html" style="--c:' + t.c.col + '">'
-      + '<div class="c-d">' + J_SHORT[p.dow] + ' ' + p.d + ' · ' + t.c.h + ' h</div>'
+    return '<a class="card" href="' + deepLink(sp, t.day, t.c.h) + '" style="--c:' + t.c.col + '">'
+      + '<div class="c-d">' + J_SHORT[p.dow] + ' ' + p.d + ' · vers ' + t.c.h + ' h</div>'
       + '<div class="c-s">' + esc(sp.name) + '</div>'
       + '<div class="c-m">' + f1(t.c.hs) + ' m · ' + Math.round(t.c.t) + ' s · '
       +   '<span style="color:' + windCol(t.c.ws) + '">' + windTxt(t.c.ws, t.c.wd) + '</span></div>'
@@ -997,6 +1071,7 @@ document.getElementById('cal-toggle').addEventListener('click', function () {
   var open = el.className.indexOf('open') === -1;
   el.className = (open ? 'cal open' : 'cal') + (MODE === 'spot' ? ' seedmode' : '');
   this.textContent = open ? '✕ Fermer' : '🎯 Calibrer';
+  this.setAttribute('aria-expanded', open ? 'true' : 'false');
 });
 loadPrefs();
 buildCal();
