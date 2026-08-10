@@ -6269,3 +6269,81 @@ d'écran zoomée sur une frontière entre deux jours pour vérifier l'alignement
 maintenant au même x).
 
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+## 10/08/2026 — météogramme refait en cartes « décision d'abord »
+
+Toujours « pas propre » malgré les correctifs précédents. L'utilisateur a
+fourni un brief UX complet (structure Yadusurf en 5 niveaux de lecture :
+score → vent → houle → météo secondaire → timing), avec une consigne
+explicite : « chaque élément doit aider à la décision, ne pas donner le même
+poids visuel à toutes les données, ne pas faire un dashboard météo ». Plutôt
+qu'un correctif de plus sur le graphe continu ciel+houle existant, refonte
+complète en **cartes par jour** — un changement de nature, pas un réglage.
+
+**Décision prise avant d'écrire du code** : le brief demandait une « logique
+de scoring » à construire, mais ce projet a DÉJÀ un moteur de score
+(`calcSurfScore`, `assets/score-core.js`) utilisé par la grille juste
+au-dessus sur cette même page ET par previsions.html. En écrire un second
+pour le météogramme aurait créé exactement le risque que ce fichier se donne
+du mal à éviter ailleurs (ex. les seuils de couleur vent unifiés le
+03/08) — deux moteurs de score sur la même page qui auraient fini par
+diverger. `scoreSlot()`/`paramsFor()` (déjà définis plus bas dans ce fichier
+pour la grille) sont réutilisés tels quels ; `mgRenderCards()` est appelée
+depuis `render()` (le rendu de la grille) en plus de son propre appel, pour
+qu'un changement de seuil de calibrage mette aussi à jour le score affiché
+sur les cartes — vérifié : passer `COMMON.minPwr`/`minHs` à une valeur
+quasi nulle fait bien passer le label affiché de « Plat » à « Passable ».
+
+**Relation vent/houle (offshore/onshore/travers)** : le brief demandait
+« offshore = vert, onshore = rouge », mais ce n'est pas non plus une
+donnée qui existe déjà en sortie de `calcSurfScore` (qui la calcule en
+interne mais ne la renvoie pas). `mgWindRelation()` reproduit EXACTEMENT
+la formule interne du bloc « Effet du vent (onshore/offshore relatif à la
+houle) » de score-core.js (angle entre `wDir` et `swDir`, seuils
+`onshoreLimit`/`offshoreMin` du spot) — un miroir volontaire de 5 lignes,
+pas une bibliothèque partagée, pour rester à distance d'un changement plus
+risqué sur `score-core.js` (utilisé aussi par previsions.html) alors que la
+classification ne sert ici qu'à l'affichage.
+
+**Simplification architecturale obtenue en passant du canvas au HTML/SVG.**
+Le graphe continu nécessitait un calcul de mise en page en JS
+(`MG_DAY_W`/`MG_SCALE`/`mgComputeLayout`) et avait déjà produit plusieurs
+bugs directement liés à ce calcul (crête hors-cadre par quelques pixels,
+badge qui recouvre un autre). Les cartes utilisent une largeur CSS FIXE
+(148px, partagée avec les colonnes de marée en dessous pour rester
+alignées) et un SVG en `preserveAspectRatio="none"` pour la courbe de houle
+— rien à recalculer au redimensionnement, la classe de bugs entière liée à
+la mise en page en JS disparaît avec elle.
+
+**Contenu de chaque carte**, dans l'ordre de lecture demandé : jour/date ;
+score en 5 étoiles + libellé (bande de couleur en haut de carte, la plus
+visible) ; vent (flèche pleine + vitesse + relation offshore/onshore/
+travers) ; houle (flèche fine + hauteur + période, sur le MEILLEUR créneau
+du jour) ; courbe SIMPLE (hauteur de houle SEULE, jamais mélangée à la
+marée, échelle Y commune à toutes les cartes du spot pour rester
+comparable d'un jour à l'autre) ; icône météo unique et discrète (opacité
+réduite, un seul symbole WMO réel par jour — plus l'illustration de ciel
+détaillée par créneau des versions précédentes) ; recommandation de
+timing (matin/après-midi/les deux, comparaison du meilleur score AM vs PM).
+La marée reste dans SON PROPRE graphe sous les cartes, jamais mélangée à
+la houle (règle explicite du brief) — inchangée dans le fond, largeur de
+colonne alignée sur celle des cartes.
+
+**Bug trouvé et corrigé en vérifiant visuellement** : `.mg-dc-stars .off`
+utilisait `var(--border-2)`, une variable CSS qui n'existe que dans
+previsions.html — jamais déclarée dans le `:root` de semaine.html. Sans
+valeur, la couleur retombe sur l'héritage plutôt que sur un gris terne : les
+étoiles « éteintes » d'un score à 0 (« Plat ») s'affichaient aussi vives que
+des étoiles pleines, contredisant visuellement le libellé juste en dessous.
+Remplacé par une couleur codée en dur cohérente avec les autres teintes
+« discret » du fichier (`rgba(255,255,255,.15)`).
+
+Vérifié : `node --check` sur le générateur et le JS client extrait du
+fichier généré ; Chrome headless 500px et 1400px, `window.onerror` injecté
+(zéro erreur, 6 cartes détectées aux deux largeurs) ; changement de seuil de
+calibrage simulé par dispatch direct (`COMMON.minPwr=0.01;render()`) pour
+confirmer que le score de la carte suit bien la grille ; capture d'écran à
+1000px pour vérifier qu'un texte apparemment tronqué (« ONSHORE ») n'était
+qu'un cadrage de capture trop étroit, pas un vrai débordement CSS.
+
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
