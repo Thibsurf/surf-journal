@@ -202,6 +202,34 @@ async function loadSpots() {
     console.log('aucun spot ne ressort du journal — aucun filtre appliqué');
     return all;
   }
+  // Le miroir du filtre : des spots surfés que AUCUN point de prévision ne couvre.
+  // Ce ne sont pas des ratés du rattachement — vérifié le 10/08/2026, ils sont
+  // ailleurs sur la côte (La Roche Percée est à Bourail, Skatepark et Trois
+  // cailloux se lancent de Côte blanche, Golfy Gauche de Nouville/Tomo). La page
+  // ne peut rien en dire tant qu'aucun point ne leur est associé : on le signale
+  // ici plutôt que de les rattacher au hasard au point le plus proche.
+  const orphans = {};
+  perSession.forEach((ms) => {
+    // Dédupliqué PAR SESSION : `spot` et `spots[]` citent souvent le même nom, et
+    // compter les mentions à plat doublait les totaux (« la roche percée (8) »
+    // pour 4 sessions) — même piège que pour le comptage des spots retenus.
+    const seen = {};
+    ms.forEach((m) => {
+      if (seen[m]) return;
+      seen[m] = 1;
+      const covered = all.some((sp) => {
+        const kw = spotKeyword(sp.name);
+        return m.indexOf(kw) !== -1
+          || (sp.surfSpots || []).some((ss) => m.indexOf(norm(ss)) !== -1);
+      });
+      if (!covered) orphans[m] = (orphans[m] || 0) + 1;
+    });
+  });
+  const orphanList = Object.keys(orphans);
+  if (orphanList.length) {
+    console.log('  ⓘ surfés mais sans point de prévision : '
+      + orphanList.map((k) => k + ' (' + orphans[k] + ')').join(', '));
+  }
   return kept;
 }
 
@@ -214,13 +242,19 @@ function slotsFromNc(json) {
   const rows = (json && json.properties
     && (json.properties.marine || json.properties.hourly || json.properties.forecast)) || [];
   const out = [];
+  // Compté à part : au-delà de ~J+5, meteo.nc continue de publier des échéances
+  // diurnes mais SANS AUCUNE HOULE (primary_swell_height ET wave_height nuls, le
+  // vent seul subsiste — mesuré le 10/08/2026 : plus rien après le 15/08 11 h).
+  // C'est ÇA qui borne la page, pas la densité des échéances. Sans ce compteur,
+  // le journal de build attribuait la limite à la mauvaise cause.
+  out.noSwell = 0;
   rows.forEach((d) => {
     const ms = Date.parse(d.time);
     if (!ms) return;
     const hour = new Date(ms + NC).getUTCHours();   // convention projet
     if (hour < HOUR_MIN || hour > HOUR_MAX) return;
     const hs = d.primary_swell_height != null ? d.primary_swell_height : d.wave_height;
-    if (hs == null) return;
+    if (hs == null) { out.noSwell++; return; }
     out.push({
       d: ncDayKey(ms), h: hour,
       hs: hs, t: d.primary_swell_period, sd: d.primary_swell_direction,
@@ -526,10 +560,13 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
     propre</b>&nbsp;: ils sont notés avec les seuils par défaut, plus permissifs. Passe en
     «&nbsp;réglages communs&nbsp;» pour les comparer à armes égales.</p>
     <p>Ce que la page ne dit pas&nbsp;: meteo.nc ne fournit <b>pas de rafales</b> (un
-    créneau rafaleux peut paraître un cran meilleur qu'il ne l'est), <b>pas de marée</b>
-    — déterminante sur ces passes, à vérifier sur les prévisions — et au-delà de J+2 il
-    ne sort plus que 4&nbsp;échéances par jour&nbsp;: l'heure affichée est alors la
-    meilleure <i>parmi celles disponibles</i>, d'où le «&nbsp;vers&nbsp;».</p>
+    créneau rafaleux peut paraître un cran meilleur qu'il ne l'est) et <b>pas de marée</b>
+    — déterminante sur ces passes, à vérifier sur les prévisions.</p>
+    <p>Pourquoi la semaine s'arrête avant 7&nbsp;jours&nbsp;: meteo.nc publie des
+    échéances jusqu'à J+8 mais <b>ne prévoit la houle que sur ~5&nbsp;jours</b> — au-delà,
+    seul le vent subsiste, il n'y a donc rien à noter. Et au-delà de J+2 il ne reste que
+    4&nbsp;échéances par jour&nbsp;: l'heure affichée est la meilleure <i>parmi celles
+    disponibles</i>, d'où le «&nbsp;vers&nbsp;».</p>
   </details>
 </footer>
 
@@ -1106,7 +1143,8 @@ async function main() {
     const covered = {};
     slots.forEach((s) => { covered[s.d] = 1; });
     console.log('  ' + sp.name + ' : ' + slots.length + ' créneaux sur '
-      + Object.keys(covered).length + ' jour(s), ' + Object.keys(models).length + ' heures multi-modèles');
+      + Object.keys(covered).length + ' jour(s), ' + Object.keys(models).length + ' heures multi-modèles'
+      + (slots.noSwell ? ' — ' + slots.noSwell + ' échéance(s) diurne(s) écartée(s) faute de houle' : ''));
     out.push({
       name: sp.name,
       short: sp.name.replace(/^Passe de /, '').replace(/^Baie de /, ''),
@@ -1118,15 +1156,17 @@ async function main() {
     });
   }
 
-  // Colonnes retenues : celles où au moins un spot a un créneau diurne.
-  // L'horizon utile de meteo.nc glisse d'un run à l'autre et tombe avant 7 jours
-  // — mesuré le 05/08/2026 : à J+6 et J+7 ses seules échéances restantes sont
-  // 5 h et 23 h NC. Des colonnes vides donneraient une page qui a l'air cassée.
+  // Colonnes retenues : celles où au moins un spot a un créneau diurne exploitable.
+  // L'horizon utile glisse d'un run à l'autre et tombe avant 7 jours. Cause réelle,
+  // mesurée le 10/08/2026 et non celle notée d'abord : meteo.nc publie bien des
+  // échéances jusqu'à J+8, mais **sans houle** au-delà de ~J+5 (seul le vent
+  // subsiste). Ce n'est donc pas la densité des échéances qui borne la page.
+  // Des colonnes vides donneraient une page qui a l'air cassée.
   const shown = days.filter((k) => out.some((s) => s.slots.some((sl) => sl.d === k)));
   if (!shown.length) throw new Error('aucun créneau diurne — source indisponible ?');
   if (shown.length < days.length) {
     console.log('horizon utile : ' + shown.length + '/' + days.length
-      + ' jours (meteo.nc n\'a plus d\'échéance diurne au-delà)');
+      + ' jours (au-delà, meteo.nc ne publie plus de houle — le vent seul continue)');
   }
 
   // Restreindre les créneaux aux jours RÉELLEMENT affichés. meteo.nc renvoie une

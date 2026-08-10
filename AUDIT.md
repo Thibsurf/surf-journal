@@ -5578,3 +5578,93 @@ body-scrollX=ok | erreurs=aucune
 
 `CACHE_NAME` v68 → **v69**. Reste à faire : l'audit de véracité des données, non
 abouti.
+
+## 10/08/2026 — audit de véracité des données de `semaine.html` (v74)
+
+L'audit resté en suspens (sous-agent coupé par une limite de session), refait à la
+main. Cinq points vérifiés en mesurant, pas en lisant.
+
+### ✓ Les valeurs affichées sont bien celles de la source
+
+Les 12 créneaux de Passe de Dumbéa embarqués dans `WEEK` re-confrontés au Worker,
+champ par champ (hs, période, direction de houle, vent, direction de vent) et
+heure NC par heure NC : **12 identiques, 0 différent, 0 absent**. Aucun décalage
+de fuseau, et `ws` reprend `wind_speed_kt` tel quel — pas de double conversion.
+
+### ✓ Les modèles comparés mesurent bien la même grandeur
+
+C'était le risque le plus sérieux pour la réglette d'accord. Vérifié à la source
+d'ingestion : GFS = `swell_wave_height` (houle primaire d'Open-Meteo, PAS
+`wave_height`), BOM = `sig_ht_sw1`, MARC = `marcPrimarySwell()` (partition la plus
+énergétique de type houle, Tp≥8 s). La comparaison est homogène.
+
+Fausse piste écartée en route : le commentaire de `cache-model-forecasts.mjs:123`
+décrit `swell_primary` comme « MER TOTALE avec période MOYENNE » — c'est la
+description d'un **bug déjà corrigé le 29/07/2026**, pas du comportement actuel.
+
+Corrigé aussi une déduction fausse de ma part : j'avais conclu d'un `grep` que
+seuls `nc`/`bom`/`gfs`/`marc` alimentaient encore `swell_primary`. La table dit
+l'inverse — `mf`, `aifs` et `lotus` ont bien un run du 10/08. La mesure prime sur
+la lecture du code.
+
+### ⚠ ECMWF est bloqué sur le run du 03/08/2026
+
+Sept modèles sur huit ont un run du 10/08 ; ECMWF est resté au 03/08, soit une
+semaine de retard. Le filtre de fraîcheur l'écarte correctement de la réglette,
+donc la page ne ment pas — mais c'est un **problème d'ingestion à traiter à part**
+(`ingestion/fetch_ecmwf.py`), hors périmètre de ce chantier.
+
+### ✗ Deux messages attribuaient la limite d'horizon à la mauvaise cause
+
+Le journal de build disait « meteo.nc n'a plus d'échéance diurne au-delà » et le
+pied de page invoquait la densité des échéances. **Les deux étaient faux.**
+
+Mesuré : meteo.nc publie des échéances jusqu'à J+8, dont des diurnes (11 h et
+17 h), mais **cesse de prévoir la houle après le 15/08 11 h** — au-delà,
+`primary_swell_height` ET `wave_height` sont nuls, seul `wind_speed_kt` subsiste.
+Ce sont donc 6 échéances diurnes écartées faute de houle, pas faute d'exister.
+
+| jour | échéances NC | diurnes | houle |
+|------|--------------|:-------:|:-----:|
+| J+1 à J+4 | 8 puis 6 puis 4 | 4→2 | ✓ |
+| J+5 (15/08) | 5, 11, 17, 23 | 2 | ✓ à 11 h, **absente à 17 h** |
+| J+6 à J+8 | 5, 11, 17, 23 | 2 | **absente** |
+
+Corrigé aux trois endroits : compteur `noSwell` dans `slotsFromNc`, message du
+journal de build, et un paragraphe du pied de page qui explique enfin la vraie
+raison au lecteur (« meteo.nc ne prévoit la houle que sur ~5 jours »).
+
+### ✓ Le filtre des spots est juste — mais 4 spots surfés n'ont aucun point
+
+Les 12 noms de spots du journal passés au crible du rattachement. Huit sont
+correctement rattachés (Gros nem/Grand bac/Petit U → Ténia via `surfSpots` ;
+Fausse passe/Droite/Gauche de Dumbéa → Dumbéa ; Droite de Boulari → Boulari ;
+Ouano → Ouano). Quatre ne le sont pas :
+
+| spot | sessions | indice trouvé au journal |
+|------|---------:|--------------------------|
+| La Roche Percée | 4 | aucune mise à l'eau (spot du bord, Bourail) |
+| Skatepark | 1 | `launch_point` = Côte blanche |
+| Trois cailloux | 1 | `launch_point` = Côte blanche |
+| Golfy Gauche | 1 | `launch_point` = Nouville/Tomo, `tide_port` = tomo |
+
+Ce ne sont **pas des faux négatifs du filtre** : ces spots sont ailleurs sur la
+côte et aucun des 7 points de prévision ne les couvre. Les rattacher au point le
+plus proche serait inventer une correspondance — interdit par la règle du projet.
+Le générateur les **signale** désormais dans son journal (`ⓘ surfés mais sans point
+de prévision`), ce qui est actionnable : à Thibault d'ajouter un point s'il veut
+les voir. Compteur dédupliqué par session, sinon les totaux doublaient (« la roche
+percée (8) » pour 4 sessions — même piège que pour les spots retenus).
+
+### ✓ Les autres affirmations du pied de page
+
+- « meteo.nc ne fournit pas de rafales » : **vrai**, aucun champ de rafale dans
+  les 13 exposés par `forecast/marine` (`T_sea`, `beaufort_scale`,
+  `max_wave_height`, `primary_swell_*`, `sea_condition*`, `wave_height`,
+  `wind_direction`, `wind_speed_kt`, `wind_waves_height`).
+- « au-delà de J+2 il ne sort plus que 4 échéances par jour » : **vrai**, mesuré
+  exactement 4 de J+3 à J+7.
+- « les runs de plus de 24 h de retard sont écartés » : **vrai**, ECMWF en est la
+  démonstration en conditions réelles.
+
+`CACHE_NAME` v73 → **v74**.
