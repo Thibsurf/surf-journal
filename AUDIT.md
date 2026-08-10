@@ -6347,3 +6347,62 @@ confirmer que le score de la carte suit bien la grille ; capture d'écran à
 qu'un cadrage de capture trop étroit, pas un vrai débordement CSS.
 
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+---
+
+# 10/08/2026 (soir, nouvelle session) — météogramme : courbe agrandie + météo par créneau
+
+Retour utilisateur, quelques heures après le commit `f1e191ca` (cartes
+« décision d'abord ») : la page « n'est pas très visuelle », « manque des
+courbes et météo comme Yadusurf ». Avant de recoder quoi que ce soit, audit
+de ce qui existait déjà — et ça pointait vers une contradiction directe avec
+la décision prise plus tôt DANS LA MÊME JOURNÉE (cf. entrées précédentes) :
+plusieurs tentatives de graphe continu façon Yadusurf avaient été écartées
+par l'utilisateur lui-même pour « pas beau/pas propre », menant au brief
+explicite « ne pas faire un dashboard météo » qui a produit les cartes
+actuelles. Plutôt que de deviner, question posée à l'utilisateur : enrichir
+DANS le cadre des cartes, ou rouvrir le graphe continu déjà écarté 3-4 fois
+le même jour ? Réponse : **enrichir dans le cadre actuel**.
+
+**Courbe de houle agrandie.** `mgSparklineSvg` : hauteur du SVG doublée
+(36→64, `.mg-dc-spark` CSS et `viewBox` montés ENSEMBLE — `preserveAspectRatio
+="none"` étire au ratio de la boîte CSS, donc ne monter qu'un des deux aurait
+déformé cercles/texte) + remplissage translucide (`<polygon>` sous la ligne,
+fermé sur la ligne de base) pour que la courbe se voie d'un coup d'œil au
+lieu de se fondre dans le fond de carte. Toujours hauteur de houle SEULE
+(jamais mélangée à la marée), toujours SVG `preserveAspectRatio="none"` (pas
+de calcul de mise en page JS, cf. les bugs de l'ancien canvas déjà
+documentés) — un renforcement visuel, pas un changement de nature.
+
+**Météo : 1 icône par créneau réel au lieu d'1/jour.** `mgWmoIcon` était
+appelé une seule fois sur le créneau médian du jour (`repSlot`, maintenant
+retiré) ; `mgDayCardHtml` construit maintenant une rangée d'icônes (une par
+élément de `scored`, donc 2 à 4 selon l'échéance, chacune sourcée sur SON
+propre `code`/`cl` de créneau — jamais une moyenne). Ça répond directement à
+« pas de météo » : un jour qui commence clair et tourne à l'averse le montre
+maintenant (ex. Ténia jeu 13/08 : ☁️🌧️☀️🌧️ dans le rendu vérifié plus bas),
+alors qu'avant un seul symbole médian pouvait cacher cette variation. Reste
+au niveau de lecture le plus bas de la carte (sous score/vent/houle, petite
+taille, pas de fond) — ne devient pas un dashboard, juste plus informatif
+qu'un aggregat à 1 seul point.
+
+**Où le code vit vraiment.** `semaine.html` est un fichier GÉNÉRÉ par
+`.github/scripts/build-week.mjs` (régénéré chaque lundi par
+`weekly-page.yml`) : tout le CSS/JS édité ici l'a été dans le générateur
+(la partie qui vit dans le gros template literal, lignes ~700-1650), jamais
+directement dans `semaine.html` — l'éditer là-bas aurait été écrasé au
+prochain run programmé. `semaine.html` régénéré ensuite avec `node
+.github/scripts/build-week.mjs` (données Supabase réelles, pas de secret,
+clé anon) pour committer un fichier cohérent avec le générateur.
+
+Vérifié : `node --check` sur le générateur ; `--dry-run` avant le run réel ;
+diagnostic `__test.html` avec `window.onerror` injecté → 0 erreur JS, 6
+cartes rendues, 14 icônes météo au total sur le spot par défaut (Dumbéa, 14
+créneaux — donc bien 1 icône par créneau, pas plus/moins), `viewBox` de la
+courbe confirmé `"0 0 128 64"`. Capture d'écran avant/après à 1400px et à
+500px (gabarit mobile) ; cas limite à 1 seul créneau (jour le plus lointain)
+vérifié séparément : un seul point, pas de remplissage visible (dégénéré à
+une aire nulle), pas d'erreur — pas de division par zéro sur `n-1` grâce à la
+garde déjà existante (`n > 1 ? … : W/2`).
+
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.

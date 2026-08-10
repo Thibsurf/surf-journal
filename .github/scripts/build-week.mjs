@@ -718,8 +718,13 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .cal.seedmode .row:hover{opacity:1}
 
 /* ── Météogramme : cartes « décision d'abord » (score → vent → houle →
-   météo réduite → créneau conseillé), une par jour, plutôt qu'un graphe
-   continu à poids visuel égal pour tout (refait le 10/08/2026, cf. AUDIT.md).
+   météo → créneau conseillé), une par jour, plutôt qu'un graphe continu à
+   poids visuel égal pour tout (refait le 10/08/2026, cf. AUDIT.md).
+   Retour utilisateur le soir même : trouvait le résultat pas assez visuel
+   par rapport à Yadusurf — sans revenir au graphe continu (déjà écarté
+   plusieurs fois le même jour pour « pas propre »), la courbe de houle est
+   agrandie et la météo passe d'1 icône/jour à 1 icône par créneau réel,
+   TOUJOURS sous la houle dans l'ordre de lecture (cf. mg-dc-meteo plus bas).
    Bloc PERMANENT (cf. le commentaire au-dessus de son init côté JS),
    indépendant de la grille de score et de son panneau de calibrage — leurs
    seuils changent le classement de LA GRILLE, jamais ce que ce bloc affiche.
@@ -762,10 +767,21 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .mg-dc-v{font-size:13.5px;font-weight:700;line-height:1.15}
 .mg-dc-u{font-size:10px;color:var(--faint);font-weight:400}
 .mg-dc-rel{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;margin-left:auto;white-space:nowrap}
-.mg-dc-spark{display:block;width:100%;height:38px;padding:2px 8px 0}
-.mg-dc-meteo{display:flex;align-items:center;gap:5px;padding:2px 10px 7px;
-  font-size:10.5px;color:var(--faint);opacity:.85}
-.mg-dc-meteo .ic{font-size:13px}
+/* Hauteur doublée (38→64px) le 10/08/2026 au soir : la courbe passait
+   inaperçue à côté des chiffres. viewBox et hauteur CSS montent ENSEMBLE
+   (cf. mgSparklineSvg) pour garder le même ratio d'étirement qu'avant,
+   sinon les cercles/texte des points s'ovalisent verticalement. */
+.mg-dc-spark{display:block;width:100%;height:64px;padding:2px 8px 0}
+/* Une icône PAR créneau réel (2 à 4 selon l'échéance) au lieu d'1/jour —
+   toujours en dessous de la courbe de houle dans l'ordre de lecture, donc
+   toujours secondaire au score/vent/houle malgré la couleur qui reste
+   discrète (cf. .mg-dc-meteo .ic plus bas, pas de opacity globale : un
+   dégradé sur l'emoji lui-même rendait le ciel illisible par endroits). */
+.mg-dc-meteo{display:flex;align-items:center;gap:3px;padding:3px 10px 7px;
+  font-size:10.5px;color:var(--faint)}
+.mg-dc-meteo .ic{font-size:14px;line-height:1}
+.mg-dc-meteo .sk{display:flex;gap:3px;flex:1}
+.mg-dc-temp{margin-left:auto;font-weight:600;white-space:nowrap;padding-left:4px}
 .mg-dc-timing{font-size:10.5px;color:var(--muted);padding:7px 10px;
   border-top:1px dashed var(--border);text-align:center;margin-top:auto}
 .mg-dc-timing b{color:var(--accent)}
@@ -811,9 +827,12 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
      calibrage effacerait le spot choisi, alors qu'aucune de ses données ne
      dépend des seuils de score.
      Refait le 10/08/2026 en cartes « décision d'abord » (score, vent, houle,
-     météo réduite à une icône, créneau conseillé) au lieu d'un graphe continu
-     ciel+houle sur toute la semaine — une structure à hiérarchie de lecture
-     explicite plutôt qu'un poids visuel égal pour tout, cf. AUDIT.md. -->
+     météo, créneau conseillé) au lieu d'un graphe continu ciel+houle sur
+     toute la semaine — une structure à hiérarchie de lecture explicite
+     plutôt qu'un poids visuel égal pour tout, cf. AUDIT.md. Courbe de houle
+     agrandie et météo passée à 1 icône par créneau réel le même soir (retour
+     « pas assez visuel »), sans rouvrir le graphe continu ni l'illustration
+     de ciel détaillée déjà écartés plus tôt dans la journée. -->
 <div class="mg-bleed"><div class="mg-card" id="mgCard">
   <div class="mg-top">
     <div class="mg-title">🏄 Météogramme</div>
@@ -828,6 +847,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
     <div><b>Score</b> = même moteur que la grille ci-dessus (calcSurfScore), sur le meilleur créneau du jour</div>
     <div><b>Vent</b> = flèche vers où il souffle · <b>Offshore/Onshore</b> = relatif à la houle, pas à la boussole</div>
     <div><b>Courbe</b> = hauteur de houle SEULE, un point par créneau réel — la période est notée à chaque point</div>
+    <div><b>Météo</b> = une icône par créneau réel (matin→soir), code ciel meteo.nc — n'entre pas dans le score</div>
     <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc, à part — n'entre pas dans le score</div>
   </div>
 </div></div>
@@ -972,8 +992,10 @@ function mgRelCol(rel) {
   return rel === 'offshore' ? '#3dba8a' : rel === 'onshore' ? '#e05c5c' : '#e0a13f';
 }
 
-// Icône météo réduite à un seul symbole discret (niveau secondaire, ne doit
-// pas dominer la carte) — code WMO réel (Open-Meteo), pas une donnée inventée.
+// Icône météo — code WMO réel (Open-Meteo), pas une donnée inventée. Un
+// symbole par créneau réel (cf. mgDayCardHtml), pas un dashboard : reste au
+// niveau de lecture le plus bas de la carte (sous score/vent/houle), petite
+// et sans fond, mais assez pour montrer si le ciel change dans la journée.
 function mgWmoIcon(code, cl) {
   if (code == null) return (cl != null && cl > 55) ? '☁️' : '☀️';
   if (code >= 95) return '⛈️';
@@ -1014,23 +1036,33 @@ function mgSwellArrowSvg(sd, col) {
 // avec le canvas. Échelle Y COMMUNE à toutes les cartes du spot (maxV du
 // spot entier, pas du seul jour) : sinon un jour à 0,3 m et un jour à 2 m
 // auraient l'air « aussi pleins » l'un que l'autre, information perdue.
+// H porté à 64 (était 36) le 10/08/2026 au soir, EN MÊME TEMPS que le
+// height:64px CSS de .mg-dc-spark : preserveAspectRatio="none" étire le
+// viewBox à la boîte CSS sans respecter son ratio interne, donc ne monter
+// que l'un des deux aurait ovalisé les points/aplati le texte. Remplissage
+// ajouté (polygon translucide sous la ligne) pour que la courbe se voie
+// d'un coup d'œil au lieu de se confondre avec le fond — c'est tout ce que
+// « pas assez de courbe » demandait, sans réintroduire un calcul de mise en
+// page JS (cf. commentaire plus haut sur la disparition du canvas).
 function mgSparklineSvg(scored, maxV) {
-  var W = 128, H = 36, pad = 5, n = scored.length;
+  var W = 128, H = 64, pad = 6, base = H - pad, n = scored.length;
   var pts = scored.map(function (c, i) {
     var x = n > 1 ? pad + i / (n - 1) * (W - 2 * pad) : W / 2;
-    var y = H - pad - Math.max(0, Math.min(1, c.hs / maxV)) * (H - 2 * pad);
+    var y = base - Math.max(0, Math.min(1, c.hs / maxV)) * (H - 2 * pad - 10);
     return { x: x, y: y, c: c };
   });
   var poly = pts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+  var area = pts[0].x.toFixed(1) + ',' + base + ' ' + poly + ' ' + pts[n - 1].x.toFixed(1) + ',' + base;
   var dots = pts.map(function (p) {
-    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.2" fill="#4fa3c7"/>'
-      + '<text x="' + p.x.toFixed(1) + '" y="' + Math.max(7, p.y - 4).toFixed(1) + '" font-size="7" '
-      + 'text-anchor="middle" fill="#7d94ab">' + Math.round(p.c.t) + 's</text>';
+    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.6" fill="#4fa3c7"/>'
+      + '<text x="' + p.x.toFixed(1) + '" y="' + Math.max(9, p.y - 5).toFixed(1) + '" font-size="8" '
+      + 'text-anchor="middle" fill="#9db3c7">' + Math.round(p.c.t) + 's</text>';
   }).join('');
   return '<svg class="mg-dc-spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
     + '<text x="2" y="9" font-size="7" fill="#7d94ab">' + (maxV < 1 ? maxV.toFixed(1) : maxV.toFixed(0)) + 'm</text>'
-    + '<line x1="0" y1="' + (H - pad) + '" x2="' + W + '" y2="' + (H - pad) + '" stroke="rgba(255,255,255,.1)"/>'
-    + '<polyline points="' + poly + '" fill="none" stroke="#4fa3c7" stroke-width="1.6"/>'
+    + '<line x1="0" y1="' + base + '" x2="' + W + '" y2="' + base + '" stroke="rgba(255,255,255,.1)"/>'
+    + '<polygon points="' + area + '" fill="rgba(79,163,199,.18)"/>'
+    + '<polyline points="' + poly + '" fill="none" stroke="#4fa3c7" stroke-width="1.8"/>'
     + dots + '</svg>';
 }
 
@@ -1070,7 +1102,14 @@ function mgDayCardHtml(sp, k, params, maxV) {
   var stars = '', i;
   for (i = 0; i < 5; i++) stars += '<span class="' + (i < best.score ? 'on' : 'off') + '">★</span>';
   var rel = mgWindRelation(best.wd, best.sd, params);
-  var repSlot = scored[Math.min(scored.length - 1, Math.floor(scored.length / 2))];
+  // Un symbole par créneau réel (2 à 4 selon l'échéance, cf. légende) plutôt
+  // que le seul créneau médian d'avant : montre si le ciel change dans la
+  // journée (ex. clair le matin, grain l'après-midi), l'info que le retour
+  // « pas assez de météo » visait — chaque icône reste sourcée sur SON
+  // créneau (c.code/c.cl), jamais une moyenne ou une extrapolation.
+  var skyHtml = scored.map(function (c) {
+    return '<span class="ic" title="' + Math.round(c.h) + 'h">' + mgWmoIcon(c.code, c.cl) + '</span>';
+  }).join('');
   var day = sp.daily[k];
   var tempTxt = day ? (Math.round(day.tmax) + '°/' + Math.round(day.tmin) + '°') : '';
   return '<div class="mg-dc" style="--c:' + best.col + '">'
@@ -1084,7 +1123,7 @@ function mgDayCardHtml(sp, k, params, maxV) {
     +   '<div><div class="mg-dc-v">' + f1(best.hs) + '<span class="mg-dc-u"> m</span> · ' + Math.round(best.t) + '<span class="mg-dc-u">s</span></div></div>'
     + '</div>'
     + mgSparklineSvg(scored, maxV)
-    + '<div class="mg-dc-meteo"><span class="ic">' + mgWmoIcon(repSlot.code, repSlot.cl) + '</span>' + (tempTxt ? '<span>' + tempTxt + '</span>' : '') + '</div>'
+    + '<div class="mg-dc-meteo"><span class="sk">' + skyHtml + '</span>' + (tempTxt ? '<span class="mg-dc-temp">' + tempTxt + '</span>' : '') + '</div>'
     + '<div class="mg-dc-timing">Meilleur moment&nbsp;: <b>' + mgTimingText(scored) + '</b></div>'
     + '</div>';
 }
