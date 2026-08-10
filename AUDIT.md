@@ -6214,3 +6214,58 @@ retrait ; capture d'écran des flèches aux deux largeurs, y compris le cas le
 plus serré (4 flèches/jour, ~20px chacune).
 
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+## 10/08/2026 — météogramme : axe horaire proportionnel (pas de temps constants)
+
+Nouveau retour, malgré les flèches refaites : « pas propre, ordonnées,
+flèches de vent, pas de temps pas constants... beaucoup de subdivisions ».
+Tentative infructueuse (attendue) de retrouver le code de rendu Yadusurf —
+`WebSearch` sur `VINCENTMARQUESDESIGN`/`Surfometer` : c'est un produit
+propriétaire nommé « Surfometer », aucune trace de code ou de doc publique,
+confirmant ce que le prototype d'origine avait déjà noté (image générée
+serveur, rien à inspecter côté client).
+
+**Cause racine du symptôme le plus concret (« pas de temps pas
+constants »).** Chaque jour divisait sa largeur ÉGALEMENT par son nombre de
+créneaux réels (4 les jours proches, 2 les jours lointains — meteo.nc
+échantillonne moins souvent au-delà de J+2, cf. plus haut dans ce fichier).
+Deux créneaux à 6 h d'écart réel (ex. 11 h→17 h sur un jour lointain)
+tombaient donc au MÊME écart visuel que deux créneaux à 3 h d'écart réel
+(8 h→11 h sur un jour proche) : l'axe avait l'air d'un temps régulier alors
+qu'il ne l'était pas, et le nombre de « tuiles » de ciel changeait d'un jour
+à l'autre sans rapport avec une vraie densité d'information (« beaucoup de
+subdivisions »).
+
+**Correctif : position proportionnelle à l'heure réelle**, pas à un rang de
+créneau. `HOUR_MIN`/`HOUR_MAX` (6/17, déjà des constantes de build)
+désormais exposées au client (`WEEK.hourMin`/`hourMax`) plutôt que
+redupliquées en dur, pour ne jamais diverger. Deux nouvelles fonctions :
+- `mgHourFrac(h)` → fraction 0-1 de la position d'une heure dans la fenêtre
+  d'affichage — remplace tous les `(index+.5)/count` par un calcul basé sur
+  l'heure elle-même.
+- `mgSegBounds(ds, idx)` → bornes d'un micro-segment de ciel au MILIEU vers
+  ses voisins (pas une part égale) : un jour clairsemé donne des tuiles plus
+  larges, ce qui est l'information plutôt qu'un artefact de découpage.
+
+Appliqué partout où une position dépendait auparavant du rang du créneau
+plutôt que de son heure : le ruban houle (points du tracé), le badge houle
+posé sur le pic du jour, les tuiles de ciel (passes fond + nuages/pluie), et
+les étiquettes d'heure de l'axe horaire.
+
+**Flèches de vent : taille FIXE en plus de la position proportionnelle.**
+Avant, la taille dépendait du nombre de créneaux du jour (`MG_DAY_W/count`) :
+un jour à 4 créneaux avait des flèches sensiblement plus petites qu'un jour
+à 2, une variation sans rapport avec une vraie donnée. Position par
+`mgHourFrac()` en `position:absolute` (CSS) — un `space-evenly` flexbox ne
+peut pas espacer proportionnellement à une valeur, seulement à parts égales,
+donc le passage à l'absolu était nécessaire, pas seulement une préférence de
+style.
+
+Vérifié : `node --check` sur le générateur et le JS client extrait du
+fichier généré ; `WEEK.hourMin`/`hourMax` lus en direct (6/17) ; Chrome
+headless 500px et 1400px, `window.onerror` injecté (zéro erreur) ; capture
+d'écran zoomée sur une frontière entre deux jours pour vérifier l'alignement
+(étiquette d'heure, flèche de vent, limite de tuile de ciel tombent
+maintenant au même x).
+
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.

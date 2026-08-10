@@ -748,7 +748,13 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
   .mg-day .dn{font-size:15px} .mg-day .dd{font-size:11.5px}
 }
 .mg-wind{background:rgba(255,255,255,.02)}
-.mg-wind .mg-day{flex-direction:row;justify-content:space-evenly;min-height:30px;cursor:default;flex-wrap:wrap;gap:2px}
+/* position:relative + badges en position absolue (mgHourFrac) plutôt qu'un
+   flex space-evenly : les créneaux d'un jour clairsemé ne doivent PAS
+   s'étaler pour combler la largeur, sinon 11h/17h ne tombent plus au même x
+   que le reste du graphe (ciel, houle, axe) — signalé le 10/08/2026. */
+.mg-wind .mg-day{position:relative;min-height:44px;cursor:default;padding:0}
+.mg-wind .mg-day:last-child{border-right:none}
+.mg-wbadge{position:absolute;top:50%;transform:translate(-50%,-50%)}
 .mg-wind .mg-day svg{display:block}
 .mg-wbadge{display:inline-flex}
 canvas#mgCanvas{display:block;touch-action:pan-y}
@@ -1133,6 +1139,26 @@ function mgSlotsByDay(sp) {
   return byDay;
 }
 
+// Position PROPORTIONNELLE à l'heure réelle (WEEK.hourMin..hourMax), pas à un
+// index de créneau équiréparti : un jour à 4 créneaux (proche) et un jour à
+// 2 créneaux (lointain) placent alors 11h/17h au MÊME x relatif dans leur
+// colonne — l'écart visuel entre deux points reflète enfin le vrai écart en
+// heures, plus une densité de créneaux qui variait sans le dire.
+function mgHourFrac(h) {
+  return (h - WEEK.hourMin) / (WEEK.hourMax - WEEK.hourMin);
+}
+// Bornes d'un micro-segment de ciel : au milieu vers le créneau voisin (pas
+// une tranche de largeur égale) — un jour clairsemé a donc des tuiles plus
+// larges qu'un jour dense, ce qui EST l'information (plus de temps réel y
+// est représenté), là où l'ancien découpage à parts égales lissait cette
+// différence et donnait un rythme de subdivisions arbitraire d'un jour à
+// l'autre.
+function mgSegBounds(ds, idx) {
+  var loH = idx === 0 ? WEEK.hourMin : (ds[idx - 1].h + ds[idx].h) / 2;
+  var hiH = idx === ds.length - 1 ? WEEK.hourMax : (ds[idx].h + ds[idx + 1].h) / 2;
+  return { x0: mgHourFrac(loH) * MG_DAY_W, x1: mgHourFrac(hiH) * MG_DAY_W };
+}
+
 function mgRenderHeadWind() {
   var sp = WEEK.spots[MG_SPOT], byDay = mgSlotsByDay(sp);
   var headHtml = '', windHtml = '';
@@ -1142,14 +1168,18 @@ function mgRenderHeadWind() {
       + ' aria-label="Détail du ' + J_LONG[p.dow] + ' ' + p.d + '">'
       + '<span class="dn">' + J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + M_SHORT[p.mo] + '</span></div>';
     var ds = byDay[k] || [];
-    // Taille du badge = largeur dispo par créneau (autant de badges que de
-    // créneaux réels ce jour-là, 0 à 4 selon l'horizon), donc mobile serré et
-    // desktop large donnent chacun un rendu propre sans code séparé.
-    var badgeSize = Math.max(20, Math.min(46, Math.floor((MG_DAY_W / Math.max(1, ds.length)) * .8)));
+    // Taille FIXE (dépend seulement de MG_SCALE, plus du nombre de créneaux
+    // du jour) : avant, un jour à 4 créneaux donnait des badges nettement
+    // plus petits qu'un jour à 2 créneaux, une variation de taille qui
+    // n'avait aucun sens (le vent n'est pas plus "important" un jour où
+    // meteo.nc échantillonne moins souvent). Position À L'HEURE RÉELLE
+    // (mgHourFrac), pas espacée également dans la colonne.
+    var badgeSize = Math.max(20, Math.min(40, Math.round(28 * MG_SCALE)));
     var arrows = ds.length ? ds.map(function (s) {
-      return '<span class="mg-wbadge" title="' + s.h + ' h — ' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '">'
+      var left = mgHourFrac(s.h) * MG_DAY_W;
+      return '<span class="mg-wbadge" style="left:' + left.toFixed(1) + 'px" title="' + s.h + ' h — ' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '">'
         + mgWindBadgeSvg(s.ws, s.wd, badgeSize) + '</span>';
-    }).join('') : '<span style="color:var(--faint);font-size:11px">·</span>';
+    }).join('') : '<span style="color:var(--faint);font-size:11px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)">·</span>';
     windHtml += '<div class="mg-day">' + arrows + '</div>';
   });
   document.getElementById('mgHead').innerHTML = headHtml;
@@ -1180,14 +1210,14 @@ function mgDraw() {
   var byDay = mgSlotsByDay(sp);
 
   // Points de houle primaire pour le ruban continu — un point par créneau
-  // réel, au centre de son micro-segment (le nombre de créneaux varie selon
-  // l'horizon, cf. plus haut).
+  // réel, à son heure PROPORTIONNELLE réelle (cf. mgHourFrac : le nombre de
+  // créneaux varie selon l'horizon, mais l'écart visuel entre deux points
+  // reflète maintenant le vrai écart en heures, pas un simple rang).
   var pts = [];
   WEEK.days.forEach(function (k, d) {
     var ds = byDay[k] || [];
-    ds.forEach(function (s, i) {
-      var segW = MG_DAY_W / ds.length;
-      pts.push({ x: d * MG_DAY_W + (i + .5) * segW, y: s.hs });
+    ds.forEach(function (s) {
+      pts.push({ x: d * MG_DAY_W + mgHourFrac(s.h) * MG_DAY_W, y: s.hs });
     });
   });
   var maxV = pts.length ? mgNiceMax(Math.max.apply(null, pts.map(function (p) { return p.y; })) * 1.2) : 1;
@@ -1210,13 +1240,14 @@ function mgDraw() {
       ctx.textAlign = 'left';
       return;
     }
-    var segW = MG_DAY_W / ds.length;
-
     // Passe 1 — fonds + voile de précipitation, un par micro-segment (variation
     // horaire réelle : c'est ce qui distingue une matinée claire d'une
-    // après-midi couverte, cf. le bug n°3 du prototype d'origine).
+    // après-midi couverte, cf. le bug n°3 du prototype d'origine). Largeur de
+    // chaque tuile PROPORTIONNELLE à l'écart réel avec ses voisins
+    // (mgSegBounds), pas une part égale : un jour clairsemé donne des tuiles
+    // plus larges, ce qui est l'info (plus de temps réel y est montré).
     ds.forEach(function (s, si) {
-      var xs = x0 + si * segW;
+      var b = mgSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
       // Nébulosité par ALTITUDE : les nuages bas pèsent le plus sur la
       // lumière (ce sont eux qui apportent la pluie), les hauts à peine — un
       // ciel voilé de cirrus n'assombrit presque pas. Champs réels Open-Meteo
@@ -1266,7 +1297,7 @@ function mgDraw() {
     // Passe 2 — nuages, vent, pluie : toujours par micro-segment (la vraie
     // variation horaire), tracés après le soleil pour pouvoir l'occulter.
     ds.forEach(function (s, si) {
-      var xs = x0 + si * segW;
+      var b = mgSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
       var cl = s.cl != null ? s.cl : 0, cm = s.cm != null ? s.cm : 0, ch = s.ch != null ? s.ch : 0;
       var tone = Math.min(1, (cl / 100) * .85 + (cm / 100) * .45 + (ch / 100) * .12);
       var ptype = mgPrecipFromCode(s.code, s.precip);
@@ -1394,8 +1425,7 @@ function mgDraw() {
   WEEK.days.forEach(function (k, d) {
     var ds = byDay[k]; if (!ds || !ds.length) return;
     var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
-    var pi2 = ds.indexOf(peak), segW2 = MG_DAY_W / ds.length;
-    var px = d * MG_DAY_W + (pi2 + .5) * segW2;
+    var px = d * MG_DAY_W + mgHourFrac(peak.h) * MG_DAY_W;
     var showSec = peak.hs2 != null && peak.hs2 > 0.4;
     var R = Math.max(15, Math.min(30, MG_DAY_W * .155));
     // Le 1er jour est le seul assez à gauche pour chevaucher la colonne des
@@ -1437,8 +1467,7 @@ function mgDraw() {
   WEEK.days.forEach(function (k, d) {
     var ds = byDay[k] || [];
     if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(d * MG_DAY_W + .5, MG_SKY_H + MG_SWELL_H); ctx.lineTo(d * MG_DAY_W + .5, MG_SCENE_H); ctx.stroke(); }
-    var segW3 = MG_DAY_W / (ds.length || 1);
-    ds.forEach(function (s, si) { ctx.fillText(s.h + 'h', d * MG_DAY_W + (si + .5) * segW3, MG_SKY_H + MG_SWELL_H + MG_AXIS_H * .75); });
+    ds.forEach(function (s) { ctx.fillText(s.h + 'h', d * MG_DAY_W + mgHourFrac(s.h) * MG_DAY_W, MG_SKY_H + MG_SWELL_H + MG_AXIS_H * .75); });
   });
 }
 
@@ -2143,7 +2172,14 @@ async function main() {
     Object.keys(sp.tide).forEach((k) => { if (!keep[k]) delete sp.tide[k]; });
   });
 
-  const data = { days: shown, spots: out, defaults: SCORE.DEFAULT_SCORE };
+  // hourMin/hourMax exposés au client pour que le météogramme positionne ses
+  // créneaux à une heure PROPORTIONNELLE réelle (cf. mgHourFrac côté
+  // clientScript) plutôt que par index équiréparti — sans ça, un jour à 4
+  // créneaux (proche) et un jour à 2 créneaux (lointain) auraient le même
+  // écart visuel entre points alors que l'écart réel en heures diffère du
+  // simple au double, un pas de temps qui n'a l'air constant qu'en apparence
+  // (signalé le 10/08/2026).
+  const data = { days: shown, spots: out, defaults: SCORE.DEFAULT_SCORE, hourMin: HOUR_MIN, hourMax: HOUR_MAX };
   const html = render(data, now);
   const file = DRY ? '/tmp/semaine.html' : join(ROOT, 'semaine.html');
   writeFileSync(file, html, 'utf8');
