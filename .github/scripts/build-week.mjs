@@ -120,9 +120,9 @@ const DAYS = 7;                      // J+1 .. J+7
 // qu'un calcul d'éphémérides — à ce pas de 3 h, l'affiner ne changerait rien.
 const HOUR_MIN = 6, HOUR_MAX = 17;
 
-// Modèles comparés pour l'indicateur de confiance. `swell_primary` est le kind
-// commun à tous (format {h, dir, val, period}), ce qui évite de lire les
-// partitions propres à chacun.
+// Modèles comparés pour l'indicateur de confiance. On ne lit que la MER TOTALE
+// de chacun, jamais leurs partitions propres — mais elle ne vit pas sous le même
+// kind ni sous le même nom de champ selon le modèle, cf. modelsForSpot/WAVE_ONLY.
 const CMP_MODELS = [
   { key: 'marc',  label: 'MARC' },
   { key: 'mf',    label: 'MFWAM' },
@@ -264,25 +264,89 @@ function slotsFromNc(json) {
   return out;
 }
 
+// Houle DOMINANTE d'un tableau de partitions (mf/marc/lotus, même schéma
+// { h, t, dir, spread } | null). Règle identique à marcPrimarySwell() dans
+// cache-model-forecasts.mjs et à _marcPrimarySwell() dans previsions.html : la
+// plus haute partition de type HOULE (Tp ≥ 8 s), la mer du vent étant exclue ;
+// repli sur la plus grosse partition si aucune n'atteint 8 s. Les partitions ne
+// sont PAS numérotées stablement — la dominante est tantôt P0, tantôt P1.
+function dominantSwell(parts) {
+  let best = null, biggest = null;
+  (parts || []).forEach((p) => {
+    if (!p || p.h == null) return;
+    if (!biggest || p.h > biggest.h) biggest = p;
+    if (p.t != null && p.t < 8) return; // mer du vent → exclue
+    if (!best || p.h > best.h) best = p;
+  });
+  return (best || biggest || {}).h;
+}
+
+// Hauteur de houle primaire portée par une ligne, quel que soit le script qui
+// l'a écrite. TOUS les modèles du comparatif rapportent bien la houle PRIMAIRE
+// et non la mer totale — c'est le sens du kind `swell_primary` (gfs =
+// `swell_wave_height` Open-Meteo, bom = `sig_ht_sw1`, nc = `primary_swell_height`,
+// marc = partition dominante) — mais les lignes `wave` des ingesteurs Python
+// rangent la même grandeur ailleurs :
+//   ecmwf/aifs → `val`, hauteur de la bande de période la plus haute. Les 6
+//     bandes couvrent 10-30 s, donc de la HOULE par construction, mer du vent
+//     (< 10 s) exclue : c'est bien l'équivalent, et c'est déjà ce que recopie
+//     previsions.html:_cacheModelPoints (valeurs identiques au champ près,
+//     vérifié le 10/08/2026 à Dumbéa : 0,276 et 0,317 m des deux côtés).
+//   mf/marc/lotus → `partitions`, cf. dominantSwell.
+// PIÈGE : ces lignes `wave` portent AUSSI `totH`/`hs`, qui est la MER TOTALE
+// (ecmwf 0,608 m là où la houle vaut 0,276 m). La lire ici gonflerait ECMWF du
+// double et comparerait deux grandeurs différentes — mesuré, puis écarté.
+function swellHeightOf(row, h) {
+  if (row.kind !== 'wave') return h.val;
+  if (row.model === 'ecmwf' || row.model === 'aifs') return h.val;
+  return dominantSwell(h.partitions);
+}
+
 // ─── Valeurs des autres modèles, par jour et par heure ──────────────────────
 // Collecte seulement : le verdict (accord / désaccord) est calculé côté page,
 // une seule fois, pour qu'aucune règle ne soit écrite à deux endroits.
 async function modelsForSpot(spot, days) {
   let rows;
   try {
-    rows = await sbGet('model_forecast_cache?select=id,model,date,hours'
-      + '&kind=eq.swell_primary&date=in.(' + days.join(',') + ')'
+    // DEUX kinds, pas un seul (correctif 10/08/2026). `swell_primary` avait été
+    // choisi comme « kind commun à tous », mais il ne l'est pas : le cron Node
+    // ne l'écrit que pour nc/bom/gfs/marc. Pour ecmwf/aifs/mf/lotus, la seule
+    // source de `swell_primary` est une VISITE NAVIGATEUR sur ce spot
+    // (previsions.html:_cacheModelPoints), alors que leurs ingesteurs Python
+    // écrivent `wave` 3×/jour. Sur un spot peu consulté leur `swell_primary`
+    // vieillissait donc de plusieurs jours pendant qu'un `wave` frais dormait
+    // juste à côté, et le filtre de fraîcheur ci-dessous les écartait tous —
+    // ECMWF absent du comparatif sans que rien ne soit cassé côté ingestion.
+    // Mesuré le 10/08/2026 à Ténia : ecmwf/aifs au run du 08/08 22 h contre le
+    // 10/08 00 h pour marc/gfs/bom, quand le `wave` ecmwf était au run 09/08 06Z.
+    rows = await sbGet('model_forecast_cache?select=model,kind,date,hours,issued_at'
+      + '&kind=in.(swell_primary,wave)&date=in.(' + days.join(',') + ')'
       + '&lat=eq.' + spot.lat + '&lon=eq.' + spot.lon
       + '&model=in.(' + CMP_MODELS.map((m) => m.key).join(',') + ')');
   } catch (e) { return {}; }
   if (!Array.isArray(rows)) return {};
 
-  // Un modèle a plusieurs lignes par jour (une par run) : l'id se termine par
-  // l'horodatage du run (`..._2026080504`), le plus grand est le plus frais.
+  // Fraîcheur lue sur `issued_at`, plus sur le suffixe de run de l'id : les
+  // lignes `wave` de mf/marc/lotus n'en ont pas (id déterministe, réécrit sur
+  // place — le tag de dee40240 n'a été posé que sur aro/ecmwf/aifs), alors que
+  // `issued_at` est renseigné sur TOUTES les lignes.
+  // Nuance assumée : `issued_at` vaut l'instant du FETCH pour `swell_primary`
+  // (et pour les `wave` de mf/marc/lotus), mais l'heure RÉELLE du run pour les
+  // `wave` d'ecmwf/aifs — plus honnête, donc plus vieille à donnée égale (~11 h
+  // au pire : un run 06Z récupéré au cron de 17 h). Le seuil de 24 h ci-dessous
+  // absorbe cet écart ; le réduire écarterait ECMWF à tort.
+  const issuedMs = (r) => Date.parse(r.issued_at || '') || 0;
+
+  // Un modèle a plusieurs lignes par jour (une par run, et désormais deux kinds
+  // possibles) : garder simplement la plus fraîche. Pas de priorité de kind —
+  // elle ferait plus de mal que de bien sur `marc`, dont les lignes `wave` sont
+  // figées à J-5 (fetch_marc.py ne réécrit que le jour le plus lointain de sa
+  // fenêtre — anomalie distincte, non traitée ici) alors que son `swell_primary`
+  // est réécrit à chaque run par le cron Node.
   const latest = {};
   rows.forEach((r) => {
     const k = r.model + '|' + r.date;
-    if (!latest[k] || r.id > latest[k].id) latest[k] = r;
+    if (!latest[k] || issuedMs(r) > issuedMs(latest[k])) latest[k] = r;
   });
 
   // Écarter les runs PÉRIMÉS. Constaté le 05/08/2026 sur Ouano : BOM/GFS/MARC
@@ -290,24 +354,31 @@ async function modelsForSpot(spot, days) {
   // deux jours de retard. Les comparer donnait une étendue qui mesurait l'âge
   // des runs, pas la houle : une réglette « en désaccord » qui ne dit en fait
   // rien de la mer est un signal trompeur.
-  const runOf = (id) => { const m = /_(\d{10})$/.exec(id); return m ? m[1] : null; };
-  const toMs = (s) => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), +s.slice(8, 10));
-  const runs = Object.keys(latest).map((k) => runOf(latest[k].id)).filter(Boolean).sort();
-  const newest = runs.length ? runs[runs.length - 1] : null;
+  const newest = Object.keys(latest).reduce((mx, k) => Math.max(mx, issuedMs(latest[k])), 0);
+
+  // Deux conventions d'heure cohabitent dans `hours` selon le script qui a écrit
+  // la ligne : `h` entier (swell_primary) et `hour` fractionnaire (wave).
+  const hourOf = (h) => (h.h != null ? h.h : h.hour);
 
   const out = {};
   const stale = {};
   Object.keys(latest).forEach((k) => {
     const row = latest[k];
-    const r = runOf(row.id);
-    if (r && newest && (toMs(newest) - toMs(r)) > 24 * 3600000) { stale[row.model] = 1; return; }
+    const at = issuedMs(row);
+    if (at && newest && (newest - at) > 24 * 3600000) { stale[row.model] = 1; return; }
     const label = (CMP_MODELS.find((m) => m.key === row.model) || {}).label || row.model;
     (row.hours || []).forEach((h) => {
-      if (!h || h.h == null || h.val == null) return;
-      const hour = Math.round(h.h);
+      if (!h) return;
+      const hh = hourOf(h), val = swellHeightOf(row, h);
+      if (hh == null || val == null) return;
+      // Quand un modèle est servi par sa ligne `wave`, sa cadence est celle de
+      // l'ingesteur : ecmwf/aifs échantillonnent toutes les 6 h (STEPS de
+      // fetch_ecmwf.py), soit 5/11/17/23 h NC — ils n'alimentent donc que les
+      // créneaux de 11 h et 17 h, là où les autres couvrent 8/11/14/17.
+      const hour = Math.round(hh);
       if (hour < HOUR_MIN || hour > HOUR_MAX) return;
       const key = row.date + '|' + hour;
-      (out[key] = out[key] || []).push([label, h.val]);
+      (out[key] = out[key] || []).push([label, val]);
     });
   });
   const staleList = Object.keys(stale);

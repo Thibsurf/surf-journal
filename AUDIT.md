@@ -5668,3 +5668,100 @@ percée (8) » pour 4 sessions — même piège que pour les spots retenus).
   démonstration en conditions réelles.
 
 `CACHE_NAME` v73 → **v74**.
+
+---
+
+## 10/08/2026 — ECMWF « bloqué » : le défaut n'était pas dans l'ingestion
+
+Point laissé ouvert la veille : ECMWF paraissait figé sur un run vieux d'une
+semaine dans `semaine.html`, les sept autres modèles étant à jour ; suspicion
+sur `ingestion/fetch_ecmwf.py`. **Suspicion infirmée, mesures à l'appui.**
+
+### `fetch_ecmwf.py` est sain
+
+- Les trois derniers runs de `cache-model-forecasts.yml` (09/08 03:06, 09:54 et
+  17:45 UTC) sont verts, job `ecmwf` compris, ~5 min chacun.
+- En base, `model=ecmwf&kind=wave` porte le run **09/08 06Z**, `aifs` le **09/08
+  12Z** (`issued_at` tombe pile sur une heure de run ECMWF : c'est bien le script
+  Python qui écrit, pas une recopie navigateur).
+
+### Le défaut : `build-week.mjs` ne lisait qu'un kind qui n'est pas commun
+
+`modelsForSpot()` interrogeait `kind=eq.swell_primary`, présenté en commentaire
+comme « le kind commun à tous ». Il ne l'est pas : le cron Node n'écrit
+`swell_primary` que pour `nc`/`bom`/`gfs`/`marc`. Pour `ecmwf`/`aifs`/`mf`/
+`lotus`, dont les ingesteurs Python écrivent `wave`, **le seul producteur de
+`swell_primary` est une visite navigateur sur ce spot**
+(`previsions.html:_cacheModelPoints`). Sur un spot peu consulté leur ligne
+vieillit donc de plusieurs jours pendant qu'une ligne `wave` fraîche dort à côté,
+et le filtre de fraîcheur 24 h les écarte — correctement, mais pour rien.
+
+Mesuré le 10/08, tag de run le plus récent par spot (échéance du 13/08) :
+
+| spot | ecmwf / aifs | marc / gfs / bom |
+|------|--------------|------------------|
+| Dumbéa | 2026081000 | 2026081001 |
+| Ouano | 2026081000 | 2026081000 |
+| **Ténia** | **2026080822** | 2026081000 |
+| **Boulari** | **2026080813** | 2026080917 |
+
+C'est la même famille que le correctif du 04/08 côté `previsions.html`
+(`_renderCachedModelsBlock`, priorité `wave` > `swell_primary`) ; `build-week.mjs`
+ne l'avait jamais reçu.
+
+### Fausse piste suivie puis écartée : lire `wave.totH`
+
+Premier jet du correctif : prendre `totH` (mer totale) sur les lignes `wave`, au
+motif que `swell_primary` valait le double côté ECMWF. **Faux.** `swell_primary`
+est la houle PRIMAIRE chez tous les modèles cron — `gfs` = `swell_wave_height`
+Open-Meteo, `bom` = `sig_ht_sw1`, `nc` = `primary_swell_height`, `marc` =
+`marcPrimarySwell()` (le commentaire ligne 122 de `cache-model-forecasts.mjs`
+décrit le bug corrigé le 29/07, pas le comportement actuel). Lire `totH`
+comparait donc mer totale et houle primaire : l'A/B l'a montré tout de suite,
+étendue moyenne 0,485 → 0,569 m et AIFS propulsé à 1,006 m contre MARC 0,372 m.
+Écarté. Le bon équivalent sur une ligne `wave` est `val` pour ecmwf/aifs (bande
+de période la plus haute — les 6 bandes couvrent 10-30 s, donc de la houle par
+construction) et la partition dominante Tp ≥ 8 s pour mf/marc/lotus.
+
+### Correctif retenu
+
+`modelsForSpot()` lit `kind=in.(swell_primary,wave)`, garde par (modèle, date) la
+ligne la plus fraîche des deux — **pas de priorité de kind** : elle ferait
+disparaître MARC, dont les lignes `wave` sont figées à J-5 — et extrait la
+hauteur via `swellHeightOf()`, piloté par le kind et le modèle. Fraîcheur lue sur
+`issued_at` et non sur le suffixe de run de l'id, que les lignes `wave` de
+mf/marc/lotus n'ont pas.
+
+Effet mesuré (dry-run, 4 spots) :
+
+| modèle | présence avant → après | biais médian vs les autres |
+|--------|------------------------|----------------------------|
+| ECMWF | 16 → **32** créneaux | −0,213 → −0,225 m |
+| AIFS | 16 → **32** | −0,038 → −0,045 m |
+| MFWAM | 43 → **58** | +0,084 → +0,075 m |
+| MARC / GFS / BOM | inchangé | inchangé |
+
+Biais par modèle inchangé, couverture en hausse : signature d'un correctif de
+fraîcheur pur. Les valeurs à Boulari (seul spot où rien n'était écarté avant)
+sont identiques au centième. Modèles par créneau : 2,46 → 2,83.
+
+### Deux anomalies distinctes, constatées mais NON traitées
+
+1. **`fetch_marc.py` ne rafraîchit que le jour le plus lointain de sa fenêtre.**
+   Ligne `marc`/`wave` à Dumbéa : échéance du 10/08 écrite le 05/08, du 11/08 le
+   06/08, du 12/08 le 07/08… soit systématiquement à J-5, une seule ligne par
+   date (id déterministe, pas de tag de run). Les runs suivants ne la réécrivent
+   pas. Sent la « fenêtre epoch dégénérée » déjà documentée. Sans effet sur
+   `semaine.html` aujourd'hui (le cron Node fournit un `marc`/`swell_primary`
+   frais, et le correctif ci-dessus le préfère), mais à regarder.
+2. **`fetch_ecmwf.py` ne remonte pas l'échec d'un de ses deux modèles.** `run()`
+   compte les erreurs mais sort 0 dès qu'*un* des deux a produit des lignes : si
+   IFS tombait durablement, le job resterait vert. Angle mort, pas la cause ici.
+
+À noter aussi, sans conséquence pratique : `build-week.mjs` filtre en
+`lat=eq.`/`lon=eq.` strict là où `previsions.html` utilise ±0,05° (même
+fragilité que celle mesurée sur Ténia le 29/07). Les écritures cron utilisant
+les coordonnées de `shared_spots`, l'égalité stricte suffit aujourd'hui.
+
+`semaine.html` sera régénérée par `weekly-page.yml` ; aucun fichier d'`assets/`
+touché, `CACHE_NAME` inchangé.
