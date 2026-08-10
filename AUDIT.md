@@ -6069,3 +6069,96 @@ marée vérifiés valeur par valeur contre un appel Open-Meteo direct sur les
 mêmes coordonnées/dates.
 
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+## 10/08/2026 — météo « pas assez réaliste », lagon « mal fait » : repasse qualité
+
+Retour sur capture d'écran réelle (pas une description) : « météo pas assez
+réaliste », et sur la coupe du lagon spécifiquement « poissons pas bien
+faits, vagues déferlées une fois la barrière franchie [gardent leur
+amplitude], bateau et moutons mal faits ». Un point vague (le ciel) a été
+cadré avant d'y toucher — les trois axes proposés (moins d'icônes répétées,
+plus de relief, pluie/vent plus visibles) ont tous été retenus.
+
+### Ciel du météogramme
+
+**Un seul soleil par jour**, plus un par micro-segment : le créneau le plus
+dégagé du jour sert de référence (taille/intensité), dessiné une fois à
+position fixe, APRÈS les fonds mais AVANT les nuages (qui peuvent encore
+l'occulter). Avant : jusqu'à 4 soleils identiques par jour, qui lisaient
+comme un motif répété plutôt qu'un ciel. Rayons ajoutés (traits radiaux
+discrets) pour sortir du flat design. `mgCloudPuff` : contraste hi/lo relevé
+(blanc plus pur en crête, ombre plus sombre en base) pour plus de volume.
+Pluie et vent : opacité/épaisseur/densité toutes relevées (ex. pluie
+`.6`→`.78` d'opacité, densité max `70`→`90`) — trop discrets pour se voir
+d'un coup d'œil sur la version précédente.
+
+### Coupe du lagon
+
+**Poissons** refaits : queue fourchue à deux lobes (au lieu d'un triangle
+plein), nageoire dorsale, œil net — l'ancienne silhouette (corps + un seul
+triangle) lisait plus comme une goutte d'eau qu'un poisson à cette taille.
+
+**Bateau** refait : coque agrandie avec ligne de flottaison (dégradé), mât,
+DEUX voiles PLEINES (grand-voile + foc) au lieu d'un simple triangle en
+contour — trop petit et trop fin pour se lire comme un voilier.
+
+**Vagues qui ne s'apaisaient pas après la barrière** — le bug le plus
+substantiel de cette repasse, à deux niveaux :
+1. Après déferlement, l'amplitude était plafonnée (`Math.min(gamma*depth,
+   hs*2.2)`) mais PAS décroissante — le ruban continuait d'onduler à
+   amplitude constante jusqu'au bord droit du canvas, au lieu de s'apaiser
+   dans le lagon. Ajout d'une décroissance exponentielle
+   (`× Math.exp(-(xf-breakXf)/0.09)`) : l'eau redevient visiblement calme
+   quelques dixièmes de largeur après le déferlement.
+2. L'écume de déferlement elle-même était presque invisible (points de
+   1,6 px à 55 % d'opacité, épars sur toute la largeur du lagon) — **le même
+   défaut déjà repéré sur le prototype Yadusurf d'origine** (AUDIT.md, matin
+   du 10/08), reproduit ici par erreur en adaptant sa physique sans relire ce
+   point précis. Remplacé par une vraie bande d'écume turbulente (dégradé +
+   ~44 flocons blancs, opacité et position qui s'estompent avec la distance
+   au point de déferlement).
+
+**Moutons refaits, et un bug de fond découvert en les débogant.** Une 1ʳᵉ
+version les plaçait à des positions aléatoires flottant au-dessus de l'eau,
+sans lien avec les crêtes réellement tracées — remplacés par une détection
+des VRAIES crêtes (minima locaux de la courbe déjà dessinée) avant la
+barrière, avec le vent réel comme seuil (≥12 nds) et facteur de taille.
+Mais après ce changement, RIEN ne s'affichait — un repère de debug (cercle
+magenta) placé au même endroit que le mouton confirmait que le code
+s'exécutait, sans que rien n'apparaisse à l'écran. Cause trouvée en
+recalculant la simulation en dehors du canvas (script Node autonome,
+mêmes formules) : une crête bien amplifiée par le shoaling (coefficient
+jusqu'à ×3,2 en approchant du récif) se traçait à une coordonnée Y
+LÉGÈREMENT NÉGATIVE — quelques pixels AU-DESSUS du haut du canvas. Un canvas
+rogne silencieusement ce qui dépasse de son cadre, sans erreur JS : la crête
+ET tout ce qui devait s'y accrocher (mouton compris) étaient invisibles sans
+qu'aucun message ne le signale. Deux correctifs complémentaires :
+- `seaLevelY` relevé (`H×.22` → `H×.34`) : plus de marge au-dessus du niveau
+  d'eau, pour que les crêtes amplifiées restent naturellement dans le cadre
+  sans qu'un clamp ait besoin d'intervenir.
+- Un clamp (`Math.max(4, …)`) gardé en filet de sécurité pour les cas
+  extrêmes — mais un clamp crée des POINTS À ÉGALITÉ (plusieurs échantillons
+  consécutifs collés à la même valeur plafond), ce qui cassait la détection
+  de minimum local à comparaison stricte (`pB.y < pA.y && pB.y < pC.y` ne
+  trouve rien sur un plateau) : assouplie en tolérant l'égalité d'UN seul
+  côté (`(pB.y<pA.y && pB.y<=pC.y) || (pB.y<=pA.y && pB.y<pC.y)`).
+Aussi rendu déterministe (avant : une chance par crête qui grandissait avec
+le vent) — avec seulement 1-2 crêtes visibles avant la barrière sur ce
+format, un jet de dés par crête produisait souvent AUCUN mouton malgré un
+vent bien au-dessus du seuil, dépendant du seed du jour. Seule la TAILLE
+suit maintenant le vent, pas la présence.
+
+**Un 2ᵉ badge a mordu sur le même genre de bug.** Le badge « X m d'eau »,
+posé en position fixe en haut-gauche (correctif du chantier précédent),
+recouvrait purement et simplement la 1ʳᵉ crête — justement celle où les
+moutons ont le plus de chances d'apparaître. Déplacé en bas-gauche, où rien
+d'autre ne se dessine.
+
+Vérifié : `node --check` sur le générateur et le JS client extrait du
+fichier généré ; Chrome headless 500px et 1400px, `window.onerror` injecté
+(zéro erreur) ; un script Node autonome a reproduit la simulation de houle
+hors canvas pour confirmer la coordonnée Y hors-cadre AVANT de corriger,
+plutôt que de deviner ; capture d'écran avant/après chaque correctif
+(mgSetHover(3) simulé pour pointer un jour réel à vent ≥12 nds).
+
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.

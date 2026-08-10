@@ -1088,20 +1088,23 @@ function mgArrow(ctx, x, y, fromDeg, size, fill) {
   ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
   ctx.restore();
 }
+// Contraste hi/lo relevé (signalé "pas assez réaliste/flat" le 10/08/2026) :
+// un blanc plus pur en crête, une ombre plus sombre en base donnent plus de
+// volume au lobe sans changer sa forme ni sa position.
 function mgCloudPuff(ctx, cx, cy, scale, op, tone) {
   tone = tone || 0;
   ctx.save(); ctx.globalAlpha = op;
   var lobes = [[0, -3, 15], [-15, 3, 12], [15, 3, 12], [-6, -7, 10], [7, -8, 11], [0, 6, 14]];
-  ctx.fillStyle = mgRgba(mgLerp([30, 36, 44], [6, 7, 9], tone * .5), .28 + tone * .22);
+  ctx.fillStyle = mgRgba(mgLerp([26, 32, 40], [4, 5, 7], tone * .5), .32 + tone * .24);
   lobes.forEach(function (o) {
-    ctx.beginPath(); ctx.ellipse(cx + o[0] * scale, cy + o[1] * scale + 4 * scale, o[2] * scale, o[2] * .82 * scale, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + o[0] * scale, cy + o[1] * scale + 4.5 * scale, o[2] * scale, o[2] * .82 * scale, 0, 0, 7); ctx.fill();
   });
-  var hi = mgLerp([255, 255, 255], [172, 178, 186], tone);
-  var lo = mgLerp([213, 222, 229], [64, 70, 80], tone);
+  var hi = mgLerp([255, 255, 255], [186, 192, 200], tone);
+  var lo = mgLerp([196, 208, 218], [46, 51, 60], tone);
   lobes.forEach(function (o) {
     var lx = cx + o[0] * scale, ly = cy + o[1] * scale, r = o[2] * scale;
-    var grd = ctx.createRadialGradient(lx - r * .35, ly - r * .4, r * .15, lx, ly, r * 1.2);
-    grd.addColorStop(0, mgRgba(hi)); grd.addColorStop(1, mgRgba(lo));
+    var grd = ctx.createRadialGradient(lx - r * .38, ly - r * .42, r * .12, lx, ly, r * 1.25);
+    grd.addColorStop(0, mgRgba(hi)); grd.addColorStop(.65, mgRgba(mgLerp(hi, lo, .5))); grd.addColorStop(1, mgRgba(lo));
     ctx.fillStyle = grd; ctx.beginPath(); ctx.ellipse(lx, ly, r, r * .8, 0, 0, 7); ctx.fill();
   });
   ctx.restore();
@@ -1252,6 +1255,10 @@ function mgDraw() {
       return;
     }
     var segW = MG_DAY_W / ds.length;
+
+    // Passe 1 — fonds + voile de précipitation, un par micro-segment (variation
+    // horaire réelle : c'est ce qui distingue une matinée claire d'une
+    // après-midi couverte, cf. le bug n°3 du prototype d'origine).
     ds.forEach(function (s, si) {
       var xs = x0 + si * segW;
       // Nébulosité par ALTITUDE : les nuages bas pèsent le plus sur la
@@ -1266,19 +1273,47 @@ function mgDraw() {
       ctx.fillStyle = g; ctx.fillRect(xs, 0, segW, MG_SKY_H + MG_SWELL_H);
 
       var ptype = mgPrecipFromCode(s.code, s.precip);
-      var sevOverlay = { none: 0, drizzle: .03, rain: .09, shower: .16, storm: .27 }[ptype] || 0;
+      var sevOverlay = { none: 0, drizzle: .04, rain: .12, shower: .2, storm: .32 }[ptype] || 0;
       if (sevOverlay > 0) { ctx.fillStyle = 'rgba(8,16,26,' + sevOverlay + ')'; ctx.fillRect(xs, 0, segW, MG_SKY_H + MG_SWELL_H); }
+    });
 
-      if (cl < 55 && ptype === 'none') {
-        var sunX = xs + segW * .68, sunY = MG_SKY_H * .3, sunR = 11 - cl / 100 * 4;
-        var intensity = Math.max(.14, 1 - tone * .85);
-        var glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.3);
-        glow.addColorStop(0, mgRgba(warmRgb, .4 * intensity)); glow.addColorStop(1, mgRgba(warmRgb, 0));
-        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.3, 0, 7); ctx.fill();
-        var sunGrd = ctx.createRadialGradient(sunX - sunR * .3, sunY - sunR * .35, sunR * .1, sunX, sunY, sunR);
-        sunGrd.addColorStop(0, mgRgba([255, 250, 225], intensity)); sunGrd.addColorStop(1, mgRgba(warmRgb, intensity));
-        ctx.fillStyle = sunGrd; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, 7); ctx.fill();
+    // UN SEUL soleil par jour (le créneau le plus dégagé sert de référence),
+    // pas un par micro-segment : en redessiner un identique à chaque créneau
+    // (jusqu'à 4/jour) lisait comme un motif répété plutôt qu'un ciel — signalé
+    // le 10/08/2026. Dessiné APRÈS les fonds mais AVANT les nuages (passe 2)
+    // pour qu'un nuage puisse encore l'occulter partiellement.
+    var repSlot = ds[0];
+    ds.forEach(function (s) { if ((s.cl != null ? s.cl : 100) < (repSlot.cl != null ? repSlot.cl : 100)) repSlot = s; });
+    var repCl = repSlot.cl != null ? repSlot.cl : 0;
+    if (repCl < 55 && mgPrecipFromCode(repSlot.code, repSlot.precip) === 'none') {
+      var sunX = x0 + MG_DAY_W * .64, sunY = MG_SKY_H * .3;
+      var sunR = (13 - repCl / 100 * 5) * Math.min(1.3, MG_SCALE);
+      var sunIntensity = Math.max(.16, 1 - (repCl / 100) * .85);
+      var sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.6);
+      sunGlow.addColorStop(0, mgRgba(warmRgb, .42 * sunIntensity)); sunGlow.addColorStop(1, mgRgba(warmRgb, 0));
+      ctx.fillStyle = sunGlow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.6, 0, 7); ctx.fill();
+      // Rayons : quelques traits radiaux discrets — sort du "flat design" pur.
+      ctx.save(); ctx.translate(sunX, sunY);
+      ctx.strokeStyle = mgRgba([255, 244, 210], .4 * sunIntensity); ctx.lineWidth = 1.4;
+      var rayN = 8, ri;
+      for (ri = 0; ri < rayN; ri++) {
+        var ra = ri / rayN * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(Math.cos(ra) * sunR * 1.35, Math.sin(ra) * sunR * 1.35);
+        ctx.lineTo(Math.cos(ra) * sunR * 2.05, Math.sin(ra) * sunR * 2.05); ctx.stroke();
       }
+      ctx.restore();
+      var sunGrd = ctx.createRadialGradient(sunX - sunR * .3, sunY - sunR * .35, sunR * .1, sunX, sunY, sunR);
+      sunGrd.addColorStop(0, mgRgba([255, 250, 225], sunIntensity)); sunGrd.addColorStop(1, mgRgba(warmRgb, sunIntensity));
+      ctx.fillStyle = sunGrd; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, 7); ctx.fill();
+    }
+
+    // Passe 2 — nuages, vent, pluie : toujours par micro-segment (la vraie
+    // variation horaire), tracés après le soleil pour pouvoir l'occulter.
+    ds.forEach(function (s, si) {
+      var xs = x0 + si * segW;
+      var cl = s.cl != null ? s.cl : 0, cm = s.cm != null ? s.cm : 0, ch = s.ch != null ? s.ch : 0;
+      var tone = Math.min(1, (cl / 100) * .85 + (cm / 100) * .45 + (ch / 100) * .12);
+      var ptype = mgPrecipFromCode(s.code, s.precip);
 
       // Haut (cirrus) : traits fins et clairsemés — jamais de puff plein,
       // c'est ce qui les distingue visuellement des couches basses/moyennes.
@@ -1301,18 +1336,22 @@ function mgDraw() {
         var lrng = mgRng(mgSeed(k) + si * 29 + 900), ln = Math.round(1 + cl / 100 * 4), li;
         for (li = 0; li < ln; li++) mgCloudPuff(ctx, xs + 10 + lrng() * (segW - 20), MG_SKY_H * (.42 + lrng() * .34), .5 + lrng() * .4 + tone * .3, Math.min(.95, .55 + tone * .35), tone);
       }
-      // Traits de vent : indice de mouvement dès que ça souffle (≥13 nds).
+      // Traits de vent : indice de mouvement dès que ça souffle (≥13 nds) —
+      // plus contrastés qu'une 1ʳᵉ version (signalé le 10/08/2026, trop discrets
+      // pour se voir d'un coup d'œil).
       if (s.ws >= 13) {
-        var wrng = mgRng(mgSeed(k) + si * 991 + 2), wn = Math.round(2 + (s.ws - 12) * .5);
+        var wrng = mgRng(mgSeed(k) + si * 991 + 2), wn = Math.round(3 + (s.ws - 12) * .6);
         var wang = ((s.wd || 0) + 180) * Math.PI / 180, wI;
         for (wI = 0; wI < wn; wI++) {
-          var wx = xs + wrng() * segW, wy = MG_SKY_H * .1 + wrng() * MG_SKY_H * .55, wl = 10 + wrng() * 11;
-          ctx.strokeStyle = 'rgba(255,255,255,' + (.2 + wrng() * .15).toFixed(2) + ')'; ctx.lineWidth = 1.2;
+          var wx = xs + wrng() * segW, wy = MG_SKY_H * .1 + wrng() * MG_SKY_H * .55, wl = 12 + wrng() * 13;
+          ctx.strokeStyle = 'rgba(255,255,255,' + (.32 + wrng() * .24).toFixed(2) + ')'; ctx.lineWidth = 1.6;
           ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + Math.cos(wang) * wl, wy + Math.sin(wang) * wl * .32); ctx.stroke();
         }
       }
       // Précipitation réelle (mm/h Open-Meteo) : rideaux + traits, intensité
-      // pilotée par la valeur mesurée, pas par un jet de dés.
+      // pilotée par la valeur mesurée, pas par un jet de dés. Traits plus
+      // longs/opaques qu'une 1ʳᵉ version — trop discrets pour lire "il pleut"
+      // d'un coup d'œil (signalé le 10/08/2026).
       if (ptype !== 'none') {
         var prng = mgRng(mgSeed(k) + si * 777 + 3);
         if (ptype === 'shower' || ptype === 'storm') {
@@ -1328,10 +1367,10 @@ function mgDraw() {
           }
         }
         var mm = s.precip != null ? s.precip : 1;
-        var dens = Math.round(Math.min(70, 12 + mm * 14));
-        var len = { drizzle: 6, rain: 11, shower: 15, storm: 18 }[ptype] || 9;
-        ctx.strokeStyle = ptype === 'drizzle' ? 'rgba(255,255,255,.4)' : 'rgba(255,255,255,.6)';
-        ctx.lineWidth = ptype === 'storm' ? 1.3 : 1;
+        var dens = Math.round(Math.min(90, 18 + mm * 18));
+        var len = { drizzle: 8, rain: 14, shower: 19, storm: 23 }[ptype] || 11;
+        ctx.strokeStyle = ptype === 'drizzle' ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.78)';
+        ctx.lineWidth = ptype === 'storm' ? 1.6 : 1.3;
         var r;
         for (r = 0; r < dens; r++) {
           var rx = xs + prng() * segW, ry = prng() * (MG_SKY_H + MG_SWELL_H * .6);
@@ -1640,12 +1679,20 @@ function lgUvBand(uv) {
     : uv < 8 ? { t: 'élevé', c: '#e8874a' } : uv < 11 ? { t: 'très élevé', c: '#e05c5c' } : { t: 'extrême', c: '#c04fd8' };
 }
 
+// Refait le 10/08/2026 (signalé "pas bien faits") : queue fourchue à deux
+// lobes plutôt qu'un triangle plein, nageoire dorsale, œil net — la version
+// précédente (corps + un seul triangle) lisait plus comme une goutte d'eau
+// qu'un poisson à cette petite taille.
 function lgDrawFish(ctx, x, y, scale, dir, fill) {
   ctx.save(); ctx.translate(x, y); ctx.scale(dir * scale, scale);
-  ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(6,16,28,.35)'; ctx.lineWidth = .8; ctx.fillStyle = fill;
-  ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(-9, -3.4); ctx.lineTo(-9, 3.4); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(0, 0, 5.5, 2.6, 0, 0, 7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(1.3, -.8, 1.4, .7, 0, 0, 7); ctx.fill();
+  ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(6,16,28,.4)'; ctx.lineWidth = .7; ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(-6, 0); ctx.lineTo(-13, -5.5); ctx.lineTo(-8.5, 0); ctx.lineTo(-13, 5.5); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, 0, 7.5, 3.8, 0, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-1.5, -3.6); ctx.lineTo(1, -8); ctx.lineTo(2.5, -3.4); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(2, -1.3, 2, 1, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#1a1410'; ctx.beginPath(); ctx.arc(4.5, -.2, 1, 0, 7); ctx.fill();
   ctx.restore();
 }
 function lgReefDome(ctx, cx, baseY, topY, mw, j) {
@@ -1665,23 +1712,43 @@ function lgReefMasses(W) {
 }
 // Bateau au mouillage : décor, mais la LONGUEUR de chaîne dessinée suit la
 // VRAIE profondeur du moment (interpolée depuis la marée réelle), pas figée.
+// Refait le 10/08/2026 (signalé "mal fait") : coque plus grande avec ligne de
+// flottaison, mât et DEUX voiles pleines (grand-voile + foc) au lieu d'un
+// simple triangle en contour — la version précédente était trop petite et
+// trop fine pour se lire comme un voilier.
 function lgDrawBoat(ctx, x, waterY, seabedY, col) {
-  var hullW = 26, hullH = 9;
+  var hullW = 38, hullH = 12;
   ctx.save(); ctx.translate(x, waterY);
-  ctx.strokeStyle = 'rgba(6,16,28,.4)'; ctx.lineWidth = 1; ctx.fillStyle = '#e9eff5';
+  ctx.strokeStyle = 'rgba(6,16,28,.45)'; ctx.lineWidth = 1;
+  var hullGrd = ctx.createLinearGradient(0, 0, 0, hullH);
+  hullGrd.addColorStop(0, '#f3f6f9'); hullGrd.addColorStop(1, '#c7d2db');
+  ctx.fillStyle = hullGrd;
   ctx.beginPath();
   ctx.moveTo(-hullW / 2, 0); ctx.lineTo(hullW / 2, 0);
-  ctx.lineTo(hullW / 2 - 4, hullH); ctx.lineTo(-hullW / 2 + 4, hullH); ctx.closePath();
+  ctx.lineTo(hullW / 2 - 5, hullH); ctx.lineTo(-hullW / 2 + 5, hullH); ctx.closePath();
   ctx.fill(); ctx.stroke();
-  ctx.strokeStyle = 'rgba(233,239,245,.85)'; ctx.lineWidth = 1.4;
-  ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(-2, -16); ctx.lineTo(9, -6); ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(60,50,40,.9)'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(-hullW * .08, 0); ctx.lineTo(-hullW * .08, -hullH * 2.6); ctx.stroke();
+  var sailGrd = ctx.createLinearGradient(-hullW * .08, -hullH * 2.6, hullW * .42, -hullH * .3);
+  sailGrd.addColorStop(0, 'rgba(255,255,255,.97)'); sailGrd.addColorStop(1, 'rgba(223,231,238,.92)');
+  ctx.fillStyle = sailGrd; ctx.strokeStyle = 'rgba(6,16,28,.3)'; ctx.lineWidth = .8;
+  ctx.beginPath();
+  ctx.moveTo(-hullW * .08, -hullH * 2.6);
+  ctx.quadraticCurveTo(hullW * .3, -hullH * 1.5, hullW * .42, -hullH * .3);
+  ctx.lineTo(-hullW * .08, -hullH * .3); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-hullW * .08, -hullH * 2.1);
+  ctx.quadraticCurveTo(-hullW * .32, -hullH * 1.2, -hullW * .42, -hullH * .3);
+  ctx.lineTo(-hullW * .08, -hullH * .3); ctx.closePath();
+  ctx.fillStyle = 'rgba(233,239,245,.9)'; ctx.fill(); ctx.stroke();
   ctx.restore();
   ctx.save();
   ctx.strokeStyle = col; ctx.lineWidth = 1.3; ctx.setLineDash([3, 2]);
-  ctx.beginPath(); ctx.moveTo(x - hullW / 2 + 3, waterY + hullH * .6);
-  ctx.quadraticCurveTo(x - hullW / 2 - 8, (waterY + seabedY) / 2, x - 4, seabedY - 2);
+  ctx.beginPath(); ctx.moveTo(x - hullW * .28, waterY + hullH * .7);
+  ctx.quadraticCurveTo(x - hullW * .45, (waterY + seabedY) / 2, x - hullW * .08, seabedY - 2);
   ctx.stroke(); ctx.setLineDash([]);
-  ctx.beginPath(); ctx.arc(x - 4, seabedY, 2.4, 0, 7); ctx.fillStyle = col; ctx.fill();
+  ctx.beginPath(); ctx.arc(x - hullW * .08, seabedY, 2.6, 0, 7); ctx.fillStyle = col; ctx.fill();
   ctx.restore();
 }
 
@@ -1727,7 +1794,13 @@ function lgDraw() {
   }
   var s = cur.slot, p = mgDayParts(cur.day);
   var tideM = s.tide != null ? s.tide : 0.9;
-  var pxPerM = Math.min(34, H * .16), seaLevelY = H * .22;
+  // seaLevelY relevé (.22 → .34) : avec le shoaling qui amplifie la houle
+  // jusqu'à ×3,2 en approchant du récif, une crête dépassait régulièrement le
+  // haut du canvas de quelques px — le clamp plus bas la rendait visible mais
+  // aplatissait sa pointe (constaté le 10/08/2026). Plus de marge au-dessus
+  // du niveau d'eau = des crêtes qui restent naturellement dans le cadre, le
+  // clamp ne servant plus que de filet de sécurité pour les cas extrêmes.
+  var pxPerM = Math.min(34, H * .16), seaLevelY = H * .34;
   function yOf(elevM) { return seaLevelY - elevM * pxPerM; }
 
   var N = 140, gamma = .55, prof = [], broken = false, breakXf = null, breakH = 0, i;
@@ -1739,7 +1812,12 @@ function lgDraw() {
         Hloc = (s.hs || 0.5) * Ks;
         if (Hloc > gamma * depth) { broken = true; breakXf = xf; breakH = Hloc; }
       }
-      if (broken) Hloc = Math.min(gamma * depth, (s.hs || 0.5) * 2.2);
+      // Amplitude DÉCROISSANTE après la barrière (dissipation de l'énergie
+      // dans le lagon), pas un plafond constant qui continuait d'onduler
+      // jusqu'au bord droit du canvas — signalé "vagues déferlées une fois la
+      // barrière franchie" le 10/08/2026 : le ruban restait une houle
+      // régulière là où l'eau devrait s'apaiser après le déferlement.
+      if (broken) Hloc = Math.min(gamma * depth, (s.hs || 0.5) * 2.2) * Math.exp(-(xf - breakXf) / 0.09);
     }
     prof.push({ xf: xf, bed: bed, depth: depth, H: Hloc });
   }
@@ -1763,7 +1841,14 @@ function lgDraw() {
     if (idx > 0 && prevK != null) { var dxM = (x - prof[idx - 1].xf * W) * mPerPx; phase += (k + prevK) / 2 * dxM; }
     prevK = k;
     var elev = tideM + (pt.H * DISPLAY_AMP / 2) * Math.sin(phase);
-    return { x: x, y: yOf(Math.min(elev, pt.bed + pt.depth + pt.H * DISPLAY_AMP / 2 + 3)), wet: true };
+    // Le y est borné à 4px du haut du canvas : sans ça, une crête bien
+    // amplifiée par le shoaling (Ks jusqu'à 3,2×) finissait quelques pixels
+    // AU-DESSUS du canvas — invisible, et TOUT ce qui devait s'y accrocher
+    // (moutons compris) l'était avec elle. Trouvé le 10/08/2026 en traçant un
+    // repère de debug qui ne s'affichait nulle part : la crête où il aurait
+    // dû apparaître sortait du cadre de quelques px, sans qu'aucune erreur ne
+    // le signale (un canvas rogne silencieusement ce qui dépasse).
+    return { x: x, y: Math.max(4, yOf(Math.min(elev, pt.bed + pt.depth + pt.H * DISPLAY_AMP / 2 + 3))), wet: true };
   });
 
   var accentRgb = [79, 163, 199], deepRgb = [6, 18, 34], paleRgb = [70, 150, 160];
@@ -1811,32 +1896,68 @@ function lgDraw() {
   for (fi = 0; fi < fishN; fi++) {
     var fx = W * (.58 + frng() * .34), fyFrac = .35 + frng() * .45;
     var fy = seaLevelY + (H - seaLevelY) * fyFrac;
-    lgDrawFish(ctx, fx, fy, 1 + frng() * .8, frng() > .5 ? 1 : -1, mgRgba([255, 224, 170], .92));
+    lgDrawFish(ctx, fx, fy, .75 + frng() * .55, frng() > .5 ? 1 : -1, mgRgba([255, 224, 170], .92));
   }
   ctx.restore();
 
+  // Écume de déferlement — une vraie bande blanche turbulente juste après la
+  // barrière, qui s'estompe vers le lagon. Remplace une 1ʳᵉ version (points de
+  // 1,6 px à 55 % d'opacité, éparpillés sur toute la largeur du lagon) qui
+  // était presque invisible à l'écran — même défaut que celui déjà relevé
+  // sur le prototype Yadusurf d'origine (AUDIT.md, matin du 10/08/2026),
+  // reproduit ici par erreur en adaptant sa physique.
   if (broken) {
-    var brng = mgRng(Math.floor(breakXf * 9999)), s2;
-    ctx.fillStyle = 'rgba(255,255,255,.55)';
-    for (s2 = 0; s2 < N; s2++) {
-      var xfP = s2 / N; if (xfP < breakXf) continue;
-      var pp = prof[s2]; if (pp.depth <= .05) continue;
-      if (brng() > .72) { var fx2 = xfP * W + (brng() - .5) * 6, fy2 = yOf(tideM) - 1 + brng() * 3; ctx.fillRect(fx2, fy2, 1.6, 1.6); }
+    var foamW = Math.min(W * .24, 70), bx0 = breakXf * W;
+    var foamGrd = ctx.createLinearGradient(bx0 - 6, 0, bx0 + foamW, 0);
+    foamGrd.addColorStop(0, 'rgba(255,255,255,0)');
+    foamGrd.addColorStop(.18, 'rgba(255,255,255,.6)');
+    foamGrd.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save();
+    ctx.beginPath(); ctx.rect(bx0 - 8, yOf(tideM) - 16, foamW + 8, 32); ctx.clip();
+    ctx.fillStyle = foamGrd; ctx.fillRect(bx0 - 8, yOf(tideM) - 16, foamW + 8, 32);
+    var brng = mgRng(Math.floor(breakXf * 9999)), bk;
+    for (bk = 0; bk < 44; bk++) {
+      var bt = brng(), bfx = bx0 + bt * foamW, bfy = yOf(tideM) + (brng() - .5) * 11;
+      ctx.fillStyle = 'rgba(255,255,255,' + ((1 - bt) * .75).toFixed(2) + ')';
+      ctx.beginPath(); ctx.ellipse(bfx, bfy, 2 + brng() * 2.6, 1 + brng() * 1.1, 0, 0, 7); ctx.fill();
     }
+    ctx.restore();
   }
 
   ctx.beginPath(); var started = false;
   surfPts.forEach(function (pt) { if (!pt.wet) return; if (!started) { ctx.moveTo(pt.x, pt.y); started = true; } else ctx.lineTo(pt.x, pt.y); });
   ctx.strokeStyle = mgRgba(mgLerp(accentRgb, [255, 255, 255], .5), .95); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
 
-  // Moutons — vent RÉEL du créneau : au-delà de ~12 nds (force 4 Beaufort),
-  // la mer prend en large avant le récif.
+  // Moutons — accrochés aux VRAIES crêtes du ruban (minima locaux de la
+  // courbe déjà tracée), avant la barrière seulement ; une 1ʳᵉ version les
+  // plaçait à des positions aléatoires flottant au-dessus de l'eau, sans lien
+  // avec les crêtes réellement dessinées (signalé "mal faits" le 10/08/2026).
+  // Vent RÉEL du créneau, seuil ~12 nds (force 4 Beaufort). Chaque crête
+  // détectée est marquée SYSTÉMATIQUEMENT (pas un jet de dés par crête) — avec
+  // seulement 1-2 crêtes visibles avant la barrière sur ce format, une chance
+  // probabiliste par crête produisait souvent AUCUNE écume malgré un vent
+  // suffisant (constaté le 10/08/2026, seed-dépendant). Seule la taille suit
+  // le vent, pas la présence.
   if (s.ws != null && s.ws >= 12) {
-    var wrng = mgRng(mgSeed(cur.day) + 4242), wn = Math.round((s.ws - 11) * 1.6), wi;
-    ctx.fillStyle = 'rgba(255,255,255,.75)';
-    for (wi = 0; wi < wn; wi++) {
-      var wxf = wrng() * Math.min(.46, breakXf || .46), wx = wxf * W, wy = yOf(tideM) - 6 - wrng() * 14;
-      ctx.beginPath(); ctx.ellipse(wx, wy, 3 + wrng() * 2, 1.1, 0, 0, 7); ctx.fill();
+    var wrng = mgRng(mgSeed(cur.day) + 4242);
+    var foamSize = Math.min(1, (s.ws - 11) / 10);
+    var wi, wk;
+    for (wi = 2; wi < surfPts.length - 2; wi++) {
+      var pA = surfPts[wi - 1], pB = surfPts[wi], pC = surfPts[wi + 1];
+      if (!pA.wet || !pB.wet || !pC.wet) continue;
+      if (breakXf != null && pB.x / W >= breakXf) break; // au-delà : écume de déferlement dédiée
+      // Égalité tolérée d'UN seul côté : une crête bien amplifiée est bornée
+      // à 4px du haut (cf. le commentaire sur surfPts plus haut) et plusieurs
+      // points consécutifs s'y retrouvent à EXACTEMENT la même hauteur — une
+      // comparaison stricte des deux côtés ne trouvait alors aucun minimum
+      // local sur ce plateau, donc aucune crête à marquer.
+      if ((pB.y < pA.y && pB.y <= pC.y) || (pB.y <= pA.y && pB.y < pC.y)) {
+        ctx.fillStyle = 'rgba(255,255,255,.88)';
+        ctx.beginPath(); ctx.ellipse(pB.x, pB.y - 1, 3.5 + foamSize * 3.5, 1.1 + foamSize, 0, 0, 7); ctx.fill();
+        for (wk = 0; wk < 2 + Math.round(foamSize * 3); wk++) {
+          ctx.beginPath(); ctx.arc(pB.x + (wrng() - .5) * 9, pB.y - 1 + (wrng() - .5) * 2.4, .8 + wrng() * 1.3, 0, 7); ctx.fill();
+        }
+      }
     }
   }
 
@@ -1860,9 +1981,13 @@ function lgDraw() {
   // le 10/08/2026) — même piège que les étiquettes d'axe du météogramme,
   // réglé de la même façon (dernier, opaque, position qui ne dépend pas de la
   // donnée qu'il annonce).
-  ctx.fillStyle = 'rgba(8,20,34,.72)'; ctx.fillRect(6, 6, 92, 20);
+  // Coin BAS-gauche et non haut-gauche (2ᵉ correctif du même défaut) : posé en
+  // haut, ce badge opaque recouvrait purement et simplement la 1ʳᵉ crête —
+  // justement celle où les moutons ont le plus de chances d'apparaître — et
+  // les rendait invisibles sans qu'aucune erreur ne le signale.
+  ctx.fillStyle = 'rgba(8,20,34,.72)'; ctx.fillRect(6, H - 30, 92, 20);
   ctx.textAlign = 'left'; ctx.font = '700 11px sans-serif'; ctx.fillStyle = '#fff';
-  ctx.fillText(tideM.toFixed(2) + ' m d\'eau', 11, 20);
+  ctx.fillText(tideM.toFixed(2) + ' m d\'eau', 11, H - 16);
 
   var uvBand = lgUvBand(s.uv);
   if (uvBand) {
