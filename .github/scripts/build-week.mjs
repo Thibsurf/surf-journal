@@ -720,20 +720,32 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 /* ── Météogramme : cartes « décision d'abord » (score → vent → houle →
    météo → créneau conseillé), une par jour, plutôt qu'un graphe continu à
    poids visuel égal pour tout (refait le 10/08/2026, cf. AUDIT.md).
-   Retour utilisateur le soir même : trouvait le résultat pas assez visuel
-   par rapport à Yadusurf — sans revenir au graphe continu (déjà écarté
-   plusieurs fois le même jour pour « pas propre »), la courbe de houle est
-   agrandie et la météo passe d'1 icône/jour à 1 icône par créneau réel,
-   TOUJOURS sous la houle dans l'ordre de lecture (cf. mg-dc-meteo plus bas).
+   Deux retours utilisateur le soir même, sans jamais rouvrir le graphe
+   continu (déjà écarté plusieurs fois le même jour pour « pas propre ») :
+   1) « pas assez visuel » → courbe de houle agrandie, météo passée d'1
+   icône/jour à 1 icône par créneau réel. 2) « on comprend rien à la
+   taille/direction/vent, adapte à la version PC » → vent passé d'1 chiffre
+   (meilleur créneau) à 1 flèche+vitesse par créneau réel, la courbe porte
+   maintenant une flèche de direction à chaque point (pas juste un rond), et
+   cartes+typo grandissent réellement en desktop via --mgw (cf. plus bas) —
+   avant, le média large montrait les MÊMES cartes mobiles avec du vide à
+   droite, pas un vrai agrandissement.
    Bloc PERMANENT (cf. le commentaire au-dessus de son init côté JS),
    indépendant de la grille de score et de son panneau de calibrage — leurs
    seuils changent le classement de LA GRILLE, jamais ce que ce bloc affiche.
    .mg-bleed le fait déborder du cadre à 560px de body sur grand écran, pour
-   qu'un moniteur large montre plus de cartes à la fois plutôt qu'un
-   agrandissement artificiel des mêmes cartes. */
+   qu'un moniteur large montre plus de cartes, plus grandes, à la fois. */
+/* Largeur de carte : UNE variable (--mgw), lue par .mg-dc ET .mg-tide-day —
+   même principe qu'avant (« un seul nombre à tenir à jour » pour que
+   météogramme et marées restent alignés colonne pour colonne), mais portée
+   par une custom property pour pouvoir varier par breakpoint SANS dupliquer
+   le nombre à deux endroits. Le HTML généré est strictement identique pour
+   mobile et bureau (généré une fois côté serveur, sans savoir sur quel
+   écran il s'ouvrira) : seule cette variable change en media query. */
+:root{--mgw:148px}
 @media (min-width:641px){
   .mg-bleed{position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw}
-  .mg-bleed .mg-card{max-width:1180px;margin-left:auto;margin-right:auto}
+  .mg-bleed .mg-card{max-width:1400px;margin-left:auto;margin-right:auto}
 }
 .mg-card{background:var(--deep);border-radius:12px;padding:14px 14px 12px;margin:20px 0}
 .mg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
@@ -742,11 +754,7 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
   padding:0 10px;min-height:44px;font-size:12.5px;font-family:inherit;max-width:54%}
 .mg-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .mg-dc-row{display:flex;gap:10px;padding-bottom:2px}
-/* 148px partagé avec .mg-tide-day : les deux défilements restent alignés
-   colonne pour colonne (jour N sous la carte N) sans JS de synchronisation —
-   un seul nombre à tenir à jour, à comparer aux largeurs calculées en JS de
-   l'ancienne version (canvas), source d'un bug de largeur par mise en page. */
-.mg-dc{flex:0 0 148px;width:148px;background:var(--ocean);border-radius:12px;
+.mg-dc{flex:0 0 var(--mgw);width:var(--mgw);background:var(--ocean);border-radius:12px;
   border-top:4px solid var(--c,#3dba8a);overflow:hidden;display:flex;flex-direction:column}
 .mg-dc-day{padding:9px 10px 4px;text-align:center}
 .mg-dc-day .dn{font:700 13px Georgia,serif}
@@ -757,20 +765,27 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .mg-dc-stars .on{color:var(--c,#3dba8a)}
 .mg-dc-stars .off{color:rgba(255,255,255,.15)}
 .mg-dc-label{font-size:10.5px;color:var(--c,#3dba8a);font-weight:700;margin-top:2px}
-/* flex-wrap : "OFFSHORE"/8 lettres majuscules ne tient pas toujours à côté de
-   la flèche+vitesse dans 148px — signalé le 10/08/2026 (texte tronqué sans
-   qu'aucune erreur ne le montre, un débordement CSS est silencieux comme un
-   dépassement de canvas). Le libellé glisse sur sa propre ligne plutôt que
-   d'être coupé, sans jamais avoir besoin de connaître sa largeur à l'avance. */
-.mg-dc-row2{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;padding:7px 10px;border-top:1px solid var(--border)}
-.mg-dc-row2 svg{flex:0 0 auto;display:block}
+/* Vent : une colonne (heure/flèche/vitesse) par créneau réel, plutôt qu'un
+   seul chiffre — refait le 10/08/2026 au soir (retour « on comprend rien…
+   au vent »). flex-wrap au cas où un jour aurait plus de créneaux que la
+   largeur mobile n'en tient (aucun cas connu à date, mais silencieux comme
+   toujours en CSS si ça arrivait — mieux vaut un retour à la ligne propre
+   qu'un débordement, même leçon que le libellé offshore/onshore d'avant). */
+.mg-dc-wind-row{display:flex;flex-wrap:wrap;justify-content:space-between;
+  gap:4px 2px;padding:7px 10px 2px}
+.mg-dc-wind-item{display:flex;flex-direction:column;align-items:center;gap:1px}
+.mg-dc-wind-item .hv{font-size:8.5px;color:var(--faint)}
+.mg-dc-wind-item .sv{font-size:11px;font-weight:700}
+.mg-wa{width:20px;height:20px;display:block}
+.mg-dc-rel{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;
+  text-align:center;padding:0 10px 7px;border-bottom:1px solid var(--border)}
+.mg-dc-row2{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--border)}
+.mg-sa{width:14px;height:14px;display:block;flex:0 0 auto}
 .mg-dc-v{font-size:13.5px;font-weight:700;line-height:1.15}
 .mg-dc-u{font-size:10px;color:var(--faint);font-weight:400}
-.mg-dc-rel{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;margin-left:auto;white-space:nowrap}
 /* Hauteur doublée (38→64px) le 10/08/2026 au soir : la courbe passait
-   inaperçue à côté des chiffres. viewBox et hauteur CSS montent ENSEMBLE
-   (cf. mgSparklineSvg) pour garder le même ratio d'étirement qu'avant,
-   sinon les cercles/texte des points s'ovalisent verticalement. */
+   inaperçue à côté des chiffres ; remontée encore en media query desktop
+   (cf. plus haut). */
 .mg-dc-spark{display:block;width:100%;height:64px;padding:2px 8px 0}
 /* Une icône PAR créneau réel (2 à 4 selon l'échéance) au lieu d'1/jour —
    toujours en dessous de la courbe de houle dans l'ordre de lecture, donc
@@ -786,13 +801,38 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
   border-top:1px dashed var(--border);text-align:center;margin-top:auto}
 .mg-dc-timing b{color:var(--accent)}
 .mg-tide-row{display:flex}
-.mg-tide-day{flex:0 0 148px;width:148px;font-size:10.5px;color:var(--text);
+.mg-tide-day{flex:0 0 var(--mgw);width:var(--mgw);font-size:10.5px;color:var(--text);
   font-variant-numeric:tabular-nums;padding:8px 10px 0}
 .mg-tide-day .te{display:flex;justify-content:space-between;gap:5px;padding:2px 0}
 .mg-tide-day .te.haute{color:var(--accent)}
 .mg-tide-day .te.basse{color:var(--warm)}
 .mg-leg{display:flex;flex-wrap:wrap;gap:9px 16px;margin-top:11px;font-size:10.5px;color:var(--faint);line-height:1.5}
 .mg-leg b{color:var(--muted);font-weight:600}
+/* Retour du 10/08/2026 au soir : « adapte tout à la version PC » — sur grand
+   écran, la version précédente montrait les MÊMES cartes minuscules avec du
+   vide à droite (.mg-dc restait à 148px quelle que soit la place
+   disponible). Placé APRÈS toutes les règles .mg-dc-* de base : à
+   spécificité égale (mêmes sélecteurs), c'est l'ORDRE dans la feuille qui
+   décide, pas la media query — mis plus haut, ce bloc aurait été écrasé par
+   les règles de base qui le suivaient dans le fichier. */
+@media (min-width:641px){
+  :root{--mgw:224px}
+  .mg-dc-day .dn{font-size:16px}
+  .mg-dc-day .dd{font-size:11.5px}
+  .mg-dc-stars{font-size:19px}
+  .mg-dc-label{font-size:12.5px}
+  .mg-dc-wind-item .hv{font-size:10.5px}
+  .mg-dc-wind-item .sv{font-size:13.5px}
+  .mg-wa{width:30px;height:30px}
+  .mg-dc-rel{font-size:11px}
+  .mg-sa{width:20px;height:20px}
+  .mg-dc-v{font-size:19px}
+  .mg-dc-u{font-size:13px}
+  .mg-dc-spark{height:104px}
+  .mg-dc-meteo{font-size:12.5px}
+  .mg-dc-meteo .ic{font-size:19px}
+  .mg-dc-timing{font-size:12px}
+}
 
 .cta{display:block;text-align:center;margin-top:22px;padding:13px;border-radius:10px;
      background:var(--accent);color:#06131f;font-weight:600;font-size:15px}
@@ -829,10 +869,13 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
      Refait le 10/08/2026 en cartes « décision d'abord » (score, vent, houle,
      météo, créneau conseillé) au lieu d'un graphe continu ciel+houle sur
      toute la semaine — une structure à hiérarchie de lecture explicite
-     plutôt qu'un poids visuel égal pour tout, cf. AUDIT.md. Courbe de houle
-     agrandie et météo passée à 1 icône par créneau réel le même soir (retour
-     « pas assez visuel »), sans rouvrir le graphe continu ni l'illustration
-     de ciel détaillée déjà écartés plus tôt dans la journée. -->
+     plutôt qu'un poids visuel égal pour tout, cf. AUDIT.md. Le même soir :
+     courbe agrandie + météo par créneau (retour « pas assez visuel »), puis
+     vent par créneau + direction de houle sur la courbe + cartes/typo
+     vraiment plus grandes en desktop (retour « on comprend rien à la
+     taille/direction/vent, adapte à la version PC ») — toujours sans
+     rouvrir le graphe continu ni l'illustration de ciel détaillée déjà
+     écartés plus tôt dans la journée. -->
 <div class="mg-bleed"><div class="mg-card" id="mgCard">
   <div class="mg-top">
     <div class="mg-title">🏄 Météogramme</div>
@@ -845,8 +888,8 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
   <div class="mg-scroll"><div class="mg-tide-row" id="mgTide"></div></div>
   <div class="mg-leg">
     <div><b>Score</b> = même moteur que la grille ci-dessus (calcSurfScore), sur le meilleur créneau du jour</div>
-    <div><b>Vent</b> = flèche vers où il souffle · <b>Offshore/Onshore</b> = relatif à la houle, pas à la boussole</div>
-    <div><b>Courbe</b> = hauteur de houle SEULE, un point par créneau réel — la période est notée à chaque point</div>
+    <div><b>Vent</b> = une flèche par créneau réel, vers où il souffle · l'étiquette <b>Offshore/Onshore/Travers</b> juge le meilleur créneau du jour, relatif à la houle, pas à la boussole</div>
+    <div><b>Courbe</b> = hauteur de houle, une flèche par créneau réel — la flèche pointe où va la houle, le chiffre au-dessus est la période</div>
     <div><b>Météo</b> = une icône par créneau réel (matin→soir), code ciel meteo.nc — n'entre pas dans le score</div>
     <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc, à part — n'entre pas dans le score</div>
   </div>
@@ -1009,22 +1052,27 @@ function mgWmoIcon(code, cl) {
 
 // Flèche pleine à encoche, façon référence Yadusurf (cf. AUDIT.md 10/08) —
 // couleur reprise de windCol() du site plutôt que la palette de la référence.
-function mgWindArrowSvg(ws, wd, size) {
+// SANS attribut width/height (c'était le cas avant) : la taille est purement
+// CSS (.mg-wa), pour pouvoir l'agrandir en media query desktop sans regénérer
+// un SVG différent — le HTML généré est le MÊME pour mobile et bureau, seul
+// le CSS voit la largeur d'écran (cf. AUDIT.md 10/08 soir, retour « refait
+// pour PC »).
+function mgWindArrowSvg(ws, wd) {
   var col = windCol(ws);
   var propDeg = ((wd || 0) + 180) % 360;
-  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true">'
+  return '<svg class="mg-wa" viewBox="0 0 24 24" aria-hidden="true">'
     + '<g transform="rotate(' + propDeg + ',12,12)">'
     + '<path d="M12,1.5 L20,9.5 L15,9.5 L15,20.5 L12,17 L9,20.5 L9,9.5 L4,9.5 Z" '
     + 'fill="' + col + '" stroke="rgba(0,0,0,.4)" stroke-width="1"/>'
     + '</g></svg>';
 }
-// Flèche fine (houle) — même convention +180°, sans le poids visuel de la
-// flèche de vent : la houle est déjà portée par les chiffres à côté.
-function mgSwellArrowSvg(sd, col) {
+// Flèche fine (houle, en-tête de carte) — même convention +180°, même
+// principe de taille 100% CSS (.mg-sa) que mgWindArrowSvg.
+function mgSwellArrowSvg(sd) {
   var propDeg = ((sd || 0) + 180) % 360;
-  return '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">'
+  return '<svg class="mg-sa" viewBox="0 0 24 24" aria-hidden="true">'
     + '<g transform="rotate(' + propDeg + ',12,12)">'
-    + '<path d="M12,2 L18,15 L12,12 L6,15 Z" fill="' + col + '"/>'
+    + '<path d="M12,2 L18,15 L12,12 L6,15 Z" fill="#4fa3c7"/>'
     + '</g></svg>';
 }
 
@@ -1041,9 +1089,18 @@ function mgSwellArrowSvg(sd, col) {
 // viewBox à la boîte CSS sans respecter son ratio interne, donc ne monter
 // que l'un des deux aurait ovalisé les points/aplati le texte. Remplissage
 // ajouté (polygon translucide sous la ligne) pour que la courbe se voie
-// d'un coup d'œil au lieu de se confondre avec le fond — c'est tout ce que
-// « pas assez de courbe » demandait, sans réintroduire un calcul de mise en
-// page JS (cf. commentaire plus haut sur la disparition du canvas).
+// d'un coup d'œil au lieu de se confondre avec le fond. Le viewBox NE PEUT
+// PAS suivre le breakpoint desktop (généré une seule fois côté serveur,
+// avant de savoir sur quel écran la page s'ouvrira) : la hauteur CSS de
+// .mg-dc-spark grandit seule en media query, le viewBox reste fixe — léger
+// étirement non-uniforme accepté (décoratif, sans effet sur la lecture des
+// valeurs) plutôt que réintroduire un calcul de mise en page JS.
+//
+// Chaque point porte maintenant une FLÈCHE (direction de houle du créneau,
+// même convention +180° que les autres flèches du site) à la place du rond
+// neutre d'avant — retour du 10/08 au soir : la courbe ne disait que la
+// taille, jamais la direction — un flux qui tourne dans la semaine (cf.
+// tableau spots×jours plus haut) passait inaperçu ici.
 function mgSparklineSvg(scored, maxV) {
   var W = 128, H = 64, pad = 6, base = H - pad, n = scored.length;
   var pts = scored.map(function (c, i) {
@@ -1053,9 +1110,12 @@ function mgSparklineSvg(scored, maxV) {
   });
   var poly = pts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
   var area = pts[0].x.toFixed(1) + ',' + base + ' ' + poly + ' ' + pts[n - 1].x.toFixed(1) + ',' + base;
-  var dots = pts.map(function (p) {
-    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.6" fill="#4fa3c7"/>'
-      + '<text x="' + p.x.toFixed(1) + '" y="' + Math.max(9, p.y - 5).toFixed(1) + '" font-size="8" '
+  var marks = pts.map(function (p) {
+    var deg = ((p.c.sd || 0) + 180) % 360;
+    return '<g transform="translate(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ') rotate(' + deg.toFixed(0) + ')">'
+      + '<path d="M0,-4.4 L2.8,3 L0,1.2 L-2.8,3 Z" fill="#4fa3c7" stroke="rgba(6,19,31,.5)" stroke-width=".5"/>'
+      + '</g>'
+      + '<text x="' + p.x.toFixed(1) + '" y="' + Math.max(9, p.y - 6).toFixed(1) + '" font-size="8" '
       + 'text-anchor="middle" fill="#9db3c7">' + Math.round(p.c.t) + 's</text>';
   }).join('');
   return '<svg class="mg-dc-spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
@@ -1063,7 +1123,7 @@ function mgSparklineSvg(scored, maxV) {
     + '<line x1="0" y1="' + base + '" x2="' + W + '" y2="' + base + '" stroke="rgba(255,255,255,.1)"/>'
     + '<polygon points="' + area + '" fill="rgba(79,163,199,.18)"/>'
     + '<polyline points="' + poly + '" fill="none" stroke="#4fa3c7" stroke-width="1.8"/>'
-    + dots + '</svg>';
+    + marks + '</svg>';
 }
 
 // Créneau AM (avant midi) vs PM le plus favorable — la seule décision de
@@ -1110,17 +1170,27 @@ function mgDayCardHtml(sp, k, params, maxV) {
   var skyHtml = scored.map(function (c) {
     return '<span class="ic" title="' + Math.round(c.h) + 'h">' + mgWmoIcon(c.code, c.cl) + '</span>';
   }).join('');
+  // Vent : UNE flèche + une vitesse par créneau réel, comme la météo
+  // ci-dessus — remplace l'ancienne rangée qui ne montrait QUE le meilleur
+  // créneau du jour (retour du 10/08 au soir : « on comprend rien… au
+  // vent », un seul nombre ne dit rien de son évolution dans la journée).
+  // Le libellé offshore/onshore/travers reste calculé sur le MEILLEUR
+  // créneau (c'est lui que la carte recommande), affiché à part sous la
+  // rangée plutôt que collé à un seul chiffre.
+  var windRowHtml = scored.map(function (c) {
+    return '<div class="mg-dc-wind-item"><span class="hv">' + Math.round(c.h) + 'h</span>'
+      + mgWindArrowSvg(c.ws, c.wd)
+      + '<span class="sv">' + (c.ws == null ? '—' : Math.round(c.ws)) + '</span></div>';
+  }).join('');
   var day = sp.daily[k];
   var tempTxt = day ? (Math.round(day.tmax) + '°/' + Math.round(day.tmin) + '°') : '';
   return '<div class="mg-dc" style="--c:' + best.col + '">'
     + head
     + '<div class="mg-dc-score"><div class="mg-dc-stars">' + stars + '</div><div class="mg-dc-label">' + esc(best.label) + '</div></div>'
-    + '<div class="mg-dc-row2">' + mgWindArrowSvg(best.ws, best.wd, 24)
-    +   '<div><div class="mg-dc-v">' + (best.ws == null ? '—' : Math.round(best.ws)) + '<span class="mg-dc-u"> nds</span></div></div>'
-    +   '<div class="mg-dc-rel" style="color:' + mgRelCol(rel) + '">' + mgRelLabel(rel) + '</div>'
-    + '</div>'
-    + '<div class="mg-dc-row2">' + mgSwellArrowSvg(best.sd, '#4fa3c7')
-    +   '<div><div class="mg-dc-v">' + f1(best.hs) + '<span class="mg-dc-u"> m</span> · ' + Math.round(best.t) + '<span class="mg-dc-u">s</span></div></div>'
+    + '<div class="mg-dc-wind-row">' + windRowHtml + '</div>'
+    + '<div class="mg-dc-rel" style="color:' + mgRelCol(rel) + '">' + mgRelLabel(rel) + ' au meilleur créneau</div>'
+    + '<div class="mg-dc-row2">' + mgSwellArrowSvg(best.sd)
+    +   '<div class="mg-dc-v">' + f1(best.hs) + '<span class="mg-dc-u"> m</span> · ' + Math.round(best.t) + '<span class="mg-dc-u">s</span></div>'
     + '</div>'
     + mgSparklineSvg(scored, maxV)
     + '<div class="mg-dc-meteo"><span class="sk">' + skyHtml + '</span>' + (tempTxt ? '<span class="mg-dc-temp">' + tempTxt + '</span>' : '') + '</div>'

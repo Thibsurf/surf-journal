@@ -6406,3 +6406,71 @@ une aire nulle), pas d'erreur — pas de division par zéro sur `n-1` grâce à 
 garde déjà existante (`n > 1 ? … : W/2`).
 
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+## 10/08/2026 (soir, suite immédiate) — vent par créneau, direction sur la courbe, vraie mise à l'échelle desktop
+
+Nouveau retour, quelques minutes après le déploiement précédent : « on
+comprend rien à la taille, à la direction, au vent… refait plus comme
+Yadusurf et adapte tout à la version PC ». Trois défauts distincts, trois
+correctifs ciblés — toujours sans rouvrir le graphe continu ni
+l'illustration de ciel, écartés plusieurs fois plus tôt dans la journée.
+
+**Vent : par créneau, pas juste le meilleur.** L'ancienne rangée vent
+n'affichait qu'un seul chiffre (le meilleur créneau du jour) — impossible de
+voir si le vent forcit dans l'après-midi. `mgDayCardHtml` construit
+maintenant `.mg-dc-wind-row` : une colonne heure/flèche/vitesse par créneau
+réel (`scored`, 2 à 4 selon l'échéance), la même logique déjà utilisée pour
+la météo par créneau du chantier précédent. Le libellé offshore/onshore/
+travers reste calculé sur le MEILLEUR créneau (c'est lui que la carte
+recommande) mais est descendu en dessous de la rangée, en toutes lettres
+(« Onshore au meilleur créneau ») plutôt qu'un badge collé à un chiffre.
+
+**Houle : une flèche de direction à chaque point de la courbe.** La courbe
+ne portait qu'un rond neutre par point (position = hauteur, texte = période)
+— aucune direction nulle part sur le tracé lui-même. `mgSparklineSvg` : le
+rond est remplacé par un petit triangle tourné à `(sd+180)%360°` (même
+convention que les autres flèches du site), donc un flux qui tourne dans la
+semaine (ex. SSE qui devient SSO) se voit maintenant directement sur la
+courbe, créneau par créneau, sans rangée supplémentaire.
+
+**Desktop : les cartes grandissent VRAIMENT.** Constat en relisant le rendu
+large de tout à l'heure : `.mg-bleed` élargissait le CONTENEUR (jusqu'à
+1180px, porté à 1400px ce soir), mais `.mg-dc` restait figé à 148px quelle
+que soit la largeur d'écran — sur un moniteur large, la « version PC »
+montrait donc les mêmes cartes mobiles avec du vide à droite, pas un vrai
+agrandissement. Corrigé par une variable CSS unique `--mgw` (148px par
+défaut, 224px dès 641px de large), lue par `.mg-dc` ET `.mg-tide-day` — même
+principe qu'avant (un seul nombre à tenir à jour pour que météogramme et
+marées restent alignés colonne pour colonne), porté par une custom property
+plutôt qu'un littéral pour pouvoir varier par breakpoint sans dupliquer la
+valeur. Toutes les tailles de police/icônes (étoiles, houle, flèches,
+courbe, météo) montent en proportion dans le même media query — **piège
+rencontré et corrigé en écrivant ce bloc** : à spécificité CSS égale,
+c'est l'ORDRE dans la feuille qui tranche, pas la media query ; un premier
+jet plaçait ces surcharges AVANT les règles de base `.mg-dc-*`, qui les
+écrasaient silencieusement sur desktop (aucune erreur, juste un media query
+qui semblait ne rien faire) — déplacé après toutes les règles de base pour
+que l'ordre du fichier corresponde à l'ordre voulu de la cascade.
+
+`mgWindArrowSvg`/`mgSwellArrowSvg` : les attributs `width`/`height` codés en
+dur sur le `<svg>` (24px, 14px) sont retirés au profit de classes CSS
+(`.mg-wa`, `.mg-sa`) — c'est ce qui permet au MÊME HTML généré une seule
+fois côté serveur de s'agrandir en desktop : le viewBox interne (`0 0 24
+24`) ne change pas, seule la boîte de rendu CSS grandit, le SVG s'y adapte
+tout seul.
+
+Vérifié : `node --check` ; build réel (pas de `--dry-run`, données Supabase
+live) ; diagnostic `__test.html` avec `window.onerror` → 0 erreur, 14 items
+vent = 14 items météo (cohérent, même nombre de créneaux), `--mgw` confirmé
+à `224px` en fenêtre 1400px ; capture d'écran à 1500px et 1800px (desktop)
+et 500px (mobile) — cartes visiblement plus grandes et plus lisibles sur
+desktop, rangée mobile inchangée dans ses proportions ; un doute sur un
+débordement visuel de la dernière carte (« Travers au meilleur créneau »
+semblait déborder à droite sur la capture) levé par `getBoundingClientRect()`
+en direct : `relRight === cardRight` à la décimale près, donc AUCUN
+débordement réel — c'est la quasi-identité de couleur entre le fond de
+carte (`--ocean`) et le fond de page qui rendait la limite invisible à
+l'œil sur la capture, pas un bug de mise en page. Levée sans deviner,
+mesurée.
+
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
