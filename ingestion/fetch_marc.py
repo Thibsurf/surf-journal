@@ -302,13 +302,26 @@ def fetch_point(point, t0, t1, lat_idx, lon_idx):
 
     rows = []
     lat_s, lon_s = f"{point['lat']:.3f}", f"{point['lon']:.3f}"
+    # issued_at posé EXPLICITEMENT (10/08/2026) — même bug, même correctif que
+    # fetch_mfwam.py/fetch_surfline.py le 04/08, jamais appliqué ici : l'id est
+    # déterministe (pas de tag de run) → chaque run UPSERT la même ligne par
+    # date. La colonne issued_at a un DEFAULT now() qui ne s'applique qu'à
+    # l'INSERT, jamais au merge-duplicates : sans le poser au payload, une date
+    # gardait pour toujours l'issued_at de sa PREMIÈRE écriture — le jour où
+    # elle est entrée dans la fenêtre glissante de ~8j (t0/t1, compute_window),
+    # soit ~5-7j avant l'échéance. Mesuré le 10/08/2026 à Dumbéa : la ligne du
+    # 13/08 datait du 08/08 (J-5), celle du 14/08 du 09/08 — un décalage
+    # constant, pas une panne, mais qui la faisait paraître périmée (écartée à
+    # tort par le filtre 24h de build-week.mjs, cf. AUDIT.md 10/08) alors que
+    # `hours` était bien réécrit chaque jour.
+    now_iso = datetime.now(timezone.utc).isoformat()
     for ds, hours in by_date.items():
         hours.sort(key=lambda h: h["hour"])
         rows.append({
             "id": f"{ds}_{lat_s}_{lon_s}_marc_wave",
             "date": ds, "spot_name": point["name"], "lat": point["lat"], "lon": point["lon"],
             "model": "marc", "kind": "wave", "hours": hours,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "issued_at": now_iso, "updated_at": now_iso,
         })
     return rows
 

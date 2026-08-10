@@ -368,7 +368,14 @@ def run():
 
     upsert(all_rows)
     logger.info("=== Terminé: %d ligne(s) au total, %d modèle(s) en échec sur %d ===", len(all_rows), errors, len(MODELS))
-    if not all_rows:
+    # Échec explicite dès qu'UN SEUL des deux modèles est en échec (10/08/2026) :
+    # avant, seul `not all_rows` sortait en erreur, donc si IFS échouait mais que
+    # AIFS produisait ses lignes (ou l'inverse), le job restait vert — un échec
+    # partiel invisible, contraire au principe déjà appliqué par fetch_arome.py/
+    # fetch_mfwam.py ("un échec silencieux est le pire cas pour un job non
+    # supervisé"). Les lignes du modèle sain sont upsertées quand même juste
+    # au-dessus (pas de raison de les perdre) ; seul le code de sortie change.
+    if errors or not all_rows:
         sys.exit(1)
 
 

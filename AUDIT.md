@@ -5765,3 +5765,49 @@ les coordonnées de `shared_spots`, l'égalité stricte suffit aujourd'hui.
 
 `semaine.html` sera régénérée par `weekly-page.yml` ; aucun fichier d'`assets/`
 touché, `CACHE_NAME` inchangé.
+
+---
+
+## 10/08/2026 — les deux anomalies constatées le matin même, corrigées
+
+Suite de l'entrée précédente (« ECMWF bloqué : le défaut n'était pas dans
+l'ingestion »). Les deux points laissés ouverts sont traités.
+
+### 1. `fetch_marc.py` — `issued_at` jamais posé, même bug que mfwam/lotus du 04/08
+
+C'était bien le même défaut que celui déjà corrigé le 04/08/2026 sur
+`fetch_mfwam.py`/`fetch_surfline.py`, jamais appliqué à `fetch_marc.py` : l'id
+`{date}_{lat}_{lon}_marc_wave` est déterministe (pas de tag de run), donc chaque
+run UPSERT la même ligne par date via `merge-duplicates`. `issued_at` porte un
+`DEFAULT now()` côté Supabase — qui ne s'applique qu'à l'INSERT, jamais au merge.
+Sans le poser explicitement au payload, une date gardait pour toujours
+l'`issued_at` de sa PREMIÈRE écriture : le jour où elle est entrée dans la
+fenêtre glissante `compute_window` (~8 j), soit ~5-7 j avant l'échéance —
+exactement le J-5 mesuré la veille à Dumbéa, PAS une panne de collecte
+(`hours`/`updated_at` étaient bien réécrits chaque jour, seul `issued_at`
+mentait sur la fraîcheur).
+
+Correctif : `issued_at`/`updated_at` posés explicitement sur `now_iso` à
+l'écriture (`fetch_marc.py`, fonction `fetch_point`), même geste que
+`fetch_mfwam.py`. Vérifié en conditions réelles : script chargé et exécuté
+en pointant sur le vrai THREDDS Ifremer (upsert Supabase neutralisé pour ne
+rien écrire pendant la vérification), fenêtre `42992..43034` calculée
+normalement, 6 lignes produites pour Dumbéa, `issued_at` daté de l'instant du
+run sur les trois premières (`2026-08-10T02:29:54`) au lieu d'une valeur figée.
+
+### 2. `fetch_ecmwf.py` — échec partiel invisible en CI
+
+`run()` ne sortait en erreur (`sys.exit(1)`) que si les DEUX modèles (IFS et
+AIFS-single) échouaient — `not all_rows`. Si un seul tombait, le job restait
+vert : contraire au principe déjà appliqué par `fetch_arome.py`/`fetch_mfwam.py`
+(« un échec silencieux est le pire cas pour un job non supervisé »), et
+justement le genre de panne qui aurait pu expliquer un vrai blocage ECMWF sans
+que rien ne l'affiche en rouge sur GitHub Actions.
+
+Correctif : `sys.exit(1)` dès que `errors` est non nul, même si l'autre modèle a
+produit ses lignes (upsertées quand même — pas de raison de les perdre). Vérifié
+par simulation : `fetch_model` remplacé pour faire échouer `ecmwf` et réussir
+`aifs`, `run()` lève bien `SystemExit(1)` (avant le correctif, elle serait sortie
+normalement avec la ligne AIFS upsertée et le job vert).
+
+Aucun fichier d'`assets/` touché ; pas de bump `CACHE_NAME`.
