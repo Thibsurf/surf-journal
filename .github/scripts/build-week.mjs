@@ -1094,6 +1094,28 @@ function mgCatmull(p0, p1, p2, p3, t) {
     y: .5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y +4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
   };
 }
+// Interpolation linéaire d'un champ (cl/cm/ch/sévérité pluie) à une position x
+// QUELCONQUE de la journée, à partir des seules valeurs RÉELLES des créneaux
+// (xArr = leurs positions mgHourFrac()*MG_DAY_W, vArr = la valeur au même
+// index) — plat au-delà du premier/dernier créneau (aucune donnée au-delà).
+// Sert de base à la scène ciel continue (cf. mgDraw()) : avant, chaque
+// créneau dessinait ses nuages indépendamment (RNG remise à zéro à chaque
+// frontière), ce qui créait 2-4 amas disjoints par jour plutôt qu'un même
+// système qui dérive — demandé le 12/08/2026 (référence Yadusurf).
+function mgInterpAt(xArr, vArr, xRel) {
+  var n = xArr.length;
+  if (n === 1) return vArr[0];
+  if (xRel <= xArr[0]) return vArr[0];
+  if (xRel >= xArr[n - 1]) return vArr[n - 1];
+  var i;
+  for (i = 0; i < n - 1; i++) {
+    if (xRel >= xArr[i] && xRel <= xArr[i + 1]) {
+      var t = (xRel - xArr[i]) / (xArr[i + 1] - xArr[i]);
+      return vArr[i] + (vArr[i + 1] - vArr[i]) * t;
+    }
+  }
+  return vArr[n - 1];
+}
 // Flèche pleine — fromDeg = provenance météo, pointe vers fromDeg+180 : MÊME
 // convention que svgArrow()/windArrowIcon() de previsions.html (« deg =
 // provenance météo -> on inverse pour montrer où ça va »), appliquée ici au
@@ -1320,40 +1342,58 @@ function mgDraw() {
       ctx.textAlign = 'left';
       return;
     }
-    // Passe 1 — fonds + voile de précipitation, un par micro-segment (variation
-    // horaire réelle : c'est ce qui distingue une matinée claire d'une
-    // après-midi couverte, cf. le bug n°3 du prototype d'origine). Largeur de
-    // chaque tuile PROPORTIONNELLE à l'écart réel avec ses voisins
-    // (mgSegBounds), pas une part égale : un jour clairsemé donne des tuiles
-    // plus larges, ce qui est l'info (plus de temps réel y est montré).
-    ds.forEach(function (s, si) {
-      var b = mgSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
-      // Nébulosité par ALTITUDE : les nuages bas pèsent le plus sur la
-      // lumière (ce sont eux qui apportent la pluie), les hauts à peine — un
-      // ciel voilé de cirrus n'assombrit presque pas. Champs réels Open-Meteo
-      // GFS (cloud_cover_low/mid/high) — meteo.nc n'en fournit aucun.
-      var cl = s.cl != null ? s.cl : 0, cm = s.cm != null ? s.cm : 0, ch = s.ch != null ? s.ch : 0;
-      var tone = Math.min(1, (cl / 100) * .85 + (cm / 100) * .45 + (ch / 100) * .12);
-      var top = mgLerp(skyTopClear, skyTopCloudy, tone), hor = mgLerp(skyHorClear, skyHorCloudy, tone);
-      var g = ctx.createLinearGradient(0, 0, 0, MG_SKY_H);
-      g.addColorStop(0, mgRgba(top)); g.addColorStop(1, mgRgba(hor));
-      ctx.fillStyle = g; ctx.fillRect(xs, 0, segW, MG_SKY_H + MG_SWELL_H);
-
-      var ptype = mgPrecipFromCode(s.code, s.precip);
-      var sevOverlay = { none: 0, drizzle: .04, rain: .12, shower: .2, storm: .32 }[ptype] || 0;
-      if (sevOverlay > 0) { ctx.fillStyle = 'rgba(8,16,26,' + sevOverlay + ')'; ctx.fillRect(xs, 0, segW, MG_SKY_H + MG_SWELL_H); }
+    // Passe 1 — fond de ciel + voile de précipitation, RÉ-ÉCHANTILLONNÉS en
+    // continu tous les bgStep px plutôt qu'un aplat par micro-segment : la
+    // teinte (tone) et la sévérité de pluie sont interpolées LINÉAIREMENT
+    // entre les vraies valeurs des créneaux voisins (mgInterpAt), donc le
+    // ciel se dégrade progressivement d'un créneau à l'autre au lieu de
+    // changer d'un bloc à l'autre à la frontière — demandé le 12/08/2026
+    // (référence Yadusurf : "scène continue", pas des cases indépendantes).
+    // xArr/les tableaux de champs sont calculés UNE fois par jour et réutilisés
+    // par le fond ET par les nuages (passe 2) : mêmes positions réelles partout.
+    var xArr = ds.map(function (s) { return mgHourFrac(s.h) * MG_DAY_W; });
+    var clArr = ds.map(function (s) { return s.cl != null ? s.cl : 0; });
+    var cmArr = ds.map(function (s) { return s.cm != null ? s.cm : 0; });
+    var chArr = ds.map(function (s) { return s.ch != null ? s.ch : 0; });
+    var sevArr = ds.map(function (s) {
+      var pt = mgPrecipFromCode(s.code, s.precip);
+      return { none: 0, drizzle: .04, rain: .12, shower: .2, storm: .32 }[pt] || 0;
     });
+    var bgStep = Math.max(4, Math.round(6 * MG_SCALE)), xr;
+    for (xr = 0; xr < MG_DAY_W; xr += bgStep) {
+      var xrEnd = Math.min(MG_DAY_W, xr + bgStep), xc = (xr + xrEnd) / 2;
+      var clI = mgInterpAt(xArr, clArr, xc), cmI = mgInterpAt(xArr, cmArr, xc), chI = mgInterpAt(xArr, chArr, xc);
+      var toneI = Math.min(1, (clI / 100) * .85 + (cmI / 100) * .45 + (chI / 100) * .12);
+      var topI = mgLerp(skyTopClear, skyTopCloudy, toneI), horI = mgLerp(skyHorClear, skyHorCloudy, toneI);
+      var gI = ctx.createLinearGradient(0, 0, 0, MG_SKY_H);
+      gI.addColorStop(0, mgRgba(topI)); gI.addColorStop(1, mgRgba(horI));
+      ctx.fillStyle = gI; ctx.fillRect(x0 + xr, 0, xrEnd - xr, MG_SKY_H + MG_SWELL_H);
+
+      var sevI = mgInterpAt(xArr, sevArr, xc);
+      if (sevI > 0.005) { ctx.fillStyle = 'rgba(8,16,26,' + sevI.toFixed(3) + ')'; ctx.fillRect(x0 + xr, 0, xrEnd - xr, MG_SKY_H + MG_SWELL_H); }
+    }
 
     // UN SEUL soleil par jour (le créneau le plus dégagé sert de référence),
     // pas un par micro-segment : en redessiner un identique à chaque créneau
     // (jusqu'à 4/jour) lisait comme un motif répété plutôt qu'un ciel — signalé
     // le 10/08/2026. Dessiné APRÈS les fonds mais AVANT les nuages (passe 2)
-    // pour qu'un nuage puisse encore l'occulter partiellement.
+    // pour qu'un nuage puisse encore l'occulter partiellement. Position
+    // ancrée sur l'heure RÉELLE du créneau de référence (mgHourFrac), avec un
+    // léger arc en Y (plus bas en bord de journée, plus haut à son milieu) —
+    // ajouté le 12/08/2026 pour donner une trajectoire sans dupliquer le
+    // soleil (ce que le commentaire ci-dessus a déjà écarté).
     var repSlot = ds[0];
     ds.forEach(function (s) { if ((s.cl != null ? s.cl : 100) < (repSlot.cl != null ? repSlot.cl : 100)) repSlot = s; });
     var repCl = repSlot.cl != null ? repSlot.cl : 0;
     if (repCl < 55 && mgPrecipFromCode(repSlot.code, repSlot.precip) === 'none') {
-      var sunX = x0 + MG_DAY_W * .64, sunY = MG_SKY_H * .3;
+      var sunT = mgHourFrac(repSlot.h);
+      // minXFrac écarte le soleil de la colonne des badges Tmax/Tmin (ancrés
+      // à x0+11*MG_SCALE, rayon 9*MG_SCALE) : un créneau dégagé tôt le matin
+      // plaçait sunX au même endroit que ces badges — corrigé le 12/08/2026
+      // (soleil et badge à 18° superposés, vu en capture d'écran).
+      var minXFrac = Math.min(.42, (34 * MG_SCALE) / MG_DAY_W);
+      var sunX = x0 + Math.max(minXFrac, Math.min(.88, sunT)) * MG_DAY_W;
+      var sunY = MG_SKY_H * (.46 - .24 * Math.sin(Math.PI * Math.max(0, Math.min(1, sunT))));
       var sunR = (13 - repCl / 100 * 5) * Math.min(1.3, MG_SCALE);
       var sunIntensity = Math.max(.16, 1 - (repCl / 100) * .85);
       var sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.6);
@@ -1374,43 +1414,55 @@ function mgDraw() {
       ctx.fillStyle = sunGrd; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, 7); ctx.fill();
     }
 
-    // Passe 2 — nuages, vent, pluie : toujours par micro-segment (la vraie
-    // variation horaire), tracés après le soleil pour pouvoir l'occulter.
+    // Passe 2a — nuages, en un flux CONTINU par altitude et par JOUR (une
+    // seule marche aléatoire sur toute la largeur du jour, pas une par
+    // micro-segment) : avant, l'ancien code relançait une RNG à chaque
+    // segment (mgSeed(k)+si*…), ce qui recréait 2-4 amas de nuages disjoints
+    // par jour — visuellement "un nuage par heure", pas un système qui
+    // dérive. Ici chaque candidat de position le long du jour teste la
+    // densité RÉELLE interpolée à cet endroit précis (mgInterpAt/xArr·clArr
+    // etc, calculés juste au-dessus en passe 1) : un nuage apparaît, grossit
+    // puis s'efface progressivement en suivant la vraie courbe cl/cm/ch,
+    // au lieu de sauter d'un état à l'autre à la frontière d'un créneau —
+    // demandé le 12/08/2026 (référence Yadusurf).
+    // Haut (cirrus) : traits fins et clairsemés — jamais de puff plein.
+    var hrng = mgRng(mgSeed(k) + 1), hx = 6 * MG_SCALE;
+    while (hx < MG_DAY_W - 6 * MG_SCALE) {
+      var chAt = mgInterpAt(xArr, chArr, hx);
+      if (chAt > 12) {
+        var hy = MG_SKY_H * (.08 + hrng() * .18), hw = 14 + hrng() * 12;
+        ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(.4, chAt / 100 * .4).toFixed(2) + ')'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(x0 + hx, hy); ctx.lineTo(x0 + hx + hw, hy - 1.5); ctx.stroke();
+      }
+      hx += 10 * MG_SCALE + hrng() * 14 * MG_SCALE;
+    }
+    // Moyen : puffs discrets, à mi-hauteur, taille proportionnelle à la
+    // densité interpolée au point de tirage.
+    var mrng = mgRng(mgSeed(k) + 500), mx = 8 * MG_SCALE;
+    while (mx < MG_DAY_W - 8 * MG_SCALE) {
+      var cmAt = mgInterpAt(xArr, cmArr, mx);
+      if (cmAt > 8) mgCloudPuff(ctx, x0 + mx, MG_SKY_H * (.24 + mrng() * .22), .26 + cmAt / 100 * .32, .5, .25);
+      mx += 14 * MG_SCALE + mrng() * 16 * MG_SCALE;
+    }
+    // Bas : puffs plus gros et plus sombres, plus bas dans la colonne — ce
+    // sont eux qui amènent la pluie, d'où la teinte alignée sur la
+    // nébulosité totale interpolée au même point (toneAt).
+    var lrng = mgRng(mgSeed(k) + 900), lx = 8 * MG_SCALE;
+    while (lx < MG_DAY_W - 8 * MG_SCALE) {
+      var clAt = mgInterpAt(xArr, clArr, lx);
+      if (clAt > 5) {
+        var toneAt = Math.min(1, (clAt / 100) * .85 + (mgInterpAt(xArr, cmArr, lx) / 100) * .45 + (mgInterpAt(xArr, chArr, lx) / 100) * .12);
+        mgCloudPuff(ctx, x0 + lx, MG_SKY_H * (.42 + lrng() * .34), .38 + clAt / 100 * .58, Math.min(.95, .5 + clAt / 100 * .45), toneAt);
+      }
+      lx += 12 * MG_SCALE + lrng() * 16 * MG_SCALE;
+    }
+
+    // Passe 2b — pluie : reste par micro-segment (logique inchangée), c'est
+    // la seule mesure dont dispose chaque créneau (mm/h + code WMO) et il n'y
+    // a pas de raison de l'interpoler entre deux averses distinctes.
     ds.forEach(function (s, si) {
       var b = mgSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
-      var cl = s.cl != null ? s.cl : 0, cm = s.cm != null ? s.cm : 0, ch = s.ch != null ? s.ch : 0;
-      var tone = Math.min(1, (cl / 100) * .85 + (cm / 100) * .45 + (ch / 100) * .12);
       var ptype = mgPrecipFromCode(s.code, s.precip);
-
-      // Haut (cirrus) : traits fins et clairsemés — jamais de puff plein,
-      // c'est ce qui les distingue visuellement des couches basses/moyennes.
-      if (ch > 15) {
-        var hrng = mgRng(mgSeed(k) + si * 7 + 1), hn = Math.round(1 + ch / 100 * 3), hi2;
-        ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(.4, ch / 100 * .4).toFixed(2) + ')'; ctx.lineWidth = 1.2;
-        for (hi2 = 0; hi2 < hn; hi2++) {
-          var hy = MG_SKY_H * (.08 + hrng() * .18), hx = xs + 4 + hrng() * (segW - 20), hw = 14 + hrng() * 12;
-          ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + hw, hy - 1.5); ctx.stroke();
-        }
-      }
-      // Moyen : puffs discrets, à mi-hauteur.
-      if (cm > 10) {
-        var mrng = mgRng(mgSeed(k) + si * 13 + 500), mn = Math.round(cm / 100 * 2.4), mi;
-        for (mi = 0; mi < mn; mi++) mgCloudPuff(ctx, xs + 10 + mrng() * (segW - 20), MG_SKY_H * (.24 + mrng() * .22), .34 + mrng() * .22, .5, .25);
-      }
-      // Bas : puffs plus gros et plus sombres, plus bas dans la colonne — ce
-      // sont eux qui amènent la pluie, d'où la teinte alignée sur tone.
-      if (cl > 6) {
-        var lrng = mgRng(mgSeed(k) + si * 29 + 900), ln = Math.round(1 + cl / 100 * 4), li;
-        for (li = 0; li < ln; li++) mgCloudPuff(ctx, xs + 10 + lrng() * (segW - 20), MG_SKY_H * (.42 + lrng() * .34), .5 + lrng() * .4 + tone * .3, Math.min(.95, .55 + tone * .35), tone);
-      }
-      // Les "traits de vent" (indice de mouvement dans le ciel, ≥13 nds) ont
-      // été retirés le 11/08/2026 : un second jeu de traits diagonaux
-      // indépendant de la pluie (cf. ci-dessous), visuellement impossible à
-      // distinguer d'elle une fois cette dernière alignée sur le vent réel
-      // ("pluie ou vent, les traits horizontaux ?", signalé ce jour-là) — le
-      // vent est de toute façon déjà porté par la bande de segments colorés
-      // au-dessus du ciel (mgRenderHeadWind()), doubler l'information ici
-      // n'apportait rien.
       // Précipitation réelle (mm/h Open-Meteo) : rideaux + traits, intensité
       // pilotée par la valeur mesurée, pas par un jet de dés. Traits plus
       // longs/opaques qu'une 1ʳᵉ version — trop discrets pour lire "il pleut"
@@ -1449,7 +1501,11 @@ function mgDraw() {
         }
         if (ptype === 'storm') mgLightning(ctx, xs + segW * (.2 + prng() * .5), MG_SKY_H * .12, .7 + prng() * .3, 'rgba(255,244,180,.95)');
       }
-      if (si > 0) { ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.beginPath(); ctx.moveTo(xs + .5, 0); ctx.lineTo(xs + .5, MG_SKY_H); ctx.stroke(); }
+      // Le trait vertical marquant chaque frontière de micro-segment a été
+      // retiré le 12/08/2026 : le fond ET les nuages sont désormais échan-
+      // tillonnés en continu (cf. passes 1/2a ci-dessus), donc cette ligne ne
+      // correspondait plus à un vrai changement visuel — juste un artefact de
+      // découpage qui cassait l'effet de "scène continue" recherché.
     });
 
     // Tmax/Tmin RÉELS du jour NC entier (WEEK.spots[].daily) : calculés côté
@@ -1511,24 +1567,22 @@ function mgDraw() {
   // ── Badge houle rond par jour : posé au pic du jour et LU SUR CE MÊME POINT
   // pour sa position ET son contenu (le prototype d'origine positionnait le
   // cadre sur le pic mais l'étiquetait avec un autre créneau — corrigé en ne
-  // lisant jamais qu'UN seul objet "peak" pour les deux). Secondaire (si
-  // notable) en plus petit, accroché en haut à droite du principal — bleu
-  // (accent) pour la primaire, orange (warm) pour la secondaire, même
-  // distinction de couleur que les badges Tmax/Tmin plus haut. ──
+  // lisant jamais qu'UN seul objet "peak" pour les deux). PRIMAIRE SEULE
+  // depuis le 12/08/2026 : le badge secondaire (houle hs2/per2/sd2) a été
+  // retiré à la demande explicite — "uniquement la houle primaire, la
+  // donnée surf principale" — pour ne pas surcharger la scène. hs2/per2/sd2
+  // restent dans WEEK (au cas où), simplement plus dessinés ici. ──
   WEEK.days.forEach(function (k, d) {
     var ds = byDay[k]; if (!ds || !ds.length) return;
     var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
     var px = d * MG_DAY_W + mgHourFrac(peak.h) * MG_DAY_W;
-    var showSec = peak.hs2 != null && peak.hs2 > 0.4;
     var R = Math.max(15, Math.min(30, MG_DAY_W * .155));
     // Recadré dans SA colonne pour TOUS les jours, pas seulement le 1er : le
     // pic du jour tombe parfois près du bord (heure proche de HOUR_MIN/MAX),
-    // et le badge (voire le secondaire, encore décalé de R*.82 vers la
-    // droite) dépassait alors du clip de la colonne — coupé, illisible
+    // et le badge dépassait alors du clip de la colonne — coupé, illisible
     // ("la taille des vagues est coupée sur plusieurs jours", signalé le
-    // 11/08/2026). Marge droite plus large quand un secondaire est affiché,
-    // pour l'englober lui aussi.
-    var rightPad = showSec ? R * 1.42 + 3 : R + 3;
+    // 11/08/2026).
+    var rightPad = R + 3;
     px = Math.max(d * MG_DAY_W + R + 3, Math.min(d * MG_DAY_W + MG_DAY_W - rightPad, px));
     // Le 1er jour est en plus le seul assez à gauche pour chevaucher la
     // colonne des graduations houle (x<40, sticky depuis le chantier
@@ -1541,10 +1595,6 @@ function mgDraw() {
     ctx.save();
     ctx.beginPath(); ctx.rect(d * MG_DAY_W + 1, 0, MG_DAY_W - 2, MG_SKY_H + MG_SWELL_H); ctx.clip();
     mgSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', Math.round(peak.t) + 's', peak.sd, accentRgb);
-    if (showSec) {
-      var R2 = R * .6;
-      mgSwellBadge(ctx, px + R * .82, py - R * .82, R2, '+' + peak.hs2.toFixed(1) + 'm', Math.round(peak.per2) + 's', peak.sd2, warmRgb);
-    }
     ctx.restore();
   });
   ctx.textAlign = 'center';
