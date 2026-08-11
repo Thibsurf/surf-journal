@@ -763,16 +763,36 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
   .mg-qdot{width:8px;height:8px;margin-right:5px}
 }
 .mg-wind{background:rgba(255,255,255,.02)}
-/* position:relative + badges en position absolue (mgHourFrac) plutôt qu'un
-   flex space-evenly : les créneaux d'un jour clairsemé ne doivent PAS
-   s'étaler pour combler la largeur, sinon 11h/17h ne tombent plus au même x
-   que le reste du graphe (ciel, houle, axe) — signalé le 10/08/2026. */
-.mg-wind .mg-day{position:relative;min-height:44px;cursor:default;padding:0}
+/* position:relative + segments en position absolue (mgSegBounds, mêmes bornes
+   que le ciel dans le canvas juste en dessous) plutôt qu'un flex
+   space-evenly : les créneaux d'un jour clairsemé ne doivent PAS s'étaler
+   pour combler la largeur, sinon 11h/17h ne tombent plus au même x que le
+   reste du graphe (ciel, houle, axe) — signalé le 10/08/2026. Bande de
+   segments colorés BORD À BORD (façon Yadusurf, demandé le 11/08/2026), pas
+   des badges flottants espacés à l'heure réelle (vides irréguliers entre
+   créneaux, jugé "vecteurs espacés bizarre"). */
+.mg-wind .mg-day{position:relative;min-height:38px;cursor:default;padding:0;overflow:hidden}
 .mg-wind .mg-day:last-child{border-right:none}
-.mg-wbadge{position:absolute;top:50%;transform:translate(-50%,-50%)}
-.mg-wind .mg-day svg{display:block}
-.mg-wbadge{display:inline-flex}
+.mg-wseg{position:absolute;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1px;border-right:1px solid rgba(6,16,28,.28)}
+.mg-wseg:last-child{border-right:none}
+.mg-wseg b{color:#08141f;font-weight:800;line-height:1}
+.mg-wseg-empty{position:static;width:100%;color:var(--faint);font-size:11px;background:none;
+  border-right:none;display:flex}
 canvas#mgCanvas{display:block;touch-action:pan-y}
+/* Axe houle sticky (cf. commentaire HTML) : .mg-axis-wrap défile normalement
+   avec le contenu (mêmes dimensions que la bande houle du canvas, positionné
+   par JS dans mgRenderAxis()) ; .mg-axis, lui, colle au bord gauche du
+   VIEWPORT de .mg-scroll grâce à position:sticky — c'est cette imbrication
+   (wrap en flux normal + enfant sticky) qui permet à un élément de rester
+   visible pendant le défilement horizontal sans sortir du conteneur scrollé.
+   pointer-events:none : les étiquettes ne doivent jamais voler le toucher au
+   canvas en dessous (survol/lecture au doigt). */
+.mg-axis-wrap{position:absolute;left:0;pointer-events:none;z-index:2}
+.mg-axis{position:sticky;left:0;width:0;height:100%}
+.mg-axis span{position:absolute;left:3px;transform:translateY(-50%);white-space:nowrap;
+  background:rgba(8,20,34,.88);color:#fff;font:600 9px sans-serif;padding:1px 4px;border-radius:3px}
+@media (min-width:641px){ .mg-axis span{font-size:11px} }
 .mg-readout{margin-top:9px;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.03);
   font-size:11.5px;color:var(--muted);min-height:18px;line-height:1.6}
 .mg-readout b{color:var(--text)}
@@ -832,14 +852,24 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
       <div class="mg-row" id="mgHead"></div>
       <div class="mg-row mg-wind" id="mgWind"></div>
       <canvas id="mgCanvas"></canvas>
+      <!-- Étiquettes de l'axe houle (1m/2m/3m), séparées du canvas et
+           position:sticky (cf. CSS .mg-axis) : Yadusurf garde son échelle
+           visible en permanence sur un axe à part, pas mêlée au contenu qui
+           défile — chez nous, dessinées DANS le canvas, elles disparaissaient
+           dès qu'on faisait défiler vers un jour suivant ("taille de la
+           houle coupée", signalé le 11/08/2026 sur un rendu scrollé). Les
+           graduations (traits horizontaux) restent, elles, dans le canvas —
+           seul le TEXTE a besoin de rester visible. -->
+      <div class="mg-axis-wrap" id="mgAxisWrap"><div class="mg-axis" id="mgAxis"></div></div>
       <div class="mg-row mg-tide" id="mgTide"></div>
     </div>
   </div>
   <div class="mg-readout" id="mgReadout"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
   <div class="mg-leg">
     <div><b>Flèche</b> = direction vers laquelle vent/houle se dirigent (même convention que le reste du site)</div>
+    <div><b>Couleur du vent</b> = vitesse, mêmes seuils que le reste du site (7/12/17/23 nds)</div>
     <div><b>Ciel</b> = nuages bas/moyens/hauts réels (Open-Meteo GFS) — les bas sont ceux qui amènent la pluie</div>
-    <div><b>Traits obliques</b> = précipitation réelle · <b>éclair</b> = orage</div>
+    <div><b>Traits obliques</b> = précipitation réelle, inclinés dans le sens du vent · <b>éclair</b> = orage</div>
     <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc — affichée ici, mais n'entre pas dans le score ci-dessous</div>
   </div>
 </div>
@@ -961,6 +991,10 @@ var MG_DAY_W = MG_DAY_W0, MG_SCALE = 1;
 var MG_SKY_H = MG_SKY_H0, MG_SWELL_H = MG_SWELL_H0, MG_AXIS_H = MG_AXIS_H0;
 var MG_SCENE_H = MG_SKY_H + MG_SWELL_H + MG_AXIS_H;
 var MG_SPOT = 0, MG_HOVER = -1, MG_DPR = 1;
+// Rempli par mgDraw() ({v, y} par graduation houle), lu par mgRenderAxis()
+// (HTML sticky séparé du canvas, cf. #mgAxis) — évite de recalculer
+// maxV/waterY() une 2e fois pour construire les étiquettes.
+var MG_AXIS_LABELS = [];
 var M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
 // Recalcule DAY_W/l'échelle depuis la largeur RÉELLEMENT disponible (variable :
@@ -1110,32 +1144,17 @@ function mgSwellBadge(ctx, cx, cy, r, hTxt, pTxt, fromDeg, col) {
     ctx.fillText(pTxt, cx, cy + r + Math.max(11, r * .48));
   }
 }
-// Badge vent rond — même gabarit SVG que windArrowIcon() (previsions.html,
-// marqueurs de la carte des spots) : viewBox fixe 36×46, seuls width/height
-// changent, donc un seul dessin de référence pour tout le site. propDeg =
-// même convention +180° que mgArrow()/svgArrow().
-// Fanion plein façon Yadusurf (référence fournie le 10/08/2026,
-// https://www.yadusurf.com/METEO-SURF-REPORT/Teahupoo — flèche épaisse à
-// encoche, couleur pleine, chiffre au centre) : remplace le rond+tige+badge
-// séparé d'avant, jugé "moche". Couleur reprise de windCol() (dégradé
-// vert/bleu/orange/rouge déjà utilisé partout ailleurs dans ce fichier —
-// Yadusurf code aussi par force, mais pas avec notre palette) plutôt que le
-// jaune unique de la référence, pour rester cohérent avec le reste du site.
-// Chiffre posé au CENTRE de rotation (12,12), hors du <g> tourné : une
-// position liée à la forme (ex. le "manche" de la flèche) se serait
-// déplacée par rapport à un chiffre fixe selon la direction du vent.
-function mgWindBadgeSvg(ws, wd, size) {
-  var col = windCol(ws);
+// Simple flèche pleine, SANS couleur propre : la rangée vent est maintenant
+// une bande de segments colorés edge-to-edge (cf. mgRenderHeadWind()), donc
+// c'est le SEGMENT qui porte windCol(), pas la flèche — sinon la couleur se
+// répète deux fois pour la même donnée. propDeg = même convention +180° que
+// mgArrow()/svgArrow()/windArrowIcon() (previsions.html).
+function mgWindArrowSvg(wd, size) {
   var propDeg = ((wd || 0) + 180) % 360;
-  var numTxt = ws == null ? '—' : Math.round(ws) + '';
   return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true">'
     + '<g transform="rotate(' + propDeg + ',12,12)">'
-    + '<path d="M12,1.5 L20,9.5 L15,9.5 L15,20.5 L12,17 L9,20.5 L9,9.5 L4,9.5 Z" '
-    + 'fill="' + col + '" stroke="rgba(0,0,0,.4)" stroke-width="1"/>'
-    + '</g>'
-    + '<text x="12" y="15.5" text-anchor="middle" font-size="9.5" font-weight="800" '
-    + 'font-family="sans-serif" fill="#0a1420">' + numTxt + '</text>'
-    + '</svg>';
+    + '<path d="M12,2 L19,14 L13.5,14 L13.5,22 L10.5,22 L10.5,14 L5,14 Z" fill="rgba(6,16,28,.82)"/>'
+    + '</g></svg>';
 }
 
 function mgEnsureCanvasSize() {
@@ -1200,27 +1219,24 @@ function mgRenderHeadWind() {
       + ' aria-label="Détail du ' + J_LONG[p.dow] + ' ' + p.d + (ds.length ? ' — ' + esc(best.label) : '') + '">'
       + '<span class="dn">' + dot + J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + M_SHORT[p.mo] + '</span></div>';
     // Taille FIXE (dépend seulement de MG_SCALE, plus du nombre de créneaux
-    // du jour) : avant, un jour à 4 créneaux donnait des badges nettement
-    // plus petits qu'un jour à 2 créneaux, une variation de taille qui
-    // n'avait aucun sens (le vent n'est pas plus "important" un jour où
-    // meteo.nc échantillonne moins souvent). Position À L'HEURE RÉELLE
-    // (mgHourFrac), pas espacée également dans la colonne.
-    // Plafonné en plus par l'écart réel le plus serré entre deux créneaux du
-    // jour (position À L'HEURE RÉELLE, cf. plus haut) : sans ça, des créneaux
-    // rapprochés (ex. 2 h d'écart sur une colonne étroite) se recouvraient —
-    // des fanions superposés, illisibles, signalés le 11/08/2026 ("vecteurs
-    // vent pas beaux et incomplets").
-    var minGapPx = Infinity, gi;
-    for (gi = 1; gi < ds.length; gi++) {
-      minGapPx = Math.min(minGapPx, (mgHourFrac(ds[gi].h) - mgHourFrac(ds[gi - 1].h)) * MG_DAY_W);
-    }
-    var badgeSize = Math.max(18, Math.min(40, Math.round(28 * MG_SCALE), Math.floor(minGapPx * .94)));
-    var arrows = ds.length ? ds.map(function (s) {
-      var left = mgHourFrac(s.h) * MG_DAY_W;
-      return '<span class="mg-wbadge" style="left:' + left.toFixed(1) + 'px" title="' + s.h + ' h — ' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '">'
-        + mgWindBadgeSvg(s.ws, s.wd, badgeSize) + '</span>';
-    }).join('') : '<span style="color:var(--faint);font-size:11px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)">·</span>';
-    windHtml += '<div class="mg-day">' + arrows + '</div>';
+    // du jour) : avant, une rangée de badges FLOTTANTS espacés à l'heure
+    // réelle laissait des vides irréguliers entre créneaux (jugé "vecteurs
+    // espacés bizarre" le 11/08/2026) et se chevauchait sur les jours à
+    // créneaux rapprochés. Repris en bande de segments colorés BORD À BORD
+    // (mêmes bornes mgSegBounds() que le ciel/la pluie juste en dessous dans
+    // le canvas — même vocabulaire visuel, même alignement), façon Yadusurf
+    // (référence demandée le 11/08/2026) : c'est le SEGMENT qui porte
+    // windCol(), la flèche reste neutre (cf. mgWindArrowSvg).
+    var arrowPx = Math.max(12, Math.min(22, Math.round(15 * MG_SCALE)));
+    var segs = ds.length ? ds.map(function (s, si) {
+      var b = mgSegBounds(ds, si), w = b.x1 - b.x0;
+      var numTxt = s.ws == null ? '—' : Math.round(s.ws) + '';
+      return '<span class="mg-wseg" style="left:' + b.x0.toFixed(1) + 'px;width:' + w.toFixed(1) + 'px;background:' + windCol(s.ws) + '"'
+        + ' title="' + s.h + ' h — ' + numTxt + ' nds ' + compass(s.wd) + '">'
+        + mgWindArrowSvg(s.wd, arrowPx)
+        + '<b style="font-size:' + Math.round(9 * MG_SCALE) + 'px">' + numTxt + '</b></span>';
+    }).join('') : '<span class="mg-wseg mg-wseg-empty">·</span>';
+    windHtml += '<div class="mg-day">' + segs + '</div>';
   });
   document.getElementById('mgHead').innerHTML = headHtml;
   document.getElementById('mgWind').innerHTML = windHtml;
@@ -1370,18 +1386,14 @@ function mgDraw() {
         var lrng = mgRng(mgSeed(k) + si * 29 + 900), ln = Math.round(1 + cl / 100 * 4), li;
         for (li = 0; li < ln; li++) mgCloudPuff(ctx, xs + 10 + lrng() * (segW - 20), MG_SKY_H * (.42 + lrng() * .34), .5 + lrng() * .4 + tone * .3, Math.min(.95, .55 + tone * .35), tone);
       }
-      // Traits de vent : indice de mouvement dès que ça souffle (≥13 nds) —
-      // plus contrastés qu'une 1ʳᵉ version (signalé le 10/08/2026, trop discrets
-      // pour se voir d'un coup d'œil).
-      if (s.ws >= 13) {
-        var wrng = mgRng(mgSeed(k) + si * 991 + 2), wn = Math.round(3 + (s.ws - 12) * .6);
-        var wang = ((s.wd || 0) + 180) * Math.PI / 180, wI;
-        for (wI = 0; wI < wn; wI++) {
-          var wx = xs + wrng() * segW, wy = MG_SKY_H * .1 + wrng() * MG_SKY_H * .55, wl = 12 + wrng() * 13;
-          ctx.strokeStyle = 'rgba(255,255,255,' + (.32 + wrng() * .24).toFixed(2) + ')'; ctx.lineWidth = 1.6;
-          ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + Math.cos(wang) * wl, wy + Math.sin(wang) * wl * .32); ctx.stroke();
-        }
-      }
+      // Les "traits de vent" (indice de mouvement dans le ciel, ≥13 nds) ont
+      // été retirés le 11/08/2026 : un second jeu de traits diagonaux
+      // indépendant de la pluie (cf. ci-dessous), visuellement impossible à
+      // distinguer d'elle une fois cette dernière alignée sur le vent réel
+      // ("pluie ou vent, les traits horizontaux ?", signalé ce jour-là) — le
+      // vent est de toute façon déjà porté par la bande de segments colorés
+      // au-dessus du ciel (mgRenderHeadWind()), doubler l'information ici
+      // n'apportait rien.
       // Précipitation réelle (mm/h Open-Meteo) : rideaux + traits, intensité
       // pilotée par la valeur mesurée, pas par un jet de dés. Traits plus
       // longs/opaques qu'une 1ʳᵉ version — trop discrets pour lire "il pleut"
@@ -1458,10 +1470,15 @@ function mgDraw() {
   // gonflé de 20% : sur une houle à 0,6-1,9 m, l'ancien calcul plaçait ses deux
   // seules lignes à 1,5 m et 3 m — au-dessus de tout point réel du graphe, lu à
   // tort comme une échelle non-linéaire (signalé le 10/08/2026). Seuls les
-  // TRAITS sont tracés ici ; les ÉTIQUETTES sont dessinées plus bas, APRÈS les
-  // badges houle — sinon le badge du 1er jour (le seul assez à gauche pour les
-  // chevaucher) les recouvrait quand son cercle grandissait sur grand écran.
+  // TRAITS sont tracés ici, dans le canvas (ils défilent avec le contenu,
+  // sans problème). Les ÉTIQUETTES, elles, sont du HTML séparé et sticky
+  // (mgRenderAxis(), cf. commentaire sur #mgAxis) — dessinées dans le canvas,
+  // elles disparaissaient dès qu'on faisait défiler horizontalement vers un
+  // jour suivant (signalé le 11/08/2026, "taille de la houle coupée"). On se
+  // contente ici de MÉMORISER leur position pour que mgRenderAxis() les
+  // construise sans recalculer maxV/waterY.
   var mgYSteps = mgGridSteps(maxV);
+  MG_AXIS_LABELS = mgYSteps.map(function (v) { return { v: v, y: waterY(v) }; });
   mgYSteps.forEach(function (v) {
     var gy = waterY(v) + .5;
     ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
@@ -1504,20 +1521,10 @@ function mgDraw() {
     ctx.restore();
   });
   ctx.textAlign = 'center';
-
-  // Étiquettes des graduations houle — dessinées EN DERNIER (cf. plus haut) :
-  // toujours lisibles par-dessus les badges, jamais l'inverse.
-  ctx.save();
-  ctx.beginPath(); ctx.rect(0, MG_SKY_H, totalW, MG_SWELL_H); ctx.clip();
-  ctx.font = '600 ' + Math.round(9 * MG_SCALE) + 'px sans-serif'; ctx.textAlign = 'left';
-  mgYSteps.forEach(function (v) {
-    var gy = waterY(v) + .5;
-    var lbl = (v < 1 ? v.toFixed(1) : v.toFixed(0)) + 'm', lw = ctx.measureText(lbl).width;
-    ctx.fillStyle = 'rgba(8,20,34,.88)'; ctx.fillRect(3, gy - 10 * MG_SCALE, lw + 6, 12 * MG_SCALE);
-    ctx.fillStyle = '#fff'; ctx.fillText(lbl, 6, gy - 1);
-  });
-  ctx.restore();
-  ctx.textAlign = 'center';
+  // Les étiquettes de graduation (1m/2m/3m…) ne sont PLUS dessinées ici : cf.
+  // MG_AXIS_LABELS mémorisé plus haut et mgRenderAxis() (HTML sticky,
+  // toujours au-dessus du canvas par construction — plus besoin d'un ordre
+  // de dessin précis pour rester lisible par-dessus les badges houle).
 
   // ── Axe horaire ──
   ctx.fillStyle = '#0d1f3c'; ctx.fillRect(0, MG_SKY_H + MG_SWELL_H, totalW, MG_AXIS_H);
@@ -1528,6 +1535,21 @@ function mgDraw() {
     if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(d * MG_DAY_W + .5, MG_SKY_H + MG_SWELL_H); ctx.lineTo(d * MG_DAY_W + .5, MG_SCENE_H); ctx.stroke(); }
     ds.forEach(function (s) { ctx.fillText(s.h + 'h', d * MG_DAY_W + mgHourFrac(s.h) * MG_DAY_W, MG_SKY_H + MG_SWELL_H + MG_AXIS_H * .75); });
   });
+}
+
+// Construit l'axe houle sticky (cf. commentaire HTML sur #mgAxisWrap/#mgAxis)
+// à partir de MG_AXIS_LABELS mémorisé par mgDraw() — DOIT être appelé après
+// mgDraw() (même ordre que mgComputeLayout()/mgRenderHeadWind() documenté
+// plus haut : chacun lit ce que le précédent vient de calculer).
+function mgRenderAxis() {
+  var wrap = document.getElementById('mgAxisWrap'), axis = document.getElementById('mgAxis');
+  wrap.style.top = MG_SKY_H + 'px';
+  wrap.style.height = MG_SWELL_H + 'px';
+  wrap.style.width = (MG_DAY_W * WEEK.days.length) + 'px';
+  axis.innerHTML = MG_AXIS_LABELS.map(function (a) {
+    var lbl = (a.v < 1 ? a.v.toFixed(1) : a.v.toFixed(0)) + 'm';
+    return '<span style="top:' + (a.y - MG_SKY_H).toFixed(1) + 'px">' + lbl + '</span>';
+  }).join('');
 }
 
 function mgUpdateReadout(dayKey) {
@@ -1586,6 +1608,7 @@ function mgRender() {
   mgRenderHeadWind();
   mgEnsureCanvasSize();
   mgDraw();
+  mgRenderAxis();
   mgRenderTide();
   mgUpdateReadout(null);
 }
@@ -1599,6 +1622,7 @@ function mgRelayout() {
   mgRenderHeadWind();
   mgEnsureCanvasSize();
   mgDraw();
+  mgRenderAxis();
   mgRenderTide();
 }
 

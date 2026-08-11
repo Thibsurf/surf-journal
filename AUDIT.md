@@ -6599,3 +6599,50 @@ signalées (confirmées corrigées par capture avant/après) ; test de
 calibrage par injection pour la pastille de score.
 
 `CACHE_NAME` non touché — aucun fichier d'`assets/` modifié.
+
+## 11/08/2026 (suite, même session) — rangée vent refaite en bande Yadusurf, axe houle sticky
+
+Nouveau retour sur le résultat déployé : « vecteurs horribles, pas comme
+Yadusurf … taille de la houle coupée … pluie ou vent les traits
+horizontaux ? … vecteurs espacés bizarre … inspire-toi vraiment de
+Yadusurf ». Capture de https://www.yadusurf.com/METEO-SURF-REPORT/Teahupoo
+reprise (déjà vue plus tôt cette session) pour comparer précisément.
+
+**Rangée vent refaite.** Les fanions flottants (position absolue à l'heure
+réelle, `mgWindBadgeSvg`) laissaient des vides irréguliers entre créneaux et
+pouvaient se chevaucher — remplacés par une bande de SEGMENTS colorés BORD À
+BORD, mêmes bornes `mgSegBounds()` que le ciel dans le canvas juste en
+dessous (donc même vocabulaire visuel/alignement), chaque segment coloré par
+`windCol()` (le fond porte la vitesse, plus besoin qu'une flèche colorée en
+plus — `mgWindBadgeSvg` devient `mgWindArrowSvg`, flèche neutre sombre sans
+fill propre). Plus proche de la bande dense de Yadusurf que des badges
+espacés d'avant.
+
+**Traits de vent retirés du ciel.** Un second effet diagonal indépendant
+(« traits de vent », ≥13 nds) coexistait avec les traits de pluie — une fois
+la pluie alignée sur le vent réel (chantier précédent le même jour), les deux
+devenaient visuellement indissociables (« pluie ou vent, les traits
+horizontaux ? »). Retiré : le vent est de toute façon déjà porté par la
+bande de segments au-dessus, le doublon n'apportait rien.
+
+**Axe houle rendu sticky.** Les étiquettes 1m/2m/3m étaient dessinées DANS
+le canvas — donc défilaient avec le contenu, invisibles dès qu'on scrollait
+vers un jour suivant (« taille de la houle coupée », capture prise après
+défilement). Séparées en HTML : `mgDraw()` mémorise seulement `{v, y}` par
+graduation dans `MG_AXIS_LABELS` (plus de recalcul de `maxV`/`waterY`),
+`mgRenderAxis()` construit un `#mgAxis` en `position:sticky;left:0` imbriqué
+dans un `#mgAxisWrap` en flux normal (même dimensions que la bande houle du
+canvas) — c'est cette imbrication flux-normal + enfant-sticky qui permet à
+l'axe de rester visible sans sortir de `.mg-scroll`. Les TRAITS de
+graduation restent dans le canvas (défiler avec eux ne pose aucun problème,
+seul le texte devait rester fixe). Vérifié par scroll forcé
+(`mgScroll.scrollLeft = <max>`) en Chrome headless 500px : "1m/2m/3m" restent
+bien visibles à l'écran une fois scrollé au jour "dim".
+
+Légende du bas complétée (couleur du vent = vitesse, inclinaison de la pluie
+= sens du vent) pour ne pas laisser deviner ces deux nouveaux comportements.
+
+Vérifié : `node --check` ; régénéré avec données live ; `--dump-dom` sans
+erreur JS aux deux largeurs ; capture avant/après aux zones signalées ;
+`grep` confirmant `mgWindBadgeSvg`/`.mg-wbadge` totalement retirés (pas de
+code mort laissé derrière). `CACHE_NAME` non touché.
