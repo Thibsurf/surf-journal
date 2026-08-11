@@ -6474,3 +6474,41 @@ l'œil sur la capture, pas un bug de mise en page. Levée sans deviner,
 mesurée.
 
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+## 11/08/2026 (nouvelle session) — retour complet au graphe continu, revert des 3 commits cartes
+
+Verdict de l'utilisateur, capture à l'appui : « ne ressemble à rien,
+recommence là à 0 », préférence explicite pour le graphe continu
+ciel+houle par altitude d'avant (capture jointe = l'ancien rendu). Ceci
+renverse la décision prise 2× la veille dans les entrées ci-dessus
+(« enrichir dans le cadre des cartes, ou rouvrir le graphe continu déjà
+écarté 3-4 fois » → réponse : enrichir). Explicitement confirmé avec
+l'utilisateur avant d'agir, vu le nombre de refus précédents documentés
+le même jour — décision d'aujourd'hui : rouvrir quand même.
+
+Les 3 commits de la journée du 10/08 (`f1e191ca` cartes, `01d808e6` courbe
++météo par créneau, `b911dc34` vent par créneau + taille desktop) portaient
+tous sur `.github/scripts/build-week.mjs`/`semaine.html` dans le cadre des
+cartes. Plutôt qu'un `git revert` séquentiel des 3 (conflits garantis,
+chaque commit modifie ce que le précédent a ajouté), restauration directe
+des 2 fichiers à l'état d'avant toute la lignée cartes (`git checkout
+70660abb -- .github/scripts/build-week.mjs semaine.html` — dernier commit
+du graphe continu, juste avant `f1e191ca`), puis `semaine.html` régénéré
+avec `node .github/scripts/build-week.mjs` (données fraîches, pas le
+fichier généré tel quel). **Les entrées AUDIT des 3 commits cartes sont
+gardées** : le journal est cumulatif, ce n'est pas parce que le code
+revient en arrière que la trace de ce qui a été essayé, mesuré et pourquoi
+ça a été écarté doit disparaître.
+
+Repli local avant ce commit : `origin/main` avait divergé (2 commits que
+ce poste n'avait pas encore récupérés) pendant qu'un revert partiel était
+déjà committé localement sur une base périmée — `git reset --hard
+origin/main` (confirmé avec l'utilisateur, ne perdait qu'un commit local
+non poussé) pour repartir de la bonne base avant de refaire le retour en
+arrière proprement.
+
+Vérifié : Chrome headless 900px, capture pleine page découpée en tranches
+— météogramme avec ciel/nuages/pluie par créneau, flèches vent, courbe de
+houle+marée continue, correspond visuellement à la capture de référence de
+l'utilisateur ; `--dump-dom` sans `ReferenceError`/`is not defined`.
+Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.

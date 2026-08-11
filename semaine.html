@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>La semaine — Surf NC</title>
-<meta name="description" content="Les meilleurs créneaux de surf de la semaine en Nouvelle-Calédonie, du 11 au 16 août.">
+<meta name="description" content="Les meilleurs créneaux de surf de la semaine en Nouvelle-Calédonie, du 12 au 16 août.">
 <meta name="theme-color" content="#0a1628">
 <!-- Partage : les 4 autres pages du site ont ces balises, pas celle-ci — or c'est
      LA page pensée pour être collée dans WhatsApp. Sans elles, le lien s'affiche
@@ -12,12 +12,12 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://thibsurf.github.io/surf-journal/semaine.html">
 <meta property="og:title" content="🏄 La semaine — Surf NC">
-<meta property="og:description" content="Les meilleurs créneaux de surf du 11 au 16 août en Nouvelle-Calédonie : houle, vent et accord des modèles, spot par spot.">
+<meta property="og:description" content="Les meilleurs créneaux de surf du 12 au 16 août en Nouvelle-Calédonie : houle, vent et accord des modèles, spot par spot.">
 <meta property="og:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 <meta property="og:locale" content="fr_FR">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="🏄 La semaine — Surf NC">
-<meta name="twitter:description" content="Les meilleurs créneaux de surf du 11 au 16 août en Nouvelle-Calédonie.">
+<meta name="twitter:description" content="Les meilleurs créneaux de surf du 12 au 16 août en Nouvelle-Calédonie.">
 <meta name="twitter:image" content="https://thibsurf.github.io/surf-journal/icons/icon-512x512.png">
 <link rel="icon" href="favicon.png">
 <style>
@@ -173,122 +173,59 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .cal.seedmode .row{opacity:.72}
 .cal.seedmode .row:hover{opacity:1}
 
-/* ── Météogramme : cartes « décision d'abord » (score → vent → houle →
-   météo → créneau conseillé), une par jour, plutôt qu'un graphe continu à
-   poids visuel égal pour tout (refait le 10/08/2026, cf. AUDIT.md).
-   Deux retours utilisateur le soir même, sans jamais rouvrir le graphe
-   continu (déjà écarté plusieurs fois le même jour pour « pas propre ») :
-   1) « pas assez visuel » → courbe de houle agrandie, météo passée d'1
-   icône/jour à 1 icône par créneau réel. 2) « on comprend rien à la
-   taille/direction/vent, adapte à la version PC » → vent passé d'1 chiffre
-   (meilleur créneau) à 1 flèche+vitesse par créneau réel, la courbe porte
-   maintenant une flèche de direction à chaque point (pas juste un rond), et
-   cartes+typo grandissent réellement en desktop via --mgw (cf. plus bas) —
-   avant, le média large montrait les MÊMES cartes mobiles avec du vide à
-   droite, pas un vrai agrandissement.
-   Bloc PERMANENT (cf. le commentaire au-dessus de son init côté JS),
-   indépendant de la grille de score et de son panneau de calibrage — leurs
-   seuils changent le classement de LA GRILLE, jamais ce que ce bloc affiche.
-   .mg-bleed le fait déborder du cadre à 560px de body sur grand écran, pour
-   qu'un moniteur large montre plus de cartes, plus grandes, à la fois. */
-/* Largeur de carte : UNE variable (--mgw), lue par .mg-dc ET .mg-tide-day —
-   même principe qu'avant (« un seul nombre à tenir à jour » pour que
-   météogramme et marées restent alignés colonne pour colonne), mais portée
-   par une custom property pour pouvoir varier par breakpoint SANS dupliquer
-   le nombre à deux endroits. Le HTML généré est strictement identique pour
-   mobile et bureau (généré une fois côté serveur, sans savoir sur quel
-   écran il s'ouvrira) : seule cette variable change en media query. */
-:root{--mgw:148px}
+/* ── Météogramme : ciel réel (3 altitudes), houle primaire+secondaire, marée
+   réelle — bloc PERMANENT (cf. le commentaire au-dessus de son init côté JS),
+   indépendant de la grille de score et de son panneau de calibrage.
+   .mg-bleed le fait déborder du cadre à 560px de body sur grand écran —
+   sinon le seul graphe de toute la page qui mérite d'être grand reste coincé
+   à la largeur mobile même sur un moniteur large (signalé le 10/08/2026). En
+   dessous de 641px, no-op : le format mobile actuel ne change pas. */
 @media (min-width:641px){
   .mg-bleed{position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw}
-  .mg-bleed .mg-card{max-width:1400px;margin-left:auto;margin-right:auto}
+  .mg-bleed .mg-card{max-width:1180px;margin-left:auto;margin-right:auto}
 }
 .mg-card{background:var(--deep);border-radius:12px;padding:14px 14px 12px;margin:20px 0}
 .mg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
 .mg-title{font:600 15px/1.2 Georgia,serif}
 #mgSel{background:var(--ocean);color:var(--text);border:1px solid var(--border);border-radius:8px;
   padding:0 10px;min-height:44px;font-size:12.5px;font-family:inherit;max-width:54%}
-.mg-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.mg-dc-row{display:flex;gap:10px;padding-bottom:2px}
-.mg-dc{flex:0 0 var(--mgw);width:var(--mgw);background:var(--ocean);border-radius:12px;
-  border-top:4px solid var(--c,#3dba8a);overflow:hidden;display:flex;flex-direction:column}
-.mg-dc-day{padding:9px 10px 4px;text-align:center}
-.mg-dc-day .dn{font:700 13px Georgia,serif}
-.mg-dc-day .dd{font-size:10px;color:var(--faint);margin-top:1px}
-.mg-dc-empty{padding:20px 10px;text-align:center;color:var(--faint);font-size:11px}
-.mg-dc-score{padding:1px 10px 8px;text-align:center}
-.mg-dc-stars{font-size:14px;letter-spacing:1px}
-.mg-dc-stars .on{color:var(--c,#3dba8a)}
-.mg-dc-stars .off{color:rgba(255,255,255,.15)}
-.mg-dc-label{font-size:10.5px;color:var(--c,#3dba8a);font-weight:700;margin-top:2px}
-/* Vent : une colonne (heure/flèche/vitesse) par créneau réel, plutôt qu'un
-   seul chiffre — refait le 10/08/2026 au soir (retour « on comprend rien…
-   au vent »). flex-wrap au cas où un jour aurait plus de créneaux que la
-   largeur mobile n'en tient (aucun cas connu à date, mais silencieux comme
-   toujours en CSS si ça arrivait — mieux vaut un retour à la ligne propre
-   qu'un débordement, même leçon que le libellé offshore/onshore d'avant). */
-.mg-dc-wind-row{display:flex;flex-wrap:wrap;justify-content:space-between;
-  gap:4px 2px;padding:7px 10px 2px}
-.mg-dc-wind-item{display:flex;flex-direction:column;align-items:center;gap:1px}
-.mg-dc-wind-item .hv{font-size:8.5px;color:var(--faint)}
-.mg-dc-wind-item .sv{font-size:11px;font-weight:700}
-.mg-wa{width:20px;height:20px;display:block}
-.mg-dc-rel{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;
-  text-align:center;padding:0 10px 7px;border-bottom:1px solid var(--border)}
-.mg-dc-row2{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--border)}
-.mg-sa{width:14px;height:14px;display:block;flex:0 0 auto}
-.mg-dc-v{font-size:13.5px;font-weight:700;line-height:1.15}
-.mg-dc-u{font-size:10px;color:var(--faint);font-weight:400}
-/* Hauteur doublée (38→64px) le 10/08/2026 au soir : la courbe passait
-   inaperçue à côté des chiffres ; remontée encore en media query desktop
-   (cf. plus haut). */
-.mg-dc-spark{display:block;width:100%;height:64px;padding:2px 8px 0}
-/* Une icône PAR créneau réel (2 à 4 selon l'échéance) au lieu d'1/jour —
-   toujours en dessous de la courbe de houle dans l'ordre de lecture, donc
-   toujours secondaire au score/vent/houle malgré la couleur qui reste
-   discrète (cf. .mg-dc-meteo .ic plus bas, pas de opacity globale : un
-   dégradé sur l'emoji lui-même rendait le ciel illisible par endroits). */
-.mg-dc-meteo{display:flex;align-items:center;gap:3px;padding:3px 10px 7px;
-  font-size:10.5px;color:var(--faint)}
-.mg-dc-meteo .ic{font-size:14px;line-height:1}
-.mg-dc-meteo .sk{display:flex;gap:3px;flex:1}
-.mg-dc-temp{margin-left:auto;font-weight:600;white-space:nowrap;padding-left:4px}
-.mg-dc-timing{font-size:10.5px;color:var(--muted);padding:7px 10px;
-  border-top:1px dashed var(--border);text-align:center;margin-top:auto}
-.mg-dc-timing b{color:var(--accent)}
-.mg-tide-row{display:flex}
+.mg-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px}
+.mg-inner{display:flex;flex-direction:column;position:relative}
+.mg-row{display:flex}
+/* 44px : même minimum tactile que le reste du site (cf. .stp/.calbtn) — sous
+   ce seuil le tap sur un jour devient pénible au pouce. */
+.mg-day{flex:0 0 var(--mgw);width:var(--mgw);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;cursor:pointer;border-right:1px solid var(--border);padding:3px 0;min-height:44px}
+.mg-day:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.mg-day:last-child{border-right:none}
+.mg-day .dn{font-size:12px;font-weight:600}
+.mg-day .dd{font-size:9.5px;color:var(--faint);margin-top:1px}
+@media (min-width:641px){
+  .mg-day .dn{font-size:15px} .mg-day .dd{font-size:11.5px}
+}
+.mg-wind{background:rgba(255,255,255,.02)}
+/* position:relative + badges en position absolue (mgHourFrac) plutôt qu'un
+   flex space-evenly : les créneaux d'un jour clairsemé ne doivent PAS
+   s'étaler pour combler la largeur, sinon 11h/17h ne tombent plus au même x
+   que le reste du graphe (ciel, houle, axe) — signalé le 10/08/2026. */
+.mg-wind .mg-day{position:relative;min-height:44px;cursor:default;padding:0}
+.mg-wind .mg-day:last-child{border-right:none}
+.mg-wbadge{position:absolute;top:50%;transform:translate(-50%,-50%)}
+.mg-wind .mg-day svg{display:block}
+.mg-wbadge{display:inline-flex}
+canvas#mgCanvas{display:block;touch-action:pan-y}
+.mg-readout{margin-top:9px;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.03);
+  font-size:11.5px;color:var(--muted);min-height:18px;line-height:1.6}
+.mg-readout b{color:var(--text)}
+.mg-readout .hint{color:var(--faint);font-style:italic}
+.mg-tide{border-top:1px solid var(--border);padding-top:8px;margin-top:2px}
 .mg-tide-day{flex:0 0 var(--mgw);width:var(--mgw);font-size:10.5px;color:var(--text);
-  font-variant-numeric:tabular-nums;padding:8px 10px 0}
+  font-variant-numeric:tabular-nums;padding:0 6px}
 .mg-tide-day .te{display:flex;justify-content:space-between;gap:5px;padding:2px 0}
 .mg-tide-day .te.haute{color:var(--accent)}
 .mg-tide-day .te.basse{color:var(--warm)}
 .mg-leg{display:flex;flex-wrap:wrap;gap:9px 16px;margin-top:11px;font-size:10.5px;color:var(--faint);line-height:1.5}
 .mg-leg b{color:var(--muted);font-weight:600}
-/* Retour du 10/08/2026 au soir : « adapte tout à la version PC » — sur grand
-   écran, la version précédente montrait les MÊMES cartes minuscules avec du
-   vide à droite (.mg-dc restait à 148px quelle que soit la place
-   disponible). Placé APRÈS toutes les règles .mg-dc-* de base : à
-   spécificité égale (mêmes sélecteurs), c'est l'ORDRE dans la feuille qui
-   décide, pas la media query — mis plus haut, ce bloc aurait été écrasé par
-   les règles de base qui le suivaient dans le fichier. */
-@media (min-width:641px){
-  :root{--mgw:224px}
-  .mg-dc-day .dn{font-size:16px}
-  .mg-dc-day .dd{font-size:11.5px}
-  .mg-dc-stars{font-size:19px}
-  .mg-dc-label{font-size:12.5px}
-  .mg-dc-wind-item .hv{font-size:10.5px}
-  .mg-dc-wind-item .sv{font-size:13.5px}
-  .mg-wa{width:30px;height:30px}
-  .mg-dc-rel{font-size:11px}
-  .mg-sa{width:20px;height:20px}
-  .mg-dc-v{font-size:19px}
-  .mg-dc-u{font-size:13px}
-  .mg-dc-spark{height:104px}
-  .mg-dc-meteo{font-size:12.5px}
-  .mg-dc-meteo .ic{font-size:19px}
-  .mg-dc-timing{font-size:12px}
-}
 
 .cta{display:block;text-align:center;margin-top:22px;padding:13px;border-radius:10px;
      background:var(--accent);color:#06131f;font-weight:600;font-size:15px}
@@ -309,7 +246,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
 
 <div class="top">
   <h1>🏄 La semaine</h1>
-  <div class="per">du 11 au 16 août</div>
+  <div class="per">du 12 au 16 août</div>
 </div>
 
 <div id="app">
@@ -320,34 +257,31 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
 
 <!-- Météogramme : bloc PERMANENT, jamais reconstruit par render() (cf. le
      commentaire au-dessus de son init côté JS) — sinon changer un curseur de
-     calibrage effacerait le spot choisi, alors qu'aucune de ses données ne
-     dépend des seuils de score.
-     Refait le 10/08/2026 en cartes « décision d'abord » (score, vent, houle,
-     météo, créneau conseillé) au lieu d'un graphe continu ciel+houle sur
-     toute la semaine — une structure à hiérarchie de lecture explicite
-     plutôt qu'un poids visuel égal pour tout, cf. AUDIT.md. Le même soir :
-     courbe agrandie + météo par créneau (retour « pas assez visuel »), puis
-     vent par créneau + direction de houle sur la courbe + cartes/typo
-     vraiment plus grandes en desktop (retour « on comprend rien à la
-     taille/direction/vent, adapte à la version PC ») — toujours sans
-     rouvrir le graphe continu ni l'illustration de ciel détaillée déjà
-     écartés plus tôt dans la journée. -->
+     calibrage effacerait le spot choisi et redessinerait le canvas pour rien,
+     alors qu'aucune de ses données ne dépend des seuils de score. -->
 <div class="mg-bleed"><div class="mg-card" id="mgCard">
   <div class="mg-top">
-    <div class="mg-title">🏄 Météogramme</div>
+    <div class="mg-title">🌤️ Météogramme</div>
     <select id="mgSel" aria-label="Choisir un spot"></select>
   </div>
-  <div class="mg-scroll" id="mgScroll"><div class="mg-dc-row" id="mgCards"></div></div>
-  <!-- Marée dans SON PROPRE graphe, jamais mélangée à la houle (cf. légende) —
-       largeur de colonne alignée sur celle des cartes juste au-dessus pour
-       que jour N sous une carte reste bien le jour N de la marée. -->
-  <div class="mg-scroll"><div class="mg-tide-row" id="mgTide"></div></div>
+  <!-- Marée DANS le même conteneur de défilement que le ciel/la houle — un
+       second scroll indépendant (comme dans le prototype d'origine) désynchronise
+       vite les deux : on fait défiler l'un sans l'autre et les PM/BM se
+       retrouvent sous le mauvais jour. Un seul scroll, une seule vérité. -->
+  <div class="mg-scroll" id="mgScroll">
+    <div class="mg-inner" id="mgInner">
+      <div class="mg-row" id="mgHead"></div>
+      <div class="mg-row mg-wind" id="mgWind"></div>
+      <canvas id="mgCanvas"></canvas>
+      <div class="mg-row mg-tide" id="mgTide"></div>
+    </div>
+  </div>
+  <div class="mg-readout" id="mgReadout"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
   <div class="mg-leg">
-    <div><b>Score</b> = même moteur que la grille ci-dessus (calcSurfScore), sur le meilleur créneau du jour</div>
-    <div><b>Vent</b> = une flèche par créneau réel, vers où il souffle · l'étiquette <b>Offshore/Onshore/Travers</b> juge le meilleur créneau du jour, relatif à la houle, pas à la boussole</div>
-    <div><b>Courbe</b> = hauteur de houle, une flèche par créneau réel — la flèche pointe où va la houle, le chiffre au-dessus est la période</div>
-    <div><b>Météo</b> = une icône par créneau réel (matin→soir), code ciel meteo.nc — n'entre pas dans le score</div>
-    <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc, à part — n'entre pas dans le score</div>
+    <div><b>Flèche</b> = direction vers laquelle vent/houle se dirigent (même convention que le reste du site)</div>
+    <div><b>Ciel</b> = nuages bas/moyens/hauts réels (Open-Meteo GFS) — les bas sont ceux qui amènent la pluie</div>
+    <div><b>Traits obliques</b> = précipitation réelle · <b>éclair</b> = orage</div>
+    <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc — affichée ici, mais n'entre pas dans le score ci-dessous</div>
   </div>
 </div></div>
 
@@ -359,7 +293,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
 
 <footer>
   Houle et vent&nbsp;: <b>meteo.nc</b>, la même source que les prévisions du site.
-  Régénéré chaque lundi matin — dernière fois le 10/08 à 21h13 (heure NC).
+  Régénéré chaque lundi matin — dernière fois le 11/08 à 11h07 (heure NC).
   <details>
     <summary>Comment cette page est faite, et ce qu'elle ne dit pas</summary>
     <p>Le meilleur créneau de chaque journée est retenu entre 6&nbsp;h et
@@ -390,7 +324,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
 <!-- Le moteur de score, le MÊME fichier que celui chargé par previsions.html :
      c'est ce qui garantit qu'un créneau noté « Excellent » ici l'est aussi là-bas. -->
 <script src="assets/score-core.js"></script>
-<script>var WEEK = {"days":["2026-08-11","2026-08-12","2026-08-13","2026-08-14","2026-08-15","2026-08-16"],"spots":[{"name":"Passe de Dumbéa","short":"Dumbéa","cal":true,"params":{"minHs":0.6,"maxHs":4,"minPeriod":12,"minPwr":6.5,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":7,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-10","n":21,"nGood":2,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt"]}},"slots":[{"d":"2026-08-11","h":8,"hs":0.8,"t":14,"sd":205,"ws":6,"wd":320,"cl":0,"cm":0,"ch":100,"precip":0,"code":3,"at":19.4,"hs2":0.42,"per2":9.2,"sd2":136},{"d":"2026-08-11","h":11,"hs":0.8,"t":14,"sd":205,"ws":6,"wd":320,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":23.2,"hs2":0.38,"per2":10,"sd2":136},{"d":"2026-08-11","h":14,"hs":0.8,"t":14,"sd":205,"ws":8,"wd":240,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":22.6,"hs2":0.36,"per2":9.8,"sd2":136},{"d":"2026-08-11","h":17,"hs":0.8,"t":14,"sd":205,"ws":8,"wd":240,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.1,"hs2":0.36,"per2":9.45,"sd2":136},{"d":"2026-08-12","h":8,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.2,"hs2":0.22,"per2":18,"sd2":201},{"d":"2026-08-12","h":11,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":23.7,"hs2":0.22,"per2":17.8,"sd2":201},{"d":"2026-08-12","h":17,"hs":0.4,"t":12,"sd":205,"ws":2,"wd":245,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.5,"hs2":0.28,"per2":16.1,"sd2":200},{"d":"2026-08-13","h":11,"hs":0.8,"t":10,"sd":225,"ws":2,"wd":280,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":23.5,"hs2":0.4,"per2":15,"sd2":200},{"d":"2026-08-13","h":17,"hs":1,"t":12,"sd":205,"ws":12,"wd":220,"cl":16,"cm":0,"ch":5,"precip":0.4,"code":51,"at":20.8,"hs2":0.38,"per2":8.9,"sd2":136},{"d":"2026-08-14","h":11,"hs":1,"t":9,"sd":220,"ws":14,"wd":190,"cl":62,"cm":0,"ch":100,"precip":0,"code":3,"at":20.9,"hs2":0.52,"per2":15.2,"sd2":200},{"d":"2026-08-14","h":17,"hs":1.5,"t":8,"sd":215,"ws":14,"wd":190,"cl":100,"cm":0,"ch":5,"precip":0.1,"code":51,"at":19.5,"hs2":0.64,"per2":14.35,"sd2":199},{"d":"2026-08-15","h":11,"hs":1.8,"t":8,"sd":205,"ws":13,"wd":165,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":22.2,"hs2":0.8,"per2":14.1,"sd2":201},{"d":"2026-08-15","h":17,"hs":1.5,"t":10,"sd":205,"ws":13,"wd":155,"cl":18,"cm":0,"ch":0,"precip":0,"code":0,"at":19.5,"hs2":1,"per2":13.95,"sd2":202},{"d":"2026-08-16","h":11,"hs":1.6,"t":12,"sd":200,"ws":16,"wd":135,"cl":0,"cm":0,"ch":0,"precip":0.1,"code":51,"at":22.1,"hs2":1.54,"per2":6.35,"sd2":191}],"models":{"2026-08-11|11":[["AIFS",0.384],["BOM",0.71],["ECMWF",0.27],["GFS",0.42],["MARC",0.372],["MFWAM",0.66]],"2026-08-11|17":[["AIFS",0.398],["BOM",0.68],["ECMWF",0.233],["GFS",0.38],["MARC",0.388],["MFWAM",0.61]],"2026-08-11|8":[["BOM",0.72],["GFS",0.44],["MARC",0.38],["MFWAM",0.69]],"2026-08-11|14":[["BOM",0.7],["GFS",0.4],["MARC",0.406],["MFWAM",0.64]],"2026-08-11|6":[["LOTUS",0.442]],"2026-08-11|9":[["LOTUS",0.407]],"2026-08-11|12":[["LOTUS",0.406]],"2026-08-11|15":[["LOTUS",0.399]],"2026-08-12|11":[["AIFS",0.385],["BOM",0.51],["ECMWF",0.142],["GFS",0.24],["MARC",0.27],["MFWAM",0.38]],"2026-08-12|17":[["AIFS",0.37],["BOM",0.53],["ECMWF",0.166],["GFS",0.26],["MARC",0.306],["MFWAM",0.34]],"2026-08-12|8":[["BOM",0.55],["GFS",0.28],["MARC",0.28],["MFWAM",0.42]],"2026-08-12|14":[["BOM",0.48],["GFS",0.24],["MARC",0.286],["MFWAM",0.35]],"2026-08-12|6":[["LOTUS",0.326]],"2026-08-12|9":[["LOTUS",0.304]],"2026-08-12|12":[["LOTUS",0.284]],"2026-08-12|15":[["LOTUS",0.281]],"2026-08-13|11":[["AIFS",0.433],["BOM",0.71],["ECMWF",0.276],["GFS",0.58]],"2026-08-13|17":[["AIFS",0.483],["BOM",0.77],["ECMWF",0.336],["GFS",0.74]],"2026-08-13|8":[["BOM",0.68],["GFS",0.46]],"2026-08-13|14":[["BOM",0.74],["GFS",0.72]]},"daily":{"2026-08-11":{"tmax":23.4,"tmin":16},"2026-08-12":{"tmax":23.7,"tmin":16.6},"2026-08-13":{"tmax":23.6,"tmin":17.3},"2026-08-14":{"tmax":21.5,"tmin":17.5},"2026-08-15":{"tmax":22.3,"tmin":16.1},"2026-08-16":{"tmax":22.1,"tmin":14.5}},"tide":{"2026-08-11":[{"h":0.8333333333333334,"type":"basse","height":0.69},{"h":6.283333333333333,"type":"haute","height":1.19},{"h":12.683333333333334,"type":"basse","height":0.23},{"h":19.466666666666665,"type":"haute","height":1.55}],"2026-08-12":[{"h":1.7,"type":"basse","height":0.6},{"h":7.25,"type":"haute","height":1.26},{"h":13.516666666666667,"type":"basse","height":0.18},{"h":20.2,"type":"haute","height":1.62}],"2026-08-13":[{"h":2.433333333333333,"type":"basse","height":0.52},{"h":8.066666666666666,"type":"haute","height":1.33},{"h":14.266666666666667,"type":"basse","height":0.16},{"h":20.866666666666667,"type":"haute","height":1.64}],"2026-08-14":[{"h":3.0833333333333335,"type":"basse","height":0.46},{"h":8.8,"type":"haute","height":1.38},{"h":14.95,"type":"basse","height":0.18},{"h":21.466666666666665,"type":"haute","height":1.64}],"2026-08-15":[{"h":3.683333333333333,"type":"basse","height":0.42},{"h":9.5,"type":"haute","height":1.39},{"h":15.6,"type":"basse","height":0.25},{"h":22.016666666666666,"type":"haute","height":1.6}],"2026-08-16":[{"h":4.25,"type":"basse","height":0.39},{"h":10.166666666666666,"type":"haute","height":1.39},{"h":16.233333333333334,"type":"basse","height":0.34},{"h":22.533333333333335,"type":"haute","height":1.53}]}},{"name":"Ilot Ténia","short":"Ilot Ténia","cal":true,"params":{"minHs":0.8,"maxHs":4,"minPeriod":12,"minPwr":5.8,"swellDirIdeal":197,"windDirIdeal":296,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":11,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-10","n":46,"nGood":17,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt","swellDirIdeal","windDirIdeal"]}},"slots":[{"d":"2026-08-11","h":8,"hs":0.8,"t":14,"sd":205,"ws":4,"wd":285,"cl":0,"cm":0,"ch":100,"precip":0,"code":3,"at":19.3,"hs2":0.3,"per2":9.5,"sd2":140},{"d":"2026-08-11","h":11,"hs":0.8,"t":14,"sd":205,"ws":4,"wd":285,"cl":0,"cm":0,"ch":52,"precip":0,"code":2,"at":23.4,"hs2":0.28,"per2":9.65,"sd2":138},{"d":"2026-08-11","h":14,"hs":0.8,"t":14,"sd":205,"ws":6,"wd":200,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":23.8,"hs2":0.3,"per2":10.15,"sd2":138},{"d":"2026-08-11","h":17,"hs":0.8,"t":14,"sd":205,"ws":6,"wd":200,"cl":0,"cm":0,"ch":64,"precip":0,"code":2,"at":22.1,"hs2":0.26,"per2":10.1,"sd2":138},{"d":"2026-08-12","h":8,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":300,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.1,"hs2":0.18,"per2":18.5,"sd2":198},{"d":"2026-08-12","h":11,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":300,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":23.8,"hs2":0.2,"per2":17.85,"sd2":199},{"d":"2026-08-12","h":17,"hs":0.4,"t":12,"sd":205,"ws":2,"wd":200,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":22,"hs2":0.26,"per2":16.65,"sd2":199},{"d":"2026-08-13","h":11,"hs":0.6,"t":12,"sd":205,"ws":4,"wd":250,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":23.5,"hs2":0.36,"per2":15,"sd2":198},{"d":"2026-08-13","h":17,"hs":1,"t":12,"sd":205,"ws":10,"wd":200,"cl":43,"cm":0,"ch":5,"precip":0.4,"code":51,"at":21.8,"hs2":0.3,"per2":9.55,"sd2":141},{"d":"2026-08-14","h":11,"hs":1.1,"t":9,"sd":220,"ws":14,"wd":180,"cl":48,"cm":0,"ch":100,"precip":0,"code":3,"at":21,"hs2":0.48,"per2":15.15,"sd2":198},{"d":"2026-08-14","h":17,"hs":1.4,"t":7,"sd":215,"ws":13,"wd":175,"cl":87,"cm":0,"ch":5,"precip":0,"code":3,"at":20.3,"hs2":0.58,"per2":14.35,"sd2":198},{"d":"2026-08-15","h":11,"hs":1.6,"t":8,"sd":205,"ws":14,"wd":160,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":22.6,"hs2":0.74,"per2":14.05,"sd2":199},{"d":"2026-08-15","h":17,"hs":1.5,"t":10,"sd":205,"ws":14,"wd":150,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.2,"hs2":0.94,"per2":13.9,"sd2":201},{"d":"2026-08-16","h":11,"hs":1.6,"t":11,"sd":200,"ws":16,"wd":135,"cl":33,"cm":0,"ch":0,"precip":0,"code":1,"at":22.8,"hs2":1.46,"per2":6.5,"sd2":192}],"models":{"2026-08-11|11":[["AIFS",0.404],["BOM",0.66],["ECMWF",0.27],["GFS",0.42],["MARC",0.322],["MFWAM",0.64]],"2026-08-11|17":[["AIFS",0.414],["BOM",0.62],["ECMWF",0.232],["GFS",0.38],["MARC",0.27],["MFWAM",0.58]],"2026-08-11|8":[["BOM",0.68],["GFS",0.44],["MARC",0.38],["MFWAM",0.66]],"2026-08-11|14":[["BOM",0.65],["GFS",0.42],["MARC",0.322],["MFWAM",0.61]],"2026-08-11|6":[["GFS",0.44],["LOTUS",0.434]],"2026-08-11|7":[["GFS",0.42]],"2026-08-11|9":[["GFS",0.44],["LOTUS",0.441]],"2026-08-11|10":[["GFS",0.42]],"2026-08-11|12":[["GFS",0.42],["LOTUS",0.43]],"2026-08-11|13":[["GFS",0.42]],"2026-08-11|15":[["GFS",0.4],["LOTUS",0.417]],"2026-08-11|16":[["GFS",0.4]],"2026-08-12|11":[["AIFS",0.391],["BOM",0.49],["ECMWF",0.141],["GFS",0.26],["MARC",0.238],["MFWAM",0.37]],"2026-08-12|17":[["AIFS",0.366],["BOM",0.42],["ECMWF",0.16],["GFS",0.28],["MARC",0.274],["MFWAM",0.32]],"2026-08-12|8":[["BOM",0.5],["GFS",0.28],["MARC",0.248],["MFWAM",0.4]],"2026-08-12|14":[["BOM",0.46],["GFS",0.24],["MARC",0.256],["MFWAM",0.33]],"2026-08-12|6":[["GFS",0.3],["LOTUS",0.343]],"2026-08-12|7":[["GFS",0.28]],"2026-08-12|9":[["GFS",0.26],["LOTUS",0.327]],"2026-08-12|10":[["GFS",0.26]],"2026-08-12|12":[["GFS",0.24],["LOTUS",0.308]],"2026-08-12|13":[["GFS",0.24]],"2026-08-12|15":[["GFS",0.24],["LOTUS",0.302]],"2026-08-12|16":[["GFS",0.26]],"2026-08-13|11":[["AIFS",0.447],["BOM",0.64],["ECMWF",0.29],["GFS",0.5],["MARC",0.638],["MFWAM",0.47]],"2026-08-13|17":[["AIFS",0.507],["BOM",0.7],["ECMWF",0.352],["GFS",0.58],["MARC",0.802],["MFWAM",0.78]],"2026-08-13|8":[["BOM",0.62],["GFS",0.4],["MARC",0.532],["MFWAM",0.4]],"2026-08-13|14":[["BOM",0.67],["GFS",0.62],["MARC",0.634],["MFWAM",0.56]],"2026-08-13|6":[["GFS",0.36],["LOTUS",0.375]],"2026-08-13|7":[["GFS",0.38]],"2026-08-13|9":[["GFS",0.42],["LOTUS",0.453]],"2026-08-13|10":[["GFS",0.46]],"2026-08-13|12":[["GFS",0.52],["LOTUS",0.638]],"2026-08-13|13":[["GFS",0.56]],"2026-08-13|15":[["GFS",0.66],["LOTUS",0.721]],"2026-08-13|16":[["GFS",0.64]],"2026-08-14|11":[["AIFS",0.586],["BOM",0.81]],"2026-08-14|17":[["AIFS",0.602],["BOM",0.84]],"2026-08-14|8":[["BOM",0.66]],"2026-08-14|14":[["BOM",0.71]]},"daily":{"2026-08-11":{"tmax":24.4,"tmin":16.9},"2026-08-12":{"tmax":24,"tmin":17.5},"2026-08-13":{"tmax":23.9,"tmin":17.9},"2026-08-14":{"tmax":21.4,"tmin":18.7},"2026-08-15":{"tmax":22.7,"tmin":17.1},"2026-08-16":{"tmax":22.8,"tmin":15.1}},"tide":{"2026-08-11":[{"h":0.8333333333333334,"type":"basse","height":0.69},{"h":6.283333333333333,"type":"haute","height":1.19},{"h":12.683333333333334,"type":"basse","height":0.23},{"h":19.466666666666665,"type":"haute","height":1.55}],"2026-08-12":[{"h":1.7,"type":"basse","height":0.6},{"h":7.25,"type":"haute","height":1.26},{"h":13.516666666666667,"type":"basse","height":0.18},{"h":20.2,"type":"haute","height":1.62}],"2026-08-13":[{"h":2.433333333333333,"type":"basse","height":0.52},{"h":8.066666666666666,"type":"haute","height":1.33},{"h":14.266666666666667,"type":"basse","height":0.16},{"h":20.866666666666667,"type":"haute","height":1.64}],"2026-08-14":[{"h":3.0833333333333335,"type":"basse","height":0.46},{"h":8.8,"type":"haute","height":1.38},{"h":14.95,"type":"basse","height":0.18},{"h":21.466666666666665,"type":"haute","height":1.64}],"2026-08-15":[{"h":3.683333333333333,"type":"basse","height":0.42},{"h":9.5,"type":"haute","height":1.39},{"h":15.6,"type":"basse","height":0.25},{"h":22.016666666666666,"type":"haute","height":1.6}],"2026-08-16":[{"h":4.25,"type":"basse","height":0.39},{"h":10.166666666666666,"type":"haute","height":1.39},{"h":16.233333333333334,"type":"basse","height":0.34},{"h":22.533333333333335,"type":"haute","height":1.53}]}},{"name":"Passe de Boulari","short":"Boulari","cal":false,"params":null,"slots":[{"d":"2026-08-11","h":8,"hs":0.7,"t":10,"sd":175,"ws":8,"wd":315,"cl":0,"cm":0,"ch":51,"precip":0,"code":2,"at":19.7,"hs2":0.26,"per2":9.25,"sd2":141},{"d":"2026-08-11","h":11,"hs":0.7,"t":10,"sd":175,"ws":8,"wd":315,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":19.9,"hs2":0.24,"per2":9.35,"sd2":142},{"d":"2026-08-11","h":14,"hs":0.6,"t":10,"sd":175,"ws":6,"wd":225,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":20.9,"hs2":0.26,"per2":9.65,"sd2":139},{"d":"2026-08-11","h":17,"hs":0.6,"t":10,"sd":175,"ws":6,"wd":225,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":21.2,"hs2":0.22,"per2":9.25,"sd2":139},{"d":"2026-08-12","h":8,"hs":0.5,"t":10,"sd":160,"ws":4,"wd":0,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.1,"hs2":0.18,"per2":18,"sd2":203},{"d":"2026-08-12","h":11,"hs":0.5,"t":10,"sd":160,"ws":4,"wd":0,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":20.3,"hs2":0.2,"per2":17.7,"sd2":202},{"d":"2026-08-12","h":17,"hs":0.5,"t":11,"sd":170,"ws":4,"wd":0,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.4,"hs2":0.26,"per2":16.35,"sd2":202},{"d":"2026-08-13","h":11,"hs":0.7,"t":11,"sd":205,"ws":6,"wd":295,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":21.1,"hs2":0.34,"per2":15.1,"sd2":201},{"d":"2026-08-13","h":17,"hs":0.7,"t":10,"sd":185,"ws":12,"wd":205,"cl":17,"cm":0,"ch":0,"precip":0,"code":0,"at":21.1,"hs2":0.26,"per2":10,"sd2":141},{"d":"2026-08-14","h":11,"hs":0.8,"t":10,"sd":205,"ws":15,"wd":195,"cl":0,"cm":0,"ch":100,"precip":0,"code":3,"at":20,"hs2":0.48,"per2":15.15,"sd2":202},{"d":"2026-08-14","h":17,"hs":1.5,"t":8,"sd":215,"ws":15,"wd":195,"cl":71,"cm":0,"ch":5,"precip":0,"code":2,"at":20.2,"hs2":0.58,"per2":14.35,"sd2":202},{"d":"2026-08-15","h":11,"hs":1.7,"t":8,"sd":205,"ws":12,"wd":165,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.2,"hs2":0.72,"per2":14.1,"sd2":202},{"d":"2026-08-15","h":17,"hs":1.4,"t":11,"sd":205,"ws":14,"wd":165,"cl":33,"cm":0,"ch":0,"precip":0,"code":1,"at":20.1,"hs2":0.88,"per2":14.15,"sd2":203},{"d":"2026-08-16","h":11,"hs":1.5,"t":12,"sd":205,"ws":16,"wd":140,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.2,"hs2":1.42,"per2":9.1,"sd2":194}],"models":{"2026-08-11|11":[["AIFS",0.382],["BOM",0.73],["ECMWF",0.287],["GFS",0.5],["MARC",0.372],["MFWAM",0.67]],"2026-08-11|17":[["AIFS",0.39],["BOM",0.69],["ECMWF",0.247],["GFS",0.46],["MARC",0.39],["MFWAM",0.62]],"2026-08-11|8":[["BOM",0.74],["GFS",0.52],["MARC",0.39],["MFWAM",0.69]],"2026-08-11|14":[["BOM",0.72],["GFS",0.48],["MARC",0.418],["MFWAM",0.64]],"2026-08-11|6":[["GFS",0.54]],"2026-08-11|7":[["GFS",0.52]],"2026-08-11|9":[["GFS",0.52]],"2026-08-11|10":[["GFS",0.52]],"2026-08-11|12":[["GFS",0.5]],"2026-08-11|13":[["GFS",0.48]],"2026-08-11|15":[["GFS",0.48]],"2026-08-11|16":[["GFS",0.48]],"2026-08-12|11":[["AIFS",0.363],["BOM",0.61],["ECMWF",0.163],["GFS",0.32],["MARC",0.276],["MFWAM",0.39]],"2026-08-12|17":[["AIFS",0.353],["BOM",0.66],["ECMWF",0.179],["GFS",0.32],["MARC",0.312],["MFWAM",0.35]],"2026-08-12|8":[["BOM",0.53],["GFS",0.32],["MARC",0.288],["MFWAM",0.42]],"2026-08-12|14":[["BOM",0.59],["GFS",0.3],["MARC",0.292],["MFWAM",0.36]],"2026-08-12|6":[["GFS",0.34]],"2026-08-12|7":[["GFS",0.34]],"2026-08-12|9":[["GFS",0.32]],"2026-08-12|10":[["GFS",0.32]],"2026-08-12|12":[["GFS",0.3]],"2026-08-12|13":[["GFS",0.3]],"2026-08-12|15":[["GFS",0.3]],"2026-08-12|16":[["GFS",0.32]],"2026-08-13|11":[["AIFS",0.407],["BOM",0.73],["ECMWF",0.31],["GFS",0.62],["MARC",0.768],["MFWAM",0.56]],"2026-08-13|17":[["AIFS",0.458],["BOM",0.79],["ECMWF",0.373],["GFS",0.8],["MARC",0.99],["MFWAM",0.9]],"2026-08-13|8":[["BOM",0.7],["GFS",0.48],["MARC",0.524],["MFWAM",0.46]],"2026-08-13|14":[["BOM",0.76],["GFS",0.76],["MARC",0.892],["MFWAM",0.75]],"2026-08-13|6":[["GFS",0.44]],"2026-08-13|7":[["GFS",0.46]],"2026-08-13|9":[["GFS",0.52]],"2026-08-13|10":[["GFS",0.58]],"2026-08-13|12":[["GFS",0.66]],"2026-08-13|13":[["GFS",0.72]],"2026-08-13|15":[["GFS",0.8]],"2026-08-13|16":[["GFS",0.68]],"2026-08-14|11":[["AIFS",0.527],["BOM",0.98],["ECMWF",0.359],["GFS",0.48],["MARC",1.546],["MFWAM",0.83]],"2026-08-14|17":[["AIFS",0.531],["BOM",1.56],["ECMWF",0.367],["GFS",2.14],["MARC",0.682],["MFWAM",0.57]],"2026-08-14|8":[["BOM",0.79],["GFS",0.48],["MARC",0.942],["MFWAM",0.83]],"2026-08-14|14":[["BOM",1.47],["GFS",2.04],["MARC",0.642],["MFWAM",0.53]],"2026-08-14|6":[["GFS",1.14]],"2026-08-14|7":[["GFS",0.46]],"2026-08-14|9":[["GFS",0.46]],"2026-08-14|10":[["GFS",0.48]],"2026-08-14|12":[["GFS",0.48]],"2026-08-14|13":[["GFS",0.52]],"2026-08-14|15":[["GFS",2.08]],"2026-08-14|16":[["GFS",2.12]],"2026-08-15|11":[["AIFS",0.533],["BOM",2.82],["ECMWF",0.514],["GFS",1.78],["MARC",1.87],["MFWAM",0.71]],"2026-08-15|17":[["AIFS",0.551],["ECMWF",0.578],["GFS",1.8],["MARC",1.864],["MFWAM",0.87]],"2026-08-15|8":[["BOM",2.67],["GFS",1.84],["MARC",1.876],["MFWAM",0.67]],"2026-08-15|6":[["GFS",1.86]],"2026-08-15|7":[["GFS",1.86]],"2026-08-15|9":[["GFS",1.82]],"2026-08-15|10":[["GFS",1.8]],"2026-08-15|12":[["GFS",1.78]],"2026-08-15|13":[["GFS",1.8]],"2026-08-15|14":[["GFS",1.8],["MARC",1.852],["MFWAM",0.77]],"2026-08-15|15":[["GFS",1.8]],"2026-08-15|16":[["GFS",1.8]],"2026-08-16|6":[["GFS",1.6]],"2026-08-16|7":[["GFS",1.58]],"2026-08-16|8":[["GFS",1.54],["MFWAM",1.39]],"2026-08-16|9":[["GFS",1.6]],"2026-08-16|10":[["GFS",1.64]],"2026-08-16|11":[["GFS",1.7],["MFWAM",1.55]],"2026-08-16|12":[["GFS",1.74]],"2026-08-16|13":[["GFS",1.76]],"2026-08-16|14":[["GFS",1.8],["MFWAM",1.51]],"2026-08-16|15":[["GFS",1.82]],"2026-08-16|16":[["GFS",1.82]],"2026-08-16|17":[["GFS",1.84],["MFWAM",1.52]]},"daily":{"2026-08-11":{"tmax":21.2,"tmin":19.4},"2026-08-12":{"tmax":21.4,"tmin":20.1},"2026-08-13":{"tmax":21.3,"tmin":20.6},"2026-08-14":{"tmax":21,"tmin":19.8},"2026-08-15":{"tmax":20.5,"tmin":20.1},"2026-08-16":{"tmax":20.4,"tmin":19.9}},"tide":{"2026-08-11":[{"h":0.8333333333333334,"type":"basse","height":0.69},{"h":6.283333333333333,"type":"haute","height":1.19},{"h":12.683333333333334,"type":"basse","height":0.23},{"h":19.466666666666665,"type":"haute","height":1.55}],"2026-08-12":[{"h":1.7,"type":"basse","height":0.6},{"h":7.25,"type":"haute","height":1.26},{"h":13.516666666666667,"type":"basse","height":0.18},{"h":20.2,"type":"haute","height":1.62}],"2026-08-13":[{"h":2.433333333333333,"type":"basse","height":0.52},{"h":8.066666666666666,"type":"haute","height":1.33},{"h":14.266666666666667,"type":"basse","height":0.16},{"h":20.866666666666667,"type":"haute","height":1.64}],"2026-08-14":[{"h":3.0833333333333335,"type":"basse","height":0.46},{"h":8.8,"type":"haute","height":1.38},{"h":14.95,"type":"basse","height":0.18},{"h":21.466666666666665,"type":"haute","height":1.64}],"2026-08-15":[{"h":3.683333333333333,"type":"basse","height":0.42},{"h":9.5,"type":"haute","height":1.39},{"h":15.6,"type":"basse","height":0.25},{"h":22.016666666666666,"type":"haute","height":1.6}],"2026-08-16":[{"h":4.25,"type":"basse","height":0.39},{"h":10.166666666666666,"type":"haute","height":1.39},{"h":16.233333333333334,"type":"basse","height":0.34},{"h":22.533333333333335,"type":"haute","height":1.53}]}},{"name":"Passe de Ouano","short":"Ouano","cal":false,"params":null,"slots":[{"d":"2026-08-11","h":8,"hs":0.8,"t":14,"sd":205,"ws":4,"wd":285,"cl":0,"cm":0,"ch":100,"precip":0,"code":3,"at":20.1,"hs2":0.34,"per2":10.65,"sd2":159},{"d":"2026-08-11","h":11,"hs":0.8,"t":14,"sd":205,"ws":4,"wd":285,"cl":0,"cm":0,"ch":44,"precip":0,"code":1,"at":20.3,"hs2":0.42,"per2":10,"sd2":204},{"d":"2026-08-11","h":14,"hs":0.8,"t":14,"sd":205,"ws":6,"wd":200,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.4,"hs2":0.26,"per2":10.55,"sd2":140},{"d":"2026-08-11","h":17,"hs":0.8,"t":14,"sd":205,"ws":6,"wd":200,"cl":0,"cm":0,"ch":67,"precip":0,"code":2,"at":21.6,"hs2":0.3,"per2":9.4,"sd2":140},{"d":"2026-08-12","h":8,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":300,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":20.7,"hs2":0.16,"per2":18.6,"sd2":198},{"d":"2026-08-12","h":11,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":300,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":20.9,"hs2":0.2,"per2":17.9,"sd2":199},{"d":"2026-08-12","h":17,"hs":0.4,"t":12,"sd":205,"ws":2,"wd":200,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.8,"hs2":0.22,"per2":16.65,"sd2":198},{"d":"2026-08-13","h":11,"hs":0.6,"t":12,"sd":205,"ws":4,"wd":250,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.1,"hs2":0.32,"per2":14.4,"sd2":198},{"d":"2026-08-13","h":17,"hs":1,"t":12,"sd":205,"ws":10,"wd":200,"cl":85,"cm":0,"ch":0,"precip":0.2,"code":51,"at":21.4,"hs2":0.32,"per2":8.7,"sd2":142},{"d":"2026-08-14","h":11,"hs":1.4,"t":9,"sd":220,"ws":15,"wd":180,"cl":0,"cm":0,"ch":100,"precip":0,"code":3,"at":20.1,"hs2":0.46,"per2":15.2,"sd2":198},{"d":"2026-08-14","h":17,"hs":1.4,"t":7,"sd":210,"ws":14,"wd":175,"cl":100,"cm":0,"ch":0,"precip":0,"code":3,"at":20.6,"hs2":0.54,"per2":14.45,"sd2":197},{"d":"2026-08-15","h":11,"hs":1.6,"t":8,"sd":205,"ws":14,"wd":160,"cl":2,"cm":0,"ch":0,"precip":0.1,"code":51,"at":20.3,"hs2":0.72,"per2":14,"sd2":198},{"d":"2026-08-15","h":17,"hs":2,"t":10,"sd":205,"ws":14,"wd":150,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.4,"hs2":0.9,"per2":13.85,"sd2":200},{"d":"2026-08-16","h":11,"hs":2.2,"t":11,"sd":200,"ws":16,"wd":135,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.6,"hs2":1.44,"per2":12.05,"sd2":200}],"models":{"2026-08-11|11":[["AIFS",0.454],["BOM",0.77],["ECMWF",0.372],["GFS",0.46],["MARC",0.338],["MFWAM",0.53]],"2026-08-11|17":[["AIFS",0.465],["BOM",0.72],["ECMWF",0.331],["GFS",0.5],["MARC",0.292],["MFWAM",0.57]],"2026-08-11|8":[["BOM",0.8],["GFS",0.48],["MARC",0.406],["MFWAM",0.58]],"2026-08-11|14":[["BOM",0.75],["GFS",0.48],["MARC",0.34],["MFWAM",0.59]],"2026-08-11|6":[["GFS",0.5]],"2026-08-11|7":[["GFS",0.5]],"2026-08-11|9":[["GFS",0.48]],"2026-08-11|10":[["GFS",0.48]],"2026-08-11|12":[["GFS",0.46]],"2026-08-11|13":[["GFS",0.46]],"2026-08-11|15":[["GFS",0.44]],"2026-08-11|16":[["GFS",0.42]],"2026-08-12|11":[["AIFS",0.431],["BOM",0.55],["ECMWF",0.214],["GFS",0.3],["MARC",0.258],["MFWAM",0.36]],"2026-08-12|17":[["AIFS",0.406],["BOM",0.67],["ECMWF",0.231],["GFS",0.28],["MARC",0.292],["MFWAM",0.32]],"2026-08-12|8":[["BOM",0.57],["GFS",0.32],["MARC",0.268],["MFWAM",0.39]],"2026-08-12|14":[["BOM",0.66],["GFS",0.28],["MARC",0.274],["MFWAM",0.33]],"2026-08-12|6":[["GFS",0.32]],"2026-08-12|7":[["GFS",0.32]],"2026-08-12|9":[["GFS",0.3]],"2026-08-12|10":[["GFS",0.3]],"2026-08-12|12":[["GFS",0.28]],"2026-08-12|13":[["GFS",0.28]],"2026-08-12|15":[["GFS",0.28]],"2026-08-12|16":[["GFS",0.28]],"2026-08-13|11":[["AIFS",0.479],["BOM",0.73],["ECMWF",0.396],["GFS",0.52],["MARC",0.694],["MFWAM",0.49]],"2026-08-13|17":[["AIFS",0.548],["BOM",0.76],["ECMWF",0.447],["GFS",0.56],["MARC",0.682],["MFWAM",0.8]],"2026-08-13|8":[["BOM",0.72],["GFS",0.4],["MARC",0.476],["MFWAM",0.41]],"2026-08-13|14":[["BOM",0.76],["GFS",0.64],["MARC",0.802],["MFWAM",0.59]],"2026-08-13|6":[["GFS",0.36]],"2026-08-13|7":[["GFS",0.38]],"2026-08-13|9":[["GFS",0.42]],"2026-08-13|10":[["GFS",0.46]],"2026-08-13|12":[["GFS",0.52]],"2026-08-13|13":[["GFS",0.54]],"2026-08-13|15":[["GFS",0.66]],"2026-08-13|16":[["GFS",0.56]],"2026-08-14|11":[["AIFS",0.625],["BOM",0.89],["ECMWF",0.446],["GFS",0.88],["MARC",0.842],["MFWAM",0.43]],"2026-08-14|17":[["AIFS",0.651],["BOM",1.46],["ECMWF",0.493],["GFS",2.04],["MARC",0.624],["MFWAM",0.48]],"2026-08-14|8":[["BOM",0.76],["GFS",0.88],["MARC",0.972],["MFWAM",0.71]],"2026-08-14|14":[["BOM",0.85],["GFS",1.92],["MARC",0.908],["MFWAM",0.49]],"2026-08-14|6":[["GFS",0.4]],"2026-08-14|7":[["GFS",0.92]],"2026-08-14|9":[["GFS",0.86]],"2026-08-14|10":[["GFS",0.84]],"2026-08-14|12":[["GFS",0.44]],"2026-08-14|13":[["GFS",1.84]],"2026-08-14|15":[["GFS",1.98]],"2026-08-14|16":[["GFS",2.02]],"2026-08-15|11":[["AIFS",0.725],["BOM",2.9],["ECMWF",0.786],["GFS",1.68],["MARC",1.844],["MFWAM",0.65]],"2026-08-15|17":[["AIFS",0.721],["ECMWF",0.854],["GFS",1.74],["MARC",1.82],["MFWAM",0.81]],"2026-08-15|8":[["BOM",2.66],["GFS",1.72],["MARC",1.856],["MFWAM",0.61]],"2026-08-15|6":[["GFS",1.76]],"2026-08-15|7":[["GFS",1.74]],"2026-08-15|9":[["GFS",1.7]],"2026-08-15|10":[["GFS",1.7]],"2026-08-15|12":[["GFS",1.68]],"2026-08-15|13":[["GFS",1.66]],"2026-08-15|14":[["GFS",1.66],["MARC",1.818],["MFWAM",0.7]],"2026-08-15|15":[["GFS",1.68]],"2026-08-15|16":[["GFS",1.72]],"2026-08-16|6":[["GFS",1.68]],"2026-08-16|7":[["GFS",1.66]],"2026-08-16|8":[["GFS",1.64],["MFWAM",1.26]],"2026-08-16|9":[["GFS",1.62]],"2026-08-16|10":[["GFS",1.58]],"2026-08-16|11":[["GFS",1.56],["MFWAM",1.31]],"2026-08-16|12":[["GFS",1.56]],"2026-08-16|13":[["GFS",1.58]],"2026-08-16|14":[["GFS",1.58],["MFWAM",1.41]],"2026-08-16|15":[["GFS",1.58]],"2026-08-16|16":[["GFS",1.6]],"2026-08-16|17":[["GFS",1.6],["MFWAM",1.41]]},"daily":{"2026-08-11":{"tmax":21.6,"tmin":20},"2026-08-12":{"tmax":21.8,"tmin":20.7},"2026-08-13":{"tmax":21.7,"tmin":20.9},"2026-08-14":{"tmax":21,"tmin":20.1},"2026-08-15":{"tmax":20.8,"tmin":20.3},"2026-08-16":{"tmax":20.7,"tmin":19.3}},"tide":{"2026-08-11":[{"h":1.0666666666666667,"type":"basse","height":0.61},{"h":6.366666666666666,"type":"haute","height":1.1},{"h":12.716666666666667,"type":"basse","height":0.16},{"h":19.616666666666667,"type":"haute","height":1.46}],"2026-08-12":[{"h":1.8333333333333333,"type":"basse","height":0.53},{"h":7.3,"type":"haute","height":1.17},{"h":13.533333333333333,"type":"basse","height":0.11},{"h":20.3,"type":"haute","height":1.52}],"2026-08-13":[{"h":2.5,"type":"basse","height":0.45},{"h":8.1,"type":"haute","height":1.24},{"h":14.25,"type":"basse","height":0.1},{"h":20.9,"type":"haute","height":1.53}],"2026-08-14":[{"h":3.1,"type":"basse","height":0.39},{"h":8.816666666666666,"type":"haute","height":1.28},{"h":14.916666666666666,"type":"basse","height":0.12},{"h":21.45,"type":"haute","height":1.52}],"2026-08-15":[{"h":3.65,"type":"basse","height":0.34},{"h":9.516666666666667,"type":"haute","height":1.31},{"h":15.566666666666666,"type":"basse","height":0.19},{"h":21.983333333333334,"type":"haute","height":1.48}],"2026-08-16":[{"h":4.2,"type":"basse","height":0.31},{"h":10.2,"type":"haute","height":1.3},{"h":16.183333333333334,"type":"basse","height":0.28},{"h":22.483333333333334,"type":"haute","height":1.41}]}}],"defaults":{"minHs":0.4,"maxHs":4,"minPeriod":8,"minPwr":1,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"}}};</script>
+<script>var WEEK = {"days":["2026-08-12","2026-08-13","2026-08-14","2026-08-15","2026-08-16"],"spots":[{"name":"Passe de Dumbéa","short":"Dumbéa","cal":true,"params":{"minHs":0.6,"maxHs":4,"minPeriod":12,"minPwr":6.5,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":7,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-10","n":21,"nGood":2,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt"]}},"slots":[{"d":"2026-08-12","h":8,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.8},{"d":"2026-08-12","h":11,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":24.1},{"d":"2026-08-12","h":17,"hs":0.4,"t":16,"sd":205,"ws":2,"wd":245,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.8},{"d":"2026-08-13","h":11,"hs":0.8,"t":12,"sd":225,"ws":2,"wd":270,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":23.8},{"d":"2026-08-13","h":17,"hs":1.2,"t":12,"sd":205,"ws":12,"wd":220,"cl":17,"cm":0,"ch":0,"precip":0.1,"code":51,"at":21.6},{"d":"2026-08-14","h":11,"hs":1,"t":9,"sd":220,"ws":14,"wd":190,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":22.2},{"d":"2026-08-14","h":17,"hs":1.4,"t":8,"sd":215,"ws":15,"wd":175,"cl":100,"cm":0,"ch":0,"precip":0.6,"code":53,"at":19.2},{"d":"2026-08-15","h":11,"hs":1.8,"t":8,"sd":205,"ws":14,"wd":155,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":22},{"d":"2026-08-15","h":17,"hs":1.5,"t":10,"sd":205,"ws":14,"wd":160,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":19.8},{"d":"2026-08-16","h":11,"hs":1.6,"t":12,"sd":200,"ws":14,"wd":130,"cl":99,"cm":0,"ch":0,"precip":0,"code":3,"at":21.4}],"models":{"2026-08-12|11":[["AIFS",0.363],["BOM",0.51],["ECMWF",0.14],["GFS",0.26],["MARC",0.268],["MFWAM",0.39]],"2026-08-12|17":[["AIFS",0.351],["BOM",0.53],["ECMWF",0.173],["GFS",0.26],["MARC",0.31],["MFWAM",0.34]],"2026-08-12|8":[["BOM",0.55],["GFS",0.26],["MARC",0.284],["MFWAM",0.42]],"2026-08-12|14":[["BOM",0.48],["GFS",0.24],["MARC",0.286],["MFWAM",0.37]],"2026-08-12|6":[["LOTUS",0.305]],"2026-08-12|9":[["LOTUS",0.276]],"2026-08-12|12":[["LOTUS",0.256]],"2026-08-12|15":[["LOTUS",0.245]],"2026-08-13|11":[["AIFS",0.435],["BOM",0.71],["ECMWF",0.281],["GFS",0.62],["MARC",0.794],["MFWAM",0.53]],"2026-08-13|17":[["AIFS",0.495],["BOM",0.77],["ECMWF",0.349],["GFS",0.76],["MARC",1.012],["MFWAM",0.81]],"2026-08-13|8":[["BOM",0.68],["GFS",0.48],["MARC",0.536],["MFWAM",0.45]],"2026-08-13|14":[["BOM",0.74],["GFS",0.62],["MARC",0.738],["MFWAM",0.71]],"2026-08-13|6":[["LOTUS",0.516]],"2026-08-13|9":[["LOTUS",0.721]],"2026-08-13|12":[["LOTUS",0.82]],"2026-08-13|15":[["LOTUS",0.87]],"2026-08-14|11":[["AIFS",0.565],["BOM",0.73],["ECMWF",0.373],["GFS",1.12],["MARC",1.594],["MFWAM",0.72]],"2026-08-14|17":[["AIFS",0.564],["BOM",0.81],["ECMWF",0.379],["GFS",0.88],["MARC",0.71],["MFWAM",1.48]],"2026-08-14|8":[["BOM",0.83],["GFS",1.16],["MARC",1.028],["MFWAM",0.87]],"2026-08-14|14":[["BOM",0.79],["GFS",0.94],["MARC",0.746],["MFWAM",1.38]],"2026-08-14|6":[["LOTUS",1.168]],"2026-08-14|9":[["LOTUS",1.165]],"2026-08-14|12":[["LOTUS",1.189]],"2026-08-14|15":[["LOTUS",1.388]]},"daily":{"2026-08-12":{"tmax":24.2,"tmin":17},"2026-08-13":{"tmax":23.8,"tmin":17.7},"2026-08-14":{"tmax":22.3,"tmin":16.9},"2026-08-15":{"tmax":22.4,"tmin":16.2},"2026-08-16":{"tmax":22.4,"tmin":14.9}},"tide":{"2026-08-12":[{"h":13.516666666666667,"type":"basse","height":0.18},{"h":20.2,"type":"haute","height":1.62}],"2026-08-13":[{"h":2.433333333333333,"type":"basse","height":0.52},{"h":8.066666666666666,"type":"haute","height":1.33},{"h":14.266666666666667,"type":"basse","height":0.16},{"h":20.866666666666667,"type":"haute","height":1.64}],"2026-08-14":[{"h":3.0833333333333335,"type":"basse","height":0.46},{"h":8.8,"type":"haute","height":1.38},{"h":14.95,"type":"basse","height":0.18},{"h":21.466666666666665,"type":"haute","height":1.64}],"2026-08-15":[{"h":3.683333333333333,"type":"basse","height":0.42},{"h":9.5,"type":"haute","height":1.39},{"h":15.6,"type":"basse","height":0.25},{"h":22.016666666666666,"type":"haute","height":1.6}],"2026-08-16":[{"h":4.25,"type":"basse","height":0.39},{"h":10.166666666666666,"type":"haute","height":1.39},{"h":16.233333333333334,"type":"basse","height":0.34},{"h":22.533333333333335,"type":"haute","height":1.53}]}},{"name":"Ilot Ténia","short":"Ilot Ténia","cal":true,"params":{"minHs":0.8,"maxHs":4,"minPeriod":12,"minPwr":5.8,"swellDirIdeal":197,"windDirIdeal":296,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":11,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"},"_auto":{"date":"2026-08-10","n":46,"nGood":17,"fields":["minPwr","minHs","minPeriod","windCalmKt","windMalusKt","swellDirIdeal","windDirIdeal"]}},"slots":[{"d":"2026-08-12","h":8,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.5},{"d":"2026-08-12","h":11,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":24.3},{"d":"2026-08-12","h":14,"hs":0.4,"t":12,"sd":205,"ws":4,"wd":215,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":23.9},{"d":"2026-08-12","h":17,"hs":0.4,"t":12,"sd":205,"ws":4,"wd":215,"cl":0,"cm":0,"ch":10,"precip":0,"code":0,"at":22.5},{"d":"2026-08-13","h":8,"hs":0.6,"t":12,"sd":205,"ws":2,"wd":275,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":20.8},{"d":"2026-08-13","h":11,"hs":0.6,"t":12,"sd":205,"ws":2,"wd":275,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":23.9},{"d":"2026-08-13","h":17,"hs":0.8,"t":10,"sd":205,"ws":2,"wd":195,"cl":19,"cm":0,"ch":0,"precip":0,"code":0,"at":21.7},{"d":"2026-08-14","h":11,"hs":1,"t":8,"sd":225,"ws":12,"wd":175,"cl":0,"cm":0,"ch":10,"precip":0,"code":0,"at":22.3},{"d":"2026-08-14","h":17,"hs":1.6,"t":8,"sd":205,"ws":14,"wd":160,"cl":48,"cm":0,"ch":0,"precip":0.1,"code":51,"at":20.4},{"d":"2026-08-15","h":11,"hs":1.6,"t":8,"sd":205,"ws":15,"wd":155,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":22.8},{"d":"2026-08-15","h":17,"hs":1.5,"t":10,"sd":205,"ws":15,"wd":150,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.8},{"d":"2026-08-16","h":11,"hs":1.6,"t":11,"sd":200,"ws":12,"wd":140,"cl":71,"cm":0,"ch":2,"precip":0,"code":2,"at":22.9}],"models":{"2026-08-12|11":[["AIFS",0.381],["BOM",0.49],["ECMWF",0.14],["GFS",0.26],["MARC",0.23600000000000002],["MFWAM",0.37]],"2026-08-12|17":[["AIFS",0.358],["BOM",0.42],["ECMWF",0.167],["GFS",0.26],["MARC",0.274],["MFWAM",0.33]],"2026-08-12|8":[["BOM",0.5],["GFS",0.28],["MARC",0.248],["MFWAM",0.4]],"2026-08-12|14":[["BOM",0.46],["GFS",0.26],["MARC",0.256],["MFWAM",0.35]],"2026-08-12|6":[["GFS",0.28],["LOTUS",0.343]],"2026-08-12|7":[["GFS",0.28]],"2026-08-12|9":[["GFS",0.26],["LOTUS",0.327]],"2026-08-12|10":[["GFS",0.26]],"2026-08-12|12":[["GFS",0.24],["LOTUS",0.308]],"2026-08-12|13":[["GFS",0.24]],"2026-08-12|15":[["GFS",0.26],["LOTUS",0.302]],"2026-08-12|16":[["GFS",0.26]],"2026-08-13|11":[["AIFS",0.474],["BOM",0.64],["ECMWF",0.301],["GFS",0.58],["MARC",0.682],["MFWAM",0.48]],"2026-08-13|17":[["AIFS",0.536],["BOM",0.7],["ECMWF",0.367],["GFS",0.6],["MARC",0.876],["MFWAM",0.65]],"2026-08-13|8":[["BOM",0.62],["GFS",0.46],["MARC",0.592],["MFWAM",0.41]],"2026-08-13|14":[["BOM",0.67],["GFS",0.6],["MARC",0.638],["MFWAM",0.58]],"2026-08-13|6":[["GFS",0.36],["LOTUS",0.375]],"2026-08-13|7":[["GFS",0.42]],"2026-08-13|9":[["GFS",0.5],["LOTUS",0.453]],"2026-08-13|10":[["GFS",0.52]],"2026-08-13|12":[["GFS",0.64],["LOTUS",0.638]],"2026-08-13|13":[["GFS",0.68]],"2026-08-13|15":[["GFS",0.64],["LOTUS",0.721]],"2026-08-13|16":[["GFS",0.68]],"2026-08-14|11":[["AIFS",0.626],["BOM",0.81],["ECMWF",0.397],["GFS",1.14],["MARC",1.366],["MFWAM",0.62]],"2026-08-14|17":[["AIFS",0.633],["BOM",0.84],["ECMWF",0.401],["GFS",0.88],["MARC",0.594],["MFWAM",0.55]],"2026-08-14|8":[["BOM",0.66],["GFS",1.16],["MARC",1.244],["MFWAM",0.4]],"2026-08-14|14":[["BOM",0.71],["GFS",1.1],["MARC",1.4040000000000001],["MFWAM",0.48]],"2026-08-14|6":[["GFS",1.16],["LOTUS",1.46]],"2026-08-14|7":[["GFS",1.16]],"2026-08-14|9":[["GFS",1.16],["LOTUS",1.901]],"2026-08-14|10":[["GFS",1.14]],"2026-08-14|12":[["GFS",1.12],["LOTUS",2.133]],"2026-08-14|13":[["GFS",1.1]],"2026-08-14|15":[["GFS",0.92],["LOTUS",2.219]],"2026-08-14|16":[["GFS",0.9]],"2026-08-15|11":[["AIFS",0.717],["BOM",2.39],["ECMWF",0.491],["GFS",1.5],["MARC",1.56],["MFWAM",0.66]],"2026-08-15|17":[["AIFS",0.772],["ECMWF",0.604],["GFS",1.48],["MARC",1.602],["MFWAM",0.68]],"2026-08-15|8":[["BOM",2.22],["GFS",1.54],["MARC",1.544],["MFWAM",0.62]],"2026-08-15|6":[["GFS",1.54],["LOTUS",1.847]],"2026-08-15|7":[["GFS",1.52]],"2026-08-15|9":[["GFS",1.52],["LOTUS",1.881]],"2026-08-15|10":[["GFS",1.52]],"2026-08-15|12":[["GFS",1.5],["LOTUS",1.901]],"2026-08-15|13":[["GFS",1.5]],"2026-08-15|14":[["GFS",0.72],["MARC",1.576],["MFWAM",0.7]],"2026-08-15|15":[["GFS",0.74],["LOTUS",1.923]],"2026-08-15|16":[["GFS",0.78]],"2026-08-16|11":[["AIFS",0.877],["ECMWF",0.623],["GFS",1.4],["MFWAM",1.46]],"2026-08-16|17":[["AIFS",0.823],["ECMWF",0.606],["GFS",1.5],["MFWAM",1.3]],"2026-08-16|6":[["GFS",1.42],["LOTUS",1.939]],"2026-08-16|7":[["GFS",1.42]],"2026-08-16|8":[["GFS",1.42],["MFWAM",1.19]],"2026-08-16|9":[["GFS",1.42],["LOTUS",1.86]],"2026-08-16|10":[["GFS",1.4]],"2026-08-16|12":[["GFS",1.38],["LOTUS",1.798]],"2026-08-16|13":[["GFS",1.34]],"2026-08-16|14":[["GFS",1.32],["MFWAM",1.38]],"2026-08-16|15":[["GFS",1.38],["LOTUS",1.764]],"2026-08-16|16":[["GFS",1.44]]},"daily":{"2026-08-12":{"tmax":24.5,"tmin":17.8},"2026-08-13":{"tmax":23.9,"tmin":18.4},"2026-08-14":{"tmax":22.7,"tmin":17.8},"2026-08-15":{"tmax":23.1,"tmin":16.2},"2026-08-16":{"tmax":23.5,"tmin":15.1}},"tide":{"2026-08-12":[{"h":13.516666666666667,"type":"basse","height":0.18},{"h":20.2,"type":"haute","height":1.62}],"2026-08-13":[{"h":2.433333333333333,"type":"basse","height":0.52},{"h":8.066666666666666,"type":"haute","height":1.33},{"h":14.266666666666667,"type":"basse","height":0.16},{"h":20.866666666666667,"type":"haute","height":1.64}],"2026-08-14":[{"h":3.0833333333333335,"type":"basse","height":0.46},{"h":8.8,"type":"haute","height":1.38},{"h":14.95,"type":"basse","height":0.18},{"h":21.466666666666665,"type":"haute","height":1.64}],"2026-08-15":[{"h":3.683333333333333,"type":"basse","height":0.42},{"h":9.5,"type":"haute","height":1.39},{"h":15.6,"type":"basse","height":0.25},{"h":22.016666666666666,"type":"haute","height":1.6}],"2026-08-16":[{"h":4.25,"type":"basse","height":0.39},{"h":10.166666666666666,"type":"haute","height":1.39},{"h":16.233333333333334,"type":"basse","height":0.34},{"h":22.533333333333335,"type":"haute","height":1.53}]}},{"name":"Passe de Boulari","short":"Boulari","cal":false,"params":null,"slots":[{"d":"2026-08-12","h":8,"hs":0.5,"t":11,"sd":165,"ws":4,"wd":0,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.4},{"d":"2026-08-12","h":11,"hs":0.5,"t":11,"sd":165,"ws":4,"wd":0,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.8},{"d":"2026-08-12","h":14,"hs":0.5,"t":11,"sd":175,"ws":4,"wd":0,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":21.2},{"d":"2026-08-12","h":17,"hs":0.5,"t":11,"sd":175,"ws":4,"wd":0,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":21.6},{"d":"2026-08-13","h":8,"hs":0.7,"t":11,"sd":205,"ws":6,"wd":270,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":20.9},{"d":"2026-08-13","h":11,"hs":0.7,"t":11,"sd":205,"ws":6,"wd":270,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":21.2},{"d":"2026-08-13","h":17,"hs":0.7,"t":10,"sd":190,"ws":12,"wd":225,"cl":11,"cm":0,"ch":0,"precip":0.1,"code":51,"at":21.1},{"d":"2026-08-14","h":11,"hs":0.8,"t":10,"sd":205,"ws":16,"wd":205,"cl":0,"cm":0,"ch":40,"precip":0,"code":1,"at":20.5},{"d":"2026-08-14","h":17,"hs":1.2,"t":9,"sd":210,"ws":14,"wd":180,"cl":100,"cm":0,"ch":0,"precip":0,"code":3,"at":20.3},{"d":"2026-08-15","h":11,"hs":1.7,"t":8,"sd":205,"ws":13,"wd":160,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.4},{"d":"2026-08-15","h":17,"hs":1.4,"t":11,"sd":205,"ws":14,"wd":160,"cl":16,"cm":0,"ch":0,"precip":0.2,"code":51,"at":20.1},{"d":"2026-08-16","h":11,"hs":1.5,"t":12,"sd":205,"ws":14,"wd":130,"cl":0,"cm":0,"ch":2,"precip":0,"code":0,"at":20.3}],"models":{"2026-08-12|11":[["AIFS",0.33],["BOM",0.61],["ECMWF",0.162],["GFS",0.3],["MARC",0.274],["MFWAM",0.4]],"2026-08-12|17":[["AIFS",0.322],["BOM",0.66],["ECMWF",0.186],["GFS",0.32],["MARC",0.312],["MFWAM",0.36]],"2026-08-12|8":[["BOM",0.53],["GFS",0.32],["MARC",0.28600000000000003],["MFWAM",0.41]],"2026-08-12|14":[["BOM",0.59],["GFS",0.3],["MARC",0.292],["MFWAM",0.37]],"2026-08-12|6":[["GFS",0.34]],"2026-08-12|7":[["GFS",0.32]],"2026-08-12|9":[["GFS",0.32]],"2026-08-12|10":[["GFS",0.32]],"2026-08-12|12":[["GFS",0.32]],"2026-08-12|13":[["GFS",0.3]],"2026-08-12|15":[["GFS",0.3]],"2026-08-12|16":[["GFS",0.3]],"2026-08-13|11":[["AIFS",0.42],["BOM",0.73],["ECMWF",0.312],["GFS",0.68],["MARC",0.8],["MFWAM",0.56]],"2026-08-13|17":[["AIFS",0.459],["BOM",0.79],["ECMWF",0.384],["GFS",0.88],["MARC",1.016],["MFWAM",0.31]],"2026-08-13|8":[["BOM",0.7],["GFS",0.54],["MARC",0.544],["MFWAM",0.47]],"2026-08-13|14":[["BOM",0.76],["GFS",0.7],["MARC",0.904],["MFWAM",0.35]],"2026-08-13|6":[["GFS",0.44]],"2026-08-13|7":[["GFS",0.5]],"2026-08-13|9":[["GFS",0.6]],"2026-08-13|10":[["GFS",0.64]],"2026-08-13|12":[["GFS",0.74]],"2026-08-13|13":[["GFS",0.9]],"2026-08-13|15":[["GFS",0.72]],"2026-08-13|16":[["GFS",0.74]],"2026-08-14|11":[["AIFS",0.545],["BOM",0.98],["ECMWF",0.401],["GFS",0.48],["MARC",1.6380000000000001],["MFWAM",0.61]],"2026-08-14|17":[["AIFS",0.548],["BOM",1.56],["ECMWF",0.407],["GFS",2.28],["MARC",0.784],["MFWAM",0.56]],"2026-08-14|8":[["BOM",0.79],["GFS",0.46],["MARC",1.536],["MFWAM",0.88]],"2026-08-14|14":[["BOM",1.47],["GFS",2.3],["MARC",0.704],["MFWAM",0.52]],"2026-08-14|6":[["GFS",0.46]],"2026-08-14|7":[["GFS",0.46]],"2026-08-14|9":[["GFS",0.46]],"2026-08-14|10":[["GFS",0.46]],"2026-08-14|12":[["GFS",0.46]],"2026-08-14|13":[["GFS",2.3]],"2026-08-14|15":[["GFS",2.3]],"2026-08-14|16":[["GFS",2.3]],"2026-08-15|11":[["AIFS",0.6],["BOM",2.82],["ECMWF",0.511],["GFS",1.74],["MARC",1.846],["MFWAM",0.69]],"2026-08-15|17":[["AIFS",0.663],["ECMWF",0.616],["GFS",1.76],["MARC",1.942],["MFWAM",1.43]],"2026-08-15|8":[["BOM",2.67],["GFS",1.78],["MARC",1.82],["MFWAM",0.66]],"2026-08-15|6":[["GFS",1.8]],"2026-08-15|7":[["GFS",1.78]],"2026-08-15|9":[["GFS",1.76]],"2026-08-15|10":[["GFS",1.74]],"2026-08-15|12":[["GFS",1.74]],"2026-08-15|13":[["GFS",1.76]],"2026-08-15|14":[["GFS",1.76],["MARC",1.8960000000000001],["MFWAM",0.65]],"2026-08-15|15":[["GFS",1.76]],"2026-08-15|16":[["GFS",1.76]],"2026-08-16|11":[["AIFS",0.724],["ECMWF",0.657],["GFS",1.82],["MFWAM",1.24]],"2026-08-16|17":[["AIFS",0.688],["ECMWF",0.639],["GFS",1.72],["MFWAM",1.32]],"2026-08-16|6":[["GFS",1.82]],"2026-08-16|7":[["GFS",1.82]],"2026-08-16|8":[["GFS",1.82],["MFWAM",1.2]],"2026-08-16|9":[["GFS",1.82]],"2026-08-16|10":[["GFS",1.82]],"2026-08-16|12":[["GFS",1.82]],"2026-08-16|13":[["GFS",1.8]],"2026-08-16|14":[["GFS",1.8],["MFWAM",1.3]],"2026-08-16|15":[["GFS",1.78]],"2026-08-16|16":[["GFS",1.74]]},"daily":{"2026-08-12":{"tmax":21.6,"tmin":20.3},"2026-08-13":{"tmax":21.4,"tmin":20.6},"2026-08-14":{"tmax":20.7,"tmin":20.2},"2026-08-15":{"tmax":20.7,"tmin":20.1},"2026-08-16":{"tmax":20.3,"tmin":20}},"tide":{"2026-08-12":[{"h":13.516666666666667,"type":"basse","height":0.18},{"h":20.2,"type":"haute","height":1.62}],"2026-08-13":[{"h":2.433333333333333,"type":"basse","height":0.52},{"h":8.066666666666666,"type":"haute","height":1.33},{"h":14.266666666666667,"type":"basse","height":0.16},{"h":20.866666666666667,"type":"haute","height":1.64}],"2026-08-14":[{"h":3.0833333333333335,"type":"basse","height":0.46},{"h":8.8,"type":"haute","height":1.38},{"h":14.95,"type":"basse","height":0.18},{"h":21.466666666666665,"type":"haute","height":1.64}],"2026-08-15":[{"h":3.683333333333333,"type":"basse","height":0.42},{"h":9.5,"type":"haute","height":1.39},{"h":15.6,"type":"basse","height":0.25},{"h":22.016666666666666,"type":"haute","height":1.6}],"2026-08-16":[{"h":4.25,"type":"basse","height":0.39},{"h":10.166666666666666,"type":"haute","height":1.39},{"h":16.233333333333334,"type":"basse","height":0.34},{"h":22.533333333333335,"type":"haute","height":1.53}]}},{"name":"Passe de Ouano","short":"Ouano","cal":false,"params":null,"slots":[{"d":"2026-08-12","h":8,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":21},{"d":"2026-08-12","h":11,"hs":0.6,"t":14,"sd":205,"ws":2,"wd":335,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.3},{"d":"2026-08-12","h":14,"hs":0.4,"t":12,"sd":205,"ws":4,"wd":215,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":22.1},{"d":"2026-08-12","h":17,"hs":0.4,"t":12,"sd":205,"ws":4,"wd":215,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":22.1},{"d":"2026-08-13","h":8,"hs":0.6,"t":12,"sd":205,"ws":2,"wd":275,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":21.3},{"d":"2026-08-13","h":11,"hs":0.6,"t":12,"sd":205,"ws":2,"wd":275,"cl":0,"cm":0,"ch":5,"precip":0,"code":0,"at":21.5},{"d":"2026-08-13","h":17,"hs":0.8,"t":10,"sd":205,"ws":2,"wd":195,"cl":0,"cm":0,"ch":0,"precip":0.1,"code":51,"at":21.6},{"d":"2026-08-14","h":11,"hs":1,"t":8,"sd":225,"ws":12,"wd":175,"cl":0,"cm":0,"ch":10,"precip":0,"code":0,"at":20.7},{"d":"2026-08-14","h":17,"hs":1.6,"t":8,"sd":205,"ws":14,"wd":160,"cl":100,"cm":0,"ch":0,"precip":0.3,"code":51,"at":20.5},{"d":"2026-08-15","h":11,"hs":1.6,"t":8,"sd":205,"ws":14,"wd":150,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.6},{"d":"2026-08-15","h":17,"hs":2,"t":10,"sd":205,"ws":14,"wd":150,"cl":0,"cm":0,"ch":0,"precip":0,"code":0,"at":20.8},{"d":"2026-08-16","h":11,"hs":2.2,"t":11,"sd":200,"ws":13,"wd":145,"cl":0,"cm":0,"ch":2,"precip":0,"code":0,"at":20.8}],"models":{"2026-08-12|11":[["AIFS",0.38],["BOM",0.55],["ECMWF",0.205],["GFS",0.3],["MARC",0.26],["MFWAM",0.36]],"2026-08-12|17":[["AIFS",0.359],["BOM",0.67],["ECMWF",0.238],["GFS",0.28],["MARC",0.294],["MFWAM",0.34]],"2026-08-12|8":[["BOM",0.57],["GFS",0.32],["MARC",0.268],["MFWAM",0.39]],"2026-08-12|14":[["BOM",0.66],["GFS",0.28],["MARC",0.274],["MFWAM",0.34]],"2026-08-12|6":[["GFS",0.34]],"2026-08-12|7":[["GFS",0.32]],"2026-08-12|9":[["GFS",0.3]],"2026-08-12|10":[["GFS",0.3]],"2026-08-12|12":[["GFS",0.28]],"2026-08-12|13":[["GFS",0.28]],"2026-08-12|15":[["GFS",0.28]],"2026-08-12|16":[["GFS",0.28]],"2026-08-13|11":[["AIFS",0.468],["BOM",0.73],["ECMWF",0.406],["GFS",0.56],["MARC",0.742],["MFWAM",0.49]],"2026-08-13|17":[["AIFS",0.546],["BOM",0.76],["ECMWF",0.493],["GFS",0.6],["MARC",0.722],["MFWAM",0.69]],"2026-08-13|8":[["BOM",0.72],["GFS",0.44],["MARC",0.642],["MFWAM",0.43]],"2026-08-13|14":[["BOM",0.76],["GFS",0.6],["MARC",0.848],["MFWAM",0.59]],"2026-08-13|6":[["GFS",0.38]],"2026-08-13|7":[["GFS",0.42]],"2026-08-13|9":[["GFS",0.48]],"2026-08-13|10":[["GFS",0.52]],"2026-08-13|12":[["GFS",0.62]],"2026-08-13|13":[["GFS",0.66]],"2026-08-13|15":[["GFS",0.74]],"2026-08-13|16":[["GFS",0.64]],"2026-08-14|11":[["AIFS",0.647],["BOM",0.89],["ECMWF",0.53],["GFS",0.4],["MARC",1.572],["MFWAM",0.45]],"2026-08-14|17":[["AIFS",0.653],["BOM",1.46],["ECMWF",0.543],["GFS",2.14],["MARC",0.596],["MFWAM",0.47]],"2026-08-14|8":[["BOM",0.76],["GFS",1.02],["MARC",0.98],["MFWAM",0.67]],"2026-08-14|14":[["BOM",0.85],["GFS",2.14],["MARC",1.6280000000000001],["MFWAM",0.57]],"2026-08-14|6":[["GFS",0.94]],"2026-08-14|7":[["GFS",0.94]],"2026-08-14|9":[["GFS",0.4]],"2026-08-14|10":[["GFS",0.4]],"2026-08-14|12":[["GFS",2.04]],"2026-08-14|13":[["GFS",2.1]],"2026-08-14|15":[["GFS",2.18]],"2026-08-14|16":[["GFS",2.16]],"2026-08-15|11":[["AIFS",0.73],["BOM",2.9],["ECMWF",0.68],["GFS",1.62],["MARC",1.822],["MFWAM",0.61]],"2026-08-15|17":[["AIFS",0.787],["ECMWF",0.835],["GFS",1.7],["MARC",1.866],["MFWAM",0.82]],"2026-08-15|8":[["BOM",2.66],["GFS",1.64],["MARC",1.808],["MFWAM",0.58]],"2026-08-15|6":[["GFS",1.7]],"2026-08-15|7":[["GFS",1.66]],"2026-08-15|9":[["GFS",1.62]],"2026-08-15|10":[["GFS",1.62]],"2026-08-15|12":[["GFS",1.64]],"2026-08-15|13":[["GFS",1.64]],"2026-08-15|14":[["GFS",1.66],["MARC",1.828],["MFWAM",0.65]],"2026-08-15|15":[["GFS",1.68]],"2026-08-15|16":[["GFS",1.68]],"2026-08-16|11":[["AIFS",0.893],["ECMWF",0.854],["GFS",1.66],["MFWAM",1.18]],"2026-08-16|17":[["AIFS",0.84],["ECMWF",0.832],["GFS",1.48],["MFWAM",1.23]],"2026-08-16|6":[["GFS",1.72]],"2026-08-16|7":[["GFS",1.68]],"2026-08-16|8":[["GFS",1.66],["MFWAM",1.13]],"2026-08-16|9":[["GFS",1.66]],"2026-08-16|10":[["GFS",1.66]],"2026-08-16|12":[["GFS",1.58]],"2026-08-16|13":[["GFS",1.5]],"2026-08-16|14":[["GFS",1.42],["MFWAM",1.19]],"2026-08-16|15":[["GFS",1.44]],"2026-08-16|16":[["GFS",1.46]]},"daily":{"2026-08-12":{"tmax":22.2,"tmin":21},"2026-08-13":{"tmax":21.7,"tmin":21},"2026-08-14":{"tmax":21,"tmin":20.5},"2026-08-15":{"tmax":20.9,"tmin":20.3},"2026-08-16":{"tmax":20.8,"tmin":20.2}},"tide":{"2026-08-12":[{"h":1.8333333333333333,"type":"basse","height":0.53},{"h":7.3,"type":"haute","height":1.17},{"h":13.533333333333333,"type":"basse","height":0.11},{"h":20.3,"type":"haute","height":1.52}],"2026-08-13":[{"h":2.5,"type":"basse","height":0.45},{"h":8.1,"type":"haute","height":1.24},{"h":14.25,"type":"basse","height":0.1},{"h":20.9,"type":"haute","height":1.53}],"2026-08-14":[{"h":3.1,"type":"basse","height":0.39},{"h":8.816666666666666,"type":"haute","height":1.28},{"h":14.916666666666666,"type":"basse","height":0.12},{"h":21.45,"type":"haute","height":1.52}],"2026-08-15":[{"h":3.65,"type":"basse","height":0.34},{"h":9.516666666666667,"type":"haute","height":1.31},{"h":15.566666666666666,"type":"basse","height":0.19},{"h":21.983333333333334,"type":"haute","height":1.48}],"2026-08-16":[{"h":4.2,"type":"basse","height":0.31},{"h":10.2,"type":"haute","height":1.3},{"h":16.183333333333334,"type":"basse","height":0.28},{"h":22.483333333333334,"type":"haute","height":1.41}]}}],"defaults":{"minHs":0.4,"maxHs":4,"minPeriod":8,"minPwr":1,"swellDirIdeal":120,"windDirIdeal":270,"onshoreLimit":45,"offshoreMin":135,"windCalmKt":8,"windMalusKt":12,"gustMalusKt":25,"tidePref":{"state":"any","phase":"any"}},"hourMin":6,"hourMax":17};</script>
 <script>
 
 var J_LONG  = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
@@ -433,217 +367,576 @@ function dayParts(k) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MÉTÉOGRAMME — refait le 10/08/2026 en cartes « décision d'abord », une par
-// jour : score → vent → houle → météo réduite à une icône → créneau conseillé.
-// Remplace un graphe continu ciel+houle sur toute la semaine qui donnait le
-// même poids visuel à tout (nuages illustrés, pluie, rayons de soleil...)
-// alors qu'une seule question compte en 2 secondes : « c'est bon ou pas ? ».
+// MÉTÉOGRAMME — ciel réel par altitude, houle primaire+secondaire, vent, marée
+// réelle. Repris et corrigé d'un prototype (devs/tmp_meteogramme_yadusurf/,
+// données inventées) : ici tout vient de WEEK, jamais généré.
 //
-// Le score est calculé par calcSurfScore() — LE MÊME MOTEUR que la grille
-// « X jours, spot par spot » juste au-dessus (scoreSlot/paramsFor, déjà
-// définis plus bas dans ce fichier, hissés comme toute déclaration "function").
-// Aucune 2ᵉ formule de score n'a été écrite pour ce bloc : deux moteurs de
-// score sur la même page qui pourraient un jour diverger serait pire qu'un
-// bloc qui dépend d'un autre plus bas dans le fichier.
-//
-// Bloc PERMANENT (cf. initMeteogram plus bas), jamais reconstruit par
-// render() — la grille de score se reconstruit à chaque glissement de
-// curseur de calibrage, mais rien ici n'a besoin d'être redessiné pour ça
-// SAUF le score affiché, qui doit justement suivre le mode/les seuils
-// courants : mgRenderCards() est donc appelée par render() en plus de son
-// propre appel initial (mgAttachEvents ne la déclenche que sur changement de
-// spot), contrairement au reste de la page qui reste figé entre deux réglages.
+// Bloc PERMANENT, câblé par initMeteogram() en bas de fichier, JAMAIS depuis
+// render() : la grille de score se reconstruit à chaque glissement de
+// curseur, mais rien de ce que montre le météogramme n'en dépend (ni le ciel,
+// ni la houle, ni la marée). Le reconstruire à chaque tick de curseur
+// perdrait le spot choisi et redessinerait deux canvas pour rien — c'est le
+// piège « gabarits rendus une seule fois » documenté pour previsions.html,
+// ici dans l'autre sens : c'est LUI qui doit rester permanent.
 // ═══════════════════════════════════════════════════════════════════════════
-var MG_SPOT = 0;
+// Dimensions de RÉFÉRENCE (format mobile, ~360-560 px de large) — mgComputeLayout()
+// les fait grandir sur un écran plus large (cf. .mg-bleed en CSS) : sans ça le
+// seul graphe de toute la page qui mérite d'être grand restait coincé à la
+// largeur mobile même sur un moniteur large (signalé le 10/08/2026).
+var MG_DAY_W0 = 104, MG_SKY_H0 = 112, MG_SWELL_H0 = 60, MG_AXIS_H0 = 16;
+var MG_DAY_W = MG_DAY_W0, MG_SCALE = 1;
+var MG_SKY_H = MG_SKY_H0, MG_SWELL_H = MG_SWELL_H0, MG_AXIS_H = MG_AXIS_H0;
+var MG_SCENE_H = MG_SKY_H + MG_SWELL_H + MG_AXIS_H;
+var MG_SPOT = 0, MG_HOVER = -1, MG_DPR = 1;
+var M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
-// Relation vent/houle — MIROIR EXACT du calcul interne de calcSurfScore()
-// (assets/score-core.js, bloc « Effet du vent (onshore/offshore relatif à la
-// houle) ») : même formule, mêmes seuils (onshoreLimit/offshoreMin du spot),
-// pour que le libellé affiché ici corresponde toujours à ce que le score a
-// réellement compté. Ce n'est PAS le calcul windDirIdeal (un réglage de cap
-// secondaire, distinct) : c'est celui qui pèse vraiment sur le score.
-function mgWindRelation(wDir, swDir, params) {
-  if (wDir == null || swDir == null) return null;
-  var angleDiff = Math.abs(((wDir - swDir) + 360) % 360);
-  if (angleDiff > 180) angleDiff = 360 - angleDiff;
-  if (angleDiff < params.onshoreLimit) return 'onshore';
-  if (angleDiff > params.offshoreMin) return 'offshore';
-  return 'travers';
-}
-function mgRelLabel(rel) {
-  return rel === 'offshore' ? 'Offshore' : rel === 'onshore' ? 'Onshore' : rel === 'travers' ? 'Travers' : '—';
-}
-function mgRelCol(rel) {
-  return rel === 'offshore' ? '#3dba8a' : rel === 'onshore' ? '#e05c5c' : '#e0a13f';
-}
-
-// Icône météo — code WMO réel (Open-Meteo), pas une donnée inventée. Un
-// symbole par créneau réel (cf. mgDayCardHtml), pas un dashboard : reste au
-// niveau de lecture le plus bas de la carte (sous score/vent/houle), petite
-// et sans fond, mais assez pour montrer si le ciel change dans la journée.
-function mgWmoIcon(code, cl) {
-  if (code == null) return (cl != null && cl > 55) ? '☁️' : '☀️';
-  if (code >= 95) return '⛈️';
-  if (code >= 80) return '🌦️';
-  if (code >= 61) return '🌧️';
-  if (code >= 51) return '🌦️';
-  if (code >= 45) return '🌫️';
-  if (code >= 1) return '⛅';
-  return '☀️';
+// Recalcule DAY_W/l'échelle depuis la largeur RÉELLEMENT disponible (variable :
+// .mg-bleed s'étire jusqu'à 1180px sur grand écran, cf. CSS). MG_SCALE grandit
+// la largeur des jours plus vite que la hauteur de la scène (x2,3 max contre
+// x1,55) : sur un très grand écran on veut plus de place PAR jour, pas une
+// scène démesurément haute pour le même nombre de créneaux.
+function mgComputeLayout() {
+  var card = document.getElementById('mgCard');
+  var avail = (card && card.clientWidth) || window.innerWidth - 32 || 500;
+  var n = Math.max(1, WEEK.days.length);
+  MG_DAY_W = Math.max(MG_DAY_W0, Math.min(230, Math.floor(avail / n)));
+  MG_SCALE = Math.min(2.3, MG_DAY_W / MG_DAY_W0);
+  var hScale = Math.min(1.55, MG_SCALE);
+  MG_SKY_H = Math.round(MG_SKY_H0 * hScale);
+  MG_SWELL_H = Math.round(MG_SWELL_H0 * hScale);
+  MG_AXIS_H = Math.round(MG_AXIS_H0 * Math.min(1.25, hScale));
+  MG_SCENE_H = MG_SKY_H + MG_SWELL_H + MG_AXIS_H;
 }
 
-// Flèche pleine à encoche, façon référence Yadusurf (cf. AUDIT.md 10/08) —
-// couleur reprise de windCol() du site plutôt que la palette de la référence.
-// SANS attribut width/height (c'était le cas avant) : la taille est purement
-// CSS (.mg-wa), pour pouvoir l'agrandir en media query desktop sans regénérer
-// un SVG différent — le HTML généré est le MÊME pour mobile et bureau, seul
-// le CSS voit la largeur d'écran (cf. AUDIT.md 10/08 soir, retour « refait
-// pour PC »).
-function mgWindArrowSvg(ws, wd) {
+function mgDayParts(k) {
+  var p = k.split('-');
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12));
+  return { d: +p[2], mo: +p[1] - 1, dow: d.getUTCDay() };
+}
+
+// Type de précipitation à partir du code WMO (weather_code, Open-Meteo) —
+// repli sur le mm/h brut si le code manque. meteo.nc ne fournit ni l'un ni
+// l'autre (cf. CLAUDE.md), d'où le passage par Open-Meteo GFS pour tout ce
+// bloc « ciel ».
+function mgPrecipFromCode(code, mm) {
+  if (code == null) return (mm > 0.2) ? 'rain' : 'none';
+  if (code >= 95) return 'storm';
+  if (code >= 80 && code <= 82) return 'shower';
+  if (code >= 61 && code <= 65) return 'rain';
+  if (code >= 51 && code <= 57) return 'drizzle';
+  return (mm > 0.2) ? 'rain' : 'none';
+}
+
+// PRNG déterministe (mulberry32) : sert UNIQUEMENT à disperser les nuages à
+// l'écran de façon reproductible (même seed → même ciel au redessin), jamais
+// à inventer une valeur météo — celles-ci viennent toutes de WEEK.
+function mgRng(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function mgSeed(s) {
+  var h = 2166136261, i;
+  for (i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+function mgHexToRgb(h) { h = h.replace('#', ''); return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)]; }
+function mgLerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+function mgRgba(c, a) { return 'rgba(' + c[0].toFixed(0) + ',' + c[1].toFixed(0) + ',' + c[2].toFixed(0) + ',' + (a == null ? 1 : a) + ')'; }
+function mgNiceMax(v) {
+  var steps = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8], i;
+  for (i = 0; i < steps.length; i++) if (v <= steps[i] * .92) return steps[i];
+  return Math.ceil(v);
+}
+// Graduations RONDES pour l'axe houle — jamais 50%/100% d'un plafond gonflé
+// (cf. le commentaire sur son appel) : toujours des mètres entiers (ou des
+// demis en dessous de 2 m), toujours régulièrement espacées.
+function mgGridSteps(maxV) {
+  if (maxV <= 0.5) return [0.5];
+  if (maxV <= 1) return [0.5, 1];
+  if (maxV <= 1.5) return [0.5, 1, 1.5];
+  var step = maxV > 5 ? 2 : 1, steps = [], v;
+  for (v = step; v <= maxV + 1e-6; v += step) steps.push(v);
+  return steps;
+}
+function mgCatmull(p0, p1, p2, p3, t) {
+  var t2 = t * t, t3 = t2 * t;
+  return {
+    x: .5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+    y: .5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y +4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+  };
+}
+// Flèche pleine — fromDeg = provenance météo, pointe vers fromDeg+180 : MÊME
+// convention que svgArrow()/windArrowIcon() de previsions.html (« deg =
+// provenance météo -> on inverse pour montrer où ça va »), appliquée ici au
+// vent COMME à la houle. Un prototype antérieur avait le bon dessin mais une
+// légende qui prétendait l'inverse pour la houle — corrigé ici en alignant le
+// texte sur cette convention, pas en retournant la flèche.
+function mgArrow(ctx, x, y, fromDeg, size, fill) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate((fromDeg + 180) * Math.PI / 180);
+  ctx.beginPath();
+  ctx.moveTo(0, -size); ctx.lineTo(size * .62, size * .6); ctx.lineTo(0, size * .24); ctx.lineTo(-size * .62, size * .6);
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+  ctx.restore();
+}
+// Contraste hi/lo relevé (signalé "pas assez réaliste/flat" le 10/08/2026) :
+// un blanc plus pur en crête, une ombre plus sombre en base donnent plus de
+// volume au lobe sans changer sa forme ni sa position.
+function mgCloudPuff(ctx, cx, cy, scale, op, tone) {
+  tone = tone || 0;
+  ctx.save(); ctx.globalAlpha = op;
+  var lobes = [[0, -3, 15], [-15, 3, 12], [15, 3, 12], [-6, -7, 10], [7, -8, 11], [0, 6, 14]];
+  ctx.fillStyle = mgRgba(mgLerp([26, 32, 40], [4, 5, 7], tone * .5), .32 + tone * .24);
+  lobes.forEach(function (o) {
+    ctx.beginPath(); ctx.ellipse(cx + o[0] * scale, cy + o[1] * scale + 4.5 * scale, o[2] * scale, o[2] * .82 * scale, 0, 0, 7); ctx.fill();
+  });
+  var hi = mgLerp([255, 255, 255], [186, 192, 200], tone);
+  var lo = mgLerp([196, 208, 218], [46, 51, 60], tone);
+  lobes.forEach(function (o) {
+    var lx = cx + o[0] * scale, ly = cy + o[1] * scale, r = o[2] * scale;
+    var grd = ctx.createRadialGradient(lx - r * .38, ly - r * .42, r * .12, lx, ly, r * 1.25);
+    grd.addColorStop(0, mgRgba(hi)); grd.addColorStop(.65, mgRgba(mgLerp(hi, lo, .5))); grd.addColorStop(1, mgRgba(lo));
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.ellipse(lx, ly, r, r * .8, 0, 0, 7); ctx.fill();
+  });
+  ctx.restore();
+}
+function mgLightning(ctx, x, y, scale, fill) {
+  var pts = [[13, 2], [3, 14], [10, 14], [9, 22], [19, 9], [12, 9]];
+  ctx.save(); ctx.beginPath();
+  pts.forEach(function (p, i) { var px = x + p[0] * scale, py = y + p[1] * scale; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+}
+function mgTempBadge(ctx, x, y, label, rgb) {
+  var r = 9 * MG_SCALE;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = mgRgba(rgb, .92); ctx.fill();
+  ctx.fillStyle = '#08141f'; ctx.font = '800 ' + Math.round(8.5 * MG_SCALE) + 'px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y + .5); ctx.restore();
+}
+// Badge houle rond : flèche (direction) + hauteur au centre, période en légende
+// dessous — remplace l'ancienne étiquette rectangulaire, façon "rond avec
+// direction et période" (référence demandée le 10/08/2026). col = tableau RGB.
+function mgSwellBadge(ctx, cx, cy, r, hTxt, pTxt, fromDeg, col) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7);
+  ctx.fillStyle = 'rgba(6,16,30,.88)'; ctx.fill();
+  ctx.lineWidth = Math.max(1.4, r * .1); ctx.strokeStyle = mgRgba(col); ctx.stroke();
+  if (fromDeg != null) mgArrow(ctx, cx, cy - r * .38, fromDeg, r * .4, mgRgba(col));
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff';
+  ctx.font = '800 ' + Math.max(9, Math.round(r * .58)) + 'px sans-serif';
+  ctx.fillText(hTxt, cx, cy + r * .52);
+  ctx.restore();
+  if (pTxt) {
+    ctx.textAlign = 'center'; ctx.fillStyle = mgRgba(col);
+    ctx.font = '700 ' + Math.max(9, Math.round(r * .34)) + 'px sans-serif';
+    ctx.fillText(pTxt, cx, cy + r + Math.max(11, r * .48));
+  }
+}
+// Badge vent rond — même gabarit SVG que windArrowIcon() (previsions.html,
+// marqueurs de la carte des spots) : viewBox fixe 36×46, seuls width/height
+// changent, donc un seul dessin de référence pour tout le site. propDeg =
+// même convention +180° que mgArrow()/svgArrow().
+// Fanion plein façon Yadusurf (référence fournie le 10/08/2026,
+// https://www.yadusurf.com/METEO-SURF-REPORT/Teahupoo — flèche épaisse à
+// encoche, couleur pleine, chiffre au centre) : remplace le rond+tige+badge
+// séparé d'avant, jugé "moche". Couleur reprise de windCol() (dégradé
+// vert/bleu/orange/rouge déjà utilisé partout ailleurs dans ce fichier —
+// Yadusurf code aussi par force, mais pas avec notre palette) plutôt que le
+// jaune unique de la référence, pour rester cohérent avec le reste du site.
+// Chiffre posé au CENTRE de rotation (12,12), hors du <g> tourné : une
+// position liée à la forme (ex. le "manche" de la flèche) se serait
+// déplacée par rapport à un chiffre fixe selon la direction du vent.
+function mgWindBadgeSvg(ws, wd, size) {
   var col = windCol(ws);
   var propDeg = ((wd || 0) + 180) % 360;
-  return '<svg class="mg-wa" viewBox="0 0 24 24" aria-hidden="true">'
+  var numTxt = ws == null ? '—' : Math.round(ws) + '';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true">'
     + '<g transform="rotate(' + propDeg + ',12,12)">'
     + '<path d="M12,1.5 L20,9.5 L15,9.5 L15,20.5 L12,17 L9,20.5 L9,9.5 L4,9.5 Z" '
     + 'fill="' + col + '" stroke="rgba(0,0,0,.4)" stroke-width="1"/>'
-    + '</g></svg>';
-}
-// Flèche fine (houle, en-tête de carte) — même convention +180°, même
-// principe de taille 100% CSS (.mg-sa) que mgWindArrowSvg.
-function mgSwellArrowSvg(sd) {
-  var propDeg = ((sd || 0) + 180) % 360;
-  return '<svg class="mg-sa" viewBox="0 0 24 24" aria-hidden="true">'
-    + '<g transform="rotate(' + propDeg + ',12,12)">'
-    + '<path d="M12,2 L18,15 L12,12 L6,15 Z" fill="#4fa3c7"/>'
-    + '</g></svg>';
+    + '</g>'
+    + '<text x="12" y="15.5" text-anchor="middle" font-size="9.5" font-weight="800" '
+    + 'font-family="sans-serif" fill="#0a1420">' + numTxt + '</text>'
+    + '</svg>';
 }
 
-// Courbe SIMPLE (hauteur de houle SEULE, jamais mélangée à la marée — cf.
-// légende) en SVG plutôt qu'un canvas : viewBox+preserveAspectRatio="none"
-// s'étire à la largeur CSS de la carte sans le moindre calcul de
-// redimensionnement en JS — une classe de bugs entière (mise en page calculée
-// avant layout, MG_DAY_W/MG_SCALE à resynchroniser partout) disparaît
-// avec le canvas. Échelle Y COMMUNE à toutes les cartes du spot (maxV du
-// spot entier, pas du seul jour) : sinon un jour à 0,3 m et un jour à 2 m
-// auraient l'air « aussi pleins » l'un que l'autre, information perdue.
-// H porté à 64 (était 36) le 10/08/2026 au soir, EN MÊME TEMPS que le
-// height:64px CSS de .mg-dc-spark : preserveAspectRatio="none" étire le
-// viewBox à la boîte CSS sans respecter son ratio interne, donc ne monter
-// que l'un des deux aurait ovalisé les points/aplati le texte. Remplissage
-// ajouté (polygon translucide sous la ligne) pour que la courbe se voie
-// d'un coup d'œil au lieu de se confondre avec le fond. Le viewBox NE PEUT
-// PAS suivre le breakpoint desktop (généré une seule fois côté serveur,
-// avant de savoir sur quel écran la page s'ouvrira) : la hauteur CSS de
-// .mg-dc-spark grandit seule en media query, le viewBox reste fixe — léger
-// étirement non-uniforme accepté (décoratif, sans effet sur la lecture des
-// valeurs) plutôt que réintroduire un calcul de mise en page JS.
-//
-// Chaque point porte maintenant une FLÈCHE (direction de houle du créneau,
-// même convention +180° que les autres flèches du site) à la place du rond
-// neutre d'avant — retour du 10/08 au soir : la courbe ne disait que la
-// taille, jamais la direction — un flux qui tourne dans la semaine (cf.
-// tableau spots×jours plus haut) passait inaperçu ici.
-function mgSparklineSvg(scored, maxV) {
-  var W = 128, H = 64, pad = 6, base = H - pad, n = scored.length;
-  var pts = scored.map(function (c, i) {
-    var x = n > 1 ? pad + i / (n - 1) * (W - 2 * pad) : W / 2;
-    var y = base - Math.max(0, Math.min(1, c.hs / maxV)) * (H - 2 * pad - 10);
-    return { x: x, y: y, c: c };
+function mgEnsureCanvasSize() {
+  mgComputeLayout();
+  var cv = document.getElementById('mgCanvas');
+  var totalW = MG_DAY_W * WEEK.days.length;
+  MG_DPR = Math.min(2, window.devicePixelRatio || 1);
+  cv.style.width = totalW + 'px'; cv.style.height = MG_SCENE_H + 'px';
+  cv.width = Math.round(totalW * MG_DPR); cv.height = Math.round(MG_SCENE_H * MG_DPR);
+}
+
+function mgSlotsByDay(sp) {
+  var byDay = {};
+  sp.slots.forEach(function (s) { (byDay[s.d] = byDay[s.d] || []).push(s); });
+  var k; for (k in byDay) byDay[k].sort(function (a, b) { return a.h - b.h; });
+  return byDay;
+}
+
+// Position PROPORTIONNELLE à l'heure réelle (WEEK.hourMin..hourMax), pas à un
+// index de créneau équiréparti : un jour à 4 créneaux (proche) et un jour à
+// 2 créneaux (lointain) placent alors 11h/17h au MÊME x relatif dans leur
+// colonne — l'écart visuel entre deux points reflète enfin le vrai écart en
+// heures, plus une densité de créneaux qui variait sans le dire.
+function mgHourFrac(h) {
+  return (h - WEEK.hourMin) / (WEEK.hourMax - WEEK.hourMin);
+}
+// Bornes d'un micro-segment de ciel : au milieu vers le créneau voisin (pas
+// une tranche de largeur égale) — un jour clairsemé a donc des tuiles plus
+// larges qu'un jour dense, ce qui EST l'information (plus de temps réel y
+// est représenté), là où l'ancien découpage à parts égales lissait cette
+// différence et donnait un rythme de subdivisions arbitraire d'un jour à
+// l'autre.
+function mgSegBounds(ds, idx) {
+  var loH = idx === 0 ? WEEK.hourMin : (ds[idx - 1].h + ds[idx].h) / 2;
+  var hiH = idx === ds.length - 1 ? WEEK.hourMax : (ds[idx].h + ds[idx + 1].h) / 2;
+  return { x0: mgHourFrac(loH) * MG_DAY_W, x1: mgHourFrac(hiH) * MG_DAY_W };
+}
+
+function mgRenderHeadWind() {
+  var sp = WEEK.spots[MG_SPOT], byDay = mgSlotsByDay(sp);
+  var headHtml = '', windHtml = '';
+  WEEK.days.forEach(function (k) {
+    var p = mgDayParts(k);
+    headHtml += '<div class="mg-day" data-d="' + esc(k) + '" tabindex="0" role="button"'
+      + ' aria-label="Détail du ' + J_LONG[p.dow] + ' ' + p.d + '">'
+      + '<span class="dn">' + J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + M_SHORT[p.mo] + '</span></div>';
+    var ds = byDay[k] || [];
+    // Taille FIXE (dépend seulement de MG_SCALE, plus du nombre de créneaux
+    // du jour) : avant, un jour à 4 créneaux donnait des badges nettement
+    // plus petits qu'un jour à 2 créneaux, une variation de taille qui
+    // n'avait aucun sens (le vent n'est pas plus "important" un jour où
+    // meteo.nc échantillonne moins souvent). Position À L'HEURE RÉELLE
+    // (mgHourFrac), pas espacée également dans la colonne.
+    var badgeSize = Math.max(20, Math.min(40, Math.round(28 * MG_SCALE)));
+    var arrows = ds.length ? ds.map(function (s) {
+      var left = mgHourFrac(s.h) * MG_DAY_W;
+      return '<span class="mg-wbadge" style="left:' + left.toFixed(1) + 'px" title="' + s.h + ' h — ' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '">'
+        + mgWindBadgeSvg(s.ws, s.wd, badgeSize) + '</span>';
+    }).join('') : '<span style="color:var(--faint);font-size:11px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)">·</span>';
+    windHtml += '<div class="mg-day">' + arrows + '</div>';
   });
-  var poly = pts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
-  var area = pts[0].x.toFixed(1) + ',' + base + ' ' + poly + ' ' + pts[n - 1].x.toFixed(1) + ',' + base;
-  var marks = pts.map(function (p) {
-    var deg = ((p.c.sd || 0) + 180) % 360;
-    return '<g transform="translate(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ') rotate(' + deg.toFixed(0) + ')">'
-      + '<path d="M0,-4.4 L2.8,3 L0,1.2 L-2.8,3 Z" fill="#4fa3c7" stroke="rgba(6,19,31,.5)" stroke-width=".5"/>'
-      + '</g>'
-      + '<text x="' + p.x.toFixed(1) + '" y="' + Math.max(9, p.y - 6).toFixed(1) + '" font-size="8" '
-      + 'text-anchor="middle" fill="#9db3c7">' + Math.round(p.c.t) + 's</text>';
-  }).join('');
-  return '<svg class="mg-dc-spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
-    + '<text x="2" y="9" font-size="7" fill="#7d94ab">' + (maxV < 1 ? maxV.toFixed(1) : maxV.toFixed(0)) + 'm</text>'
-    + '<line x1="0" y1="' + base + '" x2="' + W + '" y2="' + base + '" stroke="rgba(255,255,255,.1)"/>'
-    + '<polygon points="' + area + '" fill="rgba(79,163,199,.18)"/>'
-    + '<polyline points="' + poly + '" fill="none" stroke="#4fa3c7" stroke-width="1.8"/>'
-    + marks + '</svg>';
+  document.getElementById('mgHead').innerHTML = headHtml;
+  document.getElementById('mgWind').innerHTML = windHtml;
+  document.getElementById('mgInner').style.setProperty('--mgw', MG_DAY_W + 'px');
 }
 
-// Créneau AM (avant midi) vs PM le plus favorable — la seule décision de
-// timing utile (« plutôt le matin ou l'après-midi »), pas une heure sèche :
-// le pas de meteo.nc est de 3h (6h au-delà de J+2), l'annoncer plus précis
-// laisserait croire à une exactitude qui n'existe pas (même logique que le
-// "vers" déjà utilisé dans le hero de la grille au-dessus).
-function mgTimingText(scored) {
-  var am = scored.filter(function (c) { return c.h < 12; });
-  var pm = scored.filter(function (c) { return c.h >= 12; });
-  var bestOf = function (arr) { return arr.reduce(function (a, b) { return (b.score > a.score || (b.score === a.score && (b.pwr || 0) > (a.pwr || 0))) ? b : a; }); };
-  if (am.length && pm.length) {
-    var ba = bestOf(am), bp = bestOf(pm);
-    if (ba.score === bp.score) return 'Matin ou après-midi';
-    return ba.score > bp.score ? 'Plutôt le matin' : 'Plutôt l’après-midi';
-  }
-  if (am.length) return 'Le matin';
-  if (pm.length) return 'L’après-midi';
-  return '—';
-}
+// ─── Dessin du ciel + de la houle ───────────────────────────────────────────
+// Une chose que le prototype d'origine faisait mal : TOUT le ciel d'un jour
+// était tiré d'un seul créneau (celui de 15 h), alors que la rangée de vent et
+// le détail au survol étaient bien par créneau — une matinée pluvieuse suivie
+// d'une après-midi claire s'affichait "beau". Ici chaque jour est divisé en
+// autant de MICRO-SEGMENTS que de créneaux réels disponibles (0 à 4 selon
+// l'horizon) : le ciel varie vraiment dans la journée, il ne ment plus.
+function mgDraw() {
+  var sp = WEEK.spots[MG_SPOT];
+  var cv = document.getElementById('mgCanvas');
+  var totalW = MG_DAY_W * WEEK.days.length;
+  var ctx = cv.getContext('2d');
+  ctx.setTransform(MG_DPR, 0, 0, MG_DPR, 0, 0);
+  ctx.clearRect(0, 0, totalW, MG_SCENE_H);
+  ctx.textBaseline = 'alphabetic';
 
-function mgDayCardHtml(sp, k, params, maxV) {
-  var p = dayParts(k);
-  var slots = sp.slots.filter(function (s) { return s.d === k; }).sort(function (a, b) { return a.h - b.h; });
-  var head = '<div class="mg-dc-day"><div class="dn">' + J_SHORT[p.dow] + '</div><div class="dd">' + p.d + '</div></div>';
-  if (!slots.length) {
-    return '<div class="mg-dc" style="--c:#3d5468">' + head + '<div class="mg-dc-empty">pas de donnée</div></div>';
-  }
-  var scored = slots.map(function (s) {
-    var c = scoreSlot(s, params);
-    c.cl = s.cl; c.code = s.code; c.precip = s.precip;
-    return c;
+  var accentRgb = [79, 163, 199], warmRgb = [232, 160, 87];
+  var skyTopClear = [16, 92, 150], skyHorClear = [46, 132, 172];
+  var skyTopCloudy = [52, 74, 98], skyHorCloudy = [72, 92, 110];
+  var deepC = [4, 22, 40];
+  var byDay = mgSlotsByDay(sp);
+
+  // Points de houle primaire pour le ruban continu — un point par créneau
+  // réel, à son heure PROPORTIONNELLE réelle (cf. mgHourFrac : le nombre de
+  // créneaux varie selon l'horizon, mais l'écart visuel entre deux points
+  // reflète maintenant le vrai écart en heures, pas un simple rang).
+  var pts = [];
+  WEEK.days.forEach(function (k, d) {
+    var ds = byDay[k] || [];
+    ds.forEach(function (s) {
+      pts.push({ x: d * MG_DAY_W + mgHourFrac(s.h) * MG_DAY_W, y: s.hs });
+    });
   });
-  var best = scored[0];
-  scored.forEach(function (c) { if (c.score > best.score || (c.score === best.score && (c.pwr || 0) > (best.pwr || 0))) best = c; });
-  var stars = '', i;
-  for (i = 0; i < 5; i++) stars += '<span class="' + (i < best.score ? 'on' : 'off') + '">★</span>';
-  var rel = mgWindRelation(best.wd, best.sd, params);
-  // Un symbole par créneau réel (2 à 4 selon l'échéance, cf. légende) plutôt
-  // que le seul créneau médian d'avant : montre si le ciel change dans la
-  // journée (ex. clair le matin, grain l'après-midi), l'info que le retour
-  // « pas assez de météo » visait — chaque icône reste sourcée sur SON
-  // créneau (c.code/c.cl), jamais une moyenne ou une extrapolation.
-  var skyHtml = scored.map(function (c) {
-    return '<span class="ic" title="' + Math.round(c.h) + 'h">' + mgWmoIcon(c.code, c.cl) + '</span>';
-  }).join('');
-  // Vent : UNE flèche + une vitesse par créneau réel, comme la météo
-  // ci-dessus — remplace l'ancienne rangée qui ne montrait QUE le meilleur
-  // créneau du jour (retour du 10/08 au soir : « on comprend rien… au
-  // vent », un seul nombre ne dit rien de son évolution dans la journée).
-  // Le libellé offshore/onshore/travers reste calculé sur le MEILLEUR
-  // créneau (c'est lui que la carte recommande), affiché à part sous la
-  // rangée plutôt que collé à un seul chiffre.
-  var windRowHtml = scored.map(function (c) {
-    return '<div class="mg-dc-wind-item"><span class="hv">' + Math.round(c.h) + 'h</span>'
-      + mgWindArrowSvg(c.ws, c.wd)
-      + '<span class="sv">' + (c.ws == null ? '—' : Math.round(c.ws)) + '</span></div>';
-  }).join('');
-  var day = sp.daily[k];
-  var tempTxt = day ? (Math.round(day.tmax) + '°/' + Math.round(day.tmin) + '°') : '';
-  return '<div class="mg-dc" style="--c:' + best.col + '">'
-    + head
-    + '<div class="mg-dc-score"><div class="mg-dc-stars">' + stars + '</div><div class="mg-dc-label">' + esc(best.label) + '</div></div>'
-    + '<div class="mg-dc-wind-row">' + windRowHtml + '</div>'
-    + '<div class="mg-dc-rel" style="color:' + mgRelCol(rel) + '">' + mgRelLabel(rel) + ' au meilleur créneau</div>'
-    + '<div class="mg-dc-row2">' + mgSwellArrowSvg(best.sd)
-    +   '<div class="mg-dc-v">' + f1(best.hs) + '<span class="mg-dc-u"> m</span> · ' + Math.round(best.t) + '<span class="mg-dc-u">s</span></div>'
-    + '</div>'
-    + mgSparklineSvg(scored, maxV)
-    + '<div class="mg-dc-meteo"><span class="sk">' + skyHtml + '</span>' + (tempTxt ? '<span class="mg-dc-temp">' + tempTxt + '</span>' : '') + '</div>'
-    + '<div class="mg-dc-timing">Meilleur moment&nbsp;: <b>' + mgTimingText(scored) + '</b></div>'
-    + '</div>';
+  var maxV = pts.length ? mgNiceMax(Math.max.apply(null, pts.map(function (p) { return p.y; })) * 1.2) : 1;
+  var waterTop = MG_SKY_H + 6, waterBase = MG_SKY_H + MG_SWELL_H;
+  function waterY(v) { return waterBase - (v / maxV) * (waterBase - waterTop); }
+  var xy = pts.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
+  var surf = xy.length ? [xy[0]] : [], i, k2;
+  for (i = 0; i < xy.length - 1; i++) {
+    var p0 = xy[i - 1] || xy[i], p1 = xy[i], p2 = xy[i + 1], p3 = xy[i + 2] || xy[i + 1];
+    for (k2 = 1; k2 <= 8; k2++) surf.push(mgCatmull(p0, p1, p2, p3, k2 / 8));
+  }
+
+  // ── Ciel, par micro-segment ──
+  WEEK.days.forEach(function (k, d) {
+    var x0 = d * MG_DAY_W, ds = byDay[k] || [];
+    if (!ds.length) {
+      ctx.fillStyle = 'rgba(255,255,255,.03)'; ctx.fillRect(x0, 0, MG_DAY_W, MG_SKY_H + MG_SWELL_H);
+      ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.font = '600 ' + Math.round(9.5 * MG_SCALE) + 'px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('pas de donnée', x0 + MG_DAY_W / 2, MG_SKY_H / 2);
+      ctx.textAlign = 'left';
+      return;
+    }
+    // Passe 1 — fonds + voile de précipitation, un par micro-segment (variation
+    // horaire réelle : c'est ce qui distingue une matinée claire d'une
+    // après-midi couverte, cf. le bug n°3 du prototype d'origine). Largeur de
+    // chaque tuile PROPORTIONNELLE à l'écart réel avec ses voisins
+    // (mgSegBounds), pas une part égale : un jour clairsemé donne des tuiles
+    // plus larges, ce qui est l'info (plus de temps réel y est montré).
+    ds.forEach(function (s, si) {
+      var b = mgSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
+      // Nébulosité par ALTITUDE : les nuages bas pèsent le plus sur la
+      // lumière (ce sont eux qui apportent la pluie), les hauts à peine — un
+      // ciel voilé de cirrus n'assombrit presque pas. Champs réels Open-Meteo
+      // GFS (cloud_cover_low/mid/high) — meteo.nc n'en fournit aucun.
+      var cl = s.cl != null ? s.cl : 0, cm = s.cm != null ? s.cm : 0, ch = s.ch != null ? s.ch : 0;
+      var tone = Math.min(1, (cl / 100) * .85 + (cm / 100) * .45 + (ch / 100) * .12);
+      var top = mgLerp(skyTopClear, skyTopCloudy, tone), hor = mgLerp(skyHorClear, skyHorCloudy, tone);
+      var g = ctx.createLinearGradient(0, 0, 0, MG_SKY_H);
+      g.addColorStop(0, mgRgba(top)); g.addColorStop(1, mgRgba(hor));
+      ctx.fillStyle = g; ctx.fillRect(xs, 0, segW, MG_SKY_H + MG_SWELL_H);
+
+      var ptype = mgPrecipFromCode(s.code, s.precip);
+      var sevOverlay = { none: 0, drizzle: .04, rain: .12, shower: .2, storm: .32 }[ptype] || 0;
+      if (sevOverlay > 0) { ctx.fillStyle = 'rgba(8,16,26,' + sevOverlay + ')'; ctx.fillRect(xs, 0, segW, MG_SKY_H + MG_SWELL_H); }
+    });
+
+    // UN SEUL soleil par jour (le créneau le plus dégagé sert de référence),
+    // pas un par micro-segment : en redessiner un identique à chaque créneau
+    // (jusqu'à 4/jour) lisait comme un motif répété plutôt qu'un ciel — signalé
+    // le 10/08/2026. Dessiné APRÈS les fonds mais AVANT les nuages (passe 2)
+    // pour qu'un nuage puisse encore l'occulter partiellement.
+    var repSlot = ds[0];
+    ds.forEach(function (s) { if ((s.cl != null ? s.cl : 100) < (repSlot.cl != null ? repSlot.cl : 100)) repSlot = s; });
+    var repCl = repSlot.cl != null ? repSlot.cl : 0;
+    if (repCl < 55 && mgPrecipFromCode(repSlot.code, repSlot.precip) === 'none') {
+      var sunX = x0 + MG_DAY_W * .64, sunY = MG_SKY_H * .3;
+      var sunR = (13 - repCl / 100 * 5) * Math.min(1.3, MG_SCALE);
+      var sunIntensity = Math.max(.16, 1 - (repCl / 100) * .85);
+      var sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.6);
+      sunGlow.addColorStop(0, mgRgba(warmRgb, .42 * sunIntensity)); sunGlow.addColorStop(1, mgRgba(warmRgb, 0));
+      ctx.fillStyle = sunGlow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.6, 0, 7); ctx.fill();
+      // Rayons : quelques traits radiaux discrets — sort du "flat design" pur.
+      ctx.save(); ctx.translate(sunX, sunY);
+      ctx.strokeStyle = mgRgba([255, 244, 210], .4 * sunIntensity); ctx.lineWidth = 1.4;
+      var rayN = 8, ri;
+      for (ri = 0; ri < rayN; ri++) {
+        var ra = ri / rayN * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(Math.cos(ra) * sunR * 1.35, Math.sin(ra) * sunR * 1.35);
+        ctx.lineTo(Math.cos(ra) * sunR * 2.05, Math.sin(ra) * sunR * 2.05); ctx.stroke();
+      }
+      ctx.restore();
+      var sunGrd = ctx.createRadialGradient(sunX - sunR * .3, sunY - sunR * .35, sunR * .1, sunX, sunY, sunR);
+      sunGrd.addColorStop(0, mgRgba([255, 250, 225], sunIntensity)); sunGrd.addColorStop(1, mgRgba(warmRgb, sunIntensity));
+      ctx.fillStyle = sunGrd; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, 7); ctx.fill();
+    }
+
+    // Passe 2 — nuages, vent, pluie : toujours par micro-segment (la vraie
+    // variation horaire), tracés après le soleil pour pouvoir l'occulter.
+    ds.forEach(function (s, si) {
+      var b = mgSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
+      var cl = s.cl != null ? s.cl : 0, cm = s.cm != null ? s.cm : 0, ch = s.ch != null ? s.ch : 0;
+      var tone = Math.min(1, (cl / 100) * .85 + (cm / 100) * .45 + (ch / 100) * .12);
+      var ptype = mgPrecipFromCode(s.code, s.precip);
+
+      // Haut (cirrus) : traits fins et clairsemés — jamais de puff plein,
+      // c'est ce qui les distingue visuellement des couches basses/moyennes.
+      if (ch > 15) {
+        var hrng = mgRng(mgSeed(k) + si * 7 + 1), hn = Math.round(1 + ch / 100 * 3), hi2;
+        ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(.4, ch / 100 * .4).toFixed(2) + ')'; ctx.lineWidth = 1.2;
+        for (hi2 = 0; hi2 < hn; hi2++) {
+          var hy = MG_SKY_H * (.08 + hrng() * .18), hx = xs + 4 + hrng() * (segW - 20), hw = 14 + hrng() * 12;
+          ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + hw, hy - 1.5); ctx.stroke();
+        }
+      }
+      // Moyen : puffs discrets, à mi-hauteur.
+      if (cm > 10) {
+        var mrng = mgRng(mgSeed(k) + si * 13 + 500), mn = Math.round(cm / 100 * 2.4), mi;
+        for (mi = 0; mi < mn; mi++) mgCloudPuff(ctx, xs + 10 + mrng() * (segW - 20), MG_SKY_H * (.24 + mrng() * .22), .34 + mrng() * .22, .5, .25);
+      }
+      // Bas : puffs plus gros et plus sombres, plus bas dans la colonne — ce
+      // sont eux qui amènent la pluie, d'où la teinte alignée sur tone.
+      if (cl > 6) {
+        var lrng = mgRng(mgSeed(k) + si * 29 + 900), ln = Math.round(1 + cl / 100 * 4), li;
+        for (li = 0; li < ln; li++) mgCloudPuff(ctx, xs + 10 + lrng() * (segW - 20), MG_SKY_H * (.42 + lrng() * .34), .5 + lrng() * .4 + tone * .3, Math.min(.95, .55 + tone * .35), tone);
+      }
+      // Traits de vent : indice de mouvement dès que ça souffle (≥13 nds) —
+      // plus contrastés qu'une 1ʳᵉ version (signalé le 10/08/2026, trop discrets
+      // pour se voir d'un coup d'œil).
+      if (s.ws >= 13) {
+        var wrng = mgRng(mgSeed(k) + si * 991 + 2), wn = Math.round(3 + (s.ws - 12) * .6);
+        var wang = ((s.wd || 0) + 180) * Math.PI / 180, wI;
+        for (wI = 0; wI < wn; wI++) {
+          var wx = xs + wrng() * segW, wy = MG_SKY_H * .1 + wrng() * MG_SKY_H * .55, wl = 12 + wrng() * 13;
+          ctx.strokeStyle = 'rgba(255,255,255,' + (.32 + wrng() * .24).toFixed(2) + ')'; ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + Math.cos(wang) * wl, wy + Math.sin(wang) * wl * .32); ctx.stroke();
+        }
+      }
+      // Précipitation réelle (mm/h Open-Meteo) : rideaux + traits, intensité
+      // pilotée par la valeur mesurée, pas par un jet de dés. Traits plus
+      // longs/opaques qu'une 1ʳᵉ version — trop discrets pour lire "il pleut"
+      // d'un coup d'œil (signalé le 10/08/2026).
+      if (ptype !== 'none') {
+        var prng = mgRng(mgSeed(k) + si * 777 + 3);
+        if (ptype === 'shower' || ptype === 'storm') {
+          var curtains = 2 + Math.round(prng() * 2), cI;
+          for (cI = 0; cI < curtains; cI++) {
+            var cx0 = xs + prng() * segW, cw = 10 + prng() * 8;
+            var cg = ctx.createLinearGradient(cx0, 0, cx0 + cw * .3, MG_SKY_H + MG_SWELL_H);
+            cg.addColorStop(0, 'rgba(255,255,255,0)'); cg.addColorStop(.5, 'rgba(255,255,255,.12)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = cg;
+            ctx.beginPath(); ctx.moveTo(cx0, 0); ctx.lineTo(cx0 + cw, 0);
+            ctx.lineTo(cx0 + cw * .3, MG_SKY_H + MG_SWELL_H); ctx.lineTo(cx0 - cw * .7, MG_SKY_H + MG_SWELL_H);
+            ctx.closePath(); ctx.fill();
+          }
+        }
+        var mm = s.precip != null ? s.precip : 1;
+        var dens = Math.round(Math.min(90, 18 + mm * 18));
+        var len = { drizzle: 8, rain: 14, shower: 19, storm: 23 }[ptype] || 11;
+        ctx.strokeStyle = ptype === 'drizzle' ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.78)';
+        ctx.lineWidth = ptype === 'storm' ? 1.6 : 1.3;
+        var r;
+        for (r = 0; r < dens; r++) {
+          var rx = xs + prng() * segW, ry = prng() * (MG_SKY_H + MG_SWELL_H * .6);
+          ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + len * .32, ry + len); ctx.stroke();
+        }
+        if (ptype === 'storm') mgLightning(ctx, xs + segW * (.2 + prng() * .5), MG_SKY_H * .12, .7 + prng() * .3, 'rgba(255,244,180,.95)');
+      }
+      if (si > 0) { ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.beginPath(); ctx.moveTo(xs + .5, 0); ctx.lineTo(xs + .5, MG_SKY_H); ctx.stroke(); }
+    });
+
+    // Tmax/Tmin RÉELS du jour NC entier (WEEK.spots[].daily) : calculés côté
+    // build sur les 24 h complètes, pas seulement les créneaux 6-17 h retenus
+    // pour le reste — un minimum nocturne ou un maximum de sieste manquerait
+    // sinon selon l'heure du pic.
+    var day = sp.daily[k];
+    if (day) {
+      mgTempBadge(ctx, x0 + 11, 13, Math.round(day.tmax) + '°', warmRgb);
+      mgTempBadge(ctx, x0 + 11, 32, Math.round(day.tmin) + '°', accentRgb);
+    }
+    if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.beginPath(); ctx.moveTo(x0 + .5, 0); ctx.lineTo(x0 + .5, MG_SKY_H); ctx.stroke(); }
+  });
+
+  // ── Bande houle continue ──
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, MG_SKY_H, totalW, MG_SWELL_H); ctx.clip();
+  if (surf.length) {
+    var wg2 = ctx.createLinearGradient(0, MG_SKY_H, 0, waterBase + 24);
+    wg2.addColorStop(0, mgRgba(mgLerp(accentRgb, [255, 255, 255], .3), .97));
+    wg2.addColorStop(.45, mgRgba(accentRgb, .97));
+    wg2.addColorStop(1, mgRgba(deepC, .98));
+    ctx.beginPath(); ctx.moveTo(surf[0].x, waterBase + 30);
+    surf.forEach(function (p) { ctx.lineTo(p.x, p.y); });
+    ctx.lineTo(surf[surf.length - 1].x, waterBase + 30); ctx.closePath();
+    ctx.fillStyle = wg2; ctx.fill();
+    ctx.beginPath(); surf.forEach(function (p, pi) { pi ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+    ctx.strokeStyle = mgRgba(mgLerp(accentRgb, [255, 255, 255], .6)); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+  }
+  // Graduations à des mètres RONDS (1/2/3…), pas à 50%/100% d'un plafond déjà
+  // gonflé de 20% : sur une houle à 0,6-1,9 m, l'ancien calcul plaçait ses deux
+  // seules lignes à 1,5 m et 3 m — au-dessus de tout point réel du graphe, lu à
+  // tort comme une échelle non-linéaire (signalé le 10/08/2026). Seuls les
+  // TRAITS sont tracés ici ; les ÉTIQUETTES sont dessinées plus bas, APRÈS les
+  // badges houle — sinon le badge du 1er jour (le seul assez à gauche pour les
+  // chevaucher) les recouvrait quand son cercle grandissait sur grand écran.
+  var mgYSteps = mgGridSteps(maxV);
+  mgYSteps.forEach(function (v) {
+    var gy = waterY(v) + .5;
+    ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(totalW, gy); ctx.stroke();
+  });
+  ctx.restore();
+
+  WEEK.days.forEach(function (k, d) {
+    if (d === MG_HOVER) { ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(d * MG_DAY_W, 0, MG_DAY_W, MG_SKY_H + MG_SWELL_H); }
+    if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(d * MG_DAY_W + .5, MG_SKY_H); ctx.lineTo(d * MG_DAY_W + .5, MG_SKY_H + MG_SWELL_H); ctx.stroke(); }
+  });
+
+  // ── Badge houle rond par jour : posé au pic du jour et LU SUR CE MÊME POINT
+  // pour sa position ET son contenu (le prototype d'origine positionnait le
+  // cadre sur le pic mais l'étiquetait avec un autre créneau — corrigé en ne
+  // lisant jamais qu'UN seul objet "peak" pour les deux). Secondaire (si
+  // notable) en plus petit, accroché en haut à droite du principal — bleu
+  // (accent) pour la primaire, orange (warm) pour la secondaire, même
+  // distinction de couleur que les badges Tmax/Tmin plus haut. ──
+  WEEK.days.forEach(function (k, d) {
+    var ds = byDay[k]; if (!ds || !ds.length) return;
+    var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
+    var px = d * MG_DAY_W + mgHourFrac(peak.h) * MG_DAY_W;
+    var showSec = peak.hs2 != null && peak.hs2 > 0.4;
+    var R = Math.max(15, Math.min(30, MG_DAY_W * .155));
+    // Le 1er jour est le seul assez à gauche pour chevaucher la colonne des
+    // graduations (x<40) : on y décale le centre du badge d'au moins R+40 pour
+    // ne jamais la recouvrir (les jours suivants sont hors de portée).
+    if (d === 0) px = Math.max(px, R + 40);
+    var margin = R + Math.max(11, R * .48) + 2;
+    var py = Math.min(Math.max(waterY(peak.hs), MG_SKY_H + margin), MG_SKY_H + MG_SWELL_H - margin * .55);
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(d * MG_DAY_W + 1, 0, MG_DAY_W - 2, MG_SKY_H + MG_SWELL_H); ctx.clip();
+    mgSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', Math.round(peak.t) + 's', peak.sd, accentRgb);
+    if (showSec) {
+      var R2 = R * .6;
+      mgSwellBadge(ctx, px + R * .82, py - R * .82, R2, '+' + peak.hs2.toFixed(1) + 'm', Math.round(peak.per2) + 's', peak.sd2, warmRgb);
+    }
+    ctx.restore();
+  });
+  ctx.textAlign = 'center';
+
+  // Étiquettes des graduations houle — dessinées EN DERNIER (cf. plus haut) :
+  // toujours lisibles par-dessus les badges, jamais l'inverse.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, MG_SKY_H, totalW, MG_SWELL_H); ctx.clip();
+  ctx.font = '600 ' + Math.round(9 * MG_SCALE) + 'px sans-serif'; ctx.textAlign = 'left';
+  mgYSteps.forEach(function (v) {
+    var gy = waterY(v) + .5;
+    var lbl = (v < 1 ? v.toFixed(1) : v.toFixed(0)) + 'm', lw = ctx.measureText(lbl).width;
+    ctx.fillStyle = 'rgba(8,20,34,.88)'; ctx.fillRect(3, gy - 10 * MG_SCALE, lw + 6, 12 * MG_SCALE);
+    ctx.fillStyle = '#fff'; ctx.fillText(lbl, 6, gy - 1);
+  });
+  ctx.restore();
+  ctx.textAlign = 'center';
+
+  // ── Axe horaire ──
+  ctx.fillStyle = '#0d1f3c'; ctx.fillRect(0, MG_SKY_H + MG_SWELL_H, totalW, MG_AXIS_H);
+  ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(0, MG_SKY_H + MG_SWELL_H + .5); ctx.lineTo(totalW, MG_SKY_H + MG_SWELL_H + .5); ctx.stroke();
+  ctx.fillStyle = '#7d94ab'; ctx.font = '500 ' + Math.round(9 * MG_SCALE) + 'px sans-serif';
+  WEEK.days.forEach(function (k, d) {
+    var ds = byDay[k] || [];
+    if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(d * MG_DAY_W + .5, MG_SKY_H + MG_SWELL_H); ctx.lineTo(d * MG_DAY_W + .5, MG_SCENE_H); ctx.stroke(); }
+    ds.forEach(function (s) { ctx.fillText(s.h + 'h', d * MG_DAY_W + mgHourFrac(s.h) * MG_DAY_W, MG_SKY_H + MG_SWELL_H + MG_AXIS_H * .75); });
+  });
 }
 
-// Marée réelle, dans SON PROPRE graphe (jamais mélangée à la houle, cf.
-// légende) — largeur de colonne fixe partagée avec .mg-dc (148px), pas de
-// calcul JS : les deux défilements restent alignés jour pour jour sans code
-// de synchronisation.
+function mgUpdateReadout(dayKey) {
+  var el = document.getElementById('mgReadout');
+  if (dayKey == null) { el.innerHTML = '<span class="hint">Touche un jour pour le détail heure par heure.</span>'; return; }
+  var sp = WEEK.spots[MG_SPOT];
+  var ds = sp.slots.filter(function (s) { return s.d === dayKey; });
+  if (!ds.length) { el.innerHTML = '<span class="hint">Pas de créneau ce jour-là.</span>'; return; }
+  var p = mgDayParts(dayKey);
+  var lines = ds.map(function (s) {
+    var sec = s.hs2 != null ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's ' + compass(s.sd2) + '</span>') : '';
+    var sky = s.cl != null ? (' · nuages bas ' + Math.round(s.cl) + '%, moy ' + Math.round(s.cm) + '%, haut ' + Math.round(s.ch) + '%') : '';
+    var rain = (s.precip != null && s.precip > 0) ? (' · 💧 ' + s.precip.toFixed(1) + ' mm/h') : '';
+    var temp = s.at != null ? (' · ' + Math.round(s.at) + '°') : '';
+    return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>/' + Math.round(s.t) + 's ' + compass(s.sd) + sec
+      + ' · <span style="color:' + windCol(s.ws) + '">' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '</span>'
+      + temp + sky + rain + '</div>';
+  }).join('');
+  el.innerHTML = '<b>' + J_LONG[p.dow] + ' ' + p.d + ' ' + M_SHORT[p.mo] + '</b>' + lines;
+}
+
+// Marée réelle (meteo.nc, via le module tide-harmonics côté build) : PM/BM et
+// hauteur en mètres. Pas de coefficient affiché — celui renvoyé par l'API vaut
+// systématiquement 0 sur ce endpoint (vérifié le 10/08/2026, cf. le commentaire
+// de fetchTideDay côté build-week.mjs), l'afficher serait montrer un zéro
+// comme si c'était une vraie donnée.
 function mgRenderTide() {
   var sp = WEEK.spots[MG_SPOT], html = '';
   WEEK.days.forEach(function (k) {
@@ -657,29 +950,76 @@ function mgRenderTide() {
     }).join('');
     html += '<div class="mg-tide-day">' + (rows || '<span class="hint" style="font-size:10px">—</span>') + '</div>';
   });
-  document.getElementById('mgTide').innerHTML = html;
+  var el = document.getElementById('mgTide');
+  el.innerHTML = html; el.style.setProperty('--mgw', MG_DAY_W + 'px');
 }
 
-function mgRenderCards() {
-  var sp = WEEK.spots[MG_SPOT], params = paramsFor(sp);
-  var maxV = mgNiceMaxLocal(Math.max.apply(null, sp.slots.map(function (s) { return s.hs; }).concat([0.5])) * 1.15);
-  document.getElementById('mgCards').innerHTML = WEEK.days.map(function (k) { return mgDayCardHtml(sp, k, params, maxV); }).join('');
-}
-// Échelle "ronde" pour l'axe de la courbe — mêmes paliers que le reste du
-// site (0,5/1/1,5/2/3...) pour ne pas réinventer une 2ᵉ convention d'axe.
-function mgNiceMaxLocal(v) {
-  var steps = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8], i;
-  for (i = 0; i < steps.length; i++) if (v <= steps[i] * .92) return steps[i];
-  return Math.ceil(v);
+function mgSetHover(dayIdx) {
+  MG_HOVER = dayIdx;
+  mgUpdateReadout(dayIdx >= 0 ? WEEK.days[dayIdx] : null);
+  mgDraw();
 }
 
+// mgComputeLayout() DOIT s'exécuter avant mgRenderHeadWind() : ce dernier lit
+// MG_DAY_W/MG_SCALE pour dimensionner les badges de vent. Les appeler dans
+// l'autre ordre (comme une première version le faisait) dimensionnait la
+// rangée de vent sur la mise en page du tour précédent, un cran en retard.
 function mgRender() {
-  mgRenderCards();
+  mgComputeLayout();
+  mgRenderHeadWind();
+  mgEnsureCanvasSize();
+  mgDraw();
+  mgRenderTide();
+  mgUpdateReadout(null);
+}
+
+// Recalcule toute la mise en page (largeur de jour, badges, canvas, marées)
+// SANS réinitialiser le jour pointé — appelé au redimensionnement. mgRender()
+// remet le survol à zéro, ce qui conviendrait mal ici : agrandir la fenêtre
+// ne doit pas fermer le détail qu'on est en train de lire.
+function mgRelayout() {
+  mgComputeLayout();
+  mgRenderHeadWind();
+  mgEnsureCanvasSize();
+  mgDraw();
   mgRenderTide();
 }
 
 function mgAttachEvents() {
+  var head = document.getElementById('mgHead');
+  // Délégation sur le conteneur PERMANENT plutôt qu'un écouteur par cellule :
+  // mgRenderHeadWind() reconstruit les .mg-day à chaque changement de spot,
+  // un écouteur posé sur chacune serait donc reposé pour rien à chaque fois.
+  function onPick(e) {
+    var t = e.target;
+    while (t && t !== head && (!t.getAttribute || !t.getAttribute('data-d'))) t = t.parentNode;
+    if (!t || t === head) return;
+    var idx = WEEK.days.indexOf(t.getAttribute('data-d'));
+    if (idx === -1) return;
+    mgSetHover(idx === MG_HOVER ? -1 : idx);
+  }
+  head.addEventListener('click', onPick);
+  head.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(e); }
+  });
+
+  var cv = document.getElementById('mgCanvas');
+  function onCanvasPoint(clientX) {
+    var rect = cv.getBoundingClientRect();
+    var d = Math.max(0, Math.min(WEEK.days.length - 1, Math.floor((clientX - rect.left) / MG_DAY_W)));
+    mgSetHover(d);
+  }
+  cv.addEventListener('mousemove', function (e) { onCanvasPoint(e.clientX); });
+  cv.addEventListener('mouseleave', function () { mgSetHover(-1); });
+  // Tactile : un tap pointe le jour (pas de survol au doigt). passive:true —
+  // simple lecture, aucun preventDefault : le défilement horizontal de
+  // .mg-scroll doit rester libre au doigt.
+  cv.addEventListener('touchstart', function (e) {
+    if (e.touches && e.touches.length === 1) onCanvasPoint(e.touches[0].clientX);
+  }, { passive: true });
+
   document.getElementById('mgSel').addEventListener('change', function () { MG_SPOT = +this.value; mgRender(); });
+  window.addEventListener('resize', mgRelayout);
 }
 
 function initMeteogram() {
@@ -689,6 +1029,7 @@ function initMeteogram() {
   mgAttachEvents();
   mgRender();
 }
+
 
 // ─── Paramètres ─────────────────────────────────────────────────────────────
 // Deux modes. « spot » applique le calibrage propre de chaque spot (celui réglé
@@ -938,13 +1279,6 @@ function render() {
   if (others) html += '<h2>Sinon</h2><div class="cards">' + others + '</div>';
 
   document.getElementById('app').innerHTML = html;
-
-  // Le score affiché sur les cartes du météogramme vient du même moteur que
-  // cette grille (cf. le commentaire au-dessus de mgWindRelation) : un
-  // changement de seuil de calibrage doit donc aussi les rafraîchir, sinon
-  // la grille dirait "Excellent" pendant que la carte du même jour afficherait
-  // encore l'ancien score.
-  mgRenderCards();
 
   // Retour immédiat pendant le réglage : sans ce compteur, pousser un curseur
   // trop loin éteint la grille sans qu'on comprenne lequel a fait basculer quoi.
