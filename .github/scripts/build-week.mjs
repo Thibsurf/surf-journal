@@ -403,8 +403,17 @@ async function modelsForSpot(spot, days) {
 // `&timezone=GMT` volontairement : Open-Meteo ne doit pas décaler lui-même les
 // heures, c'est ce script qui applique la convention NC (+11 h) partout.
 async function fetchSky(spot) {
+  // uv_index/apparent_temperature/relative_humidity_2m : même appel Open-Meteo
+  // GFS que le ciel, zéro requête en plus. uv_index avait déjà été branché une
+  // fois (chantier « coupe du lagon » du 10/08/2026) puis retiré comme
+  // nettoyage collatéral de cette fonctionnalité abandonnée — pas parce que la
+  // donnée elle-même posait problème. Redemandé le 11/08/2026 (avec
+  // ressenti/humidité en plus, absents jusqu'ici) : réintégré ici, affiché
+  // dans le détail par créneau (mgUpdateReadout), pas sur le graphe déjà
+  // dense.
   const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + spot.lat + '&longitude=' + spot.lon
     + '&hourly=cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,weather_code,temperature_2m'
+    + ',uv_index,apparent_temperature,relative_humidity_2m'
     + '&models=gfs_seamless&forecast_days=8&timezone=GMT';
   const j = await httpJson(url);
   const h = j.hourly || {};
@@ -437,7 +446,10 @@ async function fetchSky(spot) {
       ch: h.cloud_cover_high != null ? h.cloud_cover_high[i] : null,
       precip: h.precipitation != null ? h.precipitation[i] : null,
       code: h.weather_code != null ? h.weather_code[i] : null,
-      at: at
+      at: at,
+      uv: h.uv_index != null ? h.uv_index[i] : null,
+      feels: h.apparent_temperature != null ? h.apparent_temperature[i] : null,
+      hum: h.relative_humidity_2m != null ? h.relative_humidity_2m[i] : null
     };
   });
   return { bySlot, daily };
@@ -942,6 +954,11 @@ var WIND_T = [7, 12, 17, 23];
 function windCol(v) {
   return v == null ? '#3d5468' : v < WIND_T[0] ? '#3dba8a' : v < WIND_T[1] ? '#4fa3c7'
     : v < WIND_T[2] ? '#e8a057' : v < WIND_T[3] ? '#e8874a' : '#e05c5c';
+}
+
+// Échelle OMS standard (0-2 faible … 11+ extrême) — aucun seuil inventé.
+function mgUvLabel(uv) {
+  return uv >= 11 ? 'extrême' : uv >= 8 ? 'très élevé' : uv >= 6 ? 'élevé' : uv >= 3 ? 'modéré' : 'faible';
 }
 
 function f1(v) { return v == null ? '—' : v.toFixed(1).replace('.', ','); }
@@ -1504,9 +1521,19 @@ function mgDraw() {
     var px = d * MG_DAY_W + mgHourFrac(peak.h) * MG_DAY_W;
     var showSec = peak.hs2 != null && peak.hs2 > 0.4;
     var R = Math.max(15, Math.min(30, MG_DAY_W * .155));
-    // Le 1er jour est le seul assez à gauche pour chevaucher la colonne des
-    // graduations (x<40) : on y décale le centre du badge d'au moins R+40 pour
-    // ne jamais la recouvrir (les jours suivants sont hors de portée).
+    // Recadré dans SA colonne pour TOUS les jours, pas seulement le 1er : le
+    // pic du jour tombe parfois près du bord (heure proche de HOUR_MIN/MAX),
+    // et le badge (voire le secondaire, encore décalé de R*.82 vers la
+    // droite) dépassait alors du clip de la colonne — coupé, illisible
+    // ("la taille des vagues est coupée sur plusieurs jours", signalé le
+    // 11/08/2026). Marge droite plus large quand un secondaire est affiché,
+    // pour l'englober lui aussi.
+    var rightPad = showSec ? R * 1.42 + 3 : R + 3;
+    px = Math.max(d * MG_DAY_W + R + 3, Math.min(d * MG_DAY_W + MG_DAY_W - rightPad, px));
+    // Le 1er jour est en plus le seul assez à gauche pour chevaucher la
+    // colonne des graduations houle (x<40, sticky depuis le chantier
+    // précédent) : on y décale le centre du badge d'au moins R+40 pour ne
+    // jamais la recouvrir (les jours suivants sont hors de portée).
     if (d === 0) px = Math.max(px, R + 40);
     var margin = R + Math.max(11, R * .48) + 2;
     var py = Math.min(Math.max(waterY(peak.hs), MG_SKY_H + margin), MG_SKY_H + MG_SWELL_H - margin * .55);
@@ -1563,10 +1590,21 @@ function mgUpdateReadout(dayKey) {
     var sec = s.hs2 != null ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's ' + compass(s.sd2) + '</span>') : '';
     var sky = s.cl != null ? (' · nuages bas ' + Math.round(s.cl) + '%, moy ' + Math.round(s.cm) + '%, haut ' + Math.round(s.ch) + '%') : '';
     var rain = (s.precip != null && s.precip > 0) ? (' · 💧 ' + s.precip.toFixed(1) + ' mm/h') : '';
-    var temp = s.at != null ? (' · ' + Math.round(s.at) + '°') : '';
+    // Ressenti seulement s'il s'écarte de l'air (sinon redondant) — feels/hum/uv
+    // demandés le 11/08/2026, même appel Open-Meteo que le ciel (zéro requête
+    // en plus, cf. fetchSky()), affichés ici (détail par créneau) plutôt que
+    // sur le graphe déjà dense.
+    var temp = s.at != null ? (' · ' + Math.round(s.at) + '°'
+      + (s.feels != null && Math.round(s.feels) !== Math.round(s.at) ? ' (ressenti ' + Math.round(s.feels) + '°)' : '')) : '';
+    var hum = s.hum != null ? (' · ' + Math.round(s.hum) + '% hum.') : '';
+    // Libellé calculé sur la valeur ARRONDIE affichée, pas la brute : sinon un
+    // 5,6 affiché "UV 6" pouvait ressortir "modéré" alors que 6 est déjà le
+    // seuil "élevé" — incohérence entre le chiffre montré et son qualificatif.
+    var uvR = s.uv != null ? Math.round(s.uv) : null;
+    var uv = (uvR != null && uvR >= 1) ? (' · UV ' + uvR + ' ' + mgUvLabel(uvR)) : '';
     return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>/' + Math.round(s.t) + 's ' + compass(s.sd) + sec
       + ' · <span style="color:' + windCol(s.ws) + '">' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '</span>'
-      + temp + sky + rain + '</div>';
+      + temp + hum + uv + sky + rain + '</div>';
   }).join('');
   el.innerHTML = '<b>' + J_LONG[p.dow] + ' ' + p.d + ' ' + M_SHORT[p.mo] + '</b>' + lines;
 }
@@ -1580,11 +1618,17 @@ function mgRenderTide() {
   var sp = WEEK.spots[MG_SPOT], html = '';
   WEEK.days.forEach(function (k) {
     var ext = sp.tide[k] || [];
+    // Flèche de tendance (↑ montante vers une PM, ↓ descendante vers une BM)
+    // demandée le 11/08/2026 : redondante avec le libellé PM/BM, mais lisible
+    // plus vite d'un coup d'œil — même logique que le score (couleur ET
+    // libellé déjà utilisés ensemble ailleurs sur cette page). Heure mise en
+    // évidence (gras) plutôt que noyée au même poids que la hauteur.
     var rows = ext.map(function (e) {
       var hh = Math.floor(e.h) % 24, mm = Math.round((e.h - Math.floor(e.h)) * 60);
       if (mm === 60) { mm = 0; hh = (hh + 1) % 24; }
       var t = (hh < 10 ? '0' : '') + hh + 'h' + (mm < 10 ? '0' : '') + mm;
-      return '<div class="te ' + e.type + '"><span>' + (e.type === 'haute' ? 'PM' : 'BM') + ' ' + t + '</span>'
+      var arrow = e.type === 'haute' ? '↑' : '↓';
+      return '<div class="te ' + e.type + '"><span><b>' + arrow + ' ' + (e.type === 'haute' ? 'PM' : 'BM') + ' ' + t + '</b></span>'
         + '<span>' + e.height.toFixed(2) + 'm</span></div>';
     }).join('');
     html += '<div class="mg-tide-day">' + (rows || '<span class="hint" style="font-size:10px">—</span>') + '</div>';
@@ -2207,7 +2251,10 @@ async function main() {
     slots.forEach((s) => {
       const key = s.d + '|' + s.h;
       const sk = sky.bySlot[key];
-      if (sk) { s.cl = sk.cl; s.cm = sk.cm; s.ch = sk.ch; s.precip = sk.precip; s.code = sk.code; s.at = sk.at; }
+      if (sk) {
+        s.cl = sk.cl; s.cm = sk.cm; s.ch = sk.ch; s.precip = sk.precip; s.code = sk.code; s.at = sk.at;
+        s.uv = sk.uv; s.feels = sk.feels; s.hum = sk.hum;
+      }
       const sc = secondary[key];
       if (sc) { s.hs2 = sc.hs2; s.per2 = sc.per2; s.sd2 = sc.sd2; }
     });

@@ -6646,3 +6646,68 @@ Vérifié : `node --check` ; régénéré avec données live ; `--dump-dom` sans
 erreur JS aux deux largeurs ; capture avant/après aux zones signalées ;
 `grep` confirmant `mgWindBadgeSvg`/`.mg-wbadge` totalement retirés (pas de
 code mort laissé derrière). `CACHE_NAME` non touché.
+
+## 11/08/2026 (suite, même session) — badges houle recadrés + UV/ressenti/humidité + marée
+
+**Badges houle encore coupés, sur plusieurs jours cette fois** (pas l'axe,
+déjà réglé) : le recadrage `px = Math.max(px, R+40)` évitant la colonne des
+graduations n'existait que pour le jour 0. N'importe quel jour dont le pic de
+houle tombe près du bord de sa fenêtre horaire (heure proche de HOUR_MIN/MAX)
+avait donc son badge — voire le secondaire, encore décalé de `R*.82` vers la
+droite — partiellement hors du clip de sa colonne. Généralisé : `px` recadré
+dans `[R+3, MG_DAY_W − (R ou R*1.42+3 si secondaire)]` pour TOUS les jours,
+le cas du jour 0 (éviter la colonne d'axe) s'appliquant en plus.
+
+**UV / ressenti / humidité réintégrés.** `uv_index` avait déjà été branché le
+10/08/2026 (chantier « coupe du lagon ») puis retiré comme nettoyage
+collatéral quand cette illustration a été abandonnée le jour même — pas pour
+la donnée elle-même. Redemandé aujourd'hui avec ressenti (`apparent_
+temperature`) et humidité (`relative_humidity_2m`) en plus, tous les trois
+sur le MÊME appel Open-Meteo GFS que le ciel (zéro requête réseau
+supplémentaire). Affichés dans le détail par créneau (`mgUpdateReadout`,
+au tap sur un jour) plutôt que sur le graphe déjà dense — canvas inchangé.
+Libellé UV sur l'échelle OMS standard (0-2 faible … 11+ extrême, aucun seuil
+inventé), calculé sur la valeur ARRONDIE affichée (pas la brute : un 5,6
+affiché « UV 6 » serait sinon resté « modéré » alors que 6 est déjà le seuil
+« élevé » — incohérence trouvée en vérifiant, corrigée avant commit).
+
+**Tendance de marée.** Chaque extremum affichait déjà PM/BM (donc la
+tendance était déjà techniquement lisible), mais sans repère visuel rapide.
+Flèche ↑ (montante, vers une PM) / ↓ (descendante, vers une BM) ajoutée
+devant chaque heure, heure mise en gras — aucune donnée nouvelle, aucun
+calcul, juste `e.type` déjà connu rendu plus vite scannable.
+
+**Question « as-tu des fonds pour tout type de météo, orages etc ? »** —
+vérifié plutôt que deviné : les orages SONT déjà couverts
+(`mgPrecipFromCode` code≥95 → `'storm'`, déclenche `mgLightning`, vu sur les
+jours pluvieux du rendu réel). Trou identifié mais pas comblé ce chantier :
+le brouillard (codes WMO 45/48) ne produit aucun rendu distinct (retombe sur
+`'none'` faute de précipitation mesurable) — rare sous ce climat tropical,
+laissé de côté sciemment plutôt que traité à la va-vite.
+
+**Carte cyclone (recherche, PAS implémentée)** : recherche approfondie
+(sous-agent) sur la faisabilité d'une carte cyclone façon meteo.nc/fr/
+cyclone. Verdict net : **aucune position/trajectoire EN DIRECT n'est
+accessible** — ni dans le Worker (`grep cyclone/bms/rsmc/jtwc` : rien), ni
+dans le code client de meteo.nc lui-même (`_fetchCycloneBulletin()` de
+previsions.html ne récupère qu'un texte de bulletin BAC, jamais de
+coordonnées). Piste réelle trouvée : un FeatureServer ArcGIS public, sans
+authentification (`services1.arcgis.com/…/meteo_suivis_cyclones_vue_
+publique`), avec les catégories EXACTES demandées (Dépression Tropicale
+faible/Modérée/Forte, Cyclone Tropical/Intense/Très Intense) — mais c'est un
+**archive de fin de saison** (dernier enregistrement NC : 14/05/2025, zéro
+ligne sur la saison 2025/2026), pas un flux temps réel. Une carte de suivi
+EN DIRECT n'est donc pas constructible avec des données réelles
+actuellement accessibles (règle du projet : ne rien inventer) — décision
+soumise à l'utilisateur plutôt que bâtie à moitié : tableau de conversion
+vent→catégorie NC en référence statique dans l'onglet Isofronts existant
+(déjà les bons libellés dans sa légende, juste pas en tableau), ou
+explorateur d'historique de trajectoires (saisons passées, données réelles
+de l'archive ArcGIS) — deux features différentes de ce qui a été décrit,
+à choisir en connaissance de cause.
+
+Vérifié : `node --check` ; régénéré avec données live ; `--dump-dom` sans
+erreur JS ; capture avant/après sur les badges houle recadrés (jours 2 et 3,
+auparavant coupés au bord de colonne) ; injection directe confirmant le
+contenu du détail par créneau (UV/hum./ressenti) et les flèches de marée.
+`CACHE_NAME` non touché — aucun fichier d'`assets/` modifié.
