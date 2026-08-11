@@ -6512,3 +6512,90 @@ Vérifié : Chrome headless 900px, capture pleine page découpée en tranches
 houle+marée continue, correspond visuellement à la capture de référence de
 l'utilisateur ; `--dump-dom` sans `ReferenceError`/`is not defined`.
 Aucun fichier d'`assets/` touché — pas de bump `CACHE_NAME`.
+
+## 11/08/2026 (suite, même session) — 5 bugs de rendu réel + cohérence visuelle
+
+Retour sur le graphe continu restauré ci-dessus, capture à l'appui :
+« images coupées, site pas homogène en largeur … vecteurs vent pas beaux et
+incomplets, la pluie suit le vent? … manque houle secondaire ». Chaque point
+mesuré avant correction, rien deviné.
+
+**Houle secondaire absente** : `fetchSecondary()` échouait en boucle
+(`houle secondaire indisponible ()`, message vide — `AggregateError` de
+Node). Reproduit isolément : `https.get` sans option échoue en
+`ETIMEDOUT`/`ENETUNREACH` sur `marine-api.open-meteo.com` sur ce poste
+(double pile, tente IPv6 — route mortes — avant IPv4, épuise les deux délais),
+alors que `curl -4` et `https.get(url,{family:4})` réussissent instantanément.
+Poste-spécifique, pas un bug de données — mais `family:4` est sans risque
+pour ces hôtes publics, ajouté aux DEUX clients HTTP du générateur
+(`sbGet()` et `httpJson()`).
+
+**Étiquette du haut de l'axe houle rognée** (« 3m » à moitié coupée) :
+`mgGridSteps()` place TOUJOURS sa graduation la plus haute exactement sur
+`maxV` (le plafond), et `waterTop = MG_SKY_H + 6` ne laissait que 6px de
+marge fixe — largement insuffisant dès que `MG_SCALE` dépasse 0,6 (jusqu'à
+2,3 en grand écran), le clip du bandeau houle (`rect` démarrant pile à
+`MG_SKY_H`) rognait alors le haut de la boîte d'étiquette. Marge portée à
+`Math.max(6, 10*MG_SCALE+3)`, à l'échelle de la boîte elle-même.
+
+**Badges Tmax/Tmin du 1er jour rognés à gauche** : `mgTempBadge(ctx, x0+11,
+13, …)` — rayon `r=9*MG_SCALE` scalé, mais offsets `11`/`13`/`32` fixes. À
+`MG_SCALE=2,3` (grand écran), rayon 20,7px pour un offset de 11px : moitié du
+badge hors du canvas (day 0 = bord réel, pas de marge de défilement avant).
+Offsets multipliés par `MG_SCALE` comme le rayon — ratio offset/rayon
+constant quelle que soit l'échelle.
+
+**Fanions vent qui se chevauchent** : `badgeSize` ne dépendait que de
+`MG_SCALE`, jamais de l'écart réel entre créneaux (position À L'HEURE RÉELLE,
+cf. plus haut) — deux créneaux à 2h d'écart sur une colonne étroite
+produisaient des fanions superposés. Plafonné en plus par l'écart minimal
+réel entre créneaux voisins du jour (`minGapPx`), jamais recouvrants.
+
+**La pluie ne suivait pas le vent** : les traits de précipitation avaient une
+inclinaison FIXE (`rx+len*.32, ry+len`), indépendante du vent affiché juste
+au-dessus, alors qu'un effet séparé (« traits de vent », visible seulement
+≥13 nds) suivait lui la direction réelle — deux systèmes différents, d'où la
+question. Inclinaison de la pluie recalculée depuis `s.wd`/`s.ws` du créneau
+(même convention `fromDeg+180` que les flèches), proportionnelle à la
+vitesse : vent calme → pluie quasi verticale, vent fort → couchée dans sa
+direction.
+
+**Largeur incohérente** : `body{max-width:560px}` partout SAUF le
+météogramme, seul à déborder jusqu'à 1180px via `.mg-bleed` (décision du
+10/08). Dans la capture de référence de l'utilisateur, c'est tout l'inverse :
+le météogramme occupe déjà toute la largeur — donc c'est le RESTE de la page
+qu'il fallait élargir, pas le météogramme rétrécir. `.mg-bleed` retiré,
+`body` élargi à 900px dès 641px pour TOUTE la page (hero/grille/cartes/
+météogramme/calibrage/footer partagent maintenant une seule largeur).
+
+**Pastille de qualité par jour dans le météogramme** (demande explicite de
+se rapprocher de Yadusurf — référence déjà citée dans le code,
+https://www.yadusurf.com/METEO-SURF-REPORT/Teahupoo, capturée cette session
+pour vérifier : colonnes denses, note en tête de chaque jour, axe houle
+partagé unique). Le météogramme n'affichait jusqu'ici aucune information de
+score. `mgRenderHeadWind()` calcule le meilleur score du jour pour le spot
+sélectionné via `scoreSlot()`/`paramsFor()` — LES MÊMES fonctions que la
+grille au-dessus, aucune 2e formule — et ajoute un point coloré (`.mg-qdot`)
+devant le nom du jour. Le météogramme reste par ailleurs PERMANENT
+(indépendant des seuils de calibrage, cf. plus haut) pour son contenu
+descriptif, mais cette pastille EST un score : `render()` (rebuild de la
+grille à chaque changement de seuil) appelle maintenant aussi
+`mgRenderHeadWind()` en sortie — sinon la pastille resterait figée et
+contredirait la grille. Vérifié par injection directe
+(`COMMON.minPwr=0.01;render()`) : la pastille passe bien de gris (« Plat »,
+`#3d5468`) à vert (« Très bien », `#3dba8a`) avec le seuil.
+
+**Décision délibérément écartée** : pas de refonte de la grille "5 jours ×
+spot" ni des cartes "Sinon" — Yadusurf est mono-spot, n'a pas d'équivalent à
+cette comparaison multi-spots, et aucune plainte concrète ne la visait.
+Forme des fanions vent inchangée (déjà « façon Yadusurf » depuis le 10/08,
+seul le chevauchement — un bug, pas la forme — posait problème).
+
+Vérifié : `node --check` ; régénéré avec données live (plus de « houle
+secondaire indisponible » dans les logs) ; Chrome headless 500px (mobile,
+inchangé) et 1337px (desktop, toute la page à largeur unique désormais) ;
+`--dump-dom` sans erreur JS ; zoom pixel sur les zones de rognage
+signalées (confirmées corrigées par capture avant/après) ; test de
+calibrage par injection pour la pastille de score.
+
+`CACHE_NAME` non touché — aucun fichier d'`assets/` modifié.

@@ -52,7 +52,12 @@ const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 function sbGet(path) {
   return new Promise((resolve, reject) => {
     const req = https.get(SB_URL + '/rest/v1/' + path,
-      { headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } }, (res) => {
+      // family:4 : sur au moins un poste de dev, la résolution double-pile par
+      // défaut de Node tente IPv6 (route morte, ENETUNREACH) avant IPv4 et
+      // épuise le délai des DEUX (AggregateError au message vide, vu le
+      // 11/08/2026 sur marine-api.open-meteo.com) — forcer IPv4 est sans risque
+      // ici (tous ces hôtes le servent) et coupe court à ce piège.
+      { family: 4, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } }, (res) => {
         let body = '';
         res.on('data', (c) => { body += c; });
         res.on('end', () => {
@@ -67,7 +72,8 @@ function sbGet(path) {
 
 function httpJson(url) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, (res) => {
+    // family:4 : cf. le commentaire de sbGet() — même piège IPv6 constaté ici.
+    const req = https.get(url, { family: 4 }, (res) => {
       let body = '';
       res.on('data', (c) => { body += c; });
       res.on('end', () => {
@@ -573,6 +579,14 @@ function render(data, generatedMs) {
 body{background:var(--ocean);color:var(--text);
      font:15px/1.45 'DM Sans',system-ui,-apple-system,sans-serif;
      padding:20px 14px 40px;max-width:560px;margin:0 auto;-webkit-text-size-adjust:100%}
+/* Une seule largeur pour TOUTE la page à partir de 641px — avant, seul le
+   météogramme (.mg-bleed) débordait jusqu'à 1180px pendant que le reste
+   (hero/grille/cartes) restait coincé à 560px : deux vitesses différentes
+   sur la même page, lues comme "pas homogène" (signalé le 11/08/2026). La
+   référence de l'utilisateur (Yadusurf) est déjà pleine largeur d'un bout à
+   l'autre — donc on élargit le RESTE de la page pour rejoindre le
+   météogramme, pas l'inverse. */
+@media (min-width:641px){ body{max-width:900px} }
 a{color:inherit;text-decoration:none}
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:16px}
 /* La propriété gap en flexbox n'existe qu'à partir de Safari 14.1 (iOS 14.5) — soit APRÈS
@@ -719,15 +733,10 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 
 /* ── Météogramme : ciel réel (3 altitudes), houle primaire+secondaire, marée
    réelle — bloc PERMANENT (cf. le commentaire au-dessus de son init côté JS),
-   indépendant de la grille de score et de son panneau de calibrage.
-   .mg-bleed le fait déborder du cadre à 560px de body sur grand écran —
-   sinon le seul graphe de toute la page qui mérite d'être grand reste coincé
-   à la largeur mobile même sur un moniteur large (signalé le 10/08/2026). En
-   dessous de 641px, no-op : le format mobile actuel ne change pas. */
-@media (min-width:641px){
-  .mg-bleed{position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw}
-  .mg-bleed .mg-card{max-width:1180px;margin-left:auto;margin-right:auto}
-}
+   indépendant de la grille de score et de son panneau de calibrage. Largeur :
+   plus de cas spécial ici, .mg-card suit simplement le body élargi (cf. le
+   commentaire sur body{max-width} plus haut) — l'ancien .mg-bleed (marge
+   négative -50vw) est retiré, plus la seule section large de la page. */
 .mg-card{background:var(--deep);border-radius:12px;padding:14px 14px 12px;margin:20px 0}
 .mg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
 .mg-title{font:600 15px/1.2 Georgia,serif}
@@ -744,8 +753,14 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
 .mg-day:last-child{border-right:none}
 .mg-day .dn{font-size:12px;font-weight:600}
 .mg-day .dd{font-size:9.5px;color:var(--faint);margin-top:1px}
+/* Pastille qualité du jour (meilleur score, couleur du moteur de score
+   partagé) — équivalent le plus proche de la note en tête de colonne de
+   Yadusurf, sans transformer le graphe en cartes. */
+.mg-qdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;
+  vertical-align:middle;margin-bottom:1px}
 @media (min-width:641px){
   .mg-day .dn{font-size:15px} .mg-day .dd{font-size:11.5px}
+  .mg-qdot{width:8px;height:8px;margin-right:5px}
 }
 .mg-wind{background:rgba(255,255,255,.02)}
 /* position:relative + badges en position absolue (mgHourFrac) plutôt qu'un
@@ -803,7 +818,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
      commentaire au-dessus de son init côté JS) — sinon changer un curseur de
      calibrage effacerait le spot choisi et redessinerait le canvas pour rien,
      alors qu'aucune de ses données ne dépend des seuils de score. -->
-<div class="mg-bleed"><div class="mg-card" id="mgCard">
+<div class="mg-card" id="mgCard">
   <div class="mg-top">
     <div class="mg-title">🌤️ Météogramme</div>
     <select id="mgSel" aria-label="Choisir un spot"></select>
@@ -827,7 +842,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
     <div><b>Traits obliques</b> = précipitation réelle · <b>éclair</b> = orage</div>
     <div><b>PM</b>/<b>BM</b> = marée réelle meteo.nc — affichée ici, mais n'entre pas dans le score ci-dessous</div>
   </div>
-</div></div>
+</div>
 
 <div class="calbar"><button class="calbtn" id="cal-toggle" type="button"
   aria-expanded="false" aria-controls="cal">🎯 Calibrer</button></div>
@@ -938,9 +953,9 @@ function dayParts(k) {
 // ici dans l'autre sens : c'est LUI qui doit rester permanent.
 // ═══════════════════════════════════════════════════════════════════════════
 // Dimensions de RÉFÉRENCE (format mobile, ~360-560 px de large) — mgComputeLayout()
-// les fait grandir sur un écran plus large (cf. .mg-bleed en CSS) : sans ça le
-// seul graphe de toute la page qui mérite d'être grand restait coincé à la
-// largeur mobile même sur un moniteur large (signalé le 10/08/2026).
+// les fait grandir sur un écran plus large (le body élargi à 900px dès
+// 641px, cf. CSS) : sans ça le graphe restait coincé à la largeur mobile
+// même sur un moniteur large (signalé le 10/08/2026).
 var MG_DAY_W0 = 104, MG_SKY_H0 = 112, MG_SWELL_H0 = 60, MG_AXIS_H0 = 16;
 var MG_DAY_W = MG_DAY_W0, MG_SCALE = 1;
 var MG_SKY_H = MG_SKY_H0, MG_SWELL_H = MG_SWELL_H0, MG_AXIS_H = MG_AXIS_H0;
@@ -949,8 +964,8 @@ var MG_SPOT = 0, MG_HOVER = -1, MG_DPR = 1;
 var M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
 // Recalcule DAY_W/l'échelle depuis la largeur RÉELLEMENT disponible (variable :
-// .mg-bleed s'étire jusqu'à 1180px sur grand écran, cf. CSS). MG_SCALE grandit
-// la largeur des jours plus vite que la hauteur de la scène (x2,3 max contre
+// le body s'étire jusqu'à 900px dès 641px, cf. CSS). MG_SCALE grandit la
+// largeur des jours plus vite que la hauteur de la scène (x2,3 max contre
 // x1,55) : sur un très grand écran on veut plus de place PAR jour, pas une
 // scène démesurément haute pour le même nombre de créneaux.
 function mgComputeLayout() {
@@ -1160,21 +1175,46 @@ function mgSegBounds(ds, idx) {
 }
 
 function mgRenderHeadWind() {
-  var sp = WEEK.spots[MG_SPOT], byDay = mgSlotsByDay(sp);
+  var sp = WEEK.spots[MG_SPOT], byDay = mgSlotsByDay(sp), params = paramsFor(sp);
   var headHtml = '', windHtml = '';
   WEEK.days.forEach(function (k) {
     var p = mgDayParts(k);
-    headHtml += '<div class="mg-day" data-d="' + esc(k) + '" tabindex="0" role="button"'
-      + ' aria-label="Détail du ' + J_LONG[p.dow] + ' ' + p.d + '">'
-      + '<span class="dn">' + J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + M_SHORT[p.mo] + '</span></div>';
     var ds = byDay[k] || [];
+    // Pastille qualité du jour : meilleur score du jour pour CE spot, via le
+    // moteur PARTAGÉ (scoreSlot/paramsFor, mêmes fonctions que la grille
+    // au-dessus — aucune 2e formule écrite ici). Le météogramme n'affichait
+    // jusqu'ici aucune information de score, seulement du descriptif —
+    // Yadusurf (référence demandée le 11/08/2026) place une note en tête de
+    // chaque colonne de jour, ce point coloré en est l'équivalent le plus
+    // proche sans transformer le graphe en cartes (déjà écarté ce jour-là).
+    var dot = '';
+    if (ds.length) {
+      var best = scoreSlot(ds[0], params), di, sc;
+      for (di = 1; di < ds.length; di++) {
+        sc = scoreSlot(ds[di], params);
+        if (sc.score > best.score) best = sc;
+      }
+      dot = '<span class="mg-qdot" style="background:' + best.col + '" title="' + esc(best.label) + '"></span>';
+    }
+    headHtml += '<div class="mg-day" data-d="' + esc(k) + '" tabindex="0" role="button"'
+      + ' aria-label="Détail du ' + J_LONG[p.dow] + ' ' + p.d + (ds.length ? ' — ' + esc(best.label) : '') + '">'
+      + '<span class="dn">' + dot + J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + M_SHORT[p.mo] + '</span></div>';
     // Taille FIXE (dépend seulement de MG_SCALE, plus du nombre de créneaux
     // du jour) : avant, un jour à 4 créneaux donnait des badges nettement
     // plus petits qu'un jour à 2 créneaux, une variation de taille qui
     // n'avait aucun sens (le vent n'est pas plus "important" un jour où
     // meteo.nc échantillonne moins souvent). Position À L'HEURE RÉELLE
     // (mgHourFrac), pas espacée également dans la colonne.
-    var badgeSize = Math.max(20, Math.min(40, Math.round(28 * MG_SCALE)));
+    // Plafonné en plus par l'écart réel le plus serré entre deux créneaux du
+    // jour (position À L'HEURE RÉELLE, cf. plus haut) : sans ça, des créneaux
+    // rapprochés (ex. 2 h d'écart sur une colonne étroite) se recouvraient —
+    // des fanions superposés, illisibles, signalés le 11/08/2026 ("vecteurs
+    // vent pas beaux et incomplets").
+    var minGapPx = Infinity, gi;
+    for (gi = 1; gi < ds.length; gi++) {
+      minGapPx = Math.min(minGapPx, (mgHourFrac(ds[gi].h) - mgHourFrac(ds[gi - 1].h)) * MG_DAY_W);
+    }
+    var badgeSize = Math.max(18, Math.min(40, Math.round(28 * MG_SCALE), Math.floor(minGapPx * .94)));
     var arrows = ds.length ? ds.map(function (s) {
       var left = mgHourFrac(s.h) * MG_DAY_W;
       return '<span class="mg-wbadge" style="left:' + left.toFixed(1) + 'px" title="' + s.h + ' h — ' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '">'
@@ -1221,7 +1261,14 @@ function mgDraw() {
     });
   });
   var maxV = pts.length ? mgNiceMax(Math.max.apply(null, pts.map(function (p) { return p.y; })) * 1.2) : 1;
-  var waterTop = MG_SKY_H + 6, waterBase = MG_SKY_H + MG_SWELL_H;
+  // +6 fixe suffisait à l'échelle mobile (MG_SCALE=1) mais pas au-delà : la
+  // graduation du haut tombe TOUJOURS exactement sur maxV (mgGridSteps inclut
+  // toujours le plafond), donc son étiquette (boîte haute de 12*MG_SCALE,
+  // centrée sur waterTop) se fait rogner par le clip du bandeau houle dès que
+  // MG_SCALE dépasse ~0.6 — signalé le 11/08/2026 ("3m" à moitié coupé en
+  // large écran, MG_SCALE jusqu'à 2.3). Marge portée à la même échelle que la
+  // boîte d'étiquette pour qu'elle reste toujours entièrement au-dessus.
+  var waterTop = MG_SKY_H + Math.max(6, Math.round(10 * MG_SCALE) + 3), waterBase = MG_SKY_H + MG_SWELL_H;
   function waterY(v) { return waterBase - (v / maxV) * (waterBase - waterTop); }
   var xy = pts.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
   var surf = xy.length ? [xy[0]] : [], i, k2;
@@ -1358,10 +1405,18 @@ function mgDraw() {
         var len = { drizzle: 8, rain: 14, shower: 19, storm: 23 }[ptype] || 11;
         ctx.strokeStyle = ptype === 'drizzle' ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.78)';
         ctx.lineWidth = ptype === 'storm' ? 1.6 : 1.3;
+        // Inclinaison alignée sur le vent RÉEL du créneau (même convention
+        // fromDeg+180 que les flèches vent/houle), proportionnelle à sa
+        // vitesse — vent calme : pluie quasi verticale ; vent fort : couchée
+        // dans SA direction. Avant, l'inclinaison était un +.32x fixe,
+        // indépendant du vent affiché juste au-dessus (« la pluie suit le
+        // vent ? », signalé le 11/08/2026 — elle ne suivait rien).
+        var rDir = ((s.wd || 0) + 180) * Math.PI / 180;
+        var rTiltX = Math.cos(rDir) * Math.min(.9, (s.ws || 0) / 25);
         var r;
         for (r = 0; r < dens; r++) {
           var rx = xs + prng() * segW, ry = prng() * (MG_SKY_H + MG_SWELL_H * .6);
-          ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + len * .32, ry + len); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + len * rTiltX, ry + len); ctx.stroke();
         }
         if (ptype === 'storm') mgLightning(ctx, xs + segW * (.2 + prng() * .5), MG_SKY_H * .12, .7 + prng() * .3, 'rgba(255,244,180,.95)');
       }
@@ -1374,8 +1429,12 @@ function mgDraw() {
     // sinon selon l'heure du pic.
     var day = sp.daily[k];
     if (day) {
-      mgTempBadge(ctx, x0 + 11, 13, Math.round(day.tmax) + '°', warmRgb);
-      mgTempBadge(ctx, x0 + 11, 32, Math.round(day.tmin) + '°', accentRgb);
+      // Offsets à l'échelle de MG_SCALE, comme le rayon (9*MG_SCALE) de
+      // mgTempBadge() lui-même : des offsets fixes laissaient le badge du 1er
+      // jour déborder du bord gauche du canvas en grand écran (MG_SCALE
+      // jusqu'à 2.3, badge coupé de moitié — signalé le 11/08/2026).
+      mgTempBadge(ctx, x0 + 11 * MG_SCALE, 13 * MG_SCALE, Math.round(day.tmax) + '°', warmRgb);
+      mgTempBadge(ctx, x0 + 11 * MG_SCALE, 32 * MG_SCALE, Math.round(day.tmin) + '°', accentRgb);
     }
     if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.beginPath(); ctx.moveTo(x0 + .5, 0); ctx.lineTo(x0 + .5, MG_SKY_H); ctx.stroke(); }
   });
@@ -1852,6 +1911,16 @@ function render() {
       + ' · meilleur score <b>' + best + '/5</b>'
       + (MODE === 'spot' ? ' · calibrage propre à chaque spot' : ' · seuils communs');
   }
+
+  // Le météogramme reste PERMANENT (cf. son commentaire d'init) pour son
+  // contenu descriptif — mais sa pastille de qualité par jour EST un score,
+  // donc doit suivre un changement de seuil de calibrage comme la grille
+  // ci-dessus, sous peine d'afficher une couleur figée qui contredirait la
+  // grille (signalé comme risque le 11/08/2026 en ajoutant cette pastille).
+  // Rebuild léger (juste l'entête, pas mgDraw()/le canvas) : mgInner peut
+  // ne pas encore exister au tout premier appel de render() (météogramme
+  // initialisé séparément, cf. plus bas) — garde nécessaire.
+  if (document.getElementById('mgInner')) mgRenderHeadWind();
 }
 
 // ─── Panneau de calibrage ───────────────────────────────────────────────────
