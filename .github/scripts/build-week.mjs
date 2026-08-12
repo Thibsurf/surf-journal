@@ -119,16 +119,26 @@ const M_LONG = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet'
 //  - la marée n'entre pas dans calcSurfScore (appliquée ailleurs dans le Best
 //    Session Finder) : pas de réglage de marée ici.
 const WORKER = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
-const DAYS = 7;                      // J+1 .. J+7
+const DAYS = 7;                      // J0 .. J+6 — mêmes bornes que cmpWindow()
+                                      // de previsions.html (−24h → J+6, cf.
+                                      // CLAUDE.md) : la page hebdo partait avant
+                                      // du lendemain (J+1..J+7), donc "aujourd'hui"
+                                      // n'apparaissait jamais alors que le widget
+                                      // principal, lui, commence bien à J0 —
+                                      // signalé le 12/08/2026.
 // Créneaux de jour, en heure NC. Les pas disponibles sont 2, 5, 8, 11, 14, 17,
 // 20, 23 : 6 écarte celui de 5 h (nuit noire en hiver austral, lever ~6 h 20) et
 // 17 garde la dernière session avant le coucher (~17 h 30). Bornes fixes plutôt
 // qu'un calcul d'éphémérides — à ce pas de 3 h, l'affiner ne changerait rien.
 const HOUR_MIN = 6, HOUR_MAX = 17;
 
-// Modèles comparés pour l'indicateur de confiance. On ne lit que la MER TOTALE
-// de chacun, jamais leurs partitions propres — mais elle ne vit pas sous le même
-// kind ni sous le même nom de champ selon le modèle, cf. modelsForSpot/WAVE_ONLY.
+// Modèles comparés pour l'indicateur de confiance ET pour le sélecteur de
+// modèle du météogramme (cf. modelsForSpot). Chacun rapporte sa houle
+// PRIMAIRE (jamais la mer totale, cf. swellHeightOf/swellDetailOf) — mais
+// elle ne vit pas sous le même kind ni sous le même nom de champ selon le
+// modèle. Commentaire corrigé le 12/08/2026 : il disait à tort "mer totale",
+// contredit par swellHeightOf() juste en dessous, qui exclut explicitement
+// `totH`/`hs` pour cette raison.
 const CMP_MODELS = [
   { key: 'marc',  label: 'MARC' },
   { key: 'mf',    label: 'MFWAM' },
@@ -270,13 +280,18 @@ function slotsFromNc(json) {
   return out;
 }
 
-// Houle DOMINANTE d'un tableau de partitions (mf/marc/lotus, même schéma
+// Partition DOMINANTE d'un tableau de partitions (mf/marc/lotus, même schéma
 // { h, t, dir, spread } | null). Règle identique à marcPrimarySwell() dans
 // cache-model-forecasts.mjs et à _marcPrimarySwell() dans previsions.html : la
 // plus haute partition de type HOULE (Tp ≥ 8 s), la mer du vent étant exclue ;
 // repli sur la plus grosse partition si aucune n'atteint 8 s. Les partitions ne
 // sont PAS numérotées stablement — la dominante est tantôt P0, tantôt P1.
-function dominantSwell(parts) {
+// Renvoie l'objet PARTITION ENTIER (h/t/dir), pas seulement sa hauteur : le
+// sélecteur de modèle du météogramme (cf. modelsForSpot) a aussi besoin de la
+// période et de la direction de CETTE MÊME partition, pas d'une autre —
+// généralisé le 12/08/2026, seul le nom a changé (dominantSwell → ici),
+// swellHeightOf ci-dessous continue de n'en lire que `.h`.
+function dominantSwellPartition(parts) {
   let best = null, biggest = null;
   (parts || []).forEach((p) => {
     if (!p || p.h == null) return;
@@ -284,7 +299,7 @@ function dominantSwell(parts) {
     if (p.t != null && p.t < 8) return; // mer du vent → exclue
     if (!best || p.h > best.h) best = p;
   });
-  return (best || biggest || {}).h;
+  return best || biggest || null;
 }
 
 // Hauteur de houle primaire portée par une ligne, quel que soit le script qui
@@ -298,14 +313,29 @@ function dominantSwell(parts) {
 //     (< 10 s) exclue : c'est bien l'équivalent, et c'est déjà ce que recopie
 //     previsions.html:_cacheModelPoints (valeurs identiques au champ près,
 //     vérifié le 10/08/2026 à Dumbéa : 0,276 et 0,317 m des deux côtés).
-//   mf/marc/lotus → `partitions`, cf. dominantSwell.
+//   mf/marc/lotus → `partitions`, cf. dominantSwellPartition.
 // PIÈGE : ces lignes `wave` portent AUSSI `totH`/`hs`, qui est la MER TOTALE
 // (ecmwf 0,608 m là où la houle vaut 0,276 m). La lire ici gonflerait ECMWF du
 // double et comparerait deux grandeurs différentes — mesuré, puis écarté.
 function swellHeightOf(row, h) {
   if (row.kind !== 'wave') return h.val;
   if (row.model === 'ecmwf' || row.model === 'aifs') return h.val;
-  return dominantSwell(h.partitions);
+  const p = dominantSwellPartition(h.partitions);
+  return p ? p.h : null;
+}
+
+// Hauteur + période + direction de la MÊME grandeur que swellHeightOf() —
+// pour le sélecteur de modèle du météogramme (cf. mgDraw côté client, WEEK.
+// spots[].modelSlots) : afficher UNE hauteur d'un modèle et la période/
+// direction d'un AUTRE serait pire qu'illisible, ce serait faux. ecmwf/aifs
+// n'ont structurellement pas de direction par bande (cf. CLAUDE.md) : `dir`
+// reste null, le badge houle l'affiche déjà sans flèche dans ce cas (mgArrow
+// n'est appelée que si fromDeg != null).
+function swellDetailOf(row, h) {
+  if (row.kind !== 'wave') return { val: h.val, per: h.period, dir: h.dir };
+  if (row.model === 'ecmwf' || row.model === 'aifs') return { val: h.val, per: null, dir: null };
+  const p = dominantSwellPartition(h.partitions);
+  return p ? { val: p.h, per: p.t, dir: p.dir } : { val: null, per: null, dir: null };
 }
 
 // ─── Valeurs des autres modèles, par jour et par heure ──────────────────────
@@ -367,6 +397,13 @@ async function modelsForSpot(spot, days) {
   const hourOf = (h) => (h.h != null ? h.h : h.hour);
 
   const out = {};
+  // modelSlots : mêmes lignes, mêmes créneaux, mais rangés par MODÈLE plutôt
+  // que par créneau, et avec période+direction en plus de la hauteur — pour le
+  // sélecteur de modèle du météogramme (cf. mgDraw côté client). AUCUNE requête
+  // supplémentaire : ce sont les `rows` déjà récupérées ci-dessus pour la barre
+  // d'accord, juste pas réduites à leur seule hauteur cette fois. meteo.nc n'y
+  // figure pas (déjà dans sp.slots — c'est lui la référence par défaut).
+  const modelSlots = {};
   const stale = {};
   Object.keys(latest).forEach((k) => {
     const row = latest[k];
@@ -385,11 +422,13 @@ async function modelsForSpot(spot, days) {
       if (hour < HOUR_MIN || hour > HOUR_MAX) return;
       const key = row.date + '|' + hour;
       (out[key] = out[key] || []).push([label, val]);
+      const d = swellDetailOf(row, h);
+      if (d.val != null) (modelSlots[row.model] = modelSlots[row.model] || []).push({ d: row.date, h: hour, hs: d.val, t: d.per, sd: d.dir });
     });
   });
   const staleList = Object.keys(stale);
   if (staleList.length) console.log('    runs périmés écartés : ' + staleList.join(', '));
-  return out;
+  return { dispersion: out, modelSlots: modelSlots };
 }
 
 // ─── Ciel & température, par altitude (Open-Meteo GFS) ─────────────────────
@@ -750,10 +789,19 @@ input[type=range]{width:100%;accent-color:var(--accent);touch-action:none}
    commentaire sur body{max-width} plus haut) — l'ancien .mg-bleed (marge
    négative -50vw) est retiré, plus la seule section large de la page. */
 .mg-card{background:var(--deep);border-radius:12px;padding:14px 14px 12px;margin:20px 0}
-.mg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
+.mg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;flex-wrap:wrap}
 .mg-title{font:600 15px/1.2 Georgia,serif}
-#mgSel{background:var(--ocean);color:var(--text);border:1px solid var(--border);border-radius:8px;
-  padding:0 10px;min-height:44px;font-size:12.5px;font-family:inherit;max-width:54%}
+/* Deux sélecteurs (spot + modèle houle, cf. #mgModelSel ajouté le 12/08/2026) :
+   groupés pour pouvoir passer sur 2 lignes ensemble sous mg-title si l'écran
+   est trop étroit pour les deux côte à côte (flex-wrap sur .mg-top ci-dessus),
+   plutôt que de les faire déborder ou de les tasser illisibles. */
+.mg-sels{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex:1;min-width:0}
+#mgSel,#mgModelSel{background:var(--ocean);color:var(--text);border:1px solid var(--border);border-radius:8px;
+  padding:0 10px;min-height:44px;font-size:12.5px;font-family:inherit;max-width:100%;min-width:0;flex:1 1 auto}
+/* Le sélecteur de modèle se distingue visuellement (bord accent) : c'est un
+   réglage qui change la DONNÉE affichée (pas seulement le spot regardé), le
+   même traitement que la légende "meteo.nc = référence" ailleurs sur la page. */
+#mgModelSel{border-color:var(--accent);color:var(--accent)}
 .mg-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px}
 .mg-inner{display:flex;flex-direction:column;position:relative}
 .mg-row{display:flex}
@@ -853,7 +901,14 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
 <div class="mg-card" id="mgCard">
   <div class="mg-top">
     <div class="mg-title">🌤️ Météogramme</div>
-    <select id="mgSel" aria-label="Choisir un spot"></select>
+    <div class="mg-sels">
+      <select id="mgSel" aria-label="Choisir un spot"></select>
+      <!-- Options reconstruites à chaque changement de spot par
+           mgPopulateModelSel() (cf. JS) : les modèles disponibles varient
+           d'un spot à l'autre (sp.modelSlots), meteo.nc est toujours en
+           première option. -->
+      <select id="mgModelSel" aria-label="Choisir la source de houle"></select>
+    </div>
   </div>
   <!-- Marée DANS le même conteneur de défilement que le ciel/la houle — un
        second scroll indépendant (comme dans le prototype d'origine) désynchronise
@@ -1008,6 +1063,14 @@ var MG_DAY_W = MG_DAY_W0, MG_SCALE = 1;
 var MG_SKY_H = MG_SKY_H0, MG_SWELL_H = MG_SWELL_H0, MG_AXIS_H = MG_AXIS_H0;
 var MG_SCENE_H = MG_SKY_H + MG_SWELL_H + MG_AXIS_H;
 var MG_SPOT = 0, MG_HOVER = -1, MG_DPR = 1;
+// Modèle actif pour la courbe/le badge houle du météogramme — 'nc' (meteo.nc,
+// sp.slots) par défaut, ou une clé de sp.modelSlots (cf. modelsForSpot côté
+// build). UN seul modèle actif à la fois (pas de superposition façon
+// previsions.html : le bandeau ne fait que 60-90 px de haut, choix tranché le
+// 12/08/2026). Labels alignés sur CMP_MODELS (build-week.mjs, Node) et sur
+// MODEL_STYLE (previsions.html) — même vocabulaire partout dans le projet.
+var MG_MODEL = 'nc';
+var MG_MODEL_LABELS = { nc: 'meteo.nc', marc: 'MARC', mf: 'MFWAM', gfs: 'GFS', bom: 'BOM', ecmwf: 'ECMWF', aifs: 'AIFS', lotus: 'LOTUS' };
 // Rempli par mgDraw() ({v, y} par graduation houle), lu par mgRenderAxis()
 // (HTML sticky séparé du canvas, cf. #mgAxis) — évite de recalculer
 // maxV/waterY() une 2e fois pour construire les étiquettes.
@@ -1205,9 +1268,13 @@ function mgEnsureCanvasSize() {
   cv.width = Math.round(totalW * MG_DPR); cv.height = Math.round(MG_SCENE_H * MG_DPR);
 }
 
-function mgSlotsByDay(sp) {
+// list = un spot ({slots:[...]}, ex. WEEK.spots[i]) OU directement un tableau
+// de créneaux (ex. sp.modelSlots[modelKey], cf. le sélecteur de modèle houle
+// du météogramme, ajouté le 12/08/2026) — les deux formes existent côté WEEK.
+function mgSlotsByDay(list) {
+  var arr = Array.isArray(list) ? list : list.slots;
   var byDay = {};
-  sp.slots.forEach(function (s) { (byDay[s.d] = byDay[s.d] || []).push(s); });
+  arr.forEach(function (s) { (byDay[s.d] = byDay[s.d] || []).push(s); });
   var k; for (k in byDay) byDay[k].sort(function (a, b) { return a.h - b.h; });
   return byDay;
 }
@@ -1303,19 +1370,36 @@ function mgDraw() {
   var skyTopCloudy = [52, 74, 98], skyHorCloudy = [72, 92, 110];
   var deepC = [4, 22, 40];
   var byDay = mgSlotsByDay(sp);
+  // Source de la courbe/du badge houle : meteo.nc (sp.slots, comme toujours)
+  // par défaut, ou un AUTRE modèle si choisi dans #mgModelSel (cf. WEEK.spots
+  // [].modelSlots, construit côté build par modelsForSpot()/swellDetailOf()).
+  // Le ciel (byDay ci-dessus) reste TOUJOURS sur meteo.nc/Open-Meteo GFS quel
+  // que soit ce choix — seule la houle affichée change, jamais la scène.
+  // Ajouté le 12/08/2026 (branchement multi-modèle demandé, comme le
+  // comparatif houle de previsions.html — mais UN modèle actif à la fois ici,
+  // pas une superposition : le bandeau ne fait que 60-90 px de haut).
+  var swellByDay = (MG_MODEL === 'nc') ? byDay : mgSlotsByDay((sp.modelSlots && sp.modelSlots[MG_MODEL]) || []);
 
-  // Points de houle primaire pour le ruban continu — un point par créneau
-  // réel, à son heure PROPORTIONNELLE réelle (cf. mgHourFrac : le nombre de
-  // créneaux varie selon l'horizon, mais l'écart visuel entre deux points
-  // reflète maintenant le vrai écart en heures, pas un simple rang).
-  var pts = [];
+  // Points de houle pour le ruban continu — un point par créneau réel, à son
+  // heure PROPORTIONNELLE réelle (cf. mgHourFrac). Groupés en RUNS séparés à
+  // chaque jour sans donnée : un modèle autre que meteo.nc peut avoir un
+  // horizon plus court ou des trous (ex. ECMWF/AIFS 6h de cadence, cf.
+  // modelsForSpot) — relier deux points de part et d'autre d'un jour VIDE
+  // inventerait une houle qui n'a jamais été prévue. meteo.nc, lui, n'a
+  // jamais ce trou (sp.slots couvre toujours l'horizon affiché), donc son
+  // rendu ne change pas : un seul run, comme avant.
+  var ptRuns = [], curRun = [];
   WEEK.days.forEach(function (k, d) {
-    var ds = byDay[k] || [];
+    var ds = swellByDay[k] || [];
+    if (!ds.length) { if (curRun.length) { ptRuns.push(curRun); curRun = []; } return; }
     ds.forEach(function (s) {
-      pts.push({ x: d * MG_DAY_W + mgHourFrac(s.h) * MG_DAY_W, y: s.hs });
+      if (s.hs == null) return;
+      curRun.push({ x: d * MG_DAY_W + mgHourFrac(s.h) * MG_DAY_W, y: s.hs });
     });
   });
-  var maxV = pts.length ? mgNiceMax(Math.max.apply(null, pts.map(function (p) { return p.y; })) * 1.2) : 1;
+  if (curRun.length) ptRuns.push(curRun);
+  var allPts = ptRuns.length ? ptRuns.reduce(function (a, r) { return a.concat(r); }) : [];
+  var maxV = allPts.length ? mgNiceMax(Math.max.apply(null, allPts.map(function (p) { return p.y; })) * 1.2) : 1;
   // +6 fixe suffisait à l'échelle mobile (MG_SCALE=1) mais pas au-delà : la
   // graduation du haut tombe TOUJOURS exactement sur maxV (mgGridSteps inclut
   // toujours le plafond), donc son étiquette (boîte haute de 12*MG_SCALE,
@@ -1325,12 +1409,17 @@ function mgDraw() {
   // boîte d'étiquette pour qu'elle reste toujours entièrement au-dessus.
   var waterTop = MG_SKY_H + Math.max(6, Math.round(10 * MG_SCALE) + 3), waterBase = MG_SKY_H + MG_SWELL_H;
   function waterY(v) { return waterBase - (v / maxV) * (waterBase - waterTop); }
-  var xy = pts.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
-  var surf = xy.length ? [xy[0]] : [], i, k2;
-  for (i = 0; i < xy.length - 1; i++) {
-    var p0 = xy[i - 1] || xy[i], p1 = xy[i], p2 = xy[i + 1], p3 = xy[i + 2] || xy[i + 1];
-    for (k2 = 1; k2 <= 8; k2++) surf.push(mgCatmull(p0, p1, p2, p3, k2 / 8));
-  }
+  // Un ruban (surf) par run, avec sa propre spline Catmull — jamais reliés
+  // entre eux (cf. commentaire ci-dessus sur ptRuns).
+  var surfRuns = ptRuns.map(function (run) {
+    var xy = run.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
+    var surf = xy.length ? [xy[0]] : [], i, k2;
+    for (i = 0; i < xy.length - 1; i++) {
+      var p0 = xy[i - 1] || xy[i], p1 = xy[i], p2 = xy[i + 1], p3 = xy[i + 2] || xy[i + 1];
+      for (k2 = 1; k2 <= 8; k2++) surf.push(mgCatmull(p0, p1, p2, p3, k2 / 8));
+    }
+    return surf;
+  });
 
   // ── Ciel, par micro-segment ──
   WEEK.days.forEach(function (k, d) {
@@ -1524,10 +1613,12 @@ function mgDraw() {
     if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.beginPath(); ctx.moveTo(x0 + .5, 0); ctx.lineTo(x0 + .5, MG_SKY_H); ctx.stroke(); }
   });
 
-  // ── Bande houle continue ──
+  // ── Bande houle continue ── un ruban par run (cf. ptRuns/surfRuns) : jamais
+  // de trait reliant deux runs séparés par un jour sans donnée.
   ctx.save();
   ctx.beginPath(); ctx.rect(0, MG_SKY_H, totalW, MG_SWELL_H); ctx.clip();
-  if (surf.length) {
+  surfRuns.forEach(function (surf) {
+    if (!surf.length) return;
     var wg2 = ctx.createLinearGradient(0, MG_SKY_H, 0, waterBase + 24);
     wg2.addColorStop(0, mgRgba(mgLerp(accentRgb, [255, 255, 255], .3), .97));
     wg2.addColorStop(.45, mgRgba(accentRgb, .97));
@@ -1538,7 +1629,7 @@ function mgDraw() {
     ctx.fillStyle = wg2; ctx.fill();
     ctx.beginPath(); surf.forEach(function (p, pi) { pi ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
     ctx.strokeStyle = mgRgba(mgLerp(accentRgb, [255, 255, 255], .6)); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
-  }
+  });
   // Graduations à des mètres RONDS (1/2/3…), pas à 50%/100% d'un plafond déjà
   // gonflé de 20% : sur une houle à 0,6-1,9 m, l'ancien calcul plaçait ses deux
   // seules lignes à 1,5 m et 3 m — au-dessus de tout point réel du graphe, lu à
@@ -1573,7 +1664,7 @@ function mgDraw() {
   // donnée surf principale" — pour ne pas surcharger la scène. hs2/per2/sd2
   // restent dans WEEK (au cas où), simplement plus dessinés ici. ──
   WEEK.days.forEach(function (k, d) {
-    var ds = byDay[k]; if (!ds || !ds.length) return;
+    var ds = swellByDay[k]; if (!ds || !ds.length) return;
     var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
     var px = d * MG_DAY_W + mgHourFrac(peak.h) * MG_DAY_W;
     var R = Math.max(15, Math.min(30, MG_DAY_W * .155));
@@ -1594,7 +1685,10 @@ function mgDraw() {
 
     ctx.save();
     ctx.beginPath(); ctx.rect(d * MG_DAY_W + 1, 0, MG_DAY_W - 2, MG_SKY_H + MG_SWELL_H); ctx.clip();
-    mgSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', Math.round(peak.t) + 's', peak.sd, accentRgb);
+    // peak.t peut être absent (ECMWF/AIFS n'ont pas de période par bande, cf.
+    // swellDetailOf côté build) : afficher "0s" serait faux, on omet la
+    // légende de période plutôt que d'inventer une valeur.
+    mgSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', peak.t != null ? Math.round(peak.t) + 's' : null, peak.sd, accentRgb);
     ctx.restore();
   });
   ctx.textAlign = 'center';
@@ -1697,8 +1791,26 @@ function mgSetHover(dayIdx) {
 // MG_DAY_W/MG_SCALE pour dimensionner les badges de vent. Les appeler dans
 // l'autre ordre (comme une première version le faisait) dimensionnait la
 // rangée de vent sur la mise en page du tour précédent, un cran en retard.
+// Reconstruit les options de #mgModelSel pour le spot courant : les modèles
+// disponibles varient d'un spot à l'autre (sp.modelSlots dépend de ce que
+// modelsForSpot a pu récupérer/juger frais, cf. build-week.mjs). Repli sur
+// 'nc' si le modèle actif n'existe pas pour ce spot (ex. on regardait ECMWF
+// sur Dumbéa puis on bascule sur un spot où son run était périmé).
+function mgPopulateModelSel() {
+  var sp = WEEK.spots[MG_SPOT];
+  var sel = document.getElementById('mgModelSel');
+  var order = ['nc', 'marc', 'mf', 'gfs', 'bom', 'ecmwf', 'aifs', 'lotus'];
+  var keys = ['nc'].concat(Object.keys(sp.modelSlots || {}));
+  keys.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+  if (keys.indexOf(MG_MODEL) === -1) MG_MODEL = 'nc';
+  sel.innerHTML = keys.map(function (k) {
+    return '<option value="' + k + '"' + (k === MG_MODEL ? ' selected' : '') + '>' + esc(MG_MODEL_LABELS[k] || k) + '</option>';
+  }).join('');
+}
+
 function mgRender() {
   mgComputeLayout();
+  mgPopulateModelSel();
   mgRenderHeadWind();
   mgEnsureCanvasSize();
   mgDraw();
@@ -1754,6 +1866,10 @@ function mgAttachEvents() {
   }, { passive: true });
 
   document.getElementById('mgSel').addEventListener('change', function () { MG_SPOT = +this.value; mgRender(); });
+  // Changer de modèle ne touche ni le spot ni le ciel/vent/marée (cf. le
+  // commentaire sur swellByDay dans mgDraw()) : pas besoin de mgRender()
+  // complet, juste redessiner le canvas et son axe houle.
+  document.getElementById('mgModelSel').addEventListener('change', function () { MG_MODEL = this.value; mgDraw(); mgRenderAxis(); });
   window.addEventListener('resize', mgRelayout);
 }
 
@@ -2272,7 +2388,7 @@ initMeteogram();
 async function main() {
   const now = Date.now();
   const days = [];
-  for (let i = 1; i <= DAYS; i++) days.push(ncDayKey(now + i * 864e5));
+  for (let i = 0; i < DAYS; i++) days.push(ncDayKey(now + i * 864e5));
 
   console.log('Spots retenus (au moins une session au journal) :');
   const spots = await loadSpots();
@@ -2290,7 +2406,8 @@ async function main() {
       // vide (des « · »), ce qui se voit et se lit correctement.
       console.log('  ' + sp.name + ' : ÉCHEC meteo.nc (' + e.message + ')');
     }
-    const models = await modelsForSpot(sp, days);
+    const modelsRes = await modelsForSpot(sp, days);
+    const models = modelsRes.dispersion, modelSlots = modelsRes.modelSlots;
 
     // Ciel + houle secondaire : purement décoratifs pour le météogramme, jamais
     // pour le score. Un échec ne doit pas faire tomber le spot — ses créneaux
@@ -2330,6 +2447,7 @@ async function main() {
       params: sp.scoreParams || null,
       slots: slots,
       models: models,
+      modelSlots: modelSlots,
       daily: sky.daily,
       tide: tide
     });
@@ -2348,16 +2466,20 @@ async function main() {
       + ' jours (au-delà, meteo.nc ne publie plus de houle — le vent seul continue)');
   }
 
-  // Restreindre les créneaux aux jours RÉELLEMENT affichés. meteo.nc renvoie une
-  // série qui commence AUJOURD'HUI alors que la page couvre J+1..J+7 : sans ce
-  // filtre, le podium pouvait élire un créneau du jour même, donc annoncer en
-  // gros une journée absente du tableau juste en dessous. Détecté le 05/08/2026
-  // par le compteur du panneau — 28 journées évaluées pour 4 spots × 6 colonnes.
+  // Restreindre les créneaux aux jours RÉELLEMENT affichés. La page couvre
+  // désormais J0..J+6 (cf. DAYS/la boucle plus haut, alignée le 12/08/2026 sur
+  // la fenêtre du widget principal — avant elle couvrait J+1..J+7 et le filtre
+  // ci-dessous servait surtout à écarter le jour même) : sans ce filtre, le
+  // podium pouvait élire un créneau hors de l'horizon utile réellement affiché,
+  // donc annoncer en gros une journée absente du tableau juste en dessous.
+  // Détecté le 05/08/2026 par le compteur du panneau — 28 journées évaluées
+  // pour 4 spots × 6 colonnes.
   const keep = {};
   shown.forEach((k) => { keep[k] = 1; });
   out.forEach((sp) => {
     sp.slots = sp.slots.filter((s) => keep[s.d]);
     Object.keys(sp.models).forEach((k) => { if (!keep[k.split('|')[0]]) delete sp.models[k]; });
+    Object.keys(sp.modelSlots).forEach((mk) => { sp.modelSlots[mk] = sp.modelSlots[mk].filter((s) => keep[s.d]); if (!sp.modelSlots[mk].length) delete sp.modelSlots[mk]; });
     Object.keys(sp.daily).forEach((k) => { if (!keep[k]) delete sp.daily[k]; });
     Object.keys(sp.tide).forEach((k) => { if (!keep[k]) delete sp.tide[k]; });
   });
