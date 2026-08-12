@@ -519,6 +519,50 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 @keyframes convRight{0%,100%{transform:translateX(0);opacity:.6}50%{transform:translateX(-11px);opacity:1}}
 @keyframes riseCol{0%{transform:translateY(6px);opacity:.4}60%{opacity:1}100%{transform:translateY(-8px);opacity:0}}
 .sym-spin{animation:cycloneSpin 4s linear infinite;display:inline-block;transform-origin:center;}
+
+/* ── Météogramme illustré (accordéon sous #gw-widget) — porté de semaine.html/
+   build-week.mjs le 12/08/2026 (préfixe yw- pour ne jamais confondre avec le
+   comparatif "gw-*"/#mg-share-btn déjà appelés "météogramme" ailleurs sur
+   cette page). Règles identiques à celles de build-week.mjs, --yww au lieu de
+   --mgw, pas de sélecteurs spot/modèle ni de marée (déjà ailleurs sur la
+   page) : "cette représentation-là, rien d'autre", demandé ce jour-là. */
+.yw-card{background:var(--deep);border-radius:12px;padding:14px 14px 12px}
+.yw-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;flex-wrap:wrap}
+.yw-title{font:600 15px/1.2 Georgia,serif}
+.yw-refresh{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;
+  padding:0 10px;min-height:32px;font-size:11px;font-family:inherit;cursor:pointer}
+.yw-refresh:hover{border-color:var(--accent);color:var(--accent)}
+.yw-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px}
+.yw-inner{display:flex;flex-direction:column;position:relative}
+.yw-row{display:flex}
+.yw-day{flex:0 0 var(--yww);width:var(--yww);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;cursor:pointer;border-right:1px solid var(--border);padding:3px 0;min-height:44px}
+.yw-day:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.yw-day:last-child{border-right:none}
+.yw-day .dn{font-size:12px;font-weight:600}
+.yw-day .dd{font-size:9.5px;color:var(--faint);margin-top:1px}
+@media (min-width:641px){ .yw-day .dn{font-size:15px} .yw-day .dd{font-size:11.5px} }
+.yw-wind{background:rgba(255,255,255,.02)}
+.yw-wind .yw-day{position:relative;min-height:38px;cursor:default;padding:0;overflow:hidden}
+.yw-wind .yw-day:last-child{border-right:none}
+.yw-wseg{position:absolute;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1px;border-right:1px solid rgba(6,16,28,.28)}
+.yw-wseg:last-child{border-right:none}
+.yw-wseg b{color:#08141f;font-weight:800;line-height:1}
+.yw-wseg-empty{position:static;width:100%;color:var(--faint);font-size:11px;background:none;
+  border-right:none;display:flex}
+canvas#yw-canvas{display:block;touch-action:pan-y}
+.yw-axis-wrap{position:absolute;left:0;pointer-events:none;z-index:2}
+.yw-axis{position:sticky;left:0;width:0;height:100%}
+.yw-axis span{position:absolute;left:3px;transform:translateY(-50%);white-space:nowrap;
+  background:rgba(8,20,34,.88);color:#fff;font:600 9px sans-serif;padding:1px 4px;border-radius:3px}
+@media (min-width:641px){ .yw-axis span{font-size:11px} }
+.yw-readout{margin-top:9px;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.03);
+  font-size:11.5px;color:var(--muted);min-height:18px;line-height:1.6}
+.yw-readout b{color:var(--text)}
+.yw-readout .hint{color:var(--faint);font-style:italic}
+.yw-leg{display:flex;flex-wrap:wrap;gap:9px 16px;margin-top:11px;font-size:10.5px;color:var(--faint);line-height:1.5}
+.yw-leg b{color:var(--muted);font-weight:600}
 </style>
 
 <link rel="preconnect" href="https://rpcache.meteo.nc">
@@ -668,6 +712,649 @@ html.widget-mode #gw-widget { margin-bottom:0; }
       </div>
     </div>
   </div>
+
+  <!-- Météogramme illustré : ciel réel par altitude + houle continue, porté de
+       semaine.html/build-week.mjs le 12/08/2026 pour le spot COURANT de cette
+       page (window._fcastData, déjà chargé — aucun fetch séparé). Accordéon
+       fermé par défaut et chargé PARESSEUSEMENT (à l'ouverture, cf. le
+       listener 'toggle' dans le script juste en dessous) : ce n'est pas la
+       référence chiffrée de la page (#gw-widget l'est), un complément visuel
+       optionnel qui ne doit pas ralentir le premier rendu. Pas de sélecteur
+       de spot/modèle ni de marée dupliquée : "cette représentation-là, rien
+       d'autre", demandé ce jour-là — juste la scène ciel+houle+vent, pour le
+       spot déjà affiché plus haut. -->
+  <details class="card" id="yw-acc" style="margin-bottom:12px;padding:14px;">
+    <summary style="cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;">🌤️ Ciel &amp; houle illustrés</summary>
+    <div class="yw-card" id="yw-card" style="margin-top:10px;padding:0;">
+      <div class="yw-top">
+        <div class="yw-title">🌤️ <span id="yw-spot-name"></span></div>
+        <button class="yw-refresh" id="yw-refresh" type="button">↻ Actualiser</button>
+      </div>
+      <div class="yw-scroll" id="yw-scroll">
+        <div class="yw-inner" id="yw-inner">
+          <div class="yw-row" id="yw-head"></div>
+          <div class="yw-row yw-wind" id="yw-wind"></div>
+          <canvas id="yw-canvas"></canvas>
+          <div class="yw-axis-wrap" id="yw-axis-wrap"><div class="yw-axis" id="yw-axis"></div></div>
+        </div>
+      </div>
+      <div class="yw-readout" id="yw-readout"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
+      <div class="yw-leg">
+        <div><b>Flèche</b> = direction vers laquelle vent/houle se dirigent (même convention que le reste du site)</div>
+        <div><b>Couleur du vent</b> = vitesse, mêmes seuils que le reste du site (7/12/17/23 nds)</div>
+        <div><b>Ciel</b> = nuages bas/moyens/hauts réels (Open-Meteo GFS) — les bas sont ceux qui amènent la pluie</div>
+        <div><b>Traits obliques</b> = précipitation réelle, inclinés dans le sens du vent</div>
+      </div>
+    </div>
+  </details>
+  <script>
+  // ═══════════════════════════════════════════════════════════════════════
+  // MÉTÉOGRAMME ILLUSTRÉ — voir le commentaire HTML juste au-dessus. Toute
+  // la logique de dessin (ciel continu par interpolation, houle en runs
+  // séparés par jour manquant, etc.) est reprise à l'identique de
+  // build-week.mjs : ne modifier qu'un seul des deux fichiers fait diverger
+  // le rendu entre previsions.html et semaine.html, cf. leur commentaire
+  // d'origine sur ce même risque.
+  // ═══════════════════════════════════════════════════════════════════════
+  var YW_DAY_W0 = 104, YW_SKY_H0 = 112, YW_SWELL_H0 = 60, YW_AXIS_H0 = 16;
+  var YW_DAY_W = YW_DAY_W0, YW_SCALE = 1;
+  var YW_SKY_H = YW_SKY_H0, YW_SWELL_H = YW_SWELL_H0, YW_AXIS_H = YW_AXIS_H0;
+  var YW_SCENE_H = YW_SKY_H + YW_SWELL_H + YW_AXIS_H;
+  var YW_HOVER = -1, YW_DPR = 1, YW_DATA = null, YW_ATTACHED = false;
+  var YW_AXIS_LABELS = [];
+  var YW_M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  var YW_J_LONG  = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  var YW_J_SHORT = ['dim','lun','mar','mer','jeu','ven','sam'];
+
+  function ywEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  // Mêmes seuils/couleurs que windCol() (assets/settings-utils.js — pas chargé
+  // par previsions.html, d'où cette copie locale) ; _panelLight() vient de
+  // charts-core.js, déjà chargé.
+  var YW_WIND_T = [7, 12, 17, 23];
+  function ywWindCol(v) {
+    var t = YW_WIND_T;
+    return (typeof _panelLight === 'function' && _panelLight())
+      ? (v == null ? '#5c7080' : v < t[0] ? '#127a4e' : v < t[1] ? '#1a729b' : v < t[2] ? '#a8631f' : v < t[3] ? '#b45309' : '#c73e3e')
+      : (v == null ? '#3d5468' : v < t[0] ? '#3dba8a' : v < t[1] ? '#4fa3c7' : v < t[2] ? '#e8a057' : v < t[3] ? '#e8874a' : '#e05c5c');
+  }
+
+  // Construit YW_DATA depuis _fcastData (déjà chargé pour le spot courant par
+  // le reste de la page). _fcastData.dates[] est DÉJÀ décalé de +11h (cf.
+  // previsions.html: "new Date(new Date(d.time).getTime()+11*3600000)") : on
+  // lit donc en getUTC* SANS re-décaler — le piège classique du fuseau NC
+  // (CLAUDE.md) serait de le décaler une 2e fois. Fenêtre diurne 6h-17h et 7
+  // jours, mêmes bornes que semaine.html (alignées le 12/08/2026), mais ici
+  // en cadence RÉELLE (previsions.html charge bien plus fin que les 4
+  // créneaux/jour de la page hebdo).
+  function ywBuildData() {
+    var fc = window._fcastData;
+    if (!fc || !fc.dates || !fc.dates.length) return null;
+    var HOUR_MIN = 6, HOUR_MAX = 17, MAX_DAYS = 7;
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var dayMinMax = {}, daySeen = [], raw = [];
+    fc.dates.forEach(function (dt, i) {
+      var dayKey = dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate());
+      var hour = dt.getUTCHours();
+      if (fc.tAir && fc.tAir[i] != null) {
+        var mm = dayMinMax[dayKey] || (dayMinMax[dayKey] = { tmax: -999, tmin: 999 });
+        if (fc.tAir[i] > mm.tmax) mm.tmax = fc.tAir[i];
+        if (fc.tAir[i] < mm.tmin) mm.tmin = fc.tAir[i];
+      }
+      if (daySeen.indexOf(dayKey) === -1) daySeen.push(dayKey);
+      if (hour < HOUR_MIN || hour > HOUR_MAX) return;
+      if (fc.sw1h[i] == null) return;
+      raw.push({ dayKey: dayKey, hour: hour, i: i });
+    });
+    var days = daySeen.slice(0, MAX_DAYS);
+    var keep = {}; days.forEach(function (k) { keep[k] = 1; });
+    var slots = raw.filter(function (r) { return keep[r.dayKey]; }).map(function (r) {
+      var i = r.i;
+      return {
+        d: r.dayKey, h: r.hour,
+        hs: fc.sw1h[i], t: fc.sw1t ? fc.sw1t[i] : null, sd: fc.sw1d ? fc.sw1d[i] : null,
+        hs2: fc.sw2h ? fc.sw2h[i] : null, per2: fc.sw2t ? fc.sw2t[i] : null, sd2: fc.sw2d ? fc.sw2d[i] : null,
+        ws: fc.wSpd ? fc.wSpd[i] : null, wd: fc.wDir ? fc.wDir[i] : null,
+        cl: fc.cldL ? fc.cldL[i] : null, cm: fc.cldM ? fc.cldM[i] : null, ch: fc.cldH ? fc.cldH[i] : null,
+        precip: fc.rain ? fc.rain[i] : null, code: null,
+        at: fc.tAir ? fc.tAir[i] : null
+      };
+    });
+    if (!slots.length) return null;
+    var daily = {};
+    days.forEach(function (k) { if (dayMinMax[k]) daily[k] = dayMinMax[k]; });
+    return { days: days, slots: slots, daily: daily, hourMin: HOUR_MIN, hourMax: HOUR_MAX };
+  }
+
+  function ywDayParts(k) {
+    var p = k.split('-');
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12));
+    return { d: +p[2], mo: +p[1] - 1, dow: d.getUTCDay() };
+  }
+  function ywPrecipFromCode(code, mm) {
+    if (code == null) return (mm > 0.2) ? 'rain' : 'none';
+    if (code >= 95) return 'storm';
+    if (code >= 80 && code <= 82) return 'shower';
+    if (code >= 61 && code <= 65) return 'rain';
+    if (code >= 51 && code <= 57) return 'drizzle';
+    return (mm > 0.2) ? 'rain' : 'none';
+  }
+  function ywRng(seed) {
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function ywSeed(s) {
+    var h = 2166136261, i;
+    for (i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function ywLerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+  function ywRgba(c, a) { return 'rgba(' + c[0].toFixed(0) + ',' + c[1].toFixed(0) + ',' + c[2].toFixed(0) + ',' + (a == null ? 1 : a) + ')'; }
+  function ywNiceMax(v) {
+    var steps = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8], i;
+    for (i = 0; i < steps.length; i++) if (v <= steps[i] * .92) return steps[i];
+    return Math.ceil(v);
+  }
+  function ywGridSteps(maxV) {
+    if (maxV <= 0.5) return [0.5];
+    if (maxV <= 1) return [0.5, 1];
+    if (maxV <= 1.5) return [0.5, 1, 1.5];
+    var step = maxV > 5 ? 2 : 1, steps = [], v;
+    for (v = step; v <= maxV + 1e-6; v += step) steps.push(v);
+    return steps;
+  }
+  function ywCatmull(p0, p1, p2, p3, t) {
+    var t2 = t * t, t3 = t2 * t;
+    return {
+      x: .5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+      y: .5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y +4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+    };
+  }
+  function ywInterpAt(xArr, vArr, xRel) {
+    var n = xArr.length;
+    if (n === 1) return vArr[0];
+    if (xRel <= xArr[0]) return vArr[0];
+    if (xRel >= xArr[n - 1]) return vArr[n - 1];
+    var i;
+    for (i = 0; i < n - 1; i++) {
+      if (xRel >= xArr[i] && xRel <= xArr[i + 1]) {
+        var t = (xRel - xArr[i]) / (xArr[i + 1] - xArr[i]);
+        return vArr[i] + (vArr[i + 1] - vArr[i]) * t;
+      }
+    }
+    return vArr[n - 1];
+  }
+  function ywArrow(ctx, x, y, fromDeg, size, fill) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate((fromDeg + 180) * Math.PI / 180);
+    ctx.beginPath();
+    ctx.moveTo(0, -size); ctx.lineTo(size * .62, size * .6); ctx.lineTo(0, size * .24); ctx.lineTo(-size * .62, size * .6);
+    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+    ctx.restore();
+  }
+  function ywCloudPuff(ctx, cx, cy, scale, op, tone) {
+    tone = tone || 0;
+    ctx.save(); ctx.globalAlpha = op;
+    var lobes = [[0, -3, 15], [-15, 3, 12], [15, 3, 12], [-6, -7, 10], [7, -8, 11], [0, 6, 14]];
+    ctx.fillStyle = ywRgba(ywLerp([26, 32, 40], [4, 5, 7], tone * .5), .32 + tone * .24);
+    lobes.forEach(function (o) {
+      ctx.beginPath(); ctx.ellipse(cx + o[0] * scale, cy + o[1] * scale + 4.5 * scale, o[2] * scale, o[2] * .82 * scale, 0, 0, 7); ctx.fill();
+    });
+    var hi = ywLerp([255, 255, 255], [186, 192, 200], tone);
+    var lo = ywLerp([196, 208, 218], [46, 51, 60], tone);
+    lobes.forEach(function (o) {
+      var lx = cx + o[0] * scale, ly = cy + o[1] * scale, r = o[2] * scale;
+      var grd = ctx.createRadialGradient(lx - r * .38, ly - r * .42, r * .12, lx, ly, r * 1.25);
+      grd.addColorStop(0, ywRgba(hi)); grd.addColorStop(.65, ywRgba(ywLerp(hi, lo, .5))); grd.addColorStop(1, ywRgba(lo));
+      ctx.fillStyle = grd; ctx.beginPath(); ctx.ellipse(lx, ly, r, r * .8, 0, 0, 7); ctx.fill();
+    });
+    ctx.restore();
+  }
+  function ywLightning(ctx, x, y, scale, fill) {
+    var pts = [[13, 2], [3, 14], [10, 14], [9, 22], [19, 9], [12, 9]];
+    ctx.save(); ctx.beginPath();
+    pts.forEach(function (p, i) { var px = x + p[0] * scale, py = y + p[1] * scale; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+  }
+  function ywTempBadge(ctx, x, y, label, rgb) {
+    var r = 9 * YW_SCALE;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = ywRgba(rgb, .92); ctx.fill();
+    ctx.fillStyle = '#08141f'; ctx.font = '800 ' + Math.round(8.5 * YW_SCALE) + 'px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y + .5); ctx.restore();
+  }
+  function ywSwellBadge(ctx, cx, cy, r, hTxt, pTxt, fromDeg, col) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7);
+    ctx.fillStyle = 'rgba(6,16,30,.88)'; ctx.fill();
+    ctx.lineWidth = Math.max(1.4, r * .1); ctx.strokeStyle = ywRgba(col); ctx.stroke();
+    if (fromDeg != null) ywArrow(ctx, cx, cy - r * .38, fromDeg, r * .4, ywRgba(col));
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff';
+    ctx.font = '800 ' + Math.max(9, Math.round(r * .58)) + 'px sans-serif';
+    ctx.fillText(hTxt, cx, cy + r * .52);
+    ctx.restore();
+    if (pTxt) {
+      ctx.textAlign = 'center'; ctx.fillStyle = ywRgba(col);
+      ctx.font = '700 ' + Math.max(9, Math.round(r * .34)) + 'px sans-serif';
+      ctx.fillText(pTxt, cx, cy + r + Math.max(11, r * .48));
+    }
+  }
+  function ywWindArrowSvg(wd, size) {
+    var propDeg = ((wd || 0) + 180) % 360;
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true">'
+      + '<g transform="rotate(' + propDeg + ',12,12)">'
+      + '<path d="M12,2 L19,14 L13.5,14 L13.5,22 L10.5,22 L10.5,14 L5,14 Z" fill="rgba(6,16,28,.82)"/>'
+      + '</g></svg>';
+  }
+
+  function ywComputeLayout() {
+    var card = document.getElementById('yw-card');
+    var avail = (card && card.clientWidth) || window.innerWidth - 32 || 500;
+    var n = Math.max(1, YW_DATA.days.length);
+    YW_DAY_W = Math.max(YW_DAY_W0, Math.min(230, Math.floor(avail / n)));
+    YW_SCALE = Math.min(2.3, YW_DAY_W / YW_DAY_W0);
+    var hScale = Math.min(1.55, YW_SCALE);
+    YW_SKY_H = Math.round(YW_SKY_H0 * hScale);
+    YW_SWELL_H = Math.round(YW_SWELL_H0 * hScale);
+    YW_AXIS_H = Math.round(YW_AXIS_H0 * Math.min(1.25, hScale));
+    YW_SCENE_H = YW_SKY_H + YW_SWELL_H + YW_AXIS_H;
+  }
+  function ywEnsureCanvasSize() {
+    ywComputeLayout();
+    var cv = document.getElementById('yw-canvas');
+    var totalW = YW_DAY_W * YW_DATA.days.length;
+    YW_DPR = Math.min(2, window.devicePixelRatio || 1);
+    cv.style.width = totalW + 'px'; cv.style.height = YW_SCENE_H + 'px';
+    cv.width = Math.round(totalW * YW_DPR); cv.height = Math.round(YW_SCENE_H * YW_DPR);
+  }
+  function ywSlotsByDay(list) {
+    var arr = Array.isArray(list) ? list : list.slots;
+    var byDay = {};
+    arr.forEach(function (s) { (byDay[s.d] = byDay[s.d] || []).push(s); });
+    var k; for (k in byDay) byDay[k].sort(function (a, b) { return a.h - b.h; });
+    return byDay;
+  }
+  function ywHourFrac(h) { return (h - YW_DATA.hourMin) / (YW_DATA.hourMax - YW_DATA.hourMin); }
+  function ywSegBounds(ds, idx) {
+    var loH = idx === 0 ? YW_DATA.hourMin : (ds[idx - 1].h + ds[idx].h) / 2;
+    var hiH = idx === ds.length - 1 ? YW_DATA.hourMax : (ds[idx].h + ds[idx + 1].h) / 2;
+    return { x0: ywHourFrac(loH) * YW_DAY_W, x1: ywHourFrac(hiH) * YW_DAY_W };
+  }
+
+  function ywRenderHeadWind() {
+    var byDay = ywSlotsByDay(YW_DATA);
+    var headHtml = '', windHtml = '';
+    YW_DATA.days.forEach(function (k) {
+      var p = ywDayParts(k);
+      var ds = byDay[k] || [];
+      headHtml += '<div class="yw-day" data-d="' + ywEsc(k) + '" tabindex="0" role="button"'
+        + ' aria-label="Détail du ' + YW_J_LONG[p.dow] + ' ' + p.d + '">'
+        + '<span class="dn">' + YW_J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + YW_M_SHORT[p.mo] + '</span></div>';
+      var arrowPx = Math.max(12, Math.min(22, Math.round(15 * YW_SCALE)));
+      var segs = ds.length ? ds.map(function (s, si) {
+        var b = ywSegBounds(ds, si), w = b.x1 - b.x0;
+        var numTxt = s.ws == null ? '—' : Math.round(s.ws) + '';
+        return '<span class="yw-wseg" style="left:' + b.x0.toFixed(1) + 'px;width:' + w.toFixed(1) + 'px;background:' + ywWindCol(s.ws) + '"'
+          + ' title="' + s.h + ' h — ' + numTxt + ' nds ' + compass(s.wd) + '">'
+          + ywWindArrowSvg(s.wd, arrowPx)
+          + '<b style="font-size:' + Math.round(9 * YW_SCALE) + 'px">' + numTxt + '</b></span>';
+      }).join('') : '<span class="yw-wseg yw-wseg-empty">·</span>';
+      windHtml += '<div class="yw-day">' + segs + '</div>';
+    });
+    document.getElementById('yw-head').innerHTML = headHtml;
+    document.getElementById('yw-wind').innerHTML = windHtml;
+    document.getElementById('yw-inner').style.setProperty('--yww', YW_DAY_W + 'px');
+  }
+
+  function ywDraw() {
+    var cv = document.getElementById('yw-canvas');
+    var totalW = YW_DAY_W * YW_DATA.days.length;
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(YW_DPR, 0, 0, YW_DPR, 0, 0);
+    ctx.clearRect(0, 0, totalW, YW_SCENE_H);
+    ctx.textBaseline = 'alphabetic';
+
+    var accentRgb = [79, 163, 199], warmRgb = [232, 160, 87];
+    var skyTopClear = [16, 92, 150], skyHorClear = [46, 132, 172];
+    var skyTopCloudy = [52, 74, 98], skyHorCloudy = [72, 92, 110];
+    var deepC = [4, 22, 40];
+    var byDay = ywSlotsByDay(YW_DATA);
+
+    var ptRuns = [], curRun = [];
+    YW_DATA.days.forEach(function (k, d) {
+      var ds = byDay[k] || [];
+      if (!ds.length) { if (curRun.length) { ptRuns.push(curRun); curRun = []; } return; }
+      ds.forEach(function (s) {
+        if (s.hs == null) return;
+        curRun.push({ x: d * YW_DAY_W + ywHourFrac(s.h) * YW_DAY_W, y: s.hs });
+      });
+    });
+    if (curRun.length) ptRuns.push(curRun);
+    var allPts = ptRuns.length ? ptRuns.reduce(function (a, r) { return a.concat(r); }) : [];
+    var maxV = allPts.length ? ywNiceMax(Math.max.apply(null, allPts.map(function (p) { return p.y; })) * 1.2) : 1;
+    var waterTop = YW_SKY_H + Math.max(6, Math.round(10 * YW_SCALE) + 3), waterBase = YW_SKY_H + YW_SWELL_H;
+    function waterY(v) { return waterBase - (v / maxV) * (waterBase - waterTop); }
+    var surfRuns = ptRuns.map(function (run) {
+      var xy = run.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
+      var surf = xy.length ? [xy[0]] : [], i, k2;
+      for (i = 0; i < xy.length - 1; i++) {
+        var p0 = xy[i - 1] || xy[i], p1 = xy[i], p2 = xy[i + 1], p3 = xy[i + 2] || xy[i + 1];
+        for (k2 = 1; k2 <= 8; k2++) surf.push(ywCatmull(p0, p1, p2, p3, k2 / 8));
+      }
+      return surf;
+    });
+
+    YW_DATA.days.forEach(function (k, d) {
+      var x0 = d * YW_DAY_W, ds = byDay[k] || [];
+      if (!ds.length) {
+        ctx.fillStyle = 'rgba(255,255,255,.03)'; ctx.fillRect(x0, 0, YW_DAY_W, YW_SKY_H + YW_SWELL_H);
+        ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.font = '600 ' + Math.round(9.5 * YW_SCALE) + 'px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('pas de donnée', x0 + YW_DAY_W / 2, YW_SKY_H / 2);
+        ctx.textAlign = 'left';
+        return;
+      }
+      var xArr = ds.map(function (s) { return ywHourFrac(s.h) * YW_DAY_W; });
+      var clArr = ds.map(function (s) { return s.cl != null ? s.cl : 0; });
+      var cmArr = ds.map(function (s) { return s.cm != null ? s.cm : 0; });
+      var chArr = ds.map(function (s) { return s.ch != null ? s.ch : 0; });
+      var sevArr = ds.map(function (s) {
+        var pt = ywPrecipFromCode(s.code, s.precip);
+        return { none: 0, drizzle: .04, rain: .12, shower: .2, storm: .32 }[pt] || 0;
+      });
+      var bgStep = Math.max(4, Math.round(6 * YW_SCALE)), xr;
+      for (xr = 0; xr < YW_DAY_W; xr += bgStep) {
+        var xrEnd = Math.min(YW_DAY_W, xr + bgStep), xc = (xr + xrEnd) / 2;
+        var clI = ywInterpAt(xArr, clArr, xc), cmI = ywInterpAt(xArr, cmArr, xc), chI = ywInterpAt(xArr, chArr, xc);
+        var toneI = Math.min(1, (clI / 100) * .85 + (cmI / 100) * .45 + (chI / 100) * .12);
+        var topI = ywLerp(skyTopClear, skyTopCloudy, toneI), horI = ywLerp(skyHorClear, skyHorCloudy, toneI);
+        var gI = ctx.createLinearGradient(0, 0, 0, YW_SKY_H);
+        gI.addColorStop(0, ywRgba(topI)); gI.addColorStop(1, ywRgba(horI));
+        ctx.fillStyle = gI; ctx.fillRect(x0 + xr, 0, xrEnd - xr, YW_SKY_H + YW_SWELL_H);
+        var sevI = ywInterpAt(xArr, sevArr, xc);
+        if (sevI > 0.005) { ctx.fillStyle = 'rgba(8,16,26,' + sevI.toFixed(3) + ')'; ctx.fillRect(x0 + xr, 0, xrEnd - xr, YW_SKY_H + YW_SWELL_H); }
+      }
+
+      var repSlot = ds[0];
+      ds.forEach(function (s) { if ((s.cl != null ? s.cl : 100) < (repSlot.cl != null ? repSlot.cl : 100)) repSlot = s; });
+      var repCl = repSlot.cl != null ? repSlot.cl : 0;
+      if (repCl < 55 && ywPrecipFromCode(repSlot.code, repSlot.precip) === 'none') {
+        var sunT = ywHourFrac(repSlot.h);
+        var minXFrac = Math.min(.42, (34 * YW_SCALE) / YW_DAY_W);
+        var sunX = x0 + Math.max(minXFrac, Math.min(.88, sunT)) * YW_DAY_W;
+        var sunY = YW_SKY_H * (.46 - .24 * Math.sin(Math.PI * Math.max(0, Math.min(1, sunT))));
+        var sunR = (13 - repCl / 100 * 5) * Math.min(1.3, YW_SCALE);
+        var sunIntensity = Math.max(.16, 1 - (repCl / 100) * .85);
+        var sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.6);
+        sunGlow.addColorStop(0, ywRgba(warmRgb, .42 * sunIntensity)); sunGlow.addColorStop(1, ywRgba(warmRgb, 0));
+        ctx.fillStyle = sunGlow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.6, 0, 7); ctx.fill();
+        ctx.save(); ctx.translate(sunX, sunY);
+        ctx.strokeStyle = ywRgba([255, 244, 210], .4 * sunIntensity); ctx.lineWidth = 1.4;
+        var rayN = 8, ri;
+        for (ri = 0; ri < rayN; ri++) {
+          var ra = ri / rayN * Math.PI * 2;
+          ctx.beginPath(); ctx.moveTo(Math.cos(ra) * sunR * 1.35, Math.sin(ra) * sunR * 1.35);
+          ctx.lineTo(Math.cos(ra) * sunR * 2.05, Math.sin(ra) * sunR * 2.05); ctx.stroke();
+        }
+        ctx.restore();
+        var sunGrd = ctx.createRadialGradient(sunX - sunR * .3, sunY - sunR * .35, sunR * .1, sunX, sunY, sunR);
+        sunGrd.addColorStop(0, ywRgba([255, 250, 225], sunIntensity)); sunGrd.addColorStop(1, ywRgba(warmRgb, sunIntensity));
+        ctx.fillStyle = sunGrd; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, 7); ctx.fill();
+      }
+
+      var hrng = ywRng(ywSeed(k) + 1), hx = 6 * YW_SCALE;
+      while (hx < YW_DAY_W - 6 * YW_SCALE) {
+        var chAt = ywInterpAt(xArr, chArr, hx);
+        if (chAt > 12) {
+          var hy = YW_SKY_H * (.08 + hrng() * .18), hw = 14 + hrng() * 12;
+          ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(.4, chAt / 100 * .4).toFixed(2) + ')'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(x0 + hx, hy); ctx.lineTo(x0 + hx + hw, hy - 1.5); ctx.stroke();
+        }
+        hx += 10 * YW_SCALE + hrng() * 14 * YW_SCALE;
+      }
+      var mrng = ywRng(ywSeed(k) + 500), mx = 8 * YW_SCALE;
+      while (mx < YW_DAY_W - 8 * YW_SCALE) {
+        var cmAt = ywInterpAt(xArr, cmArr, mx);
+        if (cmAt > 8) ywCloudPuff(ctx, x0 + mx, YW_SKY_H * (.24 + mrng() * .22), .26 + cmAt / 100 * .32, .5, .25);
+        mx += 14 * YW_SCALE + mrng() * 16 * YW_SCALE;
+      }
+      var lrng = ywRng(ywSeed(k) + 900), lx = 8 * YW_SCALE;
+      while (lx < YW_DAY_W - 8 * YW_SCALE) {
+        var clAt = ywInterpAt(xArr, clArr, lx);
+        if (clAt > 5) {
+          var toneAt = Math.min(1, (clAt / 100) * .85 + (ywInterpAt(xArr, cmArr, lx) / 100) * .45 + (ywInterpAt(xArr, chArr, lx) / 100) * .12);
+          ywCloudPuff(ctx, x0 + lx, YW_SKY_H * (.42 + lrng() * .34), .38 + clAt / 100 * .58, Math.min(.95, .5 + clAt / 100 * .45), toneAt);
+        }
+        lx += 12 * YW_SCALE + lrng() * 16 * YW_SCALE;
+      }
+
+      ds.forEach(function (s, si) {
+        var b = ywSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
+        var ptype = ywPrecipFromCode(s.code, s.precip);
+        if (ptype !== 'none') {
+          var prng = ywRng(ywSeed(k) + si * 777 + 3);
+          if (ptype === 'shower' || ptype === 'storm') {
+            var curtains = 2 + Math.round(prng() * 2), cI;
+            for (cI = 0; cI < curtains; cI++) {
+              var cx0 = xs + prng() * segW, cw = 10 + prng() * 8;
+              var cg = ctx.createLinearGradient(cx0, 0, cx0 + cw * .3, YW_SKY_H + YW_SWELL_H);
+              cg.addColorStop(0, 'rgba(255,255,255,0)'); cg.addColorStop(.5, 'rgba(255,255,255,.12)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+              ctx.fillStyle = cg;
+              ctx.beginPath(); ctx.moveTo(cx0, 0); ctx.lineTo(cx0 + cw, 0);
+              ctx.lineTo(cx0 + cw * .3, YW_SKY_H + YW_SWELL_H); ctx.lineTo(cx0 - cw * .7, YW_SKY_H + YW_SWELL_H);
+              ctx.closePath(); ctx.fill();
+            }
+          }
+          var mm = s.precip != null ? s.precip : 1;
+          var dens = Math.round(Math.min(90, 18 + mm * 18));
+          var len = { drizzle: 8, rain: 14, shower: 19, storm: 23 }[ptype] || 11;
+          ctx.strokeStyle = ptype === 'drizzle' ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.78)';
+          ctx.lineWidth = ptype === 'storm' ? 1.6 : 1.3;
+          var rDir = ((s.wd || 0) + 180) * Math.PI / 180;
+          var rTiltX = Math.cos(rDir) * Math.min(.9, (s.ws || 0) / 25);
+          var r;
+          for (r = 0; r < dens; r++) {
+            var rx = xs + prng() * segW, ry = prng() * (YW_SKY_H + YW_SWELL_H * .6);
+            ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + len * rTiltX, ry + len); ctx.stroke();
+          }
+          if (ptype === 'storm') ywLightning(ctx, xs + segW * (.2 + prng() * .5), YW_SKY_H * .12, .7 + prng() * .3, 'rgba(255,244,180,.95)');
+        }
+      });
+
+      var day = YW_DATA.daily[k];
+      if (day) {
+        ywTempBadge(ctx, x0 + 11 * YW_SCALE, 13 * YW_SCALE, Math.round(day.tmax) + '°', warmRgb);
+        ywTempBadge(ctx, x0 + 11 * YW_SCALE, 32 * YW_SCALE, Math.round(day.tmin) + '°', accentRgb);
+      }
+      if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.beginPath(); ctx.moveTo(x0 + .5, 0); ctx.lineTo(x0 + .5, YW_SKY_H); ctx.stroke(); }
+    });
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, YW_SKY_H, totalW, YW_SWELL_H); ctx.clip();
+    surfRuns.forEach(function (surf) {
+      if (!surf.length) return;
+      var wg2 = ctx.createLinearGradient(0, YW_SKY_H, 0, waterBase + 24);
+      wg2.addColorStop(0, ywRgba(ywLerp(accentRgb, [255, 255, 255], .3), .97));
+      wg2.addColorStop(.45, ywRgba(accentRgb, .97));
+      wg2.addColorStop(1, ywRgba(deepC, .98));
+      ctx.beginPath(); ctx.moveTo(surf[0].x, waterBase + 30);
+      surf.forEach(function (p) { ctx.lineTo(p.x, p.y); });
+      ctx.lineTo(surf[surf.length - 1].x, waterBase + 30); ctx.closePath();
+      ctx.fillStyle = wg2; ctx.fill();
+      ctx.beginPath(); surf.forEach(function (p, pi) { pi ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+      ctx.strokeStyle = ywRgba(ywLerp(accentRgb, [255, 255, 255], .6)); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+    });
+    var ywYSteps = ywGridSteps(maxV);
+    YW_AXIS_LABELS = ywYSteps.map(function (v) { return { v: v, y: waterY(v) }; });
+    ywYSteps.forEach(function (v) {
+      var gy = waterY(v) + .5;
+      ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(totalW, gy); ctx.stroke();
+    });
+    ctx.restore();
+
+    YW_DATA.days.forEach(function (k, d) {
+      if (d === YW_HOVER) { ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(d * YW_DAY_W, 0, YW_DAY_W, YW_SKY_H + YW_SWELL_H); }
+      if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(d * YW_DAY_W + .5, YW_SKY_H); ctx.lineTo(d * YW_DAY_W + .5, YW_SKY_H + YW_SWELL_H); ctx.stroke(); }
+    });
+
+    YW_DATA.days.forEach(function (k, d) {
+      var ds = byDay[k]; if (!ds || !ds.length) return;
+      var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
+      var px = d * YW_DAY_W + ywHourFrac(peak.h) * YW_DAY_W;
+      var R = Math.max(15, Math.min(30, YW_DAY_W * .155));
+      var rightPad = R + 3;
+      px = Math.max(d * YW_DAY_W + R + 3, Math.min(d * YW_DAY_W + YW_DAY_W - rightPad, px));
+      if (d === 0) px = Math.max(px, R + 40);
+      var margin = R + Math.max(11, R * .48) + 2;
+      var py = Math.min(Math.max(waterY(peak.hs), YW_SKY_H + margin), YW_SKY_H + YW_SWELL_H - margin * .55);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(d * YW_DAY_W + 1, 0, YW_DAY_W - 2, YW_SKY_H + YW_SWELL_H); ctx.clip();
+      ywSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', peak.t != null ? Math.round(peak.t) + 's' : null, peak.sd, accentRgb);
+      ctx.restore();
+    });
+    ctx.textAlign = 'center';
+
+    ctx.fillStyle = '#0d1f3c'; ctx.fillRect(0, YW_SKY_H + YW_SWELL_H, totalW, YW_AXIS_H);
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(0, YW_SKY_H + YW_SWELL_H + .5); ctx.lineTo(totalW, YW_SKY_H + YW_SWELL_H + .5); ctx.stroke();
+    ctx.fillStyle = '#7d94ab'; ctx.font = '500 ' + Math.round(9 * YW_SCALE) + 'px sans-serif';
+    YW_DATA.days.forEach(function (k, d) {
+      var ds = byDay[k] || [];
+      if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(d * YW_DAY_W + .5, YW_SKY_H + YW_SWELL_H); ctx.lineTo(d * YW_DAY_W + .5, YW_SCENE_H); ctx.stroke(); }
+      ds.forEach(function (s) { ctx.fillText(s.h + 'h', d * YW_DAY_W + ywHourFrac(s.h) * YW_DAY_W, YW_SKY_H + YW_SWELL_H + YW_AXIS_H * .75); });
+    });
+  }
+
+  function ywRenderAxis() {
+    var wrap = document.getElementById('yw-axis-wrap'), axis = document.getElementById('yw-axis');
+    wrap.style.top = YW_SKY_H + 'px';
+    wrap.style.height = YW_SWELL_H + 'px';
+    wrap.style.width = (YW_DAY_W * YW_DATA.days.length) + 'px';
+    axis.innerHTML = YW_AXIS_LABELS.map(function (a) {
+      var lbl = (a.v < 1 ? a.v.toFixed(1) : a.v.toFixed(0)) + 'm';
+      return '<span style="top:' + (a.y - YW_SKY_H).toFixed(1) + 'px">' + lbl + '</span>';
+    }).join('');
+  }
+
+  function ywUpdateReadout(dayKey) {
+    var el = document.getElementById('yw-readout');
+    if (dayKey == null) { el.innerHTML = '<span class="hint">Touche un jour pour le détail heure par heure.</span>'; return; }
+    var ds = YW_DATA.slots.filter(function (s) { return s.d === dayKey; });
+    if (!ds.length) { el.innerHTML = '<span class="hint">Pas de créneau ce jour-là.</span>'; return; }
+    var p = ywDayParts(dayKey);
+    var lines = ds.map(function (s) {
+      // s.hs2 (sw2h) est un RÉSIDU calculé (Hs-H1-Hvent, cf. previsions.html
+      // _fcastData) quand la source n'a pas de vraie houle 2 native — presque
+      // jamais null, donc "!= null" seul affichait "+0.0m/0s —" en continu
+      // (repéré le 12/08/2026 en testant ce port). Seuil de magnitude, comme
+      // l'ancien badge houle secondaire de semaine.html (> 0.4 m) : sous ce
+      // seuil ce n'est pas une vraie 2ᵉ houle à annoncer, juste du bruit.
+      var sec = (s.hs2 != null && s.hs2 > 0.4 && s.per2 != null)
+        ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's' + (s.sd2 != null ? ' ' + compass(s.sd2) : '') + '</span>')
+        : '';
+      var sky = s.cl != null ? (' · nuages bas ' + Math.round(s.cl) + '%, moy ' + Math.round(s.cm) + '%, haut ' + Math.round(s.ch) + '%') : '';
+      var rain = (s.precip != null && s.precip > 0) ? (' · 💧 ' + s.precip.toFixed(1) + ' mm') : '';
+      var temp = s.at != null ? (' · ' + Math.round(s.at) + '°') : '';
+      var perDir = (s.t != null ? Math.round(s.t) + 's' : '') + (s.sd != null ? (s.t != null ? ' ' : '') + compass(s.sd) : '');
+      return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>' + (perDir ? '/' + perDir : '') + sec
+        + ' · <span style="color:' + ywWindCol(s.ws) + '">' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '</span>'
+        + temp + sky + rain + '</div>';
+    }).join('');
+    el.innerHTML = '<b>' + YW_J_LONG[p.dow] + ' ' + p.d + ' ' + YW_M_SHORT[p.mo] + '</b>' + lines;
+  }
+
+  function ywSetHover(dayIdx) {
+    YW_HOVER = dayIdx;
+    ywUpdateReadout(dayIdx >= 0 ? YW_DATA.days[dayIdx] : null);
+    ywDraw();
+  }
+
+  function ywRender() {
+    var nameEl = document.getElementById('yw-spot-name');
+    if (nameEl) {
+      var sp = (typeof SPOTS !== 'undefined' && typeof currentSpot !== 'undefined') ? SPOTS[currentSpot] : null;
+      nameEl.textContent = sp ? sp.name : '';
+    }
+    ywComputeLayout();
+    ywRenderHeadWind();
+    ywEnsureCanvasSize();
+    ywDraw();
+    ywRenderAxis();
+    ywUpdateReadout(null);
+    YW_HOVER = -1;
+  }
+  function ywRelayout() {
+    if (!YW_DATA) return;
+    ywComputeLayout();
+    ywRenderHeadWind();
+    ywEnsureCanvasSize();
+    ywDraw();
+    ywRenderAxis();
+  }
+  function ywAttachEvents() {
+    var head = document.getElementById('yw-head');
+    function onPick(e) {
+      var t = e.target;
+      while (t && t !== head && (!t.getAttribute || !t.getAttribute('data-d'))) t = t.parentNode;
+      if (!t || t === head) return;
+      var idx = YW_DATA.days.indexOf(t.getAttribute('data-d'));
+      if (idx === -1) return;
+      ywSetHover(idx === YW_HOVER ? -1 : idx);
+    }
+    head.addEventListener('click', onPick);
+    head.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(e); }
+    });
+    var cv = document.getElementById('yw-canvas');
+    function onCanvasPoint(clientX) {
+      var rect = cv.getBoundingClientRect();
+      var d = Math.max(0, Math.min(YW_DATA.days.length - 1, Math.floor((clientX - rect.left) / YW_DAY_W)));
+      ywSetHover(d);
+    }
+    cv.addEventListener('mousemove', function (e) { onCanvasPoint(e.clientX); });
+    cv.addEventListener('mouseleave', function () { ywSetHover(-1); });
+    cv.addEventListener('touchstart', function (e) {
+      if (e.touches && e.touches.length === 1) onCanvasPoint(e.touches[0].clientX);
+    }, { passive: true });
+    window.addEventListener('resize', ywRelayout);
+  }
+
+  // Reconstruit YW_DATA depuis _fcastData et redessine — appelé à l'ouverture
+  // de l'accordéon et par "↻ Actualiser". Le spot affiché peut avoir changé
+  // depuis le dernier rendu (pas de hook simple et fiable vers le mécanisme
+  // de changement de spot du reste de la page) : rafraîchir à l'ouverture
+  // couvre le cas courant sans devoir s'y accrocher — "rien d'autre", cf. le
+  // commentaire HTML plus haut.
+  function ywLoad() {
+    var data = ywBuildData();
+    if (data) { ywFinishLoad(data); return; }
+    var readout = document.getElementById('yw-readout');
+    if (readout) readout.innerHTML = '<span class="hint">Chargement des prévisions…</span>';
+    var tries = 0;
+    var iv = setInterval(function () {
+      tries++;
+      data = ywBuildData();
+      if (data) { clearInterval(iv); ywFinishLoad(data); }
+      else if (tries > 30) {
+        clearInterval(iv);
+        if (readout) readout.innerHTML = '<span class="hint">Prévisions pas encore chargées pour ce spot — réessaie dans un instant.</span>';
+      }
+    }, 500);
+  }
+  function ywFinishLoad(data) {
+    YW_DATA = data;
+    if (!YW_ATTACHED) { ywAttachEvents(); YW_ATTACHED = true; }
+    ywRender();
+  }
+  document.getElementById('yw-refresh').addEventListener('click', ywLoad);
+  document.getElementById('yw-acc').addEventListener('toggle', function () {
+    if (this.open) ywLoad();
+  });
+  </script>
 
   <!-- Comparatif houle multi-modèles (meteo.nc vs GFS Open-Meteo) — sous le widget météo -->
   <div class="card" id="swell-cmp-card" style="margin-bottom:12px;display:none;">
