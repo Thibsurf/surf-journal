@@ -737,7 +737,17 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
           <div class="yw-title">🌤️ <span id="yw-spot-name"></span></div>
           <div id="yw-src" style="font-size:10.5px;color:var(--faint);margin-top:1px;"></div>
         </div>
-        <button class="yw-refresh" id="yw-refresh" type="button">↻ Actualiser</button>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <!-- Modèle houle : liste reconstruite depuis SWELL_MODELS/_swellCache
+               (déjà chargés par le comparatif juste en dessous, cf.
+               ywPopulateSwellModelSel) — ne change QUE la courbe/le badge
+               houle, jamais le ciel/vent (cf. yw-src ci-dessus), comme sur
+               semaine.html. Rétabli le 12/08/2026 ("remettre menu de
+               sélection de modèle"). -->
+          <select id="yw-swell-model-sel" aria-label="Choisir le modèle houle"
+            style="background:var(--ocean);color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:0 8px;min-height:32px;font-size:11px;font-family:inherit;max-width:185px;"></select>
+          <button class="yw-refresh" id="yw-refresh" type="button">↻ Actualiser</button>
+        </div>
       </div>
       <div class="yw-scroll" id="yw-scroll">
         <div class="yw-inner" id="yw-inner">
@@ -769,7 +779,13 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
   var YW_DAY_W = YW_DAY_W0, YW_SCALE = 1;
   var YW_SKY_H = YW_SKY_H0, YW_SWELL_H = YW_SWELL_H0, YW_AXIS_H = YW_AXIS_H0;
   var YW_SCENE_H = YW_SKY_H + YW_SWELL_H + YW_AXIS_H;
-  var YW_HOVER = -1, YW_DPR = 1, YW_DATA = null, YW_ATTACHED = false;
+  var YW_HOVER = -1, YW_DPR = 1, YW_DATA = null, YW_ATTACHED = false, YW_PATCHED = false;
+  // 'auto' = houle de la source active (yw-src, cf. ywActiveSource) — toute
+  // autre valeur = une clé SWELL_MODELS, la courbe/le badge vient alors de
+  // _swellCache[clé] (déjà chargé par le comparatif "Houle — comparatif
+  // modèles" juste en dessous). Le ciel/vent ne suit JAMAIS ce choix, cf.
+  // ywActiveSource — même séparation que MG_MODEL côté semaine.html.
+  var YW_SWELL_MODEL = 'auto';
   var YW_AXIS_LABELS = [];
   var YW_M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
   var YW_J_LONG  = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
@@ -807,6 +823,54 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     var fc = (src === 'om' && window._omFcastData) ? window._omFcastData : window._fcastData;
     return { fc: fc, label: (src === 'om') ? 'GFS Open-Meteo' : 'meteo.nc' };
   }
+
+  // Reconstruit les options de #yw-swell-model-sel depuis SWELL_MODELS/
+  // _swellCache (déjà chargés par le comparatif "Houle — comparatif
+  // modèles" plus bas sur la page — aucune requête en plus) : seuls les
+  // modèles qui ont RÉELLEMENT une série pour ce spot apparaissent (LOTUS
+  // n'existe qu'à 5 zones, par ex.). "auto" = houle de la source active
+  // (meteo.nc/GFS, cf. ywActiveSource), toujours en tête.
+  function ywPopulateSwellModelSel() {
+    var sel = document.getElementById('yw-swell-model-sel');
+    if (!sel) return;
+    var autoLabel = 'Auto (' + (YW_DATA && YW_DATA.srcLabel ? YW_DATA.srcLabel : 'source active') + ')';
+    var opts = [{ key: 'auto', label: autoLabel }];
+    if (typeof SWELL_MODELS !== 'undefined' && typeof _swellCache !== 'undefined' && _swellCache) {
+      SWELL_MODELS.forEach(function (m) {
+        var c = _swellCache[m.key];
+        if (c && c.primary && c.primary.length) opts.push({ key: m.key, label: m.label });
+      });
+    }
+    var keys = opts.map(function (o) { return o.key; });
+    if (keys.indexOf(YW_SWELL_MODEL) === -1) YW_SWELL_MODEL = 'auto';
+    sel.innerHTML = opts.map(function (o) {
+      return '<option value="' + o.key + '"' + (o.key === YW_SWELL_MODEL ? ' selected' : '') + '>' + ywEsc(o.label) + '</option>';
+    }).join('');
+  }
+
+  // Série houle d'UN modèle du comparatif, au format slot {d,h,hs,t,sd} déjà
+  // utilisé partout ici — _swellCache[clé].primary porte des points {ms,h,t,
+  // dir}, ms = epoch UTC VRAI (cf. _swellToPts : "dt.getTime()-11*3600000"),
+  // PAS la convention "+11h déjà appliqué" du reste de ce fichier : reconvertir
+  // avant de lire en getUTC*, sinon c'est le piège fuseau classique (CLAUDE.md)
+  // — un jour sur deux faux silencieusement.
+  function ywModelSwellSlotsFor(key) {
+    if (typeof _swellCache === 'undefined' || !_swellCache || !_swellCache[key]) return [];
+    var pts = _swellCache[key].primary || [];
+    var HOUR_MIN = YW_DATA.hourMin, HOUR_MAX = YW_DATA.hourMax;
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var out = [];
+    pts.forEach(function (p) {
+      if (p.h == null) return;
+      var dt = new Date(p.ms + 11 * 3600000);
+      var hour = dt.getUTCHours();
+      if (hour < HOUR_MIN || hour > HOUR_MAX) return;
+      var dayKey = dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate());
+      out.push({ d: dayKey, h: hour, hs: p.h, t: p.t, sd: p.dir });
+    });
+    return out;
+  }
+
   function ywBuildData() {
     var act = ywActiveSource(), fc = act.fc;
     if (!fc || !fc.dates || !fc.dates.length) return null;
@@ -826,7 +890,14 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
       if (fc.sw1h[i] == null) return;
       raw.push({ dayKey: dayKey, hour: hour, i: i });
     });
-    var days = daySeen.slice(0, MAX_DAYS);
+    // Jours RÉELLEMENT affichés = ceux qui ont de la houle (raw), pas tous
+    // les jours où _fcastData a un point QUELCONQUE (daySeen, qui inclut les
+    // jours vent-seul au-delà de l'horizon houle) : une colonne "pas de
+    // donnée" en fin de semaine n'apportait rien — demandé le 12/08/2026
+    // ("si y'a pas de donnée, ne pas afficher le jour").
+    var days = [];
+    raw.forEach(function (r) { if (days.indexOf(r.dayKey) === -1) days.push(r.dayKey); });
+    days = days.slice(0, MAX_DAYS);
     var keep = {}; days.forEach(function (k) { keep[k] = 1; });
     var slots = raw.filter(function (r) { return keep[r.dayKey]; }).map(function (r) {
       var i = r.i;
@@ -1043,10 +1114,22 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     var skyTopCloudy = [52, 74, 98], skyHorCloudy = [72, 92, 110];
     var deepC = [4, 22, 40];
     var byDay = ywSlotsByDay(YW_DATA);
+    // Source de la courbe/du badge houle : la source active (byDay, comme le
+    // ciel/vent) par défaut, ou un AUTRE modèle si choisi dans
+    // #yw-swell-model-sel (cf. ywModelSwellSlotsFor) — le ciel/vent restent
+    // TOUJOURS sur byDay quel que soit ce choix. Rétabli le 12/08/2026
+    // ("remettre menu de sélection de modèle"), même principe que MG_MODEL
+    // côté semaine.html.
+    var swellByDay = (YW_SWELL_MODEL === 'auto') ? byDay : ywSlotsByDay(ywModelSwellSlotsFor(YW_SWELL_MODEL));
 
+    // Points de houle pour le ruban continu, groupés en RUNS séparés à
+    // chaque jour sans donnée (cf. commentaire équivalent build-week.mjs) :
+    // un modèle du comparatif peut avoir un horizon plus court ou des trous
+    // — relier deux points de part et d'autre d'un jour VIDE inventerait une
+    // houle qui n'a jamais été prévue.
     var ptRuns = [], curRun = [];
     YW_DATA.days.forEach(function (k, d) {
-      var ds = byDay[k] || [];
+      var ds = swellByDay[k] || [];
       if (!ds.length) { if (curRun.length) { ptRuns.push(curRun); curRun = []; } return; }
       ds.forEach(function (s) {
         if (s.hs == null) return;
@@ -1243,7 +1326,7 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     });
 
     YW_DATA.days.forEach(function (k, d) {
-      var ds = byDay[k]; if (!ds || !ds.length) return;
+      var ds = swellByDay[k]; if (!ds || !ds.length) return;
       var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
       var px = d * YW_DAY_W + ywHourFrac(peak.h) * YW_DAY_W;
       var R = Math.max(15, Math.min(30, YW_DAY_W * .155));
@@ -1274,10 +1357,26 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     ctx.fillStyle = '#0d1f3c'; ctx.fillRect(0, YW_SKY_H + YW_SWELL_H, totalW, YW_AXIS_H);
     ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(0, YW_SKY_H + YW_SWELL_H + .5); ctx.lineTo(totalW, YW_SKY_H + YW_SWELL_H + .5); ctx.stroke();
     ctx.fillStyle = '#7d94ab'; ctx.font = '500 ' + Math.round(9 * YW_SCALE) + 'px sans-serif';
+    // Étiquettes DÉCIMÉES : previsions.html charge la houle à l'heure réelle
+    // (jusqu'à plusieurs points/heure aux frontières entre séries), pas les
+    // 4 créneaux/jour de semaine.html d'où ce code est porté — tout étiqueter
+    // donnait des heures collées/superposées ("gère mieux les abscisses
+    // horaires", signalé le 12/08/2026). Un minimum d'écart en PIXELS entre
+    // deux étiquettes consécutives, comparable à la largeur d'un "17h" à
+    // cette échelle — les traits de grille verticaux (silencieux, cf.
+    // panelDayBands du même esprit sur charts-core.js), eux, restent tous
+    // tracés : seul le TEXTE est décimé.
+    var ywMinLabelGap = 24 * YW_SCALE;
     YW_DATA.days.forEach(function (k, d) {
       var ds = byDay[k] || [];
       if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(d * YW_DAY_W + .5, YW_SKY_H + YW_SWELL_H); ctx.lineTo(d * YW_DAY_W + .5, YW_SCENE_H); ctx.stroke(); }
-      ds.forEach(function (s) { ctx.fillText(s.h + 'h', d * YW_DAY_W + ywHourFrac(s.h) * YW_DAY_W, YW_SKY_H + YW_SWELL_H + YW_AXIS_H * .75); });
+      var lastX = null;
+      ds.forEach(function (s) {
+        var x = d * YW_DAY_W + ywHourFrac(s.h) * YW_DAY_W;
+        if (lastX != null && x - lastX < ywMinLabelGap) return;
+        ctx.fillText(s.h + 'h', x, YW_SKY_H + YW_SWELL_H + YW_AXIS_H * .75);
+        lastX = x;
+      });
     });
   }
 
@@ -1295,26 +1394,39 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
   function ywUpdateReadout(dayKey) {
     var el = document.getElementById('yw-readout');
     if (dayKey == null) { el.innerHTML = '<span class="hint">Touche un jour pour le détail heure par heure.</span>'; return; }
-    var ds = YW_DATA.slots.filter(function (s) { return s.d === dayKey; });
-    if (!ds.length) { el.innerHTML = '<span class="hint">Pas de créneau ce jour-là.</span>'; return; }
+    // Cadence branchée sur le modèle houle actif (cf. #yw-swell-model-sel) :
+    // même principe que mgUpdateReadout côté semaine.html. 'auto' reproduit
+    // le comportement d'avant ce chantier — YW_DATA.slots directement.
+    var useModel = YW_SWELL_MODEL !== 'auto';
+    var ds = useModel
+      ? ywModelSwellSlotsFor(YW_SWELL_MODEL).filter(function (s) { return s.d === dayKey; }).sort(function (a, b) { return a.h - b.h; })
+      : YW_DATA.slots.filter(function (s) { return s.d === dayKey; });
+    if (!ds.length) {
+      el.innerHTML = '<span class="hint">' + (useModel ? 'Ce modèle ne publie rien ce jour-là.' : 'Pas de créneau ce jour-là.') + '</span>';
+      return;
+    }
     var p = ywDayParts(dayKey);
     var lines = ds.map(function (s) {
+      // ncAt : le créneau de la source active À LA MÊME HEURE, s'il existe —
+      // seule source de vent/ciel/température (INVARIANT houle/vent,
+      // CLAUDE.md) : un modèle du comparatif ne fournit QUE la houle. En mode
+      // 'auto', ncAt = s (comportement identique à avant ce chantier).
+      var ncAt = useModel ? (YW_DATA.slots.filter(function (x) { return x.d === dayKey && x.h === s.h; })[0] || null) : s;
       // s.hs2 (sw2h) est un RÉSIDU calculé (Hs-H1-Hvent, cf. previsions.html
       // _fcastData) quand la source n'a pas de vraie houle 2 native — presque
-      // jamais null, donc "!= null" seul affichait "+0.0m/0s —" en continu
-      // (repéré le 12/08/2026 en testant ce port). Seuil de magnitude, comme
-      // l'ancien badge houle secondaire de semaine.html (> 0.4 m) : sous ce
-      // seuil ce n'est pas une vraie 2ᵉ houle à annoncer, juste du bruit.
-      var sec = (s.hs2 != null && s.hs2 > 0.4 && s.per2 != null)
+      // jamais null, donc "!= null" seul affichait "+0.0m/0s —" en continu.
+      // Seuil de magnitude (> 0.4 m), et masquée dès qu'un AUTRE modèle est
+      // choisi (elle ne lui appartient pas).
+      var sec = (!useModel && s.hs2 != null && s.hs2 > 0.4 && s.per2 != null)
         ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's' + (s.sd2 != null ? ' ' + compass(s.sd2) : '') + '</span>')
         : '';
-      var sky = s.cl != null ? (' · nuages bas ' + Math.round(s.cl) + '%, moy ' + Math.round(s.cm) + '%, haut ' + Math.round(s.ch) + '%') : '';
-      var rain = (s.precip != null && s.precip > 0) ? (' · 💧 ' + s.precip.toFixed(1) + ' mm') : '';
-      var temp = s.at != null ? (' · ' + Math.round(s.at) + '°') : '';
+      var sky = (ncAt && ncAt.cl != null) ? (' · nuages bas ' + Math.round(ncAt.cl) + '%, moy ' + Math.round(ncAt.cm) + '%, haut ' + Math.round(ncAt.ch) + '%') : '';
+      var rain = (ncAt && ncAt.precip != null && ncAt.precip > 0) ? (' · 💧 ' + ncAt.precip.toFixed(1) + ' mm') : '';
+      var temp = (ncAt && ncAt.at != null) ? (' · ' + Math.round(ncAt.at) + '°') : '';
+      var wind = ncAt ? (' · <span style="color:' + ywWindCol(ncAt.ws) + '">' + (ncAt.ws == null ? '—' : Math.round(ncAt.ws)) + ' nds ' + compass(ncAt.wd) + '</span>') : '';
       var perDir = (s.t != null ? Math.round(s.t) + 's' : '') + (s.sd != null ? (s.t != null ? ' ' : '') + compass(s.sd) : '');
       return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>' + (perDir ? '/' + perDir : '') + sec
-        + ' · <span style="color:' + ywWindCol(s.ws) + '">' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '</span>'
-        + temp + sky + rain + '</div>';
+        + wind + temp + sky + rain + '</div>';
     }).join('');
     el.innerHTML = '<b>' + YW_J_LONG[p.dow] + ' ' + p.d + ' ' + YW_M_SHORT[p.mo] + '</b>' + lines;
   }
@@ -1336,7 +1448,8 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     // dire laquelle alimente cette scène serait ambigu — signalé le
     // 12/08/2026 ("préciser sources météo").
     var srcEl = document.getElementById('yw-src');
-    if (srcEl) srcEl.textContent = YW_DATA.srcLabel ? ('houle : ' + YW_DATA.srcLabel) : '';
+    if (srcEl) srcEl.textContent = YW_DATA.srcLabel ? ('vent/ciel : ' + YW_DATA.srcLabel) : '';
+    ywPopulateSwellModelSel();
     ywComputeLayout();
     ywRenderHeadWind();
     ywEnsureCanvasSize();
@@ -1379,6 +1492,35 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
       if (e.touches && e.touches.length === 1) onCanvasPoint(e.touches[0].clientX);
     }, { passive: true });
     window.addEventListener('resize', ywRelayout);
+    // Changer de modèle ne touche ni le spot ni le ciel/vent (cf. le
+    // commentaire sur swellByDay dans ywDraw()) : pas besoin de ywRender()
+    // complet, juste redessiner le canvas/l'axe/le détail déjà ouvert.
+    document.getElementById('yw-swell-model-sel').addEventListener('change', function () {
+      YW_SWELL_MODEL = this.value; ywDraw(); ywRenderAxis();
+      ywUpdateReadout(YW_HOVER >= 0 ? YW_DATA.days[YW_HOVER] : null);
+    });
+    ywPatchLoadForecast();
+  }
+
+  // Rustine posée UNE fois, à l'ouverture du météogramme (loadForecast()
+  // existe forcément à ce stade — appelée bien avant dans le flux normal de
+  // la page). Enveloppe la fonction QUI CHANGE DE SPOT partout sur cette
+  // page (17+ points d'appel, cf. `grep loadForecast(` — l'éditer à chacun
+  // aurait été bien plus risqué) pour rafraîchir le météogramme s'il est
+  // déjà ouvert quand le spot change — même besoin que ywOnSourceChange(),
+  // signalé le 12/08/2026 ("c'est bloqué sur un seul spot").
+  function ywPatchLoadForecast() {
+    if (YW_PATCHED || typeof loadForecast !== 'function') return;
+    YW_PATCHED = true;
+    var orig = loadForecast;
+    loadForecast = function () {
+      var r = orig.apply(this, arguments);
+      if (r && typeof r.then === 'function') {
+        r.then(function () { try { ywOnSourceChange(); } catch (_) {} })
+         .catch(function () { try { ywOnSourceChange(); } catch (_) {} });
+      }
+      return r;
+    };
   }
 
   // Appelé par setHsSrc() (cf. previsions.html, toggle meteo.nc/GFS) quand la
