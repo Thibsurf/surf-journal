@@ -918,7 +918,12 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
     <div class="mg-inner" id="mgInner">
       <div class="mg-row" id="mgHead"></div>
       <div class="mg-row mg-wind" id="mgWind"></div>
-      <canvas id="mgCanvas"></canvas>
+      <!-- aria-hidden : scène purement illustrative (nuages/pluie dessinés,
+           aucun équivalent texte possible) — le contenu ACCESSIBLE
+           équivalent, ce sont les boutons jour (aria-label) et #mgReadout
+           plus bas (aria-live), pas ce canvas. Ajouté le 13/08/2026 en
+           auditant ce chantier. -->
+      <canvas id="mgCanvas" aria-hidden="true"></canvas>
       <!-- Étiquettes de l'axe houle (1m/2m/3m), séparées du canvas et
            position:sticky (cf. CSS .mg-axis) : Yadusurf garde son échelle
            visible en permanence sur un axe à part, pas mêlée au contenu qui
@@ -931,7 +936,7 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
       <div class="mg-row mg-tide" id="mgTide"></div>
     </div>
   </div>
-  <div class="mg-readout" id="mgReadout"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
+  <div class="mg-readout" id="mgReadout" aria-live="polite"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
   <div class="mg-leg">
     <div><b>Flèche</b> = direction vers laquelle vent/houle se dirigent (même convention que le reste du site)</div>
     <div><b>Couleur du vent</b> = vitesse, mêmes seuils que le reste du site (7/12/17/23 nds)</div>
@@ -1664,7 +1669,27 @@ function mgDraw() {
   // donnée surf principale" — pour ne pas surcharger la scène. hs2/per2/sd2
   // restent dans WEEK (au cas où), simplement plus dessinés ici. ──
   WEEK.days.forEach(function (k, d) {
-    var ds = swellByDay[k]; if (!ds || !ds.length) return;
+    var ds = swellByDay[k];
+    if (!ds || !ds.length) {
+      // Jour affiché (le ciel vient toujours de meteo.nc/Open-Meteo) mais
+      // sans donnée pour le modèle houle choisi (horizon plus court, ex.
+      // ECMWF/AIFS/MARC) : un vide silencieux lisait comme un bug — même
+      // correctif que sur previsions.html, trouvé le 13/08/2026 en
+      // auditant ce chantier.
+      if (MG_MODEL !== 'nc') {
+        var lbl = 'modèle indisponible', nx0 = d * MG_DAY_W + MG_DAY_W / 2, ny0 = MG_SKY_H + MG_SWELL_H / 2;
+        ctx.save();
+        ctx.font = '600 ' + Math.round(9 * MG_SCALE) + 'px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        var tw = ctx.measureText(lbl).width;
+        ctx.fillStyle = 'rgba(6,16,30,.7)';
+        ctx.fillRect(nx0 - tw / 2 - 6, ny0 - 9 * MG_SCALE, tw + 12, 18 * MG_SCALE);
+        ctx.fillStyle = 'rgba(255,255,255,.7)';
+        ctx.fillText(lbl, nx0, ny0);
+        ctx.restore();
+      }
+      return;
+    }
     var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
     var px = d * MG_DAY_W + mgHourFrac(peak.h) * MG_DAY_W;
     var R = Math.max(15, Math.min(30, MG_DAY_W * .155));
@@ -1817,6 +1842,11 @@ function mgRenderTide() {
 }
 
 function mgSetHover(dayIdx) {
+  // mousemove tire ce point à chaque pixel parcouru (60-120+/s) — sans ce
+  // garde-fou, chaque déplacement de souris DANS la même colonne de jour
+  // redessinait tout le canvas (nuages/pluie/spline) pour un résultat
+  // strictement identique. Trouvé le 13/08/2026 en auditant les perfs.
+  if (dayIdx === MG_HOVER) return;
   MG_HOVER = dayIdx;
   mgUpdateReadout(dayIdx >= 0 ? WEEK.days[dayIdx] : null);
   mgDraw();

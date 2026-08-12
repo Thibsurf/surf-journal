@@ -753,11 +753,16 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
         <div class="yw-inner" id="yw-inner">
           <div class="yw-row" id="yw-head"></div>
           <div class="yw-row yw-wind" id="yw-wind"></div>
-          <canvas id="yw-canvas"></canvas>
+          <!-- aria-hidden : scène purement illustrative, sans équivalent
+               texte possible (nuages/pluie dessinés) — le contenu
+               ACCESSIBLE équivalent, ce sont les boutons jour (aria-label)
+               et #yw-readout ci-dessous (aria-live), pas ce canvas.
+               Ajouté le 13/08/2026 en auditant ce chantier. -->
+          <canvas id="yw-canvas" aria-hidden="true"></canvas>
           <div class="yw-axis-wrap" id="yw-axis-wrap"><div class="yw-axis" id="yw-axis"></div></div>
         </div>
       </div>
-      <div class="yw-readout" id="yw-readout"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
+      <div class="yw-readout" id="yw-readout" aria-live="polite"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
       <div class="yw-leg">
         <div><b>Flèche</b> = direction vers laquelle vent/houle se dirigent (même convention que le reste du site)</div>
         <div><b>Couleur du vent</b> = vitesse, mêmes seuils que le reste du site (7/12/17/23 nds)</div>
@@ -1346,11 +1351,23 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
         // jours", signalé le 12/08/2026) : dire explicitement pourquoi plutôt
         // que de laisser deviner.
         if (YW_SWELL_MODEL !== 'auto') {
-          var nx0 = d * YW_DAY_W + YW_DAY_W / 2;
+          // Puce de fond derrière le texte (pas juste une opacité sur le
+          // dégradé houle, qui varie de clair en haut à très sombre en bas —
+          // contraste imprévisible selon où tombe le texte) : même
+          // traitement que les autres étiquettes du canvas (mgTempBadge
+          // etc), fond sombre translucide + texte clair, contraste garanti
+          // quel que soit le fond dessous. Ajusté le 13/08/2026 en auditant
+          // ce chantier.
+          var nx0 = d * YW_DAY_W + YW_DAY_W / 2, ny0 = YW_SKY_H + YW_SWELL_H / 2;
+          var lbl = 'modèle indisponible';
           ctx.save();
-          ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.font = '600 ' + Math.round(9 * YW_SCALE) + 'px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('modèle indisponible', nx0, YW_SKY_H + YW_SWELL_H / 2);
+          ctx.font = '600 ' + Math.round(9 * YW_SCALE) + 'px sans-serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          var tw = ctx.measureText(lbl).width;
+          ctx.fillStyle = 'rgba(6,16,30,.7)';
+          ctx.fillRect(nx0 - tw / 2 - 6, ny0 - 9 * YW_SCALE, tw + 12, 18 * YW_SCALE);
+          ctx.fillStyle = 'rgba(255,255,255,.7)';
+          ctx.fillText(lbl, nx0, ny0);
           ctx.restore();
         }
         return;
@@ -1471,6 +1488,14 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
   }
 
   function ywSetHover(dayIdx) {
+    // mousemove tire ce point à chaque pixel parcouru (60-120+/s) — sans ce
+    // garde-fou, chaque déplacement de souris DANS la même colonne de jour
+    // redessinait tout le canvas (nuages/pluie/spline) pour un résultat
+    // strictement identique. Plus sensible ici que sur semaine.html :
+    // previsions.html charge la houle à l'heure réelle, donc plus de
+    // créneaux à retracer par redessin. Trouvé le 13/08/2026 en auditant
+    // les perfs de ce chantier.
+    if (dayIdx === YW_HOVER) return;
     YW_HOVER = dayIdx;
     ywUpdateReadout(dayIdx >= 0 ? YW_DATA.days[dayIdx] : null);
     ywDraw();
@@ -1489,6 +1514,16 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     var srcEl = document.getElementById('yw-src');
     if (srcEl) srcEl.textContent = YW_DATA.srcLabel ? ('vent/ciel : ' + YW_DATA.srcLabel) : '';
     ywPopulateSwellModelSel();
+    // _swellCache se remplit d'un coup (Promise.all sur 6 modèles, cf.
+    // _renderSwellCompare) mais peut prendre plusieurs secondes — si le
+    // météogramme est ouvert avant qu'elle résolve, le sélecteur ne
+    // proposait que "Auto" jusqu'au prochain clic sur "Actualiser". Un seul
+    // rattrapage différé (pas un sondage en boucle) : la fenêtre où ça
+    // manque est courte, pas la peine d'un mécanisme plus lourd. Trouvé le
+    // 13/08/2026 en auditant ce chantier.
+    if (typeof _swellCache === 'undefined' || !_swellCache) {
+      setTimeout(function () { if (document.getElementById('yw-acc').open) ywPopulateSwellModelSel(); }, 3000);
+    }
     ywComputeLayout();
     ywRenderHeadWind();
     ywEnsureCanvasSize();
@@ -1578,18 +1613,25 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
   // depuis le dernier rendu (pas de hook simple et fiable vers le mécanisme
   // de changement de spot du reste de la page) : rafraîchir à l'ouverture
   // couvre le cas courant sans devoir s'y accrocher.
+  var YW_LOAD_IV = null; // setInterval en cours (attente _fcastData), s'il y en a un
   function ywLoad() {
+    // Un clic rapide sur "Actualiser", ou un ferme/rouvre de l'accordéon
+    // pendant qu'un premier chargement attend encore _fcastData, lançait un
+    // 2e setInterval SANS annuler le premier — les deux tournaient en
+    // parallèle jusqu'à 15 s, chacun capable d'appeler ywFinishLoad(). Un
+    // seul sondage à la fois. Trouvé le 13/08/2026 en auditant ce chantier.
+    if (YW_LOAD_IV) { clearInterval(YW_LOAD_IV); YW_LOAD_IV = null; }
     var data = ywBuildData();
     if (data) { ywFinishLoad(data); return; }
     var readout = document.getElementById('yw-readout');
     if (readout) readout.innerHTML = '<span class="hint">Chargement des prévisions…</span>';
     var tries = 0;
-    var iv = setInterval(function () {
+    YW_LOAD_IV = setInterval(function () {
       tries++;
       data = ywBuildData();
-      if (data) { clearInterval(iv); ywFinishLoad(data); }
+      if (data) { clearInterval(YW_LOAD_IV); YW_LOAD_IV = null; ywFinishLoad(data); }
       else if (tries > 30) {
-        clearInterval(iv);
+        clearInterval(YW_LOAD_IV); YW_LOAD_IV = null;
         if (readout) readout.innerHTML = '<span class="hint">Prévisions pas encore chargées pour ce spot — réessaie dans un instant.</span>';
       }
     }, 500);
