@@ -526,7 +526,13 @@ html.widget-mode #gw-widget { margin-bottom:0; }
    cette page). Règles identiques à celles de build-week.mjs, --yww au lieu de
    --mgw, pas de sélecteurs spot/modèle ni de marée (déjà ailleurs sur la
    page) : "cette représentation-là, rien d'autre", demandé ce jour-là. */
-.yw-card{background:var(--deep);border-radius:12px;padding:14px 14px 12px}
+/* PAS de background/padding/border-radius propres ici : .yw-card vit DANS
+   <details class="card"> (déjà le fond+padding+coins de previsions.html) —
+   les lui redonner créait une carte-dans-la-carte (double padding, coins
+   arrondis en double), jugé "moche, ça coupe" le 12/08/2026. Simple
+   conteneur de mise en page, comme .mg-card l'était côté semaine.html AVANT
+   d'être enveloppé dans un <details> ici. */
+.yw-card{}
 .yw-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;flex-wrap:wrap}
 .yw-title{font:600 15px/1.2 Georgia,serif}
 .yw-refresh{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;
@@ -725,9 +731,12 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
        spot déjà affiché plus haut. -->
   <details class="card" id="yw-acc" style="margin-bottom:12px;padding:14px;">
     <summary style="cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;">🌤️ Ciel &amp; houle illustrés</summary>
-    <div class="yw-card" id="yw-card" style="margin-top:10px;padding:0;">
+    <div class="yw-card" id="yw-card" style="margin-top:10px;">
       <div class="yw-top">
-        <div class="yw-title">🌤️ <span id="yw-spot-name"></span></div>
+        <div>
+          <div class="yw-title">🌤️ <span id="yw-spot-name"></span></div>
+          <div id="yw-src" style="font-size:10.5px;color:var(--faint);margin-top:1px;"></div>
+        </div>
         <button class="yw-refresh" id="yw-refresh" type="button">↻ Actualiser</button>
       </div>
       <div class="yw-scroll" id="yw-scroll">
@@ -780,16 +789,26 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
       : (v == null ? '#3d5468' : v < t[0] ? '#3dba8a' : v < t[1] ? '#4fa3c7' : v < t[2] ? '#e8a057' : v < t[3] ? '#e8874a' : '#e05c5c');
   }
 
-  // Construit YW_DATA depuis _fcastData (déjà chargé pour le spot courant par
-  // le reste de la page). _fcastData.dates[] est DÉJÀ décalé de +11h (cf.
-  // previsions.html: "new Date(new Date(d.time).getTime()+11*3600000)") : on
-  // lit donc en getUTC* SANS re-décaler — le piège classique du fuseau NC
-  // (CLAUDE.md) serait de le décaler une 2e fois. Fenêtre diurne 6h-17h et 7
-  // jours, mêmes bornes que semaine.html (alignées le 12/08/2026), mais ici
-  // en cadence RÉELLE (previsions.html charge bien plus fin que les 4
-  // créneaux/jour de la page hebdo).
+  // Construit YW_DATA depuis LA SOURCE ACTUELLEMENT CHOISIE par le toggle
+  // houle du reste de la page (_currentHsSrc, cf. setHsSrc()) — 'nc' lit
+  // _fcastData, 'om' lit _omFcastData (même forme de champs, les deux sont
+  // TOUJOURS peuplés en parallèle). AVANT le 12/08/2026 ce bloc ne lisait que
+  // _fcastData sans regarder _currentHsSrc : le météogramme restait donc
+  // figé sur meteo.nc même en basculant sur GFS ailleurs sur la page — signalé
+  // le même jour ("ça change pas selon le modèle choisi"). dates[] est DÉJÀ
+  // décalé de +11h (cf. previsions.html: "new Date(new Date(d.time).getTime()
+  // +11*3600000)") : on lit donc en getUTC* SANS re-décaler — le piège
+  // classique du fuseau NC (CLAUDE.md) serait de le décaler une 2e fois.
+  // Fenêtre diurne 6h-17h et 7 jours, mêmes bornes que semaine.html (alignées
+  // le 12/08/2026), mais ici en cadence RÉELLE (previsions.html charge bien
+  // plus fin que les 4 créneaux/jour de la page hebdo).
+  function ywActiveSource() {
+    var src = (typeof _currentHsSrc !== 'undefined') ? _currentHsSrc : 'nc';
+    var fc = (src === 'om' && window._omFcastData) ? window._omFcastData : window._fcastData;
+    return { fc: fc, label: (src === 'om') ? 'GFS Open-Meteo' : 'meteo.nc' };
+  }
   function ywBuildData() {
-    var fc = window._fcastData;
+    var act = ywActiveSource(), fc = act.fc;
     if (!fc || !fc.dates || !fc.dates.length) return null;
     var HOUR_MIN = 6, HOUR_MAX = 17, MAX_DAYS = 7;
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -824,7 +843,7 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     if (!slots.length) return null;
     var daily = {};
     days.forEach(function (k) { if (dayMinMax[k]) daily[k] = dayMinMax[k]; });
-    return { days: days, slots: slots, daily: daily, hourMin: HOUR_MIN, hourMax: HOUR_MAX };
+    return { days: days, slots: slots, daily: daily, hourMin: HOUR_MIN, hourMax: HOUR_MAX, srcLabel: act.label };
   }
 
   function ywDayParts(k) {
@@ -1039,8 +1058,22 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     var maxV = allPts.length ? ywNiceMax(Math.max.apply(null, allPts.map(function (p) { return p.y; })) * 1.2) : 1;
     var waterTop = YW_SKY_H + Math.max(6, Math.round(10 * YW_SCALE) + 3), waterBase = YW_SKY_H + YW_SWELL_H;
     function waterY(v) { return waterBase - (v / maxV) * (waterBase - waterTop); }
+    // Lissage LÉGER (moyenne pondérée 1-2-1) avant la spline — uniquement le
+    // TRACÉ, jamais le pic utilisé par le badge (qui reste lu sur ds, plus
+    // bas, non lissé). previsions.html charge la houle à l'heure réelle (pas
+    // 4 créneaux/jour comme semaine.html) : sur autant de points rapprochés,
+    // le bruit hour-à-heure du modèle donnait une courbe dentelée ("courbes
+    // laides", signalé le 12/08/2026) — un vrai changement de houle reste
+    // visible, seule la micro-variation d'un point à l'autre s'atténue. Runs
+    // courts (peu de créneaux/jour, cas semaine.html) laissés tels quels :
+    // rien à lisser sur 2-4 points, et ça effacerait le peu de donnée réelle
+    // qu'ils portent.
     var surfRuns = ptRuns.map(function (run) {
-      var xy = run.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
+      var sm = run.length < 8 ? run : run.map(function (p, i) {
+        var y0 = run[Math.max(0, i - 1)].y, y1 = p.y, y2 = run[Math.min(run.length - 1, i + 1)].y;
+        return { x: p.x, y: (y0 + 2 * y1 + y2) / 4 };
+      });
+      var xy = sm.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
       var surf = xy.length ? [xy[0]] : [], i, k2;
       for (i = 0; i < xy.length - 1; i++) {
         var p0 = xy[i - 1] || xy[i], p1 = xy[i], p2 = xy[i + 1], p3 = xy[i + 2] || xy[i + 1];
@@ -1052,8 +1085,15 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     YW_DATA.days.forEach(function (k, d) {
       var x0 = d * YW_DAY_W, ds = byDay[k] || [];
       if (!ds.length) {
-        ctx.fillStyle = 'rgba(255,255,255,.03)'; ctx.fillRect(x0, 0, YW_DAY_W, YW_SKY_H + YW_SWELL_H);
-        ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.font = '600 ' + Math.round(9.5 * YW_SCALE) + 'px sans-serif'; ctx.textAlign = 'center';
+        // Fond OPAQUE (pas un voile translucide à 3%) : semaine.html est
+        // TOUJOURS en thème sombre, un voile quasi invisible y suffisait,
+        // mais previsions.html supporte le thème clair — sur --deep blanc, ce
+        // voile ne se voyait plus du tout, donnant un "trou blanc" en
+        // permanence sur les jours sans donnée (repéré le 12/08/2026). La
+        // scène est une illustration de ciel : elle reste sombre quel que
+        // soit le thème du site, comme les jours AVEC donnée juste à côté.
+        ctx.fillStyle = '#0d1f3c'; ctx.fillRect(x0, 0, YW_DAY_W, YW_SKY_H + YW_SWELL_H);
+        ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = '600 ' + Math.round(9.5 * YW_SCALE) + 'px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText('pas de donnée', x0 + YW_DAY_W / 2, YW_SKY_H / 2);
         ctx.textAlign = 'left';
         return;
@@ -1215,6 +1255,18 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
       ctx.save();
       ctx.beginPath(); ctx.rect(d * YW_DAY_W + 1, 0, YW_DAY_W - 2, YW_SKY_H + YW_SWELL_H); ctx.clip();
       ywSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', peak.t != null ? Math.round(peak.t) + 's' : null, peak.sd, accentRgb);
+      // Houle secondaire, satellite orange en haut à droite du badge
+      // principal — demandée le 12/08/2026 ("il n'y a pas la houle
+      // secondaire"). peak.hs2 est un RÉSIDU calculé côté previsions.html
+      // quand la source n'a pas de vraie houle 2 native (cf. le commentaire
+      // de ywUpdateReadout) — presque jamais null, donc gardée derrière le
+      // même seuil de magnitude (>0,4 m) que le détail heure par heure et
+      // l'ancien badge de semaine.html, pour ne pas afficher du bruit comme
+      // si c'était une vraie 2ᵉ houle.
+      if (peak.hs2 != null && peak.hs2 > 0.4 && peak.per2 != null) {
+        var R2 = R * .6;
+        ywSwellBadge(ctx, px + R * .82, py - R * .82, R2, '+' + peak.hs2.toFixed(1) + 'm', Math.round(peak.per2) + 's', peak.sd2, warmRgb);
+      }
       ctx.restore();
     });
     ctx.textAlign = 'center';
@@ -1279,6 +1331,12 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
       var sp = (typeof SPOTS !== 'undefined' && typeof currentSpot !== 'undefined') ? SPOTS[currentSpot] : null;
       nameEl.textContent = sp ? sp.name : '';
     }
+    // Source houle affichée EXPLICITEMENT (meteo.nc ou GFS Open-Meteo, cf.
+    // ywActiveSource) : plusieurs sources coexistent sur cette page, ne pas
+    // dire laquelle alimente cette scène serait ambigu — signalé le
+    // 12/08/2026 ("préciser sources météo").
+    var srcEl = document.getElementById('yw-src');
+    if (srcEl) srcEl.textContent = YW_DATA.srcLabel ? ('houle : ' + YW_DATA.srcLabel) : '';
     ywComputeLayout();
     ywRenderHeadWind();
     ywEnsureCanvasSize();
@@ -1323,12 +1381,22 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     window.addEventListener('resize', ywRelayout);
   }
 
-  // Reconstruit YW_DATA depuis _fcastData et redessine — appelé à l'ouverture
-  // de l'accordéon et par "↻ Actualiser". Le spot affiché peut avoir changé
+  // Appelé par setHsSrc() (cf. previsions.html, toggle meteo.nc/GFS) quand la
+  // source houle change ailleurs sur la page — ne rafraîchit QUE si
+  // l'accordéon est déjà ouvert : sinon ywLoad() relira de toute façon l'état
+  // à jour à la prochaine ouverture, pas la peine de dessiner pour rien
+  // pendant que c'est fermé.
+  function ywOnSourceChange() {
+    var acc = document.getElementById('yw-acc');
+    if (acc && acc.open) ywLoad();
+  }
+
+  // Reconstruit YW_DATA depuis la source active (cf. ywActiveSource) et
+  // redessine — appelé à l'ouverture de l'accordéon, par "↻ Actualiser", et
+  // par ywOnSourceChange() ci-dessus. Le spot affiché peut aussi avoir changé
   // depuis le dernier rendu (pas de hook simple et fiable vers le mécanisme
   // de changement de spot du reste de la page) : rafraîchir à l'ouverture
-  // couvre le cas courant sans devoir s'y accrocher — "rien d'autre", cf. le
-  // commentaire HTML plus haut.
+  // couvre le cas courant sans devoir s'y accrocher.
   function ywLoad() {
     var data = ywBuildData();
     if (data) { ywFinishLoad(data); return; }
@@ -3809,6 +3877,13 @@ function setHsSrc(src, skipRedraw) {
   // Tableau + conditions actuelles
   renderTable(d.dates||[],d.sw1h||[],d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
   try { renderGlobalWidget(); } catch(_){} // le widget global suit le toggle de source
+  // Météogramme illustré (accordéon sous #gw-widget, cf. plus bas dans le
+  // fichier) : même logique — s'il est OUVERT, le rebasculer avec le toggle
+  // doit le rafraîchir tout de suite, sinon il resterait figé sur l'ancienne
+  // source (signalé le 12/08/2026, "ça change pas selon le modèle choisi").
+  // S'il est fermé, ywLoad() relira de toute façon _currentHsSrc à jour à
+  // la prochaine ouverture — pas besoin de le forcer ici.
+  try { if (typeof ywOnSourceChange === 'function') ywOnSourceChange(); } catch(_){}
   if(d.sw1h&&d.sw1h.length) renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0]);
 
   // Badge source
