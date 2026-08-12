@@ -1727,30 +1727,56 @@ function mgUpdateReadout(dayKey) {
   var el = document.getElementById('mgReadout');
   if (dayKey == null) { el.innerHTML = '<span class="hint">Touche un jour pour le détail heure par heure.</span>'; return; }
   var sp = WEEK.spots[MG_SPOT];
-  var ds = sp.slots.filter(function (s) { return s.d === dayKey; });
-  if (!ds.length) { el.innerHTML = '<span class="hint">Pas de créneau ce jour-là.</span>'; return; }
+  // Cadence branchée sur le modèle actif (cf. #mgModelSel) : un modèle à 6 h
+  // de cadence (ECMWF/AIFS) n'a pas de créneau à 8 h/14 h, ça ne doit pas
+  // devenir un "8 h — meteo.nc" trompeur. useModel=false (meteo.nc) reproduit
+  // exactement le comportement d'avant le 12/08/2026 — rien ne change pour le
+  // cas par défaut.
+  var useModel = MG_MODEL !== 'nc';
+  var ds = useModel
+    ? (sp.modelSlots && sp.modelSlots[MG_MODEL] || []).filter(function (s) { return s.d === dayKey; }).slice().sort(function (a, b) { return a.h - b.h; })
+    : sp.slots.filter(function (s) { return s.d === dayKey; });
+  if (!ds.length) {
+    el.innerHTML = '<span class="hint">' + (useModel ? esc(MG_MODEL_LABELS[MG_MODEL]) + ' ne publie rien ce jour-là.' : 'Pas de créneau ce jour-là.') + '</span>';
+    return;
+  }
   var p = mgDayParts(dayKey);
   var lines = ds.map(function (s) {
-    var sec = s.hs2 != null ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's ' + compass(s.sd2) + '</span>') : '';
-    var sky = s.cl != null ? (' · nuages bas ' + Math.round(s.cl) + '%, moy ' + Math.round(s.cm) + '%, haut ' + Math.round(s.ch) + '%') : '';
-    var rain = (s.precip != null && s.precip > 0) ? (' · 💧 ' + s.precip.toFixed(1) + ' mm/h') : '';
+    // ncAt : le créneau meteo.nc/Open-Meteo à LA MÊME HEURE, s'il existe — seule
+    // source de vent/ciel/température (INVARIANT houle/vent, CLAUDE.md : houle
+    // toujours au spot, vent seul a un mode station — aucun autre modèle du
+    // comparatif ne fournit ni l'un ni l'autre). En mode meteo.nc, ncAt = s :
+    // comportement identique à avant. Sans correspondance exacte (cadences
+    // différentes), la ligne ne montre QUE la houle, jamais un "—" inventé.
+    var ncAt = useModel ? (sp.slots.filter(function (x) { return x.d === dayKey && x.h === s.h; })[0] || null) : s;
+    // Houle secondaire : décorative, spécifique à meteo.nc/Open-Meteo — la
+    // montrer à côté d'un AUTRE modèle laisserait croire qu'elle lui
+    // appartient, donc masquée dès qu'un autre modèle est actif.
+    var sec = (!useModel && s.hs2 != null) ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's ' + compass(s.sd2) + '</span>') : '';
+    var sky = (ncAt && ncAt.cl != null) ? (' · nuages bas ' + Math.round(ncAt.cl) + '%, moy ' + Math.round(ncAt.cm) + '%, haut ' + Math.round(ncAt.ch) + '%') : '';
+    var rain = (ncAt && ncAt.precip != null && ncAt.precip > 0) ? (' · 💧 ' + ncAt.precip.toFixed(1) + ' mm/h') : '';
     // Ressenti seulement s'il s'écarte de l'air (sinon redondant) — feels/hum/uv
     // demandés le 11/08/2026, même appel Open-Meteo que le ciel (zéro requête
     // en plus, cf. fetchSky()), affichés ici (détail par créneau) plutôt que
     // sur le graphe déjà dense.
-    var temp = s.at != null ? (' · ' + Math.round(s.at) + '°'
-      + (s.feels != null && Math.round(s.feels) !== Math.round(s.at) ? ' (ressenti ' + Math.round(s.feels) + '°)' : '')) : '';
-    var hum = s.hum != null ? (' · ' + Math.round(s.hum) + '% hum.') : '';
+    var temp = (ncAt && ncAt.at != null) ? (' · ' + Math.round(ncAt.at) + '°'
+      + (ncAt.feels != null && Math.round(ncAt.feels) !== Math.round(ncAt.at) ? ' (ressenti ' + Math.round(ncAt.feels) + '°)' : '')) : '';
+    var hum = (ncAt && ncAt.hum != null) ? (' · ' + Math.round(ncAt.hum) + '% hum.') : '';
     // Libellé calculé sur la valeur ARRONDIE affichée, pas la brute : sinon un
     // 5,6 affiché "UV 6" pouvait ressortir "modéré" alors que 6 est déjà le
     // seuil "élevé" — incohérence entre le chiffre montré et son qualificatif.
-    var uvR = s.uv != null ? Math.round(s.uv) : null;
+    var uvR = (ncAt && ncAt.uv != null) ? Math.round(ncAt.uv) : null;
     var uv = (uvR != null && uvR >= 1) ? (' · UV ' + uvR + ' ' + mgUvLabel(uvR)) : '';
-    return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>/' + Math.round(s.t) + 's ' + compass(s.sd) + sec
-      + ' · <span style="color:' + windCol(s.ws) + '">' + (s.ws == null ? '—' : Math.round(s.ws)) + ' nds ' + compass(s.wd) + '</span>'
-      + temp + hum + uv + sky + rain + '</div>';
+    var wind = ncAt ? (' · <span style="color:' + windCol(ncAt.ws) + '">' + (ncAt.ws == null ? '—' : Math.round(ncAt.ws)) + ' nds ' + compass(ncAt.wd) + '</span>') : '';
+    // Période/direction houle : peuvent manquer (ECMWF/AIFS n'ont pas de
+    // période par bande ni de direction, cf. swellDetailOf côté build) — pas
+    // de "0s"/flèche inventée, la mention est simplement omise.
+    var perDir = (s.t != null ? Math.round(s.t) + 's' : '') + (s.sd != null ? (s.t != null ? ' ' : '') + compass(s.sd) : '');
+    return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>' + (perDir ? '/' + perDir : '') + sec
+      + wind + temp + hum + uv + sky + rain + '</div>';
   }).join('');
-  el.innerHTML = '<b>' + J_LONG[p.dow] + ' ' + p.d + ' ' + M_SHORT[p.mo] + '</b>' + lines;
+  var modelNote = useModel ? (' <span class="hint">— houle ' + esc(MG_MODEL_LABELS[MG_MODEL]) + ', reste meteo.nc/Open-Meteo</span>') : '';
+  el.innerHTML = '<b>' + J_LONG[p.dow] + ' ' + p.d + ' ' + M_SHORT[p.mo] + '</b>' + modelNote + lines;
 }
 
 // Marée réelle (meteo.nc, via le module tide-harmonics côté build) : PM/BM et
@@ -1869,7 +1895,13 @@ function mgAttachEvents() {
   // Changer de modèle ne touche ni le spot ni le ciel/vent/marée (cf. le
   // commentaire sur swellByDay dans mgDraw()) : pas besoin de mgRender()
   // complet, juste redessiner le canvas et son axe houle.
-  document.getElementById('mgModelSel').addEventListener('change', function () { MG_MODEL = this.value; mgDraw(); mgRenderAxis(); });
+  document.getElementById('mgModelSel').addEventListener('change', function () {
+    MG_MODEL = this.value; mgDraw(); mgRenderAxis();
+    // Détail heure par heure déjà ouvert sur un jour : le rafraîchir avec le
+    // nouveau modèle, sinon il continuerait d'afficher l'ancien (signalé
+    // le 12/08/2026 — "les données chargées ne sont pas mises à jour").
+    mgUpdateReadout(MG_HOVER >= 0 ? WEEK.days[MG_HOVER] : null);
+  });
   window.addEventListener('resize', mgRelayout);
 }
 
