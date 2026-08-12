@@ -857,6 +857,13 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
   function ywModelSwellSlotsFor(key) {
     if (typeof _swellCache === 'undefined' || !_swellCache || !_swellCache[key]) return [];
     var pts = _swellCache[key].primary || [];
+    // Houle secondaire : disponible pour certains modèles du comparatif (MF/
+    // GFS ont une vraie 2ᵉ houle native, cf. _swellToPts) — indexée par ms
+    // pour la recoller au bon point primaire. Rétablie le 12/08/2026 : elle
+    // n'était montrée qu'en mode 'auto', alors que d'autres modèles en ont
+    // aussi ("je ne vois pas... la houle secondaire pour tous les modèles").
+    var secByMs = {};
+    (_swellCache[key].secondary || []).forEach(function (p) { if (p.ms != null) secByMs[p.ms] = p; });
     var HOUR_MIN = YW_DATA.hourMin, HOUR_MAX = YW_DATA.hourMax;
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
     var out = [];
@@ -866,7 +873,11 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
       var hour = dt.getUTCHours();
       if (hour < HOUR_MIN || hour > HOUR_MAX) return;
       var dayKey = dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate());
-      out.push({ d: dayKey, h: hour, hs: p.h, t: p.t, sd: p.dir });
+      var sp = secByMs[p.ms];
+      out.push({
+        d: dayKey, h: hour, hs: p.h, t: p.t, sd: p.dir,
+        hs2: sp ? sp.h : null, per2: sp ? sp.t : null, sd2: sp ? sp.dir : null
+      });
     });
     return out;
   }
@@ -1326,15 +1337,40 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     });
 
     YW_DATA.days.forEach(function (k, d) {
-      var ds = swellByDay[k]; if (!ds || !ds.length) return;
+      var ds = swellByDay[k];
+      if (!ds || !ds.length) {
+        // Jour affiché (ciel/vent viennent de la source active) mais SANS
+        // donnée pour le modèle houle choisi — son horizon peut être plus
+        // court que celui de meteo.nc/GFS (MARC par ex., cf. modelsForSpot).
+        // Un vide silencieux ici lisait comme un bug ("parfois il manque des
+        // jours", signalé le 12/08/2026) : dire explicitement pourquoi plutôt
+        // que de laisser deviner.
+        if (YW_SWELL_MODEL !== 'auto') {
+          var nx0 = d * YW_DAY_W + YW_DAY_W / 2;
+          ctx.save();
+          ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.font = '600 ' + Math.round(9 * YW_SCALE) + 'px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('modèle indisponible', nx0, YW_SKY_H + YW_SWELL_H / 2);
+          ctx.restore();
+        }
+        return;
+      }
       var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
       var px = d * YW_DAY_W + ywHourFrac(peak.h) * YW_DAY_W;
       var R = Math.max(15, Math.min(30, YW_DAY_W * .155));
       var rightPad = R + 3;
       px = Math.max(d * YW_DAY_W + R + 3, Math.min(d * YW_DAY_W + YW_DAY_W - rightPad, px));
       if (d === 0) px = Math.max(px, R + 40);
+      // margin = R (rayon, place au-dessus du centre) + décalage du texte de
+      // période EN DESSOUS (cf. ywSwellBadge: cy+r+max(11,r*.48)) + marge. La
+      // borne BASSE utilisait margin*.55 (place insuffisante) : sur un pic
+      // bas (proche de l'axe), le centre était poussé si près du bord que la
+      // légende de période sortait du rect de clip juste en dessous — texte
+      // invisible, "je ne vois pas la période" signalé le 12/08/2026, visible
+      // dès qu'un modèle du comparatif a une amplitude différente de
+      // meteo.nc. Même marge complète aux deux bornes.
       var margin = R + Math.max(11, R * .48) + 2;
-      var py = Math.min(Math.max(waterY(peak.hs), YW_SKY_H + margin), YW_SKY_H + YW_SWELL_H - margin * .55);
+      var py = Math.min(Math.max(waterY(peak.hs), YW_SKY_H + margin), YW_SKY_H + YW_SWELL_H - margin);
       ctx.save();
       ctx.beginPath(); ctx.rect(d * YW_DAY_W + 1, 0, YW_DAY_W - 2, YW_SKY_H + YW_SWELL_H); ctx.clip();
       ywSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', peak.t != null ? Math.round(peak.t) + 's' : null, peak.sd, accentRgb);
@@ -1412,12 +1448,15 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
       // CLAUDE.md) : un modèle du comparatif ne fournit QUE la houle. En mode
       // 'auto', ncAt = s (comportement identique à avant ce chantier).
       var ncAt = useModel ? (YW_DATA.slots.filter(function (x) { return x.d === dayKey && x.h === s.h; })[0] || null) : s;
-      // s.hs2 (sw2h) est un RÉSIDU calculé (Hs-H1-Hvent, cf. previsions.html
-      // _fcastData) quand la source n'a pas de vraie houle 2 native — presque
-      // jamais null, donc "!= null" seul affichait "+0.0m/0s —" en continu.
-      // Seuil de magnitude (> 0.4 m), et masquée dès qu'un AUTRE modèle est
-      // choisi (elle ne lui appartient pas).
-      var sec = (!useModel && s.hs2 != null && s.hs2 > 0.4 && s.per2 != null)
+      // s.hs2 en mode 'auto' (sw2h) est un RÉSIDU calculé (Hs-H1-Hvent) quand
+      // meteo.nc n'a pas de vraie houle 2 native — presque jamais null, donc
+      // "!= null" seul affichait "+0.0m/0s —" en continu. En mode modèle
+      // (ywModelSwellSlotsFor), s.hs2 vient de _swellCache[key].secondary
+      // (vraie donnée native si le modèle en a une, MF/GFS par ex., sinon
+      // simplement absente) — même seuil de magnitude (> 0.4 m) dans les deux
+      // cas, mais PLUS masquée pour les autres modèles depuis le 12/08/2026
+      // ("je ne vois pas... la houle secondaire pour tous les modèles").
+      var sec = (s.hs2 != null && s.hs2 > 0.4 && s.per2 != null)
         ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's' + (s.sd2 != null ? ' ' + compass(s.sd2) : '') + '</span>')
         : '';
       var sky = (ncAt && ncAt.cl != null) ? (' · nuages bas ' + Math.round(ncAt.cl) + '%, moy ' + Math.round(ncAt.cm) + '%, haut ' + Math.round(ncAt.ch) + '%') : '';

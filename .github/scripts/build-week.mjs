@@ -1680,8 +1680,17 @@ function mgDraw() {
     // précédent) : on y décale le centre du badge d'au moins R+40 pour ne
     // jamais la recouvrir (les jours suivants sont hors de portée).
     if (d === 0) px = Math.max(px, R + 40);
+    // margin = R (rayon, place au-dessus du centre) + décalage du texte de
+    // période EN DESSOUS (cf. mgSwellBadge: cy+r+max(11,r*.48)) + marge. La
+    // borne BASSE utilisait margin*.55 (place insuffisante) : sur un pic bas
+    // (proche de l'axe, houle < ~1m), le centre était poussé si près du bord
+    // que la légende de période sortait du rect de clip juste en dessous —
+    // texte invisible. Découvert le 12/08/2026 en portant ce badge dans
+    // previsions.html (modèles du comparatif à amplitude différente de
+    // meteo.nc l'ont rendu visible), même bug ici. Même marge complète aux
+    // deux bornes.
     var margin = R + Math.max(11, R * .48) + 2;
-    var py = Math.min(Math.max(waterY(peak.hs), MG_SKY_H + margin), MG_SKY_H + MG_SWELL_H - margin * .55);
+    var py = Math.min(Math.max(waterY(peak.hs), MG_SKY_H + margin), MG_SKY_H + MG_SWELL_H - margin);
 
     ctx.save();
     ctx.beginPath(); ctx.rect(d * MG_DAY_W + 1, 0, MG_DAY_W - 2, MG_SKY_H + MG_SWELL_H); ctx.clip();
