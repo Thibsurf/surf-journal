@@ -1884,7 +1884,14 @@ async function loadMySessions() {
 
 function filterList(sessions, filter) {
   if (filter === 'tube') return sessions.filter(s => s.moves && s.moves.includes('tube'));
-  if (filter === 'crew') return renderCrewView();
+  // 'crew' : renderCrewView() écrit elle-même dans #sessions-list et ne RENVOIE
+  // rien. Renvoyer son résultat (undefined) faisait planter renderSessionsList
+  // (`sessions.length`) à chaque loadMySessions() fait avec l'onglet Crew actif :
+  // après un ajout on voyait « Session ajoutée ! » PUIS « Erreur inattendue »
+  // (le throw remonte au catch de saveSession), et après une suppression
+  // « Erreur réseau » alors qu'elle avait bel et bien réussi (catch de
+  // deleteSession). null = « rien à rendre, la vue est déjà à l'écran ».
+  if (filter === 'crew') { renderCrewView(); return null; }
   if (filter === 'shared') return sessions.filter(s => s.is_shared);
   return sessions;
 }
@@ -2091,7 +2098,12 @@ async function removeCrewMember(name) {
 
 function renderDashStats(sessions) {
   const totalH = sessions.reduce((s,x) => s + (x.duration_h || 0), 0);
-  const avgQ = sessions.length ? (sessions.reduce((s,x) => s + (x.quality || 0), 0) / sessions.length).toFixed(1) : '—';
+  // Moyenne sur les sessions NOTÉES, comme renderStats (page Stats) : diviser par
+  // toutes les sessions comptait une session sans étoiles comme un 0 et affichait
+  // donc deux « Qualité moy. » différentes sur deux écrans pour la même donnée.
+  // Sans effet aujourd'hui (76/76 notées), faux dès la première session non notée.
+  const qSessDash = sessions.filter(s => s.quality);
+  const avgQ = qSessDash.length ? (qSessDash.reduce((s,x) => s + x.quality, 0) / qSessDash.length).toFixed(1) : '—';
   const tubes = sessions.filter(s => s.moves && s.moves.includes('tube')).length;
   const totalCFP = sessions.reduce((s,x) => s + (x.price_cfp || 0), 0);
   const h = Math.floor(totalH), m = Math.round((totalH - h) * 60);
@@ -2111,6 +2123,9 @@ function renderDashStats(sessions) {
 
 function renderSessionsList(sessions) {
   const el = document.getElementById('sessions-list');
+  // null = la vue Crew a déjà rempli le conteneur (cf. filterList) : ne rien
+  // écraser, et surtout ne pas lire .length sur undefined.
+  if (!sessions) return;
   if (!sessions.length) {
     el.innerHTML = `<div class="empty">
       <div class="empty-icon">🏄</div>
@@ -2274,7 +2289,7 @@ function openAddSession() {
   setStars(0);
   if (currentProfile && currentProfile.boards) {
     const dl = document.getElementById('boards-list');
-    dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${b}">`).join('');
+    dl.innerHTML = (currentProfile.boards || []).map(b => `<option value="${escapeHtml(b)}">`).join('');
   }
   if (typeof populateBoatSelect==='function') populateBoatSelect().then(function() {
     var sel = document.getElementById('f-boat-id');
@@ -3037,6 +3052,17 @@ function _applyStationPick(spotVal) {
 
 function _applyCustomCoords() { _applyStationPick(typeof getSpotValue==='function'?getSpotValue():''); }
 
+// Remplit un champ numérique du formulaire SANS perdre les zéros. L'idiome
+// `el.value = s.wind_kts || ''` traitait 0 comme « vide » : rouvrir une session
+// à 0 nds (le glassy) — ou à 0 CFP — puis Enregistrer la repassait à null en
+// base, détruisant en silence la valeur que _numField() a précisément été
+// écrit pour préserver côté saisie (cf. son commentaire). Vérifié sur les
+// données réelles : 2 sessions ont wind_kts = 0 (02/11/2024, 08/02/2025).
+function _fillNumField(id, v) {
+  var el = document.getElementById(id);
+  if (el) el.value = (v == null ? '' : v);
+}
+
 function editSession() {
   if (!currentDetailSession) return;
   closeModal('modal-detail');
@@ -3047,22 +3073,22 @@ function editSession() {
   document.getElementById('modal-add-title').textContent = 'Modifier la session';
   document.getElementById('edit-session-id').value = s.id;
   document.getElementById('f-date').value = s.date;
-  document.getElementById('f-duration').value = s.duration_h || '';
+  _fillNumField('f-duration', s.duration_h);
   setSpotValue(s.spot || '');
   document.getElementById('f-launch').value = s.launch_point || '';
   document.getElementById('f-context').value = s.context || '';
-  document.getElementById('f-hs').value = s.hs || '';
-  document.getElementById('f-period').value = s.period || '';
+  _fillNumField('f-hs', s.hs);
+  _fillNumField('f-period', s.period);
   document.getElementById('f-swell-dir').value = s.swell_dir || '';
-  document.getElementById('f-wind').value = s.wind_kts || '';
+  _fillNumField('f-wind', s.wind_kts);
   document.getElementById('f-wind-dir').value = s.wind_dir || '';
   document.getElementById('f-tide').value = s.tide || '';
   document.getElementById('f-board').value = s.board || '';
-  document.getElementById('f-price').value = s.price_cfp || '';
+  _fillNumField('f-price', s.price_cfp);
   document.getElementById('f-shared-with').value = (s.shared_with || []).join(', ');
   document.getElementById('f-obs').value = s.observations || '';
-  if(document.getElementById('f-distance'))document.getElementById('f-distance').value=s.distance_nm||'';
-  if(document.getElementById('f-nb-surfers'))document.getElementById('f-nb-surfers').value=s.nb_surfers||'';
+  _fillNumField('f-distance', s.distance_nm);
+  _fillNumField('f-nb-surfers', s.nb_surfers);
   // Marée interactive
   tideRanges = s.tide_ranges || [];
   var tp = document.getElementById('tide-port');
@@ -4763,7 +4789,7 @@ async function openDetail(id) {
       var tc = s.tube_count || 1;
       return '<span class="badge badge-tube">🤙 ' + tc + ' tube' + (tc > 1 ? 's' : '') + '</span>';
     }
-    return '<span class="badge badge-accent">' + m + '</span>';
+    return '<span class="badge badge-accent">' + escapeHtml(m) + '</span>';
   }).join(' ');
   var _spL=(s.spots&&Array.isArray(s.spots)&&s.spots.length?s.spots:[s.spot||'Session']);
   var _spStr=_spL.map(function(x){return x.split(',').map(function(p){return p.trim();}).join(' + ');}).join(' + ');
@@ -4990,7 +5016,11 @@ function renderStats(sessions, el) {
       // Parser un champ tide texte pour extraire un niveau moyen
       function parseTideText(t) {
         if (!t) return null;
-        t = String(t).replace(/,/g, '.');
+        // Recoller une décimale séparée par une espace AVANT tout : « 0, 62m » (saisie
+        // du 06/06/2025) donnait sinon les nombres 0 et 62, dont seul 0 passait le
+        // filtre ≤3 — le spot héritait d'un « niveau idéal » de 0,00 m. Le motif ne
+        // touche pas « 1,26m à 0,62m » (virgule suivie d'un chiffre, sans espace).
+        t = String(t).replace(/(\d)\s*,\s+(\d)/g, '$1,$2').replace(/,/g, '.');
         // Trouver tous les nombres décimaux (max 2 chiffres avant virgule)
         var nums = (t.match(/\d+(?:\.\d+)?/g) || []).map(parseFloat)
           .filter(function(x) { return x >= 0 && x <= 3; }); // niveaux marée réalistes
@@ -5101,10 +5131,19 @@ function renderStats(sessions, el) {
       // vote VALIDE avec votedModel=null — _renderModelReliabilitySection() le traite
       // déjà comme "déjà voté" ailleurs (`vote.votedModel || vote.votedModel === null`),
       // mais pas ce filtre-ci, qui l'excluait silencieusement de ①②③.
-      var votes = [];
+      // Deux populations distinctes, et c'est volontaire (corrigé le 13/08/2026) :
+      // `votes` (vote GLOBAL, avec le vecteur de prédictions) alimente ①③, tandis
+      // que `varVotes` (affinage PAR VARIABLE) alimente ④, qui ne lit QUE votedBy.
+      // Avant, ④ itérait sur `votes` : un affinage fait sans cliquer le vote global
+      // (_castVarVote crée alors un vote à votedModel undefined) était rejeté par ce
+      // filtre et n'apparaissait NULLE PART, alors que c'est exactement la donnée
+      // que ④ existe pour montrer.
+      var votes = [], varVotes = [];
       sessions.forEach(function(s) {
         var v = getModelReliability(s);
-        if (v && (v.votedModel || v.votedModel === null) && v.predictions) votes.push(v);
+        if (!v) return;
+        if ((v.votedModel || v.votedModel === null) && v.predictions) votes.push(v);
+        if (v.votedBy) varVotes.push(v);
       });
       var eligibleUnvoted = 0, notEligible = 0;
       sessions.forEach(function(s) {
@@ -5114,7 +5153,13 @@ function renderStats(sessions, el) {
       // Sessions exploitables pour la calibration du modèle de préremplissage : au moins
       // un écart ressenti renseigné (taille / période / vent) ET le modèle qui a pré-rempli.
       var deltaSessions = sessions.filter(function(s){ return s.fcst_model && (s.obs_delta != null || s.period_delta != null || s.wind_delta != null); });
-      if (!votes.length && !deltaSessions.length) return '';
+      // Sessions où l'écart a été jugé mais où l'on ne sait PAS quel modèle avait
+      // pré-rempli (fcst_model null : autofill non joué, ou saisie entièrement
+      // manuelle). Elles ne peuvent pas entrer dans une moyenne PAR MODÈLE, mais les
+      // taire donnait un « n » silencieusement amputé (1 sur 6 au 13/08/2026) : on
+      // les compte à part, sous le bloc.
+      var deltaOrphans = sessions.filter(function(s){ return !s.fcst_model && (s.obs_delta != null || s.period_delta != null || s.wind_delta != null); }).length;
+      if (!votes.length && !varVotes.length && !deltaSessions.length && !deltaOrphans) return '';
 
       // ① Calibration relative : écart signé (en m) de chaque modèle à celui élu comme
       // le plus proche du réel, moyenné sur tous les votes — biais en mètres, actionnable,
@@ -5216,7 +5261,9 @@ function renderStats(sessions, el) {
             + '<span style="min-width:74px;color:var(--text-muted);">' + dv.lbl + '</span><span>' + cells + '</span></div>';
         }).join('');
       }
-      block2 += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">biais ressenti moyen : <b>+</b> = réel au-dessus de la prévision (le modèle sous-estime), <b>−</b> = en dessous (il surestime). n &lt; ' + OBS_DELTA_MIN + ' = tendance, pas encore fiable.</div>';
+      block2 += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">biais ressenti moyen : <b>+</b> = réel au-dessus de la prévision (le modèle sous-estime), <b>−</b> = en dessous (il surestime). n &lt; ' + OBS_DELTA_MIN + ' = tendance, pas encore fiable.'
+        + (deltaOrphans ? ' <span style="color:var(--accent-warm);">' + deltaOrphans + ' session(s) écartée(s) : modèle de préremplissage inconnu.</span>' : '')
+        + '</div>';
       block2 += '</div>';
 
       // ③ Préférence déclarée — conservée mais déclassée et étiquetée pour ce qu'elle
@@ -5251,7 +5298,7 @@ function renderStats(sessions, el) {
       // désigné le meilleur SUR CET ASPECT (parmi celles où l'aspect a été jugé).
       var VARLBL = { height: '🌊 Taille', period: '⏱ Période', dir: '🧭 Direction', wind: '🌬 Vent' };
       var varAgg = { height: {}, period: {}, dir: {}, wind: {}, _tot: { height: 0, period: 0, dir: 0, wind: 0 } };
-      votes.forEach(function(v) {
+      varVotes.forEach(function(v) {
         if (!v.votedBy) return;
         Object.keys(VARLBL).forEach(function(vk) {
           var m = v.votedBy[vk];
@@ -7942,7 +7989,10 @@ function _fmtMeta(s) {
   if (s.swell_dir && s.swell_dir !== '?' && s.swell_dir !== '—') {
     badges += ' <span style="font-size:10px;color:#4fa3c7;background:rgba(79,163,199,0.15);padding:1px 5px;border-radius:4px;">' + escapeHtml(s.swell_dir) + '</span>';
   }
-  if (s.wind_kts) {
+  // != null et non truthy : « 0 nds » est LA condition qu'on cherche à retrouver
+  // (glassy) — la masquer dans la liste alors que le détail l'affiche donnait deux
+  // vérités pour la même session.
+  if (s.wind_kts != null) {
     var wc = s.wind_kts < 10 ? '#3dba8a' : s.wind_kts < 20 ? '#e8a057' : '#e05c5c';
     badges += ' <span style="font-size:10px;color:' + wc + ';background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;">' + s.wind_kts + ' nds</span>';
   }
@@ -7961,9 +8011,18 @@ function getSpots(session) {
 
 function dirToDeg(d) {
   if (!d) return null;
+  // Un nombre suivi d'une unité N'EST PAS un cap : des valeurs d'autres champs se
+  // sont retrouvées ici (« 0,79m » = une marée, « 5nds (GLASSY) » = un vent, cf.
+  // la ligne du 23/03/2025), et la regex les lisait comme 0° et 5° — soit deux
+  // branches plein Nord dans la rose des houles d'un spot qui ne prend que du Sud.
+  if (/^\s*[\d.,]+\s*(m|nds|kt|kts|noeuds|nœuds)\b/i.test(d)) return null;
   var m = d.match(/(\d+)/); if (m) return parseInt(m[1]);
+  // Caps vrais (multiples de 22,5° arrondis). SSO et SO valaient 190 et 210, soit
+  // 12,5° et 15° trop à l'est — les 14 autres entrées étaient justes, c'était donc
+  // une coquille, pas une calibration locale : SSO est la houle la plus fréquente
+  // du journal (17 saisies nues), elle tombait systématiquement à côté.
   var map = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,
-    S:180,SSO:190,SO:210,OSO:247,O:270,ONO:292,NO:315,NNO:335};
+    S:180,SSO:202,SO:225,OSO:247,O:270,ONO:292,NO:315,NNO:337};
   var k = d.replace(/[^A-Z]/g,'');
   return map[k] !== undefined ? map[k] : null;
 }
@@ -8036,25 +8095,41 @@ async function exportSessionsCSV() {
     var res = await sb.from('sessions').select('*').eq('user_id', currentUser.id).order('date', { ascending: false });
     if (res.error) throw res.error;
     var rows = res.data || [];
+    // `spot_2`/`spot_3` N'EXISTENT PAS dans la table (la colonne est `spots`, un
+    // tableau) : les deux colonnes sortaient donc toujours vides et l'export
+    // PERDAIT les spots secondaires des sessions multi-spots (4 sur 76 au
+    // 13/08/2026). On les remplit désormais depuis getSpots(), qui gère aussi
+    // l'ancien format « Spot A, Spot B » stocké dans `spot`.
+    // Ajoutées au passage, elles manquaient toutes : shared_with (le crew, cœur du
+    // journal), nb_surfers, boat_id, tide_ranges, et le vote de fiabilité houle
+    // (aplati en 2 colonnes lisibles plutôt qu'un JSON brut).
+    // _cn : « colonne numérique » — un 0 (vent glassy, sortie gratuite) doit sortir
+    // « 0 » et non une cellule vide, même raison que _numField/_fillNumField.
+    function _cn(v) { return v == null ? '' : v; }
     var headers = [
       'id','date','spot','spot_2','spot_3','launch_point','context',
-      'duration_h','distance_nm','hs','period','swell_dir',
-      'wind_kts','wind_dir','tide','tide_port','session_hour',
+      'duration_h','distance_nm','nb_surfers','hs','period','swell_dir',
+      'wind_kts','wind_dir','tide','tide_port','tide_ranges','session_hour',
       'board','quality','moves','tube_count',
-      'price_cfp','observations','forecast_accuracy',
+      'price_cfp','shared_with','observations','forecast_accuracy',
       'obs_delta','period_delta','wind_delta','fcst_model',
-      'is_shared','created_at'
+      'model_voted','model_voted_by','boat_id','is_shared','created_at'
     ];
     var out = [headers];
     rows.forEach(function(s) {
+      var sp = (typeof getSpots === 'function') ? getSpots(s) : [s.spot || ''];
+      var mr = s.model_reliability || null;
       out.push([
-        s.id, s.date, s.spot, s.spot_2||'', s.spot_3||'', s.launch_point||'', s.context||'',
-        s.duration_h||'', s.distance_nm||'', s.hs||'', s.period||'', s.swell_dir||'',
-        s.wind_kts||'', s.wind_dir||'', s.tide||'', s.tide_port||'', s.session_hour!=null?s.session_hour:'',
-        s.board||'', s.quality||'', Array.isArray(s.moves)?s.moves.join('|'):(s.moves||''), s.tube_count||0,
-        s.price_cfp||'', s.observations||'', s.forecast_accuracy||'',
-        s.obs_delta!=null?s.obs_delta:'', s.period_delta!=null?s.period_delta:'', s.wind_delta!=null?s.wind_delta:'', s.fcst_model||'',
-        s.is_shared?'oui':'non', s.created_at||''
+        s.id, s.date, sp[0]||'', sp[1]||'', sp[2]||'', s.launch_point||'', s.context||'',
+        _cn(s.duration_h), _cn(s.distance_nm), _cn(s.nb_surfers), _cn(s.hs), _cn(s.period), s.swell_dir||'',
+        _cn(s.wind_kts), s.wind_dir||'', s.tide||'', s.tide_port||'',
+        s.tide_ranges ? JSON.stringify(s.tide_ranges) : '', _cn(s.session_hour),
+        s.board||'', _cn(s.quality), Array.isArray(s.moves)?s.moves.join('|'):(s.moves||''), _cn(s.tube_count),
+        _cn(s.price_cfp), Array.isArray(s.shared_with)?s.shared_with.join('|'):'', s.observations||'', _cn(s.forecast_accuracy),
+        _cn(s.obs_delta), _cn(s.period_delta), _cn(s.wind_delta), s.fcst_model||'',
+        mr ? (mr.votedModel === null ? 'aucun' : (mr.votedModel||'')) : '',
+        (mr && mr.votedBy) ? Object.keys(mr.votedBy).map(function(k){ return k+':'+mr.votedBy[k]; }).join('|') : '',
+        s.boat_id||'', s.is_shared?'oui':'non', s.created_at||''
       ]);
     });
     var date = _localDayStr();

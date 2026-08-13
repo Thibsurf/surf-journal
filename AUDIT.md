@@ -6795,3 +6795,94 @@ RÉELLES (`--dump-dom`, injection d'un `#__diag`, `__test.html` supprimé après
 ageDays:8.46`, `bom=vide`, pastille « source figée » présente et BOM retiré des
 modèles actifs. `CACHE_NAME` non touché — aucun fichier d'`assets/` modifié
 (HTML servi en network-first).
+
+
+---
+
+# 14/08/2026 — Audit du Journal de sessions (index.html) + vérification des données réelles
+
+Demande : « audit du journal de surf des sessions + vérif de ses données ».
+Méthode : lecture du code (7 810 lignes) **et** interrogation de la vraie base
+(REST Supabase, clé anon : 76 sessions partagées, 2024-09-29 → 2026-08-09), les
+fonctions d'agrégation étant rejouées à l'identique dans Node sur ces données —
+donc aucun chiffre supposé ici.
+
+## Données — ce que la base contient vraiment
+
+- ✗ **Une ligne décalée d'un champ** (23/03/2025, Gros nem,
+  `3ab49844`) : `hs=12` (lire 1,2), `launch_point='1,1m'` (une marée),
+  `swell_dir='5nds (GLASSY)'` (un vent), `wind_dir='0,79m'` (une marée),
+  `moves={tube,tube}`. **Mesuré** : fiche spot Gros nem à **Hs moy. 1,68 m au
+  lieu de 1,14 m** (+47 %) et une branche **plein Nord** dans la rose des houles
+  (`dirToDeg('5nds (GLASSY)')` → 5°). Correction en SQL, cf. plus bas.
+- ⚠ **Cardinal ≠ degrés** sur 3 lignes : `E (195°)`, `SSO (20°)`, `S (229°)` —
+  le code retient le nombre, un vent noté « E » part donc plein Sud.
+- ✗ **`'0, 62m'`** (06/06/2025) : l'espace après la virgule cassait le nombre
+  dans `parseTideText` (0 et 62, seul 0 passe le filtre ≤3) → « Conditions
+  idéales par spot » attribuait **0,00 m** à La roche percée (n=4).
+- ⚠ **Vents 2024 probablement en m/s** : 0,9/1,6/1,7/1,8/1,4/1,6 nds sur 6
+  sessions consécutives (moy. **2,73** contre **7,36** en 2026). Hypothèse, pas
+  une certitude → laissé à décision (bloc C2 du SQL).
+- ⚠ Vocabulaire dupliqué : `Droite de dumbéa`/`Droite de Dumbéa` comptaient
+  comme **deux spots** ; `Port ouenghi`/`Port Ouenghi`, `Ténia`/`Ilot Ténia` ;
+  `context` `''`(5) et `'--'`(8) ; `wind_dir` `'∅'`(6) et `'?'` ; crew
+  `Andréas`/`Andreas`, `Seb`/`Sebastian`, `Romain`/`Romain Calblock`.
+- Colonnes **mortes** : `bateau` 0/76 et `from_sortie_id` 0/76 — le pont
+  Sorties→Journal n'a jamais servi une seule fois. `forecast_accuracy` 17/76
+  (retirée de l'UI le 02/08). Champs récents encore rares : `session_hour` 6,
+  `obs_delta` 6, `wind_delta` 6, `period_delta` 3, `model_reliability` 5.
+- État réel des figures de fiabilité (calculé sur la base) :
+  ① `nc +0,02 · marc −0,02 · bom −0,03 · lotus −0,14 · ecmwf −0,17 · mf −0,21 ·
+  gfs −0,24` (n=2 à 5) ; ② `nc` taille **−1,00** (n=5/15), période −0,33,
+  vent **−1,20** — meteo.nc surestime taille ET vent sur ces 5 sessions ;
+  ④ **vide** : `votedBy` est null sur les 5 votes (affinage par variable jamais
+  utilisé depuis sa mise en place le 02/08).
+
+## Correctifs de code appliqués
+
+| Gravité | Fix |
+|---|---|
+| ✗ Bug | **Onglet Crew + ajout/suppression = exception.** `filterList(…,'crew')` renvoyait le retour de `renderCrewView()` (undefined) à `renderSessionsList`, qui lit `sessions.length`. Vérifié sur la version d'avant : `THROW: Cannot read properties of undefined (reading 'length')` → toast « Session ajoutée ! » **suivi de** « Erreur inattendue », et « Erreur réseau » après une suppression pourtant réussie. `filterList` renvoie désormais `null`, `renderSessionsList(null)` sort proprement. |
+| ✗ Bug | **`editSession` détruisait les zéros** (`s.wind_kts || ''`, idem prix/durée/distance/nb surfeurs/hs/période) : rouvrir une session à 0 nds (glassy — 2 en base) puis Enregistrer la repassait à `null`, exactement ce que `_numField()` avait été écrit pour empêcher. → helper `_fillNumField()`. |
+| ✗ Bug | **Bloc ④ filtré par le mauvais critère** : il itérait sur `votes` (qui exige `votedModel`) alors qu'il ne lit que `votedBy` — un affinage par variable fait sans vote global n'apparaissait nulle part. → population `varVotes` séparée. |
+| ✗ Bug | **Export CSV** : colonnes `spot_2`/`spot_3` **inexistantes en base** (la colonne est `spots text[]`) → toujours vides, et les 4 sessions multi-spots perdaient leur spot secondaire. Remplies via `getSpots()` ; ajout de `shared_with`, `nb_surfers`, `tide_ranges`, `boat_id`, `model_voted`, `model_voted_by` ; helper `_cn()` pour qu'un 0 sorte « 0 » et non une cellule vide. |
+| ⚠ | `parseTideText` recolle « 0, 62m » (⇒ 0,62 m au lieu de 0,00). |
+| ⚠ | Bloc ② affiche le nombre de sessions **écartées faute de `fcst_model`** (1 sur 6 aujourd'hui) au lieu de les taire. |
+| ⚠ | Deux « Qualité moy. » calculées différemment (dashboard ÷ toutes, stats ÷ notées) — alignées sur les sessions notées. Sans effet à 76/76 notées, faux dès la première sans étoiles. |
+| ⚠ | `_fmtMeta` masquait « 0 nds » dans la liste alors que le détail l'affichait. |
+| ⚠ | `dirToDeg` : rejette un nombre suivi d'une unité (`0,79m`, `5nds`) au lieu d'en faire 0° et 5° ; `SSO` 190→**202** et `SO` 210→**225** (les 14 autres entrées étaient déjà des caps vrais — coquille, pas calibration locale ; SSO est la houle la plus fréquente du journal). |
+| ⚠ | `escapeHtml` sur les badges `moves` (openDetail) et sur `<option>` de `boards-list`. |
+
+## Accès (RLS)
+
+Vérifié : avec la seule clé anon publique, **les 76 sessions `is_shared=true`
+sont lisibles sans compte** (observations, prénoms du crew, `user_id`,
+`boat_id`), ainsi que `session_comments` et `boats` ; les non partagées ne le
+sont pas (0 ligne). C'est conforme à la policy `for select using (auth.uid() =
+user_id or is_shared = true)` — donc voulu, mais à connaître. Les écritures
+anon sont refusées par `for all using (auth.uid() = user_id)` (`auth.uid()` est
+null) : établi par lecture du DDL, **pas** testé en écriture — un UPDATE anon
+refusé par RLS et un UPDATE sur une ligne inexistante renvoient tous deux
+`200 []` (piège « Supabase silencieux »).
+
+## Vérification
+
+`node --check` sur les 3 blocs inline = OK. Harnais headless Edge sur
+`__test.html` (supprimé après) : `errs=[]` et 12 sondes vertes —
+`dirToDeg('0,79m')=null`, `dirToDeg('SSO')=202`, `dirToDeg('SSO (195°)')=195`,
+`_fillNumField` rend `"0"` pour 0 et `""` pour null, vent 0 affiché dans la
+liste, `filterList(…,'crew')=null` **sans throw et vue Crew intacte**,
+`getSpots` correct sur les deux formats, et `renderStats` sur jeu synthétique :
+bloc ④ **affiché** depuis un vote `votedBy` seul, orphelin de `fcst_model`
+signalé, niveau idéal **0,62 m** (0,00 avant). Contre-épreuve sur la version
+d'avant correctif : la sonde Crew lève bien l'exception attendue.
+`CACHE_NAME` non touché — aucun fichier d'`assets/` modifié (même règle qu'au
+04/08).
+
+## Reste à faire (côté Supabase, hors de portée d'ici)
+
+`devs/fix_donnees_journal_2026-08-14.sql` — à passer dans l'éditeur SQL du
+dashboard : § A ligne décalée du 23/03/2025, § B nettoyage de vocabulaire
+(sûrs), § C **décisions** laissées en commentaire (cardinal vs degrés sur 3
+lignes, vents 2024 en m/s ou non, fusion des prénoms du crew — de préférence via
+l'onglet Crew de l'appli, qui relit `shared_with` avant d'écrire).
