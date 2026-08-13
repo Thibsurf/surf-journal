@@ -6788,6 +6788,77 @@ function _cmpSwellCellMatches(p) {
   return true;
 }
 
+// ─── Trains de houle par modèle (tableau comparatif) ──────────────────────
+// Le tableau ne montrait que la houle 1 de chaque modèle, alors que MARC,
+// MFWAM et LOTUS transportent DÉJÀ tous leurs trains dans `partitions[]` sur
+// chaque point primaire (jusqu'à 6 pour MARC/LOTUS, 3 pour MFWAM) : donnée
+// déjà fetchée et payée en réseau, puis jetée à l'affichage. On la déplie ici.
+//
+// Deux conventions d'ordre, à ne SURTOUT pas confondre (les mélanger est
+// exactement le bug du 29/07 corrigé dans _marcPrimarySwell) :
+//   • MFWAM : partitions classées NATIVEMENT par la source CMEMS
+//     (0 = mer du vent, 1 = SW1, 2 = SW2). On garde l'ordre du producteur —
+//     reclasser par hauteur intervertirait SW1/SW2 dès que SW2 est la plus
+//     grosse, en contradiction avec le champ publié.
+//   • MARC / LOTUS : partitions NON numérotées de façon stable (vérifié sur
+//     données réelles le 29/07). On classe par hauteur décroissante après
+//     avoir écarté la mer du vent, même règle que _marcPrimarySwell.
+//
+// Dans les deux cas le train 1 est le point primaire REPRIS TEL QUEL, jamais
+// re-sélectionné : c'est ce qui garantit que la 1re ligne du tableau et la
+// courbe « houle 1 » du graphe montrent le même chiffre, y compris quand une
+// règle de repli s'applique (MARC : aucune partition ≥ 8 s ; LOTUS : train le
+// plus haut sans filtre de période). Les re-classer ici les ferait diverger.
+//
+// Modèles sans partitions : nc/gfs gardent leur tableau `secondary` séparé
+// (Open-Meteo), BOM/ECMWF/AIFS n'exposent qu'une houle globale — 1 seul train,
+// et c'est une limite de la source, pas un trou d'affichage.
+var SWELL_WINDSEA_MAX_T = 8; // s — au-dessus = houle, en dessous = mer du vent (cf. _marcPrimarySwell)
+var SWELL_MAX_TRAINS = 4;    // au-delà du 4e, les trains WW3 sont résiduels (quelques cm) : bruit dans un tableau
+function _swellTrains(key) {
+  var cache = _swellCache && _swellCache[key];
+  if (!cache || !cache.primary || !cache.primary.length) return [];
+  var i, hasParts = false;
+  for (i = 0; i < cache.primary.length; i++) {
+    if (cache.primary[i].partitions && cache.primary[i].partitions.length) { hasParts = true; break; }
+  }
+  if (!hasParts) {
+    var flat = [{ rank: 1, pts: cache.primary }];
+    if (cache.secondary && cache.secondary.length) flat.push({ rank: 2, pts: cache.secondary });
+    return flat;
+  }
+  var native = (key === 'mf'); // seul modèle dont la source numérote ses partitions
+  var trains = [], sea = [];
+  cache.primary.forEach(function(p) {
+    var parts = p.partitions || [], pool = [], wind = null, j, q;
+    // Le train 1 = le point primaire lui-même (cf. en-tête). On retire du pool
+    // la partition qui l'a produit, repérée par valeur (h/t/dir y ont été
+    // copiés verbatim) — sinon elle réapparaîtrait en doublon comme train 2.
+    var usedPrimary = false;
+    for (j = 0; j < parts.length; j++) {
+      q = parts[j];
+      if (!q || q.h == null) continue;
+      if (!usedPrimary && q.h === p.h && q.t === p.t && q.dir === p.dir) { usedPrimary = true; continue; }
+      if (native) { if (j === 0) { wind = q; continue; } pool.push(q); continue; }
+      if (q.t != null && q.t < SWELL_WINDSEA_MAX_T) { if (!wind || q.h > wind.h) wind = q; continue; }
+      pool.push(q);
+    }
+    if (!native) pool.sort(function(a, b) { return b.h - a.h; });
+    pool.forEach(function(q2, pi) {
+      var ri = pi + 1; // 0 = train 1 (le primaire), déjà servi
+      if (ri >= SWELL_MAX_TRAINS) return;
+      (trains[ri] || (trains[ri] = [])).push({ ms: p.ms, h: q2.h, t: q2.t, dir: q2.dir });
+    });
+    if (wind) sea.push({ ms: p.ms, h: wind.h, t: wind.t, dir: wind.dir });
+  });
+  var res = [{ rank: 1, pts: cache.primary }];
+  trains.forEach(function(pts, ri) { if (pts && pts.length) res.push({ rank: ri + 1, pts: pts }); });
+  // Mer du vent en dernier et étiquetée à part : ce n'est PAS un train de
+  // houle, la confondre avec une houle 3 tromperait sur la lecture du spot.
+  if (sea.length) res.push({ rank: 0, sea: true, pts: sea });
+  return res;
+}
+
 function _renderCmpTable() {
   var wrap = document.getElementById('cmp-table-wrap');
   if (!wrap) return;
@@ -6837,18 +6908,28 @@ function _renderCmpTable() {
       windDefs.push({ key: d[0], pts: d[1] });
     });
   }
+  // Une LIGNE PAR TRAIN de houle, groupées par modèle (cf. _swellTrains) —
+  // avant : une seule ligne par modèle, qui jetait les houles 2/3/4 et la mer
+  // du vent que MARC/MFWAM/LOTUS fournissent déjà.
   var swellDefs = [], hiddenSwellCount = 0;
   if (_swellCache) {
     SWELL_MODELS.forEach(function(m) {
-      var arr = _swellCache[m.key] && _swellCache[m.key].primary;
-      if (!arr || !arr.length) return;
+      var trains = _swellTrains(m.key);
+      if (!trains.length) return;
+      // Test de masquage APRÈS celui des données : un modèle sans donnée du
+      // tout ne doit pas être compté comme « masqué » dans le bandeau.
       if (_swellHidden[m.key]) { hiddenSwellCount++; return; }
-      swellDefs.push({ key: m.key, pts: arr });
+      trains.forEach(function(tr, ti) {
+        swellDefs.push({
+          key: m.key, pts: tr.pts, rank: tr.rank, sea: !!tr.sea,
+          isFirst: ti === 0, nTrains: trains.length
+        });
+      });
     });
   }
   if (!windDefs.length && !swellDefs.length && !hiddenWindCount && !hiddenSwellCount) { wrap.innerHTML = ''; return; }
 
-  var LBLW = 92; // largeur de la colonne modèle (sticky) — assez pour "MARC WW3 5,5 km"
+  var LBLW = 150; // largeur de la colonne modèle (sticky) — "MARC WW3" + badge résolution + rang du train ("Houle 1"), depuis l'affichage multi-trains
   function nightBg(s, base) { return s.night ? 'linear-gradient(rgba(0,0,0,.16),rgba(0,0,0,.16)),' + base : base; }
 
   // En-tête sur 2 étages : bandeau JOUR (colspan par jour) + rangée HEURES —
@@ -6929,8 +7010,33 @@ function _renderCmpTable() {
       // déjà cette méthodo par modèle (audit houle 1/2 du 01/08/2026).
       var rowDesc = kind === 'swell' ? (SWELL_MODELS.filter(function(m){ return m.key === d.key; })[0] || {}).desc : null;
       var labelTitle = rowDesc ? ' title="' + rowDesc.replace(/"/g, '&quot;') + '"' : '';
-      var labelCell = '<td' + labelTitle + ' style="padding:4px 8px 4px 8px;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';cursor:' + (rowDesc ? 'help' : 'default') + ';">'
-        + '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + st.col + ';margin-right:5px;vertical-align:middle;"></span>' + st.label + resBadge + '</td>';
+      // Appartenance au modèle portée par la MISE EN FORME, pas par une
+      // répétition du nom sur chaque ligne : le liseré gauche de 3 px à la
+      // couleur du modèle court sur tout le groupe, un filet plus épais marque
+      // le début du groupe, et les trains 2+ sont indentés sous le nom porté
+      // par la 1re ligne. Répéter « MARC WW3 » 5 fois d'affilée aurait noyé
+      // l'information utile (le rang du train) dans une colonne déjà étroite.
+      var inGroup = kind === 'swell' && d.nTrains > 1;
+      var groupTop = (kind === 'swell' && d.isFirst) ? 'border-top:2px solid var(--border-h);' : '';
+      var nameHtml, indent = '';
+      if (!inGroup || d.isFirst) {
+        nameHtml = '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + st.col + ';margin-right:5px;vertical-align:middle;"></span>' + st.label + resBadge;
+      } else {
+        // Trains suivants : pas de pastille ni de badge de résolution (mêmes
+        // que la ligne du dessus), juste le rang, décalé sous le nom du modèle.
+        indent = 'padding-left:20px;';
+        nameHtml = '<span style="color:var(--faint);margin-right:3px;">└</span>';
+      }
+      var rankHtml = '';
+      if (kind === 'swell') {
+        var rankTxt = d.sea ? 'Mer du vent' : 'Houle ' + d.rank;
+        // Mer du vent en italique + teinte atténuée : elle se lit dans le même
+        // tableau mais ne doit pas être prise pour un train de houle.
+        rankHtml = '<span style="font-weight:' + (d.sea ? '500' : '600') + ';font-size:10px;color:var(--muted);'
+          + (d.sea ? 'font-style:italic;' : '') + (inGroup && !d.isFirst ? '' : 'margin-left:5px;') + '">' + rankTxt + '</span>';
+      }
+      var labelCell = '<td' + labelTitle + ' style="padding:4px 8px;' + indent + 'font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';' + groupTop + 'cursor:' + (rowDesc ? 'help' : 'default') + ';">'
+        + nameHtml + rankHtml + '</td>';
       return '<tr>' + labelCell + cells + '</tr>';
     }).join('');
   }
@@ -6965,9 +7071,10 @@ function _renderCmpTable() {
   var html = hiddenBanner + filtersHtml + '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
     + '<thead><tr>' + dayRow + '</tr><tr>' + hourRow + '</tr></thead><tbody>';
   if (windDefs.length) html += sectionHdr('💨 Vent — nds · ↑ direction · <span style="font-weight:400;color:var(--muted);">g = rafales</span>') + rowsFor(windDefs, 'wind');
-  if (swellDefs.length) html += sectionHdr('🌊 Houle — m · ↑ direction · <span style="font-weight:400;color:var(--muted);">période en s</span>') + rowsFor(swellDefs, 'swell');
+  if (swellDefs.length) html += sectionHdr('🌊 Houle — m · ↑ direction · <span style="font-weight:400;color:var(--muted);">période en s · tous les trains fournis par chaque modèle, groupés par le liseré de couleur</span>') + rowsFor(swellDefs, 'swell');
   html += '</tbody></table>';
-  html += '<div style="font-size:9.5px;color:var(--faint);margin-top:5px;line-height:1.4;">Pastille colorée = résolution du modèle (plus le chiffre est petit, plus le modèle est fin/local). Fond des cases coloré selon l\'intensité. Nuit grisée.</div>';
+  html += '<div style="font-size:9.5px;color:var(--faint);margin-top:5px;line-height:1.4;">Pastille colorée = résolution du modèle (plus le chiffre est petit, plus le modèle est fin/local). Fond des cases coloré selon l\'intensité. Nuit grisée.'
+    + '<br>Les lignes <b>└ Houle 2/3/4</b> sont les trains suivants du <b>même</b> modèle que la ligne au-dessus (liseré gauche de la même couleur) : seuls MARC, MFWAM et LOTUS publient plusieurs trains, BOM/ECMWF/AIFS n\'exposent qu\'une houle globale. <i>Mer du vent</i> = clapot levé par le vent local, pas une houle. Le surlignage doré des filtres s\'applique à <b>tous</b> les trains, pas seulement au premier.</div>';
   wrap.innerHTML = html;
   if (swellDefs.length) { _cmpAttachDirWheel('t'); _cmpAttachSlider('period', 't'); _cmpAttachSlider('height', 't'); }
 }
