@@ -43,12 +43,20 @@ Isolé dans ce dossier comme fetch_arome.py/fetch_mfwam.py. cfgrib/eccodes
 sont déjà présents (dépendance de meteofetch) — pas d'apt-get supplémentaire
 sur ubuntu-latest.
 
-Pas de vraie houle primaire ici (contrairement à MARC/MFWAM) : `val`/`period`/
-`dir` = hauteur de la bande la plus haute parmi les 6 (approximation, période
-= milieu de bande indicatif, PAS une période mesurée), direction absente
-(aucune des bandes n'en a). `bands` = tableau brut des 6 hauteurs, pour le
-futur histogramme par bande côté previsions.html (pas de rose directionnelle
-possible ici, à la différence de MARC/MFWAM).
+Pas de vraie houle primaire ici (contrairement à MARC/MFWAM) : `val`/`period`
+= hauteur de la bande la plus haute parmi les 6 (approximation, période =
+milieu de bande indicatif, PAS une période mesurée). `bands` = tableau brut
+des 6 hauteurs, pour l'histogramme par bande côté previsions.html (pas de rose
+directionnelle possible ici, à la différence de MARC/MFWAM).
+
+`dir` valait None jusqu'au 13/08/2026, aucune des 6 bandes n'ayant de direction
+publiée. Corrigé ce jour-là (signalé : « pas de direction de houle pour
+ECMWF/AIFS ? ça doit être fourni ») : `mwd` est bel et bien fourni et déjà
+récupéré dans ce script (totDir), il n'y avait qu'à le reprendre. C'est la
+direction moyenne de la mer TOTALE, pas celle de la bande retenue — même
+approximation assumée que pour val/period ci-dessus, disclosée dans le desc du
+modèle côté previsions.html. Sans ça, tout consommateur de `.dir` (tableau des
+trains) affichait un trou sur une donnée pourtant présente.
 """
 
 import concurrent.futures
@@ -216,17 +224,22 @@ def build_wave_rows(cache_key, point, pt_ds, run_iso, tag):
             continue
         bands = [r3(v(b)) for b in BAND_ORDER]
         # Bande la plus haute = approximation de la "houle primaire" (cf.
-        # docstring — pas de direction, pas une vraie partition mesurée).
+        # docstring — pas une vraie partition mesurée).
         best_idx, best_h = None, -1.0
         for i_b, h in enumerate(bands):
             if h is not None and h > best_h:
                 best_idx, best_h = i_b, h
+        mwd = r1(v("mwd"))
         by_date.setdefault(ds_key, []).append({
             "hour": round(hour, 2),
-            "totH": r3(tot_h), "totT": r2(v("mwp")), "totDir": r1(v("mwd")),
+            "totH": r3(tot_h), "totT": r2(v("mwp")), "totDir": mwd,
             "val": bands[best_idx] if best_idx is not None else None,
             "period": BAND_MID[BAND_ORDER[best_idx]] if best_idx is not None else None,
-            "dir": None,
+            # = totDir : direction de la mer totale faute de direction par bande
+            # (cf. docstring). Même valeur volontairement écrite dans les deux
+            # champs — les lecteurs de `.dir` (tableau des trains) et ceux de
+            # `.totDir` (flèche de carte) marchent alors sans repli spécial.
+            "dir": mwd,
             "bands": bands,
         })
     rows = []

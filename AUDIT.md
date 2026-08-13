@@ -6711,3 +6711,87 @@ erreur JS ; capture avant/après sur les badges houle recadrés (jours 2 et 3,
 auparavant coupés au bord de colonne) ; injection directe confirmant le
 contenu du détail par créneau (UV/hum./ressenti) et les flèches de marée.
 `CACHE_NAME` non touché — aucun fichier d'`assets/` modifié.
+
+---
+
+## 2026-08-13 (soir) — trois anomalies signalées : BOM figé, Gouaro absente, direction ECMWF/AIFS
+
+Trois signalements dans le même message (« pourquoi certains modèles comme BOM
+n'ont pas l'air d'avoir des données fraîches », « pourquoi la passe de Gouaro
+n'est pas dans les spots par défaut, alors que sur météo.nc », « pas de
+direction de houle pour ECMWF/AIFS ? ça doit être fourni »). Les trois étaient
+réels, avec trois causes complètement différentes.
+
+**1. BOM — panne AMONT, masquée par notre horodatage.** Mesuré sur le catalogue
+THREDDS du Pacific Community : `latest_merged.nc` a `date modified` =
+**2026-08-05T15:09Z**, et son `.das` porte `seconds since 2026-08-05 00:0:0`
+pour 81 pas de 3 h — le fichier n'est plus republié depuis 8 jours. Son horizon
+rétrécit d'un jour par jour (couverture 05→15/08, soit J+2 le jour du constat).
+Le dossier frère `wavewatch3/` du même serveur est **vide** : aucun flux de
+repli disponible, rien à réparer côté source.
+
+Ce qui était vraiment de notre fait, en revanche :
+- `issued_at` = heure de FETCH et non heure de run du modèle, donc le cron
+  réécrivait ces données de 8 jours **3×/jour avec un horodatage tout neuf** :
+  impossible de voir depuis la base qu'elles étaient périmées. C'est ce qui a
+  produit le symptôme « pas frais » sans que rien ne le signale.
+- `.github/scripts/cache-model-forecasts.mjs` demandait encore `time[0:1:80]`,
+  soit le DÉBUT du fichier fusionné — donc surtout du PASSÉ. Mesuré en base :
+  les lignes BOM fraîchement écrites couvraient le 05→15/08 dont 8 jours
+  révolus, là où GFS couvrait le 13→23/08. `previsions.html` avait reçu ce
+  correctif de fenêtre (index le plus proche de maintenant − 6 h) ; ce
+  script-ci ne l'a **jamais** eu. Corrigé, même marge de 6 h.
+
+Garde-fou ajouté aux DEUX chemins, mêmes seuils : source périmée si l'epoch a
+plus de **3 j** ou si l'horizon restant est sous **24 h** → BOM n'est plus ni
+archivé ni tracé, et la légende du comparatif affiche une pastille barrée
+« ⊘ BOM WW3 — source figée » dont l'infobulle donne la date du dernier fichier.
+Écarté sciemment : ne juger que sur l'horizon restant. Le fichier figé gardait
+encore **37 h d'avance nominale** au moment du correctif — il passait donc ce
+test tout en étant précisément le problème. C'est l'ÂGE DE L'EPOCH qui
+discrimine (un produit sain a un epoch ≈ hier : mesuré, publication − 15 h).
+BOM revient tout seul dès que SPC republie, sans intervention.
+
+**2. Passe de Gouaro — jamais dans `DEFAULT_SPOTS`.** Pas un bug d'affichage :
+le point marin meteo.nc **9880322 était bien dans `MARINE_SPOTS`** depuis
+toujours (donc atteignable en créant un spot à la main), mais la liste des spots
+livrés n'avait jamais été étendue au-delà du Grand Nouméa + Ouano. Ajoutée avec
+marée Bourail (9880352, ~11 km) et obs Poé (Bourail) (~6 km — attention :
+`obsId` prend le `spotId` de `OBS_STATIONS`, pas son `id`). `wg:null`
+volontairement : aucun id Windguru vérifié pour Gouaro, et Poé (208763) est à
+6 km mais c'est un AUTRE spot — l'attribuer ferait passer la donnée de Poé pour
+celle de Gouaro. Le comparatif AROME affiche donc son message « pas d'id
+Windguru » + ⚙, comportement prévu pour ce cas.
+
+Migration pour les appareils ayant déjà un `localStorage` (sinon seuls les
+nouveaux visiteurs l'auraient vue, et le signalement serait resté vrai pour son
+auteur) : drapeau `surf-spots-mig-gouaro`, une fois par appareil, comparaison
+par `marineId` (un spot renommé à la main ne doit pas être dupliqué). Piège
+assumé : on ne peut pas distinguer « n'a jamais eu ce spot » de « l'a supprimé
+exprès », d'où le drapeau plutôt qu'un test de présence rejoué. La liste est
+écrite AVANT le drapeau — l'inverse aurait fait perdre Gouaro au chargement
+suivant chez qui ne modifie jamais ses réglages.
+
+**3. Direction ECMWF/AIFS — fournie, mais jetée.** Le signalement avait raison :
+`mwd` (mean wave direction) EST publié par Open Data, `fetch_ecmwf.py` le
+récupérait déjà et le stockait en `totDir`. Mais `dir` était forcé à `None`
+(ingestion) et `null` (`_fetchOpenDataArchive`, previsions.html) depuis le
+branchement du 30/07, au motif — exact — qu'aucune direction n'est publiée PAR
+BANDE de période. Conséquence non voulue : le tableau des trains et tout
+consommateur de `.dir` affichaient un trou sur une donnée présente. Mesuré en
+base avant correctif : `avec_dir=0` sur toutes les lignes ecmwf/aifs, `totDir`
+renseigné juste à côté (213,6°). `dir` = `totDir` désormais, dans les deux
+couches. C'est une APPROXIMATION assumée et disclosée dans le `desc` des deux
+modèles : mwd est la direction de la mer TOTALE, pas celle de la bande retenue —
+même ordre d'approximation que celle déjà acceptée pour `val`/`period`. Le repli
+existait DÉJÀ pour la flèche de carte et côté Journal (c7294cb3) : les deux
+couches ne font que rejoindre le reste de la page.
+
+Vérifié : `node --check` sur les 6 blocs inline + le script mjs,
+`py_compile` sur `fetch_ecmwf.py`, puis harnais headless Edge sur données
+RÉELLES (`--dump-dom`, injection d'un `#__diag`, `__test.html` supprimé après) :
+`ERREURS=aucune` ; Gouaro présente avec marée Bourail et obs Poé ; ECMWF
+`avec_dir=27/27` et AIFS `26/26` (0 avant) ; BOM `stale:true reason:epoch
+ageDays:8.46`, `bom=vide`, pastille « source figée » présente et BOM retiré des
+modèles actifs. `CACHE_NAME` non touché — aucun fichier d'`assets/` modifié
+(HTML servi en network-first).

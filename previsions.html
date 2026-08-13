@@ -3252,6 +3252,23 @@ var DEFAULT_SPOTS = [
   { name:'Passe de Mato',    lat:-22.69, lon:166.63, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881827', marineName:'Passe de Mato'   },
   { name:'Îlot Maître',      lat:-22.36, lon:166.38, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881825', marineName:'Îlot Maître'     },
   { name:'Baie de Ste Marie', lat:-22.29, lon:166.46, wg:null,                              tideId:'9881852', tideName:'Nouméa',  obsId:'9881836', obsName:'Phare Amédée', marineId:'9881823', marineName:'Baie de Sainte Marie'},
+  // Gouaro ajoutée le 13/08/2026 (signalée : « pourquoi la passe de Gouaro n'est
+  // pas dans les spots par défaut, alors que sur météo.nc… »). Ce n'était pas un
+  // bug d'affichage : le point marin meteo.nc 9880322 était bien dans
+  // MARINE_SPOTS depuis toujours (donc atteignable en créant un spot à la main),
+  // mais cette liste-ci n'avait jamais été étendue au-delà du Grand Nouméa +
+  // Ouano. Seul spot par défaut de la côte ouest au nord de Ouano.
+  //   • marée Bourail (9880352, ~11 km) — le port de référence le plus proche,
+  //     même choix que Ouano mais ici il tombe vraiment juste.
+  //   • obs Poé (Bourail) : obsId prend le `spotId` de OBS_STATIONS, pas son
+  //     `id` (cf. Bourake plus haut : id 98802003 mais obsId 9880904) — ici les
+  //     deux valent 98803005. ~6 km, de loin la station la plus proche.
+  //   • wg:null volontairement : aucun id Windguru vérifié pour Gouaro. Poé
+  //     (208763) est à 6 km mais c'est un AUTRE spot — l'attribuer ici ferait
+  //     passer la donnée de Poé pour celle de Gouaro. Le comparatif AROME
+  //     affichera donc son message « pas d'id Windguru » + ⚙, comportement
+  //     prévu pour ce cas (cf. _wgIdForSpot), à renseigner si l'id est trouvé.
+  { name:'Passe de Gouaro', lat:-21.65, lon:165.44, wg:null,                                tideId:'9880352', tideName:'Bourail', obsId:'98803005', obsName:'Poé (Bourail)', marineId:'9880322', marineName:'Passe de Gouaro' },
 ];
 
 var SPOTS = (function() {
@@ -3289,6 +3306,39 @@ var SPOTS = (function() {
           }
         }
       });
+      // Migration « spot par défaut ajouté après coup » (Gouaro, 13/08/2026).
+      // Un appareil qui a déjà un localStorage ne relit JAMAIS DEFAULT_SPOTS
+      // (return loaded juste en dessous) : sans ce bloc, seuls les tout nouveaux
+      // visiteurs verraient Gouaro, et le signalement d'origine (« elle n'est pas
+      // dans les spots par défaut ») resterait vrai pour tous les utilisateurs
+      // existants — y compris celui qui l'a signalé.
+      //
+      // Piège assumé : on ne peut PAS distinguer « n'a jamais eu ce spot » de
+      // « l'a supprimé exprès ». D'où le drapeau une-fois-par-appareil ci-dessous
+      // plutôt qu'un test de présence rejoué à chaque chargement : si le spot est
+      // supprimé après coup, il reste supprimé. Comparaison par marineId et pas
+      // par nom — un spot renommé à la main par l'utilisateur ne doit pas se
+      // faire dupliquer.
+      try {
+        var MIG_KEY = 'surf-spots-mig-gouaro';
+        if (!localStorage.getItem(MIG_KEY)) {
+          var hasGouaro = loaded.some(function(sp) { return sp.marineId === '9880322'; });
+          if (!hasGouaro) {
+            var gouaro = DEFAULT_SPOTS.filter(function(d) { return d.marineId === '9880322'; })[0];
+            if (gouaro) loaded.push(Object.assign({}, gouaro));
+          }
+          // Liste écrite PUIS drapeau, dans le même geste et dans cet ordre.
+          // saveSpots() est inutilisable ici (on est dans l'initialiseur de SPOTS,
+          // que saveSpots() lit comme globale — elle n'existe pas encore), d'où
+          // l'écriture directe. Poser le drapeau AVANT d'écrire serait un bug :
+          // un utilisateur qui ne modifie jamais ses réglages ne persisterait
+          // jamais la liste, et perdrait Gouaro au chargement suivant puisque la
+          // migration ne se rejouerait plus. Si setItem échoue (quota), le
+          // drapeau n'est pas posé et la migration se rejouera — état cohérent.
+          localStorage.setItem('surf-spots-nc', JSON.stringify(loaded));
+          localStorage.setItem(MIG_KEY, '1');
+        }
+      } catch(e) {}
       return loaded;
     }
   } catch(e) {}
@@ -5502,6 +5552,33 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 // donnent tous de la houle primaire pure). Pas de houle secondaire dans ce flux
 // WW3 (aucune variable sw2 exposée par le serveur).
 var BOM_WW3_BASE = 'https://ocean-thredds01.spc.int/thredds/dodsC/POP/model/regional/bom/forecast/hourly/wavewatch3_latest/latest_merged.nc';
+// Fraîcheur de la source BOM, relue à chaque fetch (cf. _fetchBomWw3).
+// { epochMs, coverageEndMs, stale } ou null tant qu'aucun fetch n'a abouti.
+// Sert au libellé honnête du modèle dans la légende et le tableau
+// (_swellModelDesc) : sans lui, une source figée est indistinguable d'une
+// source à jour, puisque la page redessine les mêmes chiffres sans rien dire.
+var _bomSourceState = null;
+// DEUX critères de péremption, à garder identiques dans
+// .github/scripts/cache-model-forecasts.mjs (page et cron doivent juger la
+// fraîcheur pareil) :
+//
+// • Âge de l'epoch — le critère qui compte vraiment. `latest_merged.nc` est une
+//   fenêtre glissante « un peu de passé + la prévision » : mesuré le 13/08/2026,
+//   le fichier publié le 05/08 à 15h09 portait un epoch au 05/08 00h00, soit
+//   publication − 15 h. L'invariant d'un produit sain est donc « epoch ≈ hier ».
+//   Un epoch vieux de plusieurs jours ne veut pas dire « prévision courte », il
+//   veut dire « ce fichier n'est plus republié ». 3 j = large (le produit peut
+//   prendre du retard sans être déclaré mort), alors que les 8,4 j observés ce
+//   jour-là ne laissent aucun doute.
+// • Avance restante — filet de sécurité pour le cas inverse : un fichier
+//   fraîchement publié mais dont l'horizon ne verrait même pas demain n'a aucune
+//   valeur dans un comparatif de houle.
+//
+// Le seul critère d'avance ne suffisait PAS : au moment du correctif le fichier
+// figé gardait 37 h d'avance nominale (horizon au 15/08) tout en ayant 8 jours
+// d'âge — il passait donc le test alors qu'il était précisément le problème.
+var BOM_MAX_EPOCH_AGE_MS = 3 * 24 * 3600000;
+var BOM_MIN_LEAD_MS = 24 * 3600000;
 async function _fetchBomWw3(spot) {
   var ctrl = new AbortController();
   var tt = setTimeout(function(){ ctrl.abort(); }, 10000);
@@ -5528,6 +5605,39 @@ async function _fetchBomWw3(spot) {
     // consécutifs de ce produit, cf. .das) — nécessaire ici car on doit choisir la
     // fenêtre AVANT de fetcher, contrairement au filtrage a posteriori de NC/GFS.
     var BOM_STEP_MS = 3 * 3600000;
+    // Garde-fou de fraîcheur ajouté le 13/08/2026 (signalé : « certains modèles
+    // comme BOM n'ont pas l'air d'avoir des données fraîches »). Le correctif de
+    // fenêtre ci-dessus visait déjà le bon index, mais il ne pouvait rien contre
+    // un fichier SOURCE qui cesse d'être mis à jour : `latest_merged.nc` du
+    // serveur SPC est figé depuis le 05/08/2026 (`date modified` du catalogue
+    // THREDDS + epoch du .das restés à cette date, le dossier frère
+    // `wavewatch3/` est vide — donc aucun flux de repli sur ce serveur). Son
+    // horizon rétrécit d'un jour par jour : le t0 ci-dessus se contentait alors
+    // de coller au dernier index disponible et la page affichait une prévision
+    // de plus d'une semaine d'âge comme si elle sortait du four.
+    var coverageEndMs = epochMs + (N - 1) * BOM_STEP_MS;
+    var epochAgeMs = Date.now() - epochMs;
+    var _tooOld = epochAgeMs > BOM_MAX_EPOCH_AGE_MS;
+    var _tooShort = coverageEndMs < Date.now() + BOM_MIN_LEAD_MS;
+    _bomSourceState = {
+      epochMs: epochMs, coverageEndMs: coverageEndMs,
+      ageDays: epochAgeMs / 864e5,
+      reason: _tooOld ? 'epoch' : (_tooShort ? 'horizon' : null),
+      stale: _tooOld || _tooShort
+    };
+    if (_bomSourceState.stale) {
+      console.warn('[BOM] source périmée (' + _bomSourceState.reason + ') — fenêtre '
+        + new Date(epochMs).toISOString() + ' → ' + new Date(coverageEndMs).toISOString()
+        + ' (' + N + ' pas de 3 h) ; epoch vieux de ' + (epochAgeMs / 864e5).toFixed(1)
+        + ' j, ' + ((coverageEndMs - Date.now()) / 3600000).toFixed(1) + ' h d\'avance.');
+      // MÊME forme que le chemin d'erreur du catch plus bas, pas `null` : tous les
+      // consommateurs de _swellCache.bom savent déjà traiter un jeu VIDE (le
+      // modèle disparaît simplement des courbes et du tableau), aucun ne teste
+      // une valeur nulle. Renvoyer null ferait planter le premier qui lit
+      // `.primary` sans garde. (Le timer d'abort est libéré par le `finally` de
+      // la fonction, commun à tous les chemins de sortie.)
+      return { primary: [], secondary: [] };
+    }
     var t0 = Math.max(0, Math.min(N - 1, Math.round((Date.now() - 6*3600000 - epochMs) / BOM_STEP_MS)));
     var t1 = Math.min(N - 1, t0 + 80);
     // sig_ht_sw1/pk_wav_per/mn_dir_sw1 = houle (train 1, déjà utilisé par le
@@ -5724,10 +5834,26 @@ async function _fetchMfCombined(spot) {
 // Windguru — rien à sauver en repli). Grille réelle 0,25° (~28 km), cf.
 // ingestion/fetch_ecmwf.py. Pas de vraie partition houle/mer du vent en Open
 // Data gratuit : `h`/`t` = hauteur de la bande de période la plus haute
-// (approximation, PAS une période mesurée), `dir` toujours null (aucune
-// direction par bande) — `bands` porte les 6 hauteurs brutes pour la figure
-// combinée dédiée (cf. _drawBandsCombined). `totH`/`totDir` = mer totale
-// (swh/mwd), disponible pour un futur usage générique.
+// (approximation, PAS une période mesurée) — `bands` porte les 6 hauteurs
+// brutes pour la figure combinée dédiée (cf. _drawBandsCombined).
+// `totH`/`totDir` = mer totale (swh/mwd).
+//
+// `dir` était forcé à null ici depuis le branchement d'Open Data (30/07/2026),
+// au motif qu'aucune direction n'est publiée PAR BANDE de période. Vrai, mais
+// la conséquence mesurée le 13/08/2026 (signalée : « pas de direction de houle
+// pour ECMWF/AIFS ? ça doit être fourni ») est que le tableau des trains et
+// tout consommateur de `.dir` affichaient un trou alors que la direction EST
+// fournie et déjà stockée : `mwd` (mean wave direction) arrive dans totDir à
+// chaque pas. On la reprend donc comme `dir`.
+//
+// C'est une APPROXIMATION assumée, exactement du même ordre que celle déjà
+// acceptée pour h/t juste au-dessus : mwd est la direction moyenne de la mer
+// TOTALE (houle + mer du vent combinées), pas celle de la bande de période
+// retenue. Quand une grosse mer du vent croise une houle longue, les deux
+// peuvent différer nettement. C'est écrit dans le desc du modèle (SWELL_MODELS)
+// pour que la lecture reste honnête. Le repli existait DÉJÀ pour la flèche de
+// la carte (`_totDir != null ? p.totDir : p.dir`) et côté Journal depuis
+// c7294cb3 : cette ligne aligne simplement le reste de la page.
 function _fetchOpenDataArchive(cacheKey, spot) {
   return (async function() {
     try {
@@ -5764,7 +5890,11 @@ function _fetchOpenDataArchive(cacheKey, spot) {
           if (!hh || hh.totH == null || hh.hour == null) return;
           var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
           primary.push({
-            ms: ms, h: hh.val, t: hh.period, dir: null,
+            ms: ms, h: hh.val, t: hh.period,
+            // cf. en-tête : direction de la mer TOTALE (mwd), faute de direction
+            // par bande. `!= null` et pas `||` — 0° (nord) est une direction
+            // valide qu'un test de véracité écraserait en null.
+            dir: hh.totDir != null ? hh.totDir : null,
             totH: hh.totH, totDir: hh.totDir, bands: hh.bands || null,
           });
         });
@@ -6193,8 +6323,8 @@ var SWELL_MODELS = [
   { key: 'gfs',   label: 'GFS',       col: _rgbaFromHex(MODEL_STYLE.gfs.col, .95), desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
   { key: 'bom',   label: 'BOM WW3',   col: _rgbaFromHex(MODEL_STYLE.bom.col, .95),   desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
   { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine (GLOBAL_ANALYSISFORECAST_WAV_001_027) — grille 0,083° (~9 km), houle primaire/secondaire + mer du vent avec direction' },
-  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Houle "primaire" = bande de période la plus haute parmi 6 (10-30s), pas une vraie partition mesurée ; pas de direction par bande.' },
-  { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Même limite : houle "primaire" approximée par bande de période, sans direction.' },
+  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Houle "primaire" = bande de période la plus haute parmi 6 (10-30s), pas une vraie partition mesurée. Direction = celle de la mer TOTALE (mwd), faute de direction publiée par bande : elle peut s\'écarter de la houle longue quand une mer du vent croisée est grosse.' },
+  { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Mêmes limites : houle "primaire" approximée par bande de période, direction = celle de la mer totale (mwd).' },
   // desc étendue le 01/08/2026 (audit houle 1/2) : MARC est désormais le SEUL
   // modèle du comparatif dont la « houle 1 » n'est ni un champ natif ni
   // disclosed dans son desc — nc/gfs/bom/mf ont un vrai champ natif, ecmwf/aifs
@@ -6210,6 +6340,28 @@ var SWELL_MODELS = [
   // normal de le voir manquer sur la plupart des spots, pas un bug.
   { key: 'lotus', label: 'LOTUS',     col: _rgbaFromHex(MODEL_STYLE.lotus.col, .95), desc: 'Surfline — modèle propriétaire LOTUS (WaveWatch III + assimilation satellite + observations forecaster), résolution non publiée. Jusqu\'à 6 trains directionnels natifs. Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa G+D/Boulari) — absent des autres spots, ce n\'est pas un modèle global comme les autres ci-dessus.' }
 ];
+// Description d'un modèle = son `desc` figé + ce qu'on a MESURÉ sur sa source au
+// dernier fetch. Ajouté le 13/08/2026 avec le garde-fou BOM (cf.
+// _bomSourceState) : un modèle dont la source est figée n'a aucun moyen de le
+// dire à travers un `desc` écrit en dur, et son absence des courbes passait pour
+// un bug d'affichage plutôt que pour ce qu'elle est — une panne côté fournisseur.
+// Passer par ce helper partout où `desc` est affiché garantit qu'aucun point
+// d'affichage ne puisse rester sur la version figée.
+function _swellModelDesc(key) {
+  var m = SWELL_MODELS.filter(function(x) { return x.key === key; })[0];
+  if (!m) return '';
+  if (key === 'bom' && _bomSourceState && _bomSourceState.stale) {
+    var fin = new Date(_bomSourceState.coverageEndMs + 11 * 3600000);
+    var deb = new Date(_bomSourceState.epochMs + 11 * 3600000);
+    var jj = function(d) { return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
+    return m.desc + ' ⚠ SOURCE FIGÉE : le serveur du Pacific Community ne met plus '
+      + 'à jour ce flux — son dernier fichier date du ' + jj(deb) + ' ('
+      + _bomSourceState.ageDays.toFixed(1) + ' j) et ne couvre que jusqu\'au '
+      + jj(fin) + '. Ce modèle est donc retiré du comparatif au lieu d\'afficher '
+      + 'une prévision périmée — il reviendra tout seul dès que la source repartira.';
+  }
+  return m.desc;
+}
 var _swellMode = 'primary'; // 'primary' | 'secondary'
 var _swellCache = null;     // { nc:{primary,secondary}, gfs:{...}, bom:{...}, mf:{...} } — repeuplé par fetch, redessiné sans réseau au toggle
 // Modèles masqués par l'utilisateur (clic sur la légende) — persisté pour que le
@@ -7012,7 +7164,7 @@ function _renderCmpTable() {
       // Title sur le libellé de ligne (houle seulement) = comment CE modèle définit
       // sa houle 1/2 — réutilise SWELL_MODELS[key].desc, seul endroit qui documente
       // déjà cette méthodo par modèle (audit houle 1/2 du 01/08/2026).
-      var rowDesc = kind === 'swell' ? (SWELL_MODELS.filter(function(m){ return m.key === d.key; })[0] || {}).desc : null;
+      var rowDesc = kind === 'swell' ? _swellModelDesc(d.key) : null;
       var labelTitle = rowDesc ? ' title="' + rowDesc.replace(/"/g, '&quot;') + '"' : '';
       // Appartenance au modèle portée par la MISE EN FORME, pas par une
       // répétition du nom sur chaque ligne : le liseré gauche de 3 px à la
@@ -7535,6 +7687,19 @@ function _drawSwellCompare() {
         + '</span>';
     }).join('') || '<span style="color:var(--faint);">Aucun modèle avec de la houle ' + (comp === 'secondary' ? 'secondaire' : 'primaire') + ' pour ce spot</span>';
     if (anyHidden) legEl.innerHTML += '<button onclick="_resetSwellHidden()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;">↺ Réinitialiser</button>';
+    // Modèle écarté parce que SA SOURCE est en panne (BOM, cf. _bomSourceState) :
+    // il ne peut pas apparaître dans dataModels ci-dessus puisqu'il ne renvoie
+    // plus rien, et sans cette pastille sa disparition ressemble à un bug du site
+    // — c'était exactement la lecture du signalement du 13/08/2026. Barré + titre
+    // explicatif, à côté des modèles vivants : la comparaison reste lisible, mais
+    // on sait POURQUOI il manque. Pas cliquable (rien à afficher/masquer).
+    if (_bomSourceState && _bomSourceState.stale) {
+      legEl.innerHTML += '<span title="' + _swellModelDesc('bom').replace(/"/g, '&quot;')
+        + '" style="opacity:.55;cursor:help;">'
+        + '<span style="color:' + MODEL_STYLE.bom.col + ';font-weight:700;">⊘</span> '
+        + '<s>' + MODEL_STYLE.bom.label + '</s>'
+        + '<span style="color:var(--faint);font-size:10px;"> source figée</span></span>';
+    }
   }
   // Molette + curseurs dupliqués ici (cf. commentaire HTML sur #cmp-dir-controls-graph) —
   // même état partagé que la copie du tableau, remplace l'ancien indicateur texte seul.

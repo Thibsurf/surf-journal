@@ -57,18 +57,72 @@ async function fetchWithTimeout(url, ms = 15000, headers) {
 }
 
 // ── BOM WaveWatch3 (houle + vent, même flux THREDDS) ────────────────────
+// Cadence 3 h (vérifiée empiriquement, cf. _fetchBomWw3 dans previsions.html).
+const BOM_STEP_MS = 3 * 3600000;
+// Péremption de la source BOM — MÊMES deux critères et mêmes seuils que
+// previsions.html (`BOM_MAX_EPOCH_AGE_MS`/`BOM_MIN_LEAD_MS`), où le raisonnement
+// complet est écrit. En bref : `latest_merged.nc` est une fenêtre glissante dont
+// l'epoch vaut normalement « hier » (mesuré : publication − 15 h), donc un epoch
+// vieux de plusieurs jours signifie « fichier plus republié », pas « prévision
+// courte ». L'avance restante seule ne suffit pas — le fichier figé gardait
+// encore 37 h d'avance nominale le jour du correctif.
+const BOM_MAX_EPOCH_AGE_MS = 3 * 24 * 3600000;
+const BOM_MIN_LEAD_MS = 24 * 3600000;
 async function fetchBom(spot) {
   try {
     const latIdx = Math.max(0, Math.min(720, Math.round((45 - spot.lat) / 0.125)));
     const lonIdx = Math.max(0, Math.min(1600, Math.round((spot.lon - 100) / 0.125)));
+    const ddsR = await fetchWithTimeout(BOM_WW3_BASE + '.dds');
+    const ddsText = await ddsR.text();
+    const lenM = ddsText.match(/time\s*=\s*(\d+)/);
+    const N = lenM ? parseInt(lenM[1], 10) : 81;
     const dasR = await fetchWithTimeout(BOM_WW3_BASE + '.das');
     const dasText = await dasR.text();
     const epochM = dasText.match(/seconds since (\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{1,2}):(\d{1,2})/);
     if (!epochM) throw new Error('epoch introuvable');
     const epochMs = Date.UTC(+epochM[1], +epochM[2] - 1, +epochM[3], +epochM[4], +epochM[5], +epochM[6]);
+    // DEUX bugs corrigés ici le 13/08/2026, tous deux signalés comme « BOM n'a
+    // pas l'air d'avoir des données fraîches » :
+    //
+    // 1. La fenêtre était TOUJOURS time[0:1:80], soit le tout début du fichier —
+    //    or epochMs est le début de la fenêtre fusionnée (`latest_merged`), qui
+    //    contient plusieurs jours de PASSÉ avant la partie prévision. Ce script
+    //    archivait donc surtout du passé : mesuré sur la base ce jour-là, les
+    //    lignes BOM fraîchement écrites couvraient le 05→15/08 dont 8 jours
+    //    révolus, là où GFS couvrait le 13→23/08. previsions.html avait déjà
+    //    reçu ce correctif (index le plus proche de maintenant − 6 h) ; ce
+    //    script-ci ne l'a jamais eu. Même marge de 6 h, pour que les deux
+    //    chemins écrivent la même fenêtre.
+    //
+    // 2. Aucun garde-fou de fraîcheur. La source (Pacific Community/SPC) est
+    //    figée depuis le 05/08/2026 (`date modified` du catalogue THREDDS, et
+    //    epoch du .das resté au 05/08) : son horizon rétrécit d'un jour par jour
+    //    et tombera bientôt entièrement dans le passé. Comme `issued_at` vaut
+    //    l'heure de FETCH et non l'heure de run du modèle, ces données de 8 jours
+    //    étaient réécrites 3×/jour avec un horodatage tout neuf — impossible de
+    //    voir depuis la base qu'elles étaient périmées. On refuse désormais.
+    const coverageEndMs = epochMs + (N - 1) * BOM_STEP_MS;
+    const epochAgeMs = Date.now() - epochMs;
+    const tooOld = epochAgeMs > BOM_MAX_EPOCH_AGE_MS;
+    const tooShort = coverageEndMs < Date.now() + BOM_MIN_LEAD_MS;
+    if (tooOld || tooShort) {
+      console.warn(`[BOM] SOURCE PÉRIMÉE (${tooOld ? 'epoch trop vieux' : 'horizon trop court'}) `
+        + `— rien archivé. Fenêtre du fichier : ${new Date(epochMs).toISOString()} → `
+        + `${new Date(coverageEndMs).toISOString()} (${N} pas de 3 h) ; epoch vieux de `
+        + `${(epochAgeMs / 864e5).toFixed(1)} j (max ${BOM_MAX_EPOCH_AGE_MS / 864e5} j), `
+        + `${((coverageEndMs - Date.now()) / 3600000).toFixed(1)} h d'avance (min `
+        + `${BOM_MIN_LEAD_MS / 3600000} h). Le fichier latest_merged.nc du serveur SPC `
+        + `n'est plus mis à jour.`);
+      return { swell: [], wind: [], stale: true };
+    }
+    const t0 = Math.max(0, Math.min(N - 1, Math.round((Date.now() - 6 * 3600000 - epochMs) / BOM_STEP_MS)));
+    const t1 = Math.min(N - 1, t0 + 80);
     const vars = ['sig_ht_sw1', 'pk_wav_per', 'mn_dir_sw1', 'wnd_spd', 'wnd_dir'];
-    const url = BOM_WW3_BASE + '.ascii?time[0:1:80],' + vars.map(v =>
-      `${v}[0:1:80][${latIdx}:1:${latIdx}][${lonIdx}:1:${lonIdx}]`
+    // Les labels d'index renvoyés en .ascii sont RELATIFS à la tranche demandée
+    // (ex. time[20:1:22] → labels [0]/[1]/[2]) : parseGrid/parseFlat indexent
+    // déjà à partir de 0, rien à changer en aval de ce découpage.
+    const url = BOM_WW3_BASE + `.ascii?time[${t0}:1:${t1}],` + vars.map(v =>
+      `${v}[${t0}:1:${t1}][${latIdx}:1:${latIdx}][${lonIdx}:1:${lonIdx}]`
     ).join(',');
     const r = await fetchWithTimeout(url);
     const text = await r.text();
