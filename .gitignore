@@ -3,9 +3,9 @@
 worker_cloudflare/.wrangler/
 wrangler.jsonc
 
-# Tuiles SHOM locales (164 MB, générées par gdal2tiles — ne pas versionner)
-thibsurf_nav/tiles_shom/
-thibsurf_nav/tiles_shom_final/
+# thibsurf_nav : app désormais packagée en APK, plus servie depuis ce repo
+# (contenait aussi les tuiles SHOM générées par gdal2tiles — ne pas versionner)
+thibsurf_nav/
 
 # Archives
 *.zip
