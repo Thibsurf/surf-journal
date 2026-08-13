@@ -1,5 +1,5 @@
-"""Ingestion observations meteo.nc (vent réel, stations Phare Amédée + Bourake) ->
-Supabase observations_history.
+"""Ingestion observations meteo.nc (vent réel, stations Phare Amédée, Bourake et
+Poé) -> Supabase observations_history.
 
 P2 (cf. thib.md/AUDIT.md, décidé le 03/08/2026) : jusqu'ici on archivait ce que
 chaque modèle PRÉVOIT (model_forecast_cache) mais jamais ce qui a été MESURÉ dans
@@ -47,9 +47,17 @@ MS_KT = 1.943844  # m/s -> nds (même constante que fetch_arome.py)
 # côté shared_spots par le résolveur de spot — deux identifiants différents pour
 # la même station). Limité à 2 stations par décision utilisateur du 03/08/2026.
 # Garder en phase avec previsions.html:OBS_STATIONS si des stations changent.
+# Poé ajoutée le 14/08/2026 : la Passe de Gouaro est entrée dans les spots par
+# défaut le 13/08, et les 2 stations existantes sont à ~90 km de là — le bloc
+# « vérité terrain vent » du Journal n'avait donc AUCUNE mesure exploitable pour
+# ce spot. Poé est à ~6 km de la passe, et les 3 scripts modèles (AROME, MARC,
+# ECMWF/AIFS) archivent DÉJÀ leur vent à ce point (« Poé (Bourail) » figure dans
+# leur STATIONS depuis l'origine) : il ne manquait que le côté mesuré, donc rien
+# à changer ailleurs pour que la comparaison prévu/mesuré fonctionne là-bas.
 STATIONS = [
     {"name": "Phare Amédée", "id": "98818002", "lat": -22.4783, "lon": 166.480},
     {"name": "Bourake (Boulouparis)", "id": "98802003", "lat": -21.850, "lon": 166.000},
+    {"name": "Poé (Bourail)", "id": "98803005", "lat": -21.608, "lon": 165.400},
 ]
 
 
@@ -127,7 +135,8 @@ def upsert(rows):
 
 
 def run():
-    logger.info("=== Ingestion observations vent (Phare Amédée + Bourake) — %s ===",
+    logger.info("=== Ingestion observations vent (%s) — %s ===",
+                ", ".join(s["name"] for s in STATIONS),
                 datetime.now(timezone.utc).isoformat())
     total = 0
     for station in STATIONS:

@@ -5404,7 +5404,11 @@ function renderStats(sessions, el) {
 // eux-mêmes) — gfs/bom/mfwam n'ont pas ce mode "à la station" côté ingestion
 // (INVARIANT vent : houle toujours au spot, vent parfois à la station — cf.
 // commentaires INVARIANT côté fetch_arome.py).
-var WIND_TRUTH_STATIONS = ['Phare Amédée', 'Bourake (Boulouparis)'];
+// Poé ajoutée le 14/08/2026, en même temps que côté ingestion
+// (ingestion/fetch_observations.py) : sans elle, la Passe de Gouaro — entrée
+// dans les spots par défaut la veille — n'avait aucune station mesurée à moins
+// de ~90 km. Les modèles archivaient déjà leur vent à ce point.
+var WIND_TRUTH_STATIONS = ['Phare Amédée', 'Bourake (Boulouparis)', 'Poé (Bourail)'];
 var WIND_TRUTH_MODELS = ['aro', 'ecmwf', 'aifs', 'marc'];
 // Mêmes couleurs que MODEL_STYLE (previsions.html) / MODEL_RELIABILITY_LABELS
 // (plus haut dans ce fichier) — identité de modèle cohérente sur tout le site,

@@ -7015,6 +7015,52 @@ function _swellTrains(key) {
   return res;
 }
 
+// ── Outils du tableau comparatif (ajoutés le 14/08/2026, passe « clarté ») ────
+// Médiane et moyenne directionnelle, utilisées par la signature de train et par
+// la ligne Consensus. La direction NE PEUT PAS se moyenner arithmétiquement
+// (350° et 10° donneraient 180°, plein sud pour deux houles de nord) : somme
+// vectorielle, comme partout ailleurs sur ce site où l'on agrège des caps.
+function _cmpMedian(arr) {
+  var a = arr.filter(function(x) { return x != null && !isNaN(x); }).sort(function(x, y) { return x - y; });
+  if (!a.length) return null;
+  var m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+function _cmpDirMean(degs) {
+  var sx = 0, sy = 0, n = 0;
+  (degs || []).forEach(function(d) {
+    if (d == null || isNaN(d)) return;
+    var r = d * Math.PI / 180; sx += Math.cos(r); sy += Math.sin(r); n++;
+  });
+  if (!n) return null;
+  var deg = Math.atan2(sy / n, sx / n) * 180 / Math.PI;
+  return (deg + 360) % 360;
+}
+// Signature d'un train sur la fenêtre AFFICHÉE : « ~200° · 14 s ».
+// Sans elle, deux lignes « Houle 2 » de deux modèles ne sont pas comparables —
+// _swellTrains le dit explicitement : MFWAM garde la numérotation de sa source
+// (WW/SW1/SW2) tandis que MARC et LOTUS trient par hauteur décroissante. Le
+// rang seul ne désigne donc PAS le même train d'un modèle à l'autre ; la
+// direction et la période, elles, permettent de les apparier à l'œil.
+function _cmpTrainSignature(pts, msMin, msMax) {
+  var dirs = [], ts = [];
+  (pts || []).forEach(function(p) {
+    if (p.ms < msMin || p.ms > msMax) return;
+    if (p.dir != null) dirs.push(p.dir);
+    if (p.t != null) ts.push(p.t);
+  });
+  if (!dirs.length && !ts.length) return null;
+  return { dir: _cmpDirMean(dirs), t: _cmpMedian(ts) };
+}
+// Dernier instant réellement couvert par une série — sert à distinguer, dans un
+// tableau à 40 % de cases vides (mesuré sur Passe de Dumbéa : 541 sur 1 344),
+// « ce modèle ne va pas jusque-là » de « donnée manquante au milieu ».
+function _cmpLastMs(pts) {
+  var last = null;
+  (pts || []).forEach(function(p) { if (last == null || p.ms > last) last = p.ms; });
+  return last;
+}
+
 function _renderCmpTable() {
   var wrap = document.getElementById('cmp-table-wrap');
   if (!wrap) return;
@@ -7085,8 +7131,11 @@ function _renderCmpTable() {
   }
   if (!windDefs.length && !swellDefs.length && !hiddenWindCount && !hiddenSwellCount) { wrap.innerHTML = ''; return; }
 
-  var LBLW = 150; // largeur de la colonne modèle (sticky) — "MARC WW3" + badge résolution + rang du train ("Houle 1"), depuis l'affichage multi-trains
+  var LBLW = 196; // largeur de la colonne modèle (sticky) — "MARC WW3" + badge résolution + rang du train + signature du train ("~200° · 14 s") et fin d'horizon
   function nightBg(s, base) { return s.night ? 'linear-gradient(rgba(0,0,0,.16),rgba(0,0,0,.16)),' + base : base; }
+  // Hachures légères pour les créneaux SITUÉS APRÈS la fin de l'horizon du modèle.
+  // Le tiret reste (rien n'est retiré) mais cesse de vouloir dire deux choses.
+  var OUT_BG = 'repeating-linear-gradient(135deg,rgba(122,148,170,.14) 0 4px,transparent 4px 8px)';
 
   // En-tête sur 2 étages : bandeau JOUR (colspan par jour) + rangée HEURES —
   // beaucoup plus lisible que la date entassée sous chaque heure (retour
@@ -7097,16 +7146,42 @@ function _renderCmpTable() {
     if (last && last.dateKey === s.dateKey) last.span++;
     else dayGroups.push({ dateKey: s.dateKey, span: 1, ncMs: s.ncMs });
   });
-  var dayRow = '<th style="position:sticky;left:0;z-index:2;background:var(--deep);border-bottom:1px solid var(--border);"></th>'
+  // En-tête COLLANTE verticalement (14/08/2026) : mesuré `position:static` avant
+  // ce correctif, alors que la colonne des libellés était déjà sticky à gauche.
+  // Sur 26 lignes (8 modèles × leurs trains + vent), on descendait donc dans le
+  // tableau en lisant des chiffres sans plus savoir de quelle heure il s'agit.
+  // `top` est posé APRÈS l'insertion (cf. _cmpStickHeader) : il dépend de la
+  // hauteur réelle du nav (52 px en desktop, autre en mobile) et de celle du
+  // bandeau JOUR — deux valeurs qu'on mesure au lieu de les supposer.
+  // box-shadow plutôt que border-bottom : avec border-collapse:collapse, les
+  // bordures d'une cellule collante ne suivent pas le défilement (elles sont
+  // peintes par la grille du tableau, pas par la cellule) — le liseré
+  // disparaissait dès le premier pixel de scroll.
+  var STICKY_TH = 'position:sticky;z-index:4;box-shadow:inset 0 -1px 0 var(--border);';
+  var todayKey = new Date(nowNc).getUTCDate();
+  var dayRow = '<th class="cmp-th-day" style="position:sticky;left:0;z-index:6;background:var(--deep);box-shadow:inset 0 -1px 0 var(--border);"></th>'
     + dayGroups.map(function(g, gi) {
         var d = new Date(g.ncMs);
         var shade = gi % 2 === 0 ? 'rgba(79,163,199,.06)' : 'transparent';
-        return '<th colspan="' + g.span + '" style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--text);text-align:center;border-left:2px solid var(--border-h);border-bottom:1px solid var(--border);background:' + shade + ';white-space:nowrap;">' + JOURS[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1) + '</th>';
+        // Fond OPAQUE obligatoire sous une cellule collante : la teinte d'origine
+        // est translucide, le contenu du tableau défilerait visiblement dessous.
+        var bg = 'linear-gradient(' + shade + ',' + shade + '),var(--deep)';
+        var isToday = g.dateKey === todayKey;
+        return '<th class="cmp-th-day" colspan="' + g.span + '" style="' + STICKY_TH + 'padding:4px 6px;font-size:11px;font-weight:700;color:var(--text);text-align:center;border-left:2px solid var(--border-h);background:' + bg + ';white-space:nowrap;">'
+          + JOURS[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1)
+          + (isToday ? ' <span style="font-weight:600;color:var(--accent);">· auj.</span>' : '') + '</th>';
       }).join('');
-  var hourRow = '<th style="position:sticky;left:0;z-index:2;background:var(--deep);"></th>'
+  var hourRow = '<th class="cmp-th-hour" style="position:sticky;left:0;z-index:6;background:var(--deep);box-shadow:inset 0 -1px 0 var(--border);"></th>'
     + slots.map(function(s, i) {
         var chg = i === 0 || slots[i - 1].dateKey !== s.dateKey;
-        return '<th style="padding:2px 5px 4px;font-size:9.5px;font-weight:600;color:var(--muted);border-left:' + (chg ? '2px solid var(--border-h)' : '1px solid rgba(255,255,255,.04)') + ';background:' + nightBg(s, 'transparent') + ';white-space:nowrap;">' + String(s.hour).padStart(2, '0') + 'h</th>';
+        // Repère « maintenant » : la 1re colonne est le prochain créneau rond, mais
+        // rien ne le disait — on pouvait lire la colonne 12 en croyant lire l'heure
+        // qu'il est. Liseré accent + libellé « maintenant » au survol.
+        var isNow = i === 0;
+        var bl = isNow ? '3px solid var(--accent)' : (chg ? '2px solid var(--border-h)' : '1px solid rgba(255,255,255,.04)');
+        return '<th class="cmp-th-hour"' + (isNow ? ' title="prochain créneau — le tableau part de maintenant"' : '')
+          + ' style="' + STICKY_TH + 'padding:2px 5px 4px;font-size:9.5px;font-weight:600;color:' + (isNow ? 'var(--accent)' : 'var(--muted)')
+          + ';border-left:' + bl + ';background:' + nightBg(s, 'var(--deep)') + ';white-space:nowrap;">' + String(s.hour).padStart(2, '0') + 'h</th>';
       }).join('');
 
   // Petite flèche tournée en CSS (pas de svgArrow() ici — ses 24×24 SVG sont
@@ -7120,12 +7195,22 @@ function _renderCmpTable() {
   function rowsFor(defs, kind) {
     return defs.map(function(d) {
       var st = (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE[d.key]) ? MODEL_STYLE[d.key] : { label: d.key, col: '#7a94aa', res: null };
-      var cells = slots.map(function(s) {
+      if (d.cons) st = { label: 'Consensus', col: '#c3cfdb', res: null };
+      var lastMs = _cmpLastMs(d.pts);
+      var cells = slots.map(function(s, si) {
         var p = _nearestPt(d.pts, s.ms, 1.6 * 3600000);
         var v = p ? (kind === 'wind' ? p.kt : p.h) : null;
-        var chg = slots.indexOf(s) === 0 || slots[slots.indexOf(s) - 1].dateKey !== s.dateKey;
-        var bl = chg ? '2px solid var(--border-h)' : '1px solid rgba(255,255,255,.04)';
-        if (v == null) return '<td style="padding:4px 4px;text-align:center;font-size:10px;color:var(--faint);border-left:' + bl + ';background:' + nightBg(s, 'transparent') + ';">–</td>';
+        var chg = si === 0 || slots[si - 1].dateKey !== s.dateKey;
+        var bl = si === 0 ? '3px solid var(--accent)' : (chg ? '2px solid var(--border-h)' : '1px solid rgba(255,255,255,.04)');
+        if (v == null) {
+          // Après la fin de l'horizon du modèle : hachures + infobulle. Un « – »
+          // au-delà de J+4,3 chez MARC ne dit pas la même chose qu'un « – » au
+          // milieu de la série, et les deux étaient rendus à l'identique.
+          var beyond = lastMs != null && s.ms > lastMs + 1.6 * 3600000;
+          var emptyBg = beyond ? nightBg(s, OUT_BG + ',var(--deep)') : nightBg(s, 'transparent');
+          var emptyTitle = beyond ? ' title="au-delà de l\'horizon de ce modèle"' : '';
+          return '<td' + emptyTitle + ' style="padding:4px 4px;text-align:center;font-size:10px;color:var(--faint);border-left:' + bl + ';background:' + emptyBg + ';">–</td>';
+        }
         var valCol = (kind === 'wind' ? windCol(v) : hsCol(v));
         var bg = nightBg(s, _rgbaFromHex(valCol, .30)); // fond = couleur de la valeur (plus marqué qu'avant : lecture au coup d'œil)
         var arrow = arrowSpan(p.dir);
@@ -7164,7 +7249,8 @@ function _renderCmpTable() {
       // Title sur le libellé de ligne (houle seulement) = comment CE modèle définit
       // sa houle 1/2 — réutilise SWELL_MODELS[key].desc, seul endroit qui documente
       // déjà cette méthodo par modèle (audit houle 1/2 du 01/08/2026).
-      var rowDesc = kind === 'swell' ? _swellModelDesc(d.key) : null;
+      var rowDesc = kind === 'swell' && !d.cons ? _swellModelDesc(d.key) : null;
+      if (d.cons) rowDesc = 'Médiane des ' + d.nModels + ' modèles affichés à chaque créneau (houle 1 seulement pour la houle — les trains 2+ ne désignent pas le même train d\'un modèle à l\'autre). Repère central, pas une prévision : aucun modèle ne prévoit forcément cette valeur.';
       var labelTitle = rowDesc ? ' title="' + rowDesc.replace(/"/g, '&quot;') + '"' : '';
       // Appartenance au modèle portée par la MISE EN FORME, pas par une
       // répétition du nom sur chaque ligne : le liseré gauche de 3 px à la
@@ -7184,17 +7270,86 @@ function _renderCmpTable() {
         nameHtml = '<span style="color:var(--faint);margin-right:3px;">└</span>';
       }
       var rankHtml = '';
-      if (kind === 'swell') {
+      if (kind === 'swell' && !d.cons) {
         var rankTxt = d.sea ? 'Mer du vent' : 'Houle ' + d.rank;
         // Mer du vent en italique + teinte atténuée : elle se lit dans le même
         // tableau mais ne doit pas être prise pour un train de houle.
         rankHtml = '<span style="font-weight:' + (d.sea ? '500' : '600') + ';font-size:10px;color:var(--muted);'
           + (d.sea ? 'font-style:italic;' : '') + (inGroup && !d.isFirst ? '' : 'margin-left:5px;') + '">' + rankTxt + '</span>';
       }
-      var labelCell = '<td' + labelTitle + ' style="padding:4px 8px;' + indent + 'font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';' + groupTop + 'cursor:' + (rowDesc ? 'help' : 'default') + ';">'
-        + nameHtml + rankHtml + '</td>';
+      if (d.cons) rankHtml = '<span style="font-size:9.5px;color:var(--muted);margin-left:5px;">médiane · ' + d.nModels + ' modèles</span>';
+      // 2e ligne du libellé : signature du train (direction + période dominantes
+      // sur la fenêtre affichée) et fin d'horizon. La signature est ce qui rend
+      // les rangs comparables entre modèles ; l'horizon explique les hachures.
+      var sigHtml = '';
+      if (!d.cons) {
+        var bits = [];
+        if (kind === 'swell') {
+          var sig = _cmpTrainSignature(d.pts, slots[0].ms, slots[slots.length - 1].ms);
+          if (sig && sig.dir != null) bits.push('~' + Math.round(sig.dir) + '°');
+          if (sig && sig.t != null) bits.push(Math.round(sig.t) + ' s');
+        }
+        if (lastMs != null) {
+          var dJ = (lastMs - (nowNc - 11 * 3600000)) / 864e5;
+          // Horizon affiché seulement s'il tombe DANS la fenêtre du tableau :
+          // au-delà de 7 j, la colonne s'arrête avant le modèle, pas l'inverse —
+          // écrire « →J+9,4 » laisserait croire à des colonnes manquantes.
+          if (dJ < (NSLOT * STEP_H) / 24) bits.push('→J+' + dJ.toFixed(1));
+        }
+        if (bits.length) sigHtml = '<div style="font-size:9px;font-weight:500;color:var(--faint);margin-top:1px;">' + bits.join(' · ') + '</div>';
+      }
+      var labelCell = '<td' + labelTitle + ' style="padding:4px 8px;' + indent + 'font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;position:sticky;left:0;z-index:1;background:var(--deep);border-left:3px solid ' + st.col + ';' + groupTop + (d.cons ? 'border-bottom:1px solid var(--border-h);' : '') + 'cursor:' + (rowDesc ? 'help' : 'default') + ';">'
+        + nameHtml + rankHtml + sigHtml + '</td>';
       return '<tr>' + labelCell + cells + '</tr>';
     }).join('');
+  }
+
+  // Ligne « Consensus » : médiane inter-modèles à chaque créneau. Le tableau
+  // donnait 8 à 24 chiffres par colonne sans jamais dire sur quoi les modèles
+  // s'accordent — c'était à l'œil de faire la moyenne. HOULE 1 SEULEMENT : les
+  // trains 2+ ne désignent pas le même train d'un modèle à l'autre (cf.
+  // _cmpTrainSignature), les médianer mélangerait des houles différentes.
+  // La mer du vent est exclue pour la même raison (ce n'est pas une houle).
+  function consensusDef(defs, kind) {
+    var src = defs.filter(function(d) { return kind === 'wind' ? true : (d.rank === 1 && !d.sea); });
+    if (src.length < 3) return null; // sous 3 modèles, une « médiane » n'apporte rien
+    var pts = [];
+    slots.forEach(function(s) {
+      var vals = [], ts = [], dirs = [], gusts = [];
+      src.forEach(function(d) {
+        var p = _nearestPt(d.pts, s.ms, 1.6 * 3600000);
+        if (!p) return;
+        var v = kind === 'wind' ? p.kt : p.h;
+        if (v == null) return;
+        vals.push(v);
+        if (p.t != null) ts.push(p.t);
+        if (p.dir != null) dirs.push(p.dir);
+        if (p.gust != null) gusts.push(p.gust);
+      });
+      if (vals.length < 3) return;
+      var pt = { ms: s.ms, dir: _cmpDirMean(dirs) };
+      if (kind === 'wind') { pt.kt = _cmpMedian(vals); if (gusts.length) pt.gust = _cmpMedian(gusts); }
+      else { pt.h = _cmpMedian(vals); pt.t = _cmpMedian(ts); }
+      pts.push(pt);
+    });
+    if (!pts.length) return null;
+    return { key: '__cons', cons: true, pts: pts, nModels: src.length, rank: 0 };
+  }
+
+  // Échelle de couleur du fond des cases : elle codait l'intensité depuis
+  // toujours sans que rien ne dise quelle teinte vaut quoi. Construite à partir
+  // de hsCol()/windCol() eux-mêmes, donc impossible à désynchroniser des seuils.
+  function scaleLegend(kind) {
+    var stops = kind === 'wind'
+      ? [[3, '<7'], [9, '7'], [14, '12'], [20, '17'], [26, '23+']]
+      : [[0.3, '<0,5'], [0.75, '0,5'], [1.25, '1'], [1.75, '1,5'], [2.25, '2'], [2.8, '2,5+']];
+    var unit = kind === 'wind' ? 'nds' : 'm';
+    return '<span style="display:inline-flex;align-items:center;gap:0;margin-left:8px;vertical-align:middle;">'
+      + stops.map(function(sp) {
+          var c = kind === 'wind' ? windCol(sp[0]) : hsCol(sp[0]);
+          return '<span title="' + sp[1] + ' ' + unit + '" style="display:inline-block;width:22px;height:9px;background:' + _rgbaFromHex(c, .55) + ';"></span>';
+        }).join('')
+      + '<span style="font-size:9px;color:var(--faint);margin-left:5px;font-weight:400;">' + stops[0][1] + ' → ' + stops[stops.length - 1][1] + ' ' + unit + '</span></span>';
   }
 
   function sectionHdr(txt) {
@@ -7226,13 +7381,70 @@ function _renderCmpTable() {
     : '';
   var html = hiddenBanner + filtersHtml + '<table style="border-collapse:collapse;width:100%;min-width:' + (LBLW + NSLOT * 34) + 'px;">'
     + '<thead><tr>' + dayRow + '</tr><tr>' + hourRow + '</tr></thead><tbody>';
-  if (windDefs.length) html += sectionHdr('💨 Vent — nds · ↑ direction · <span style="font-weight:400;color:var(--muted);">g = rafales</span>') + rowsFor(windDefs, 'wind');
-  if (swellDefs.length) html += sectionHdr('🌊 Houle — m · ↑ direction · <span style="font-weight:400;color:var(--muted);">période en s · tous les trains fournis par chaque modèle, groupés par le liseré de couleur</span>') + rowsFor(swellDefs, 'swell');
+  // « ↑ = vers où ça va » : la flèche est tournée de +180° (propagation, cf.
+  // arrowSpan) alors que TOUS les degrés affichés ailleurs sur la page sont des
+  // provenances — « ↑ direction » laissait le lecteur choisir la mauvaise
+  // convention une fois sur deux.
+  if (windDefs.length) {
+    var consW = consensusDef(windDefs, 'wind');
+    html += sectionHdr('💨 Vent — nds · ↑ <span style="font-weight:400;color:var(--muted);">vers où il souffle · g = rafales</span>' + scaleLegend('wind'))
+      + (consW ? rowsFor([consW], 'wind') : '') + rowsFor(windDefs, 'wind');
+  }
+  if (swellDefs.length) {
+    var consS = consensusDef(swellDefs, 'swell');
+    html += sectionHdr('🌊 Houle — m · ↑ <span style="font-weight:400;color:var(--muted);">vers où elle va · période en s · tous les trains fournis par chaque modèle, groupés par le liseré de couleur</span>' + scaleLegend('swell'))
+      + (consS ? rowsFor([consS], 'swell') : '') + rowsFor(swellDefs, 'swell');
+  }
   html += '</tbody></table>';
-  html += '<div style="font-size:9.5px;color:var(--faint);margin-top:5px;line-height:1.4;">Pastille colorée = résolution du modèle (plus le chiffre est petit, plus le modèle est fin/local). Fond des cases coloré selon l\'intensité. Nuit grisée.'
-    + '<br>Les lignes <b>└ Houle 2/3/4</b> sont les trains suivants du <b>même</b> modèle que la ligne au-dessus (liseré gauche de la même couleur) : seuls MARC, MFWAM et LOTUS publient plusieurs trains, BOM/ECMWF/AIFS n\'exposent qu\'une houle globale. <i>Mer du vent</i> = clapot levé par le vent local, pas une houle. Le surlignage doré des filtres s\'applique à <b>tous</b> les trains, pas seulement au premier.</div>';
+  // Modèles ABSENTS de ce spot, avec la raison quand on la connaît. Un modèle
+  // sans donnée n'a aucune ligne : il disparaît en silence et le lecteur conclut
+  // « bug d'affichage ». Deux raisons sont connues de façon certaine — BOM figé
+  // (mesuré par _bomSourceState) et la couverture LOTUS limitée à 5 zones
+  // (documentée dans SWELL_MODELS) ; pour le reste on dit « pas de donnée à ce
+  // spot » sans inventer de cause.
+  var missingTxt = '';
+  if (_swellCache) {
+    var miss = SWELL_MODELS.filter(function(m) {
+      if (_swellHidden[m.key]) return false; // déjà annoncé par le bandeau « masqués »
+      return !(_swellCache[m.key] && _swellCache[m.key].primary && _swellCache[m.key].primary.length);
+    }).map(function(m) {
+      var why = 'pas de donnée à ce spot';
+      if (m.key === 'bom' && _bomSourceState && _bomSourceState.stale) {
+        why = 'source figée depuis ' + _bomSourceState.ageDays.toFixed(1) + ' j côté fournisseur (revient seule)';
+      } else if (m.key === 'lotus') {
+        why = 'Surfline ne couvre que 5 zones en NC';
+      }
+      return '<b>' + m.label + '</b> : ' + why;
+    });
+    if (miss.length) missingTxt = '<br>Modèles absents du tableau — ' + miss.join(' · ') + '.';
+  }
+  html += '<div style="font-size:9.5px;color:var(--faint);margin-top:5px;line-height:1.4;">Pastille colorée = résolution du modèle (plus le chiffre est petit, plus le modèle est fin/local). Fond des cases coloré selon l\'intensité (échelle en tête de section). Nuit grisée. Colonne de gauche liserée = maintenant.'
+    + '<br>Les lignes <b>└ Houle 2/3/4</b> sont les trains suivants du <b>même</b> modèle que la ligne au-dessus (liseré gauche de la même couleur) : seuls MARC, MFWAM et LOTUS publient plusieurs trains, BOM/ECMWF/AIFS n\'exposent qu\'une houle globale. <i>Mer du vent</i> = clapot levé par le vent local, pas une houle. Le surlignage doré des filtres s\'applique à <b>tous</b> les trains, pas seulement au premier.'
+    + '<br>Sous chaque nom, <b>~200° · 14 s</b> = direction et période dominantes de CE train sur la fenêtre affichée : c\'est ce qui permet d\'apparier les trains entre modèles, car « Houle 2 » ne désigne pas le même train partout (MFWAM garde la numérotation de sa source, MARC et LOTUS trient par hauteur). <b>→J+x</b> = fin de l\'horizon du modèle ; au-delà, les cases sont hachurées — le modèle ne va pas plus loin, il ne manque pas de données.'
+    + missingTxt + '</div>';
   wrap.innerHTML = html;
+  _cmpStickHeader(wrap);
   if (swellDefs.length) { _cmpAttachDirWheel('t'); _cmpAttachSlider('period', 't'); _cmpAttachSlider('height', 't'); }
+}
+
+// Cale l'en-tête collante SOUS le nav (sticky lui aussi, 52 px en desktop mais
+// pas forcément ailleurs) et la rangée des heures sous le bandeau JOUR. Les deux
+// hauteurs sont MESURÉES après insertion plutôt que codées en dur : le tableau
+// est rendu à des tailles de police qui varient avec le thème et le zoom, et une
+// valeur figée décalerait la rangée des heures d'un ou deux pixels visibles.
+// #cmp-table-wrap n'a qu'overflow-x : le défilement vertical est celui de la
+// page, donc c'est bien le nav qui masquerait l'en-tête sans cet offset.
+function _cmpStickHeader(wrap) {
+  try {
+    var navEl = document.querySelector('nav');
+    var navH = navEl ? Math.round(navEl.getBoundingClientRect().height) : 52;
+    var dayThs = wrap.querySelectorAll('th.cmp-th-day');
+    var hourThs = wrap.querySelectorAll('th.cmp-th-hour');
+    if (!dayThs.length || !hourThs.length) return;
+    var dayH = Math.round(dayThs[dayThs.length - 1].getBoundingClientRect().height) || 22;
+    for (var i = 0; i < dayThs.length; i++) dayThs[i].style.top = navH + 'px';
+    for (var j = 0; j < hourThs.length; j++) hourThs[j].style.top = (navH + dayH) + 'px';
+  } catch (e) {}
 }
 
 function _swellToPts(d, comp) {
@@ -11832,7 +12044,18 @@ async function _renderAromeCompare(j) {
   // (table optionnelle, no-op si absente) — pas de mesures (obs), ce sont des
   // observations et non un modèle à comparer.
   try {
-    [['nc', pageNc], ['gfs', pageGfs], ['bom', bomWind], ['ecmwf', ecmwfWind], ['aifs', aifsWind], ['arome', aro], ['marc', marcWind]].forEach(function(pair) {
+    // AROME RETIRÉ de cet archivage le 14/08/2026. Il y écrivait `model='arome'`
+    // alors que TOUS les lecteurs (ici _windCmpFromCache, et WIND_TRUTH_MODELS
+    // côté Journal) interrogent `model='aro'` — la clé qu'utilise
+    // ingestion/fetch_arome.py. Ces lignes n'ont donc jamais été relues par
+    // personne : elles ne faisaient que grossir model_forecast_cache, déjà assez
+    // volumineuse pour faire expirer des requêtes larges (statement timeout
+    // mesuré le 14/08). Fusionner les deux clés serait pire : ce que la page
+    // affiche vient du relais Windguru via le Worker, alors que `aro` vient du
+    // décodage GRIB2 direct — deux sources différentes sous un même nom
+    // fausseraient toute comparaison. L'archive AROME reste assurée 3x/jour par
+    // le job Python, aux spots ET aux stations.
+    [['nc', pageNc], ['gfs', pageGfs], ['bom', bomWind], ['ecmwf', ecmwfWind], ['aifs', aifsWind], ['marc', marcWind]].forEach(function(pair) {
       if (pair[1] && pair[1].length) _cacheModelPoints(SPOTS[currentSpot], pair[0], 'wind', pair[1], 'kt', null);
     });
   } catch (e) {}

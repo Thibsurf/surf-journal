@@ -6886,3 +6886,102 @@ dashboard : § A ligne décalée du 23/03/2025, § B nettoyage de vocabulaire
 (sûrs), § C **décisions** laissées en commentaire (cardinal vs degrés sur 3
 lignes, vents 2024 en m/s ou non, fusion des prénoms du crew — de préférence via
 l'onglet Crew de l'appli, qui relit `shared_with` avant d'écrire).
+
+
+---
+
+# 14/08/2026 — Modèles à jour et branchés à Gouaro + clarté du tableau comparatif
+
+## A. Gouaro : ce n'était pas un câblage manquant, c'était le calendrier du cron
+
+La Passe de Gouaro n'avait **aucune ligne** dans `model_forecast_cache`, tous
+modèles confondus. Cause : elle a été écrite dans `shared_spots` le 13/08 à
+**11 h 03 UTC**, soit **43 min après le dernier run** du cron d'ingestion
+(`15 1,9,17 UTC`). Tous les scripts lisent bien `shared_spots` — il ne s'était
+simplement rien passé depuis. Workflows relancés à la main
+(`gh workflow run`, 5 jobs `success`), état vérifié après coup :
+
+| Modèle | Gouaro | Détail mesuré |
+|---|---|---|
+| meteo.nc | ✅ | `swell_primary` 6 j · `wind` 9 j |
+| GFS | ✅ | `swell_primary` + `swell_secondary` + `wind`, 10 j |
+| MFWAM | ✅ | `wave` 10 j (partitions) |
+| MARC WW3 | ✅ | `swell_primary` + `wave` + `wind`, 5 j — le domaine régional couvre Bourail |
+| AROME | ✅ | `wind` 2 j (`model='aro'`, GRIB2 direct : pas besoin d'id Windguru) |
+| ECMWF / AIFS | ✅ | `wave` + `wind` |
+| BOM WW3 | ❌ | source figée PARTOUT (dernière donnée `date 2026-08-05`) — garde-fou epoch OK, rien de spécifique à Gouaro |
+| LOTUS | ❌ | structurel : Surfline n'a que 5 fiches NC, aucune dans la zone |
+
+Trois correctifs sont sortis de cette vérification :
+
+- ✗ **`arome` : une clé écrite que personne ne lit.** `previsions.html`
+  archivait la série AROME de la page sous `model='arome'` alors que TOUS les
+  lecteurs interrogent `model='aro'` (`_windCmpFromCache` ici,
+  `WIND_TRUTH_MODELS` côté Journal), la clé de `fetch_arome.py`. Ces lignes
+  n'ont jamais été relues : elles ne faisaient que grossir une table déjà assez
+  volumineuse pour faire **expirer des requêtes larges** (`57014 statement
+  timeout` mesuré ce jour sur un simple filtre par date). Écriture retirée —
+  PAS fusionnée avec `aro` : la page tient sa série du relais Windguru via le
+  Worker, `aro` vient du décodage GRIB2 direct, deux sources sous un même nom
+  fausseraient toute comparaison. L'archive AROME reste assurée 3×/jour par le
+  job Python, aux spots ET aux stations.
+- ⚠ **Poé ajoutée aux observations** (`ingestion/fetch_observations.py` +
+  `WIND_TRUTH_STATIONS` du Journal) : les 2 stations existantes sont à ~90 km
+  de Gouaro, le bloc « vérité terrain vent » n'avait donc aucune mesure
+  exploitable là-bas. Les 3 scripts modèles archivaient DÉJÀ leur vent au point
+  « Poé (Bourail) » — il ne manquait que le côté mesuré.
+- Note : `wg:null` à Gouaro (délibéré) ⇒ la carte AROME *live* y affiche son
+  message « pas d'id Windguru », mais l'AROME **archivé** est bien là et le
+  comparatif vent le lit depuis le cache.
+
+Compaction : le workflow tourne bien (dernier run 09/08, `success`), mais la
+table reste lourde — 8 révisions conservées pour une même clé
+(spot/modèle/kind/date) observées à Poé.
+
+## B. Tableau comparatif houle — passe « clarté » (rien retiré)
+
+Mesuré AVANT sur Passe de Dumbéa (headless, données réelles) : 26 lignes,
+1 344 cellules dont **541 vides (40 %)**, largeur 2 204 px pour une fenêtre de
+1 022 px, et en-tête d'heures **`position:static`** alors que la colonne des
+libellés était déjà collante.
+
+1. **En-tête collante verticalement.** `top` posé après insertion par
+   `_cmpStickHeader()` à partir des hauteurs MESURÉES du nav (52 px) et du
+   bandeau JOUR — pas de valeur en dur. `box-shadow` au lieu de
+   `border-bottom` : avec `border-collapse:collapse`, la bordure d'une cellule
+   collante ne suit pas le défilement.
+2. **Signature de train** sous chaque nom (`~200° · 14 s`, direction moyenne
+   VECTORIELLE + période médiane sur la fenêtre affichée). C'est ce qui rend les
+   rangs comparables : `_swellTrains` numérote MFWAM selon sa source et
+   MARC/LOTUS par hauteur décroissante — « Houle 2 » ne désigne donc pas le même
+   train d'un modèle à l'autre.
+3. **Fin d'horizon** : badge `→J+x` (seulement s'il tombe dans la fenêtre de
+   7 j) et cases hachurées au-delà. 423 des 623 cases vides sont désormais
+   expliquées au lieu d'être 623 tirets identiques.
+4. **Ligne Consensus** (médiane inter-modèles) en tête de chaque section, houle 1
+   seulement — médianer des trains 2+ mélangerait des houles différentes. Sous
+   3 modèles, pas de ligne.
+5. **Échelle de couleur** en tête de section, construite à partir de
+   `hsCol()`/`windCol()` eux-mêmes (impossible à désynchroniser des seuils).
+6. **Repère « maintenant »** (liseré accent sur la 1re colonne + « · auj. » dans
+   le bandeau jour).
+7. **Modèles absents listés avec leur raison** quand elle est connue de façon
+   certaine (BOM figé via `_bomSourceState`, couverture LOTUS) — sinon « pas de
+   donnée à ce spot », sans inventer de cause.
+8. **Flèche désambiguïsée** : « ↑ vers où ça va » (elle est tournée de +180°,
+   alors que tous les degrés affichés ailleurs sont des provenances).
+
+`LBLW` 150 → 196 px (le libellé porte maintenant rang + signature + horizon).
+
+**Vérifié** (headless Edge, `__test.html` supprimé après, `errs=[]`) :
+`_cmpDirMean([350,10])=0` (et non 180), signature `202°/13 s`,
+`_cmpMedian` OK sur n pair/impair/vide ; 29 lignes dont **2 lignes Consensus**,
+17 lignes avec signature, 20 avec badge d'horizon ; 1 512 cellules, 623 vides
+dont **423 hachurées** ; `thead` jour `sticky@top52px` et heures
+`sticky@top74px` (nav mesuré à 52 px) ; échelle, « auj. », note des absents et
+explication de la flèche toutes présentes. `node --check` : 6 blocs inline OK.
+`CACHE_NAME` v77 → v78 (previsions.html et index.html sont précachés — même
+règle qu'au commit 8fda0793).
+
+⚠ Le changement Poé ne prendra effet qu'au prochain run de
+`cache-observations.yml` APRÈS un push (la CI exécute le code de `main`).
