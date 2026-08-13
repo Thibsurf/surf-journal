@@ -1887,7 +1887,11 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
         <button onclick="_pastQuick(1)"  style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;">Demain →</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-        <input type="date" id="past-date-picker"
+        <!-- Entrée valide la date : le champ n'est pas dans un <form> (aucun ici,
+             la page est pilotée en JS), donc sans ça le clavier seul obligeait à
+             atteindre le bouton « Charger » à la tabulation. -->
+        <input type="date" id="past-date-picker" aria-label="Date des conditions à charger"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();loadPastConditions();}"
           style="background:var(--mid);border:1px solid var(--border);border-radius:8px;
                  color:var(--text);padding:6px 10px;font-size:12px;font-family:var(--font-b);">
         <button onclick="loadPastConditions()" id="past-load-btn"
@@ -9962,8 +9966,14 @@ function _buildRoseDayNav(dates) {
       days.push({ idx: i, label: DAY_FR_N[dayNum] + ' ' + dateN + '/' + monthN });
     }
   });
+  // Pas d'`id` sur ces boutons : le MÊME btnHtml est injecté dans DEUX
+  // conteneurs (#rose-day-nav et #chart-day-nav ci-dessous), ce qui dupliquait
+  // chaque id="rose-day-btn-N" dans le document — HTML invalide, et une
+  // ambiguïté pour les technologies d'assistance. Aucun code ne les lisait
+  // (_jumpRoseDay retrouve ses boutons par nav.querySelectorAll, pas par id),
+  // donc les retirer est sans effet de bord.
   var btnHtml = days.map(function(d, i) {
-    return '<button onclick="_jumpRoseDay('+d.idx+')" id="rose-day-btn-'+i+'"'
+    return '<button onclick="_jumpRoseDay('+d.idx+')"'
       +' style="padding:3px 8px;border-radius:8px;border:1px solid '
       +(i===0?'rgba(79,163,199,.6)':'rgba(255,255,255,.1)')+';'
       +'background:'+(i===0?'rgba(79,163,199,.18)':'none')+';'
@@ -15537,7 +15547,19 @@ async function _fetchNavBMS() {
 
 // ─── LUNE ─────────────────────────────────────────────────────────────────
 function drawMoon(year, month, day) {
-  var now = (year&&month&&day) ? new Date(Date.UTC(year,month-1,day,12,0,0)) : new Date();
+  // Appel SANS arguments (init, cf. initMaree) : on résout le jour NC ici au
+  // lieu de laisser le repli lire la date locale du navigateur plus bas. Ce
+  // n'est pas que de la cosmétique de convention : le seed du fond étoilé
+  // dérive de year/month/day, si bien qu'entre le premier rendu (date locale)
+  // et un retour sur « aujourd'hui » via la navigation par jour (qui passe
+  // toujours un jour NC, cf. l'appel drawMoon(ty,tm,td)), le motif d'étoiles
+  // changeait sous l'œil de tout utilisateur hors UTC+11. La phase, elle,
+  // était déjà juste des deux côtés (calculée depuis un instant, pas un jour).
+  if (!(year && month && day)) {
+    var _ncMoon = new Date(Date.now() + 11 * 3600000);
+    year = _ncMoon.getUTCFullYear(); month = _ncMoon.getUTCMonth() + 1; day = _ncMoon.getUTCDate();
+  }
+  var now = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
   var knownNew = new Date('2000-01-06T18:14:00Z');
   var synodic = 29.53058867;
   var diff = (now - knownNew) / 86400000;
@@ -15580,7 +15602,7 @@ function drawMoon(year, month, day) {
   ctx.fillStyle = '#070d1a';
   ctx.beginPath(); ctx.arc(cx, cy, R+4, 0, 2*Math.PI); ctx.fill();
   // étoiles déterministes (seed basé sur date)
-  var seed = (year||now.getFullYear()) * 1000 + (month||now.getMonth()+1) * 31 + (day||now.getDate());
+  var seed = year * 1000 + month * 31 + day; // year/month/day toujours définis (jour NC résolu en tête)
   function rng(s) { s = Math.sin(s) * 43758.5453123; return s - Math.floor(s); }
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
   for (var si = 0; si < 60; si++) {
