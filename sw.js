@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v78';
+const CACHE_NAME = 'surf-nc-v79';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -45,7 +45,32 @@ const ASSETS = [
   // plus bas fait cache.match(request) SANS ignoreSearch : l'entrée ne serait jamais
   // retrouvée. Les deux ci-dessous sont référencées sans query, elles, donc utiles.
   '/surf-journal/icons/icon-192x192.png',
-  '/surf-journal/icons/icon-72x72.png'
+  '/surf-journal/icons/icon-72x72.png',
+  // Nuages du tableau « Ciel & houle » (previsions.html, 15/08/2026) : 16 PNG à
+  // canal alpha, empilés par altitude pour composer la scène de chaque jour.
+  // 281 Ko au total (quantifiés en palette 96 couleurs + alpha, contre 1,9 Mo
+  // en PNG-24 d'origine — vérifié, aucune perte visible à la taille d'affichage).
+  // Précachés bien qu'ils dégraderaient gracieusement (sans eux la scène reste
+  // un dégradé de ciel + les chiffres) : ce tableau est désormais la PREMIÈRE
+  // image de la page, un premier lancement hors-ligne sans nuages donnerait
+  // l'impression d'une page cassée. Le stale-while-revalidate plus bas les
+  // rafraîchira ensuite comme le reste.
+  '/surf-journal/assets/wx/sun.png',
+  '/surf-journal/assets/wx/sun-clouds.png',
+  '/surf-journal/assets/wx/cirrus.png',
+  '/surf-journal/assets/wx/cirrostratus.png',
+  '/surf-journal/assets/wx/altocumulus.png',
+  '/surf-journal/assets/wx/altostratus.png',
+  '/surf-journal/assets/wx/cumulus.png',
+  '/surf-journal/assets/wx/congestus.png',
+  '/surf-journal/assets/wx/stratus.png',
+  '/surf-journal/assets/wx/cumulonimbus.png',
+  '/surf-journal/assets/wx/nimbostratus.png',
+  '/surf-journal/assets/wx/rain.png',
+  '/surf-journal/assets/wx/shower.png',
+  '/surf-journal/assets/wx/mist.png',
+  '/surf-journal/assets/wx/fog-low.png',
+  '/surf-journal/assets/wx/lightning.png'
 ];
 
 self.addEventListener('install', event => {

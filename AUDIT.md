@@ -6985,3 +6985,88 @@ règle qu'au commit 8fda0793).
 
 ⚠ Le changement Poé ne prendra effet qu'au prochain run de
 `cache-observations.yml` APRÈS un push (la CI exécute le code de `main`).
+
+---
+
+## 2026-08-15 — Tableau « Ciel & houle » : nouveau design, remonté au-dessus du widget
+
+**Demande.** Un design fourni (projet Claude Design *Prevision Meteo Surf*) à
+brancher sur Open-Meteo et sur les modèles de vagues, en remplacement de ce qui
+vivait dans l'accordéon « 🌤️ Ciel & houle illustrés », et à sortir de
+l'accordéon pour le placer **au-dessus du widget météo** sous lequel il était.
+
+**Ce qui change de nature.** L'ancien météogramme `yw-*` (canvas, porté de
+`semaine.html` le 12/08) dessinait les nuages à la main. Le nouveau les
+**compose à partir de 16 PNG de nuages réels** (`assets/wx/`, genres OMM :
+cirrus, cirrostratus, altocumulus, altostratus, cumulus, congestus, stratus,
+cumulonimbus, nimbostratus, pluie, averse, brume, brouillard, éclair, soleil,
+soleil voilé), empilés par altitude et pilotés par les champs Open-Meteo —
+aucune image « par condition », donc pas de palier visible entre deux prévisions
+voisines. Rendu **DOM et non canvas** : la scène suit les variables de thème
+sans redessin, donc rien à ajouter à `_snRedrawThemedCharts`.
+
+Poids : PNG-24 d'origine **1,89 Mo → 281 Ko** après quantification palette
+96 couleurs + alpha (Pillow `FASTOCTREE`), aucune perte visible à la taille
+d'affichage. Précachés dans `sw.js` (`CACHE_NAME` v78 → **v79**) : ce tableau
+est désormais la première image de la page, un premier lancement hors-ligne
+sans nuages donnerait l'impression d'une page cassée.
+
+**Répartition des sources** (affichée dans l'en-tête de la carte) :
+- **ciel** (nuages bas/moyens/hauts, lame d'eau, visibilité, code temps) →
+  **Open-Meteo**, toujours ;
+- **vent, température, houle** → source active (toggle meteo.nc / GFS), et
+  sélecteur de modèle houle conservé (8 options mesurées) ;
+- **étoiles** → `calcSurfScore()`, donc mêmes réglages ⚙ que le reste du site.
+
+`weather_code` ajouté à la requête Open-Meteo existante (gratuit, même modèle,
+max des 3 h du créneau — les codes WMO sont ordonnés par sévérité).
+
+**Cinq défauts trouvés en headless (Edge) et corrigés — chacun visible :**
+
+1. **Ciel peint avec meteo.nc = ciel sans étage moyen ni haut.** Mesuré sur
+   Dumbéa : `cldM` et `cldH` valaient 0 sur 6 jours sur 7, et meteo.nc n'a
+   aucun code temps → jamais de cirrus, jamais d'altocumulus, jamais d'orage
+   identifié comme tel. D'où le basculement du ciel sur Open-Meteo.
+2. **Créneaux figés à 6/9/12/15/18 h.** meteo.nc publie toutes les 6 h
+   (5/11/17) : 5 flèches pour 3 valeurs réelles, donc jusqu'à 2 répétitions par
+   colonne — de la fausse précision. Les colonnes suivent maintenant la
+   **cadence réelle** de la source (`sbDayCols`), 5 max.
+3. **Appariement meteo.nc ↔ Open-Meteo par horodatage EXACT.** Les grilles ne
+   coïncident pas (OM 4/7/10…, NC 5/11/17) → « nuages 0 % » partout, un zéro qui
+   ressemble à une donnée alors que c'est une absence. Remplacé par un plus
+   proche voisin plafonné à 90 min (`sbSkyNear`) : 33/33 créneaux appariés,
+   valeurs 0/76/100 % au lieu de 0 partout.
+4. **`loading="lazy"` sur les nuages.** Contenu au-dessus de la ligne de
+   flottaison : la scène sortait **entièrement vide** au rendu alors que les
+   images étaient en cache (seuls les rideaux de pluie, en `background-image`,
+   subsistaient). Retiré ; `decoding="async"` conservé.
+5. **Étoiles calculées avant la calibration automatique.**
+   `calibrateFromJournal(silent)` réécrit `SCORE_PARAMS` APRÈS le premier
+   rendu → 5 étoiles ici pour 0 ailleurs sur la même page. `sbRefreshStars()`
+   (réécrit le seul HTML des étoiles, pas la scène — pas de clignotement) est
+   appelé par `calibrateFromJournal` et par `saveScoreParams`.
+
+Deux recalages assumés par rapport au design, tous deux mesurés :
+- **seuil et opacité de pluie** — le design est calé sur une lame d'eau
+  horaire ; on passe le créneau **le plus arrosé** du jour (mm/3 h), sinon une
+  bruine à 0,3 mm sortait un rideau plein cadre 5 jours sur 7 ;
+- **échelle de houle adaptative** (l'axe figé 0–1,5 m du design écraserait
+  toutes les vraies houles calédoniennes) et pastille de période remontée de
+  0,56 → 0,44 de la zone d'eau (la hauteur en clair, absente du design,
+  chevauchait les étiquettes d'heure à l'échelle du mobile).
+
+**Vérifié** (headless Edge, `__test.html`/`__dark.html` supprimés après) :
+`errs=[]`, carte visible, 7 colonnes, **18/18 images chargées**
+(`naturalWidth>0`), 5 rideaux de pluie, courbe de houle continue en 2 runs ;
+clic sur une colonne → sélection + détail horaire réel, second clic → dés-
+élection ; 8 modèles de houle dans le sélecteur ; pas de chevauchement
+hauteur/heures (`gap=8 px`) ni de débord des flèches de vent (`-5 px`) ;
+thème clair ET sombre (le chrome suit `--panel`/`--text`/`--border`, la scène
+garde ses couleurs propres — même principe que les bandes nuit/crépuscule du
+graphe de marée) ; mobile 500 px → défilement horizontal, colonnes à 150 px.
+`node --check` sur les 6 blocs inline : OK.
+
+Nettoyage : accordéon `#yw-acc` et ses ~930 lignes supprimés (CSS `.yw-*`,
+gabarit, moteur canvas, `ywOnSourceChange`) ; `setHsSrc()` appelle désormais
+`sbOnSourceChange()` ; entrée « 🌤️ Ciel & houle » ajoutée à la navigation
+rapide. `previsions.html` : 17 744 → 17 665 lignes malgré le nouveau bloc.

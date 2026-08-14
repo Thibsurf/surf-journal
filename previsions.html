@@ -520,55 +520,79 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 @keyframes riseCol{0%{transform:translateY(6px);opacity:.4}60%{opacity:1}100%{transform:translateY(-8px);opacity:0}}
 .sym-spin{animation:cycloneSpin 4s linear infinite;display:inline-block;transform-origin:center;}
 
-/* ── Météogramme illustré (accordéon sous #gw-widget) — porté de semaine.html/
-   build-week.mjs le 12/08/2026 (préfixe yw- pour ne jamais confondre avec le
-   comparatif "gw-*"/#mg-share-btn déjà appelés "météogramme" ailleurs sur
-   cette page). Règles identiques à celles de build-week.mjs, --yww au lieu de
-   --mgw, pas de sélecteurs spot/modèle ni de marée (déjà ailleurs sur la
-   page) : "cette représentation-là, rien d'autre", demandé ce jour-là. */
-/* PAS de background/padding/border-radius propres ici : .yw-card vit DANS
-   <details class="card"> (déjà le fond+padding+coins de previsions.html) —
-   les lui redonner créait une carte-dans-la-carte (double padding, coins
-   arrondis en double), jugé "moche, ça coupe" le 12/08/2026. Simple
-   conteneur de mise en page, comme .mg-card l'était côté semaine.html AVANT
-   d'être enveloppé dans un <details> ici. */
-.yw-card{}
-.yw-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;flex-wrap:wrap}
-.yw-title{font:600 15px/1.2 Georgia,serif}
-.yw-refresh{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;
+/* ── Tableau « Ciel & houle » (#sb-card) ────────────────────────────────────
+   Remplace le 15/08/2026 le météogramme canvas `yw-*` (accordéon sous
+   #gw-widget, porté de semaine.html en juillet) : nouveau design fourni par
+   l'utilisateur, sorti de l'accordéon et remonté AU-DESSUS du widget météo.
+   Différence de nature avec ce qu'il remplace : la scène n'est plus dessinée
+   au canvas mais COMPOSÉE de PNG de nuages réels (assets/wx/, genres OMM :
+   cirrus/altocumulus/stratus/cumulonimbus…), empilés par altitude et pilotés
+   par les champs Open-Meteo. D'où du DOM et non un canvas — et donc, bonus,
+   une scène qui suit les variables de thème sans redessin (pas d'entrée à
+   ajouter dans _snRedrawThemedCharts, contrairement aux canvas de la page).
+
+   Le CHROME (en-tête de jour, gouttière de gauche, légendes) suit le thème du
+   site ; la SCÈNE elle-même reste dans ses couleurs propres dans les deux
+   thèmes — c'est une illustration de ciel réel, ses gris de traîne et ses
+   bleus sont sémantiques, exactement comme les bandes nuit/crépuscule du
+   graphe de marée (cf. le commentaire « couleurs SÉMANTIQUES du ciel réel »
+   plus bas dans ce fichier). */
+.sb-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;flex-wrap:wrap}
+.sb-title{font:600 15px/1.2 Georgia,serif}
+.sb-src{font-size:10.5px;color:var(--faint);margin-top:1px}
+.sb-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sb-tools select{background:var(--ocean);color:var(--accent);border:1px solid var(--accent);
+  border-radius:8px;padding:0 8px;min-height:32px;font-size:11px;font-family:inherit;max-width:185px}
+.sb-refresh{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;
   padding:0 10px;min-height:32px;font-size:11px;font-family:inherit;cursor:pointer}
-.yw-refresh:hover{border-color:var(--accent);color:var(--accent)}
-.yw-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px}
-.yw-inner{display:flex;flex-direction:column;position:relative}
-.yw-row{display:flex}
-.yw-day{flex:0 0 var(--yww);width:var(--yww);display:flex;flex-direction:column;align-items:center;
-  justify-content:center;cursor:pointer;border-right:1px solid var(--border);padding:3px 0;min-height:44px}
-.yw-day:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.yw-day:last-child{border-right:none}
-.yw-day .dn{font-size:12px;font-weight:600}
-.yw-day .dd{font-size:9.5px;color:var(--faint);margin-top:1px}
-@media (min-width:641px){ .yw-day .dn{font-size:15px} .yw-day .dd{font-size:11.5px} }
-.yw-wind{background:rgba(255,255,255,.02)}
-.yw-wind .yw-day{position:relative;min-height:38px;cursor:default;padding:0;overflow:hidden}
-.yw-wind .yw-day:last-child{border-right:none}
-.yw-wseg{position:absolute;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:1px;border-right:1px solid rgba(6,16,28,.28)}
-.yw-wseg:last-child{border-right:none}
-.yw-wseg b{color:#08141f;font-weight:800;line-height:1}
-.yw-wseg-empty{position:static;width:100%;color:var(--faint);font-size:11px;background:none;
-  border-right:none;display:flex}
-canvas#yw-canvas{display:block;touch-action:pan-y}
-.yw-axis-wrap{position:absolute;left:0;pointer-events:none;z-index:2}
-.yw-axis{position:sticky;left:0;width:0;height:100%}
-.yw-axis span{position:absolute;left:3px;transform:translateY(-50%);white-space:nowrap;
-  background:rgba(8,20,34,.88);color:#fff;font:600 9px sans-serif;padding:1px 4px;border-radius:3px}
-@media (min-width:641px){ .yw-axis span{font-size:11px} }
-.yw-readout{margin-top:9px;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.03);
+.sb-refresh:hover{border-color:var(--accent);color:var(--accent)}
+.sb-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px;border:1px solid var(--border)}
+.sb-grid{display:grid;position:relative}
+/* Gouttière collée à gauche pendant le défilement horizontal : sans elle, les
+   graduations de houle et les libellés Vent/Météo/Swell sortent de l'écran dès
+   le 2ᵉ jour sur téléphone — et une échelle qu'on ne voit plus ne sert à rien. */
+.sb-gut{position:sticky;left:0;z-index:3;background:var(--panel);border-right:1px solid var(--border)}
+.sb-gut-lbl{position:absolute;writing-mode:vertical-rl;transform:rotate(180deg);
+  font-weight:700;color:var(--muted);white-space:nowrap;letter-spacing:.02em}
+.sb-gut-tick{position:absolute;right:4px;transform:translateY(-50%);color:var(--faint);white-space:nowrap}
+.sb-head{background:var(--panel);border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+.sb-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.sb-head .sb-dn{font-weight:700;color:var(--text);white-space:nowrap}
+.sb-stars{display:flex;gap:3px;line-height:1}
+.sb-windrow{border-right:1px solid var(--border);display:flex;align-items:center;
+  justify-content:space-around;background:linear-gradient(180deg,#b9d0e2 0%,#a8c3d9 100%)}
+.sb-w{position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.sb-w svg{position:absolute;left:0;top:0;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}
+.sb-w b{position:relative;font-weight:700;line-height:1}
+.sb-sky{position:relative;overflow:hidden;border-right:1px solid var(--border)}
+.sb-sky img{position:absolute;pointer-events:none;-webkit-user-drag:none;user-select:none}
+.sb-patch{position:absolute;left:-14%;width:128%;background-repeat:no-repeat;background-size:100% 100%;
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 16%,#000 84%,transparent),
+    linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(180deg,transparent,#000 16%,#000 84%,transparent),
+    linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  -webkit-mask-composite:source-in;mask-composite:intersect}
+.sb-temp{position:absolute;border-radius:50%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);line-height:1}
+.sb-temp i{font-style:normal;font-weight:700;letter-spacing:.6px;opacity:.9}
+.sb-swell{position:absolute;left:0;bottom:0;pointer-events:none;z-index:1}
+.sb-per{position:absolute;border-radius:50%;background:#1f7dc0;display:flex;align-items:center;
+  justify-content:center;color:#fff;font-weight:700;z-index:2}
+.sb-per .sb-perdir{position:absolute;left:0;top:0;right:0;bottom:0}
+.sb-hs{position:absolute;color:#fff;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.5);z-index:2;
+  white-space:nowrap;text-align:center}
+.sb-hours{position:absolute;left:0;right:0;display:flex;justify-content:space-around;z-index:2}
+.sb-hours span{font-weight:700;color:#2c4a63}
+.sb-sky.is-on{box-shadow:inset 0 0 0 2px var(--accent)}
+.sb-empty{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;
+  justify-content:center;background:#0d1f3c;color:rgba(255,255,255,.45);font-size:11px}
+.sb-readout{margin-top:9px;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.03);
   font-size:11.5px;color:var(--muted);min-height:18px;line-height:1.6}
-.yw-readout b{color:var(--text)}
-.yw-readout .hint{color:var(--faint);font-style:italic}
-.yw-leg{display:flex;flex-wrap:wrap;gap:9px 16px;margin-top:11px;font-size:10.5px;color:var(--faint);line-height:1.5}
-.yw-leg b{color:var(--muted);font-weight:600}
+.sb-readout b{color:var(--text)}
+.sb-readout .hint{color:var(--faint);font-style:italic}
+.sb-leg{display:flex;flex-wrap:wrap;gap:9px 16px;margin-top:11px;font-size:10.5px;color:var(--faint);line-height:1.5}
+.sb-leg b{color:var(--muted);font-weight:600}
 </style>
 
 <link rel="preconnect" href="https://rpcache.meteo.nc">
@@ -682,6 +706,849 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
   </div>
   <div class="spot-tabs" id="spot-tabs"></div>
 
+  <!-- ═══ TABLEAU CIEL & HOULE (design du 15/08/2026) ═════════════════════════
+       Remplace le météogramme canvas `yw-*` (« 🌤️ Ciel & houle illustrés »),
+       qui vivait dans un accordéon SOUS #gw-widget depuis le 12/08/2026 :
+       nouveau design fourni par l'utilisateur, sorti de l'accordéon et remonté
+       AU-DESSUS du widget météo — c'est désormais la première image de la page.
+
+       Ce n'est pas un habillage du précédent : la scène est COMPOSÉE de PNG de
+       nuages réels (assets/wx/, genres OMM) empilés par altitude — ciel > soleil
+       > cirrus > altocumulus/altostratus > couche basse > convection > pluie >
+       brume > éclair. Chaque couche est pilotée par un champ Open-Meteo
+       (weather_code, cloud_cover_low/mid/high, precipitation, visibility,
+       wind_speed_10m) : AUCUNE image "par condition", donc pas de palier visible
+       entre deux prévisions voisines. Le moteur (_sbScene) est repris tel quel du
+       design, seules les coordonnées sont mises à l'échelle de la colonne.
+
+       Comme avant : pas de sélecteur de spot ni de marée dupliquée (elles vivent
+       déjà ailleurs sur la page), le spot est celui déjà affiché plus haut, et le
+       sélecteur de modèle houle ne change QUE la houle — jamais le ciel/vent
+       (INVARIANT houle/vent, CLAUDE.md). Plus d'accordéon, donc plus de
+       chargement paresseux : le rendu est du DOM (pas de canvas HiDPI à
+       recalculer) et les données sont celles déjà chargées par la page. -->
+  <div class="card" id="sb-card" style="margin-bottom:14px;display:none;">
+    <div class="sb-top">
+      <div>
+        <div class="sb-title">🌤️ <span id="sb-spot-name"></span></div>
+        <!-- Source affichée EXPLICITEMENT : plusieurs sources coexistent sur
+             cette page, ne pas dire laquelle alimente cette scène serait ambigu
+             (demandé le 12/08/2026, « préciser sources météo »). -->
+        <div id="sb-src" class="sb-src"></div>
+      </div>
+      <div class="sb-tools">
+        <select id="sb-swell-model-sel" aria-label="Choisir le modèle houle"></select>
+        <button class="sb-refresh" id="sb-refresh" type="button">↻ Actualiser</button>
+      </div>
+    </div>
+    <div class="sb-scroll" id="sb-scroll">
+      <div class="sb-grid" id="sb-grid"></div>
+    </div>
+    <div class="sb-readout" id="sb-readout" aria-live="polite"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
+    <div class="sb-leg">
+      <div><b>Flèche</b> = direction vers laquelle vent/houle se dirigent (même convention que le reste du site)</div>
+      <div><b>Couleur du vent</b> = vitesse, mêmes seuils que le reste du site (7/12/17/23 nds)</div>
+      <div><b>Nuages</b> = couches basse/moyenne/haute réelles (Open-Meteo) — genre et opacité déduits des taux de couverture</div>
+      <div><b>Pluie</b> = créneau le plus arrosé du jour, incliné dans le sens du vent · <b>★</b> = score surf du jour (0-5)</div>
+      <div><b>AIR</b> = maxi du jour · <b>EAU</b> = température de surface</div>
+    </div>
+  </div>
+  <script>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TABLEAU CIEL & HOULE — voir le commentaire HTML juste au-dessus.
+  //
+  // Repères de géométrie : tout est exprimé dans les coordonnées DU DESIGN
+  // (colonne 258 px de large, ciel 520 px de haut), puis multiplié par SB_S au
+  // rendu. C'est ce qui permet de recopier les positions du design sans les
+  // retraduire une à une — et de ne toucher qu'à SB_COL_W pour changer la
+  // densité de l'affichage.
+  // ═══════════════════════════════════════════════════════════════════════════
+  var SB_DES_W = 258, SB_DES_SKY = 520;   // colonne / ciel, coordonnées du design
+  var SB_COL_W = 258, SB_S = 1;           // largeur réelle d'une colonne, et échelle
+  var SB_DATA = null, SB_SEL = -1, SB_ATTACHED = false, SB_PATCHED = false;
+  var SB_MAX_DAYS = 7;
+  // Créneaux affichés : la fenêtre DIURNE (le surf se pratique de jour), 5 au
+  // plus par colonne — la densité du design. Les heures ne sont PAS fixées
+  // d'avance : elles sont lues sur la cadence réelle de la source (meteo.nc
+  // publie toutes les 6 h — 5/11/17 —, Open-Meteo toutes les 3 h). Une grille
+  // figée à 6/9/12/15/18 h répétait la même valeur meteo.nc jusqu'à 2 fois par
+  // colonne (vérifié en headless le 15/08/2026 : 5 flèches pour 3 créneaux
+  // réels) — cinq flèches qui semblent dire cinq choses alors qu'elles n'en
+  // disent que trois, c'est de la fausse précision. Ces mêmes créneaux servent
+  // aux flèches de vent, aux points de la courbe de houle ET aux étiquettes du
+  // bas : un seul jeu d'abscisses, donc tout reste aligné verticalement.
+  var SB_H_MIN = 5, SB_H_MAX = 19, SB_MAX_COLS = 5;
+  // 'auto' = houle de la source active (cf. sbActiveSource) — toute autre valeur
+  // est une clé SWELL_MODELS, la courbe vient alors de _swellCache[clé] (déjà
+  // chargé par le comparatif « Houle — comparatif modèles » plus bas sur la
+  // page). Le ciel/vent ne suit JAMAIS ce choix.
+  var SB_SWELL_MODEL = 'auto';
+  var SB_M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  var SB_J_LONG  = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  var SB_J_SHORT = ['dim','lun','mar','mer','jeu','ven','sam'];
+
+  function sbEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function sbPad(n) { return (n < 10 ? '0' : '') + n; }
+  function sbR(v) { return Math.round(v * SB_S); }
+  // Textes et pastilles : mise à l'échelle PLANCHÉE. À 150 px de colonne, un
+  // 16 px du design tomberait à 9,3 px — illisible sur téléphone, qui est
+  // justement le cas le plus fréquent. On accepte donc de sortir un peu des
+  // proportions du design sur les petits écrans plutôt que de rendre les
+  // chiffres inutiles : ce tableau est là pour être LU.
+  function sbFont(v, min) { return Math.max(min || 9, Math.round(v * SB_S)); }
+
+  // Mêmes seuils/couleurs que windCol() (assets/settings-utils.js — pas chargé
+  // par previsions.html, d'où cette copie locale).
+  var SB_WIND_T = [7, 12, 17, 23];
+  function sbWindCol(v) {
+    var t = SB_WIND_T;
+    return (v == null) ? '#5c7080'
+      : v < t[0] ? '#f5d547' : v < t[1] ? '#f0a935' : v < t[2] ? '#ef7a1f' : v < t[3] ? '#e53935' : '#c62828';
+  }
+  // Pastille AIR : palette du design (chaud → tempéré). Bornes calées sur la NC
+  // (l'air descend rarement sous 17°, monte à 32° en saison chaude) et non sur
+  // les 19/22/26° du design, calés sur un climat tempéré.
+  function sbTempCol(t) {
+    return t >= 30 ? '#b8502c' : t >= 27 ? '#c96a3a' : t >= 24 ? '#cf8348' : t >= 21 ? '#9c8a5e' : '#7f7a68';
+  }
+
+  // ─── Moteur de scène météo (repris du design) ──────────────────────────────
+  // Assets PNG à canal alpha, empilés : sky > sun > high > mid > low > storm >
+  // précipitations > brouillard > éclair. `seed` rend le tirage DÉTERMINISTE par
+  // jour : sans lui, chaque redessin (survol, changement de modèle houle,
+  // rotation de l'écran) rejouerait un ciel différent pour la même prévision —
+  // ce qui donnerait l'illusion que la donnée a bougé.
+  var SB_RATIO = {
+    cirrus: 257 / 300, cirrostratus: 229 / 300, altocumulus: 223 / 300, altostratus: 197 / 300,
+    stratus: 152 / 300, cumulus: 223 / 298, congestus: 258 / 304, cumulonimbus: 263 / 304,
+    nimbostratus: 247 / 304, 'fog-low': 218 / 300, sun: 237 / 190, 'sun-clouds': 259 / 190,
+    mist: 247 / 190, lightning: 277 / 190
+  };
+  function _sbMix(a, b, t) {
+    return [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
+  }
+  function _sbHex(c) {
+    var i, s = '#';
+    for (i = 0; i < 3; i++) s += ('0' + Math.max(0, Math.min(255, c[i])).toString(16)).slice(-2);
+    return s;
+  }
+  function _sbScene(om, seed) {
+    var s = seed * 9301 + 49297;
+    function rnd() { s = (s * 9301 + 49297) % 233280; return s / 233280; }
+    var code = om.code, low = om.low || 0, mid = om.mid || 0, high = om.high || 0;
+    var precip = om.precip || 0, wind = (om.wind == null) ? 10 : om.wind;
+    var vis = (om.vis == null) ? 20000 : om.vis;
+    var total = Math.min(100, Math.max(low, mid * 0.85, high * 0.6, om.cover || 0));
+    var storm = code != null && code >= 95;
+    var overcast = total / 100;
+    var layers = [], patches = [];
+    function A(src, x, y, w, o, sx, filter) {
+      layers.push({
+        src: 'assets/wx/' + src + '.png', x: Math.round(x), y: Math.round(y),
+        w: Math.round(w), h: Math.round(w * (SB_RATIO[src] || 0.8)),
+        o: o.toFixed(2), sx: sx, filter: filter || 'none'
+      });
+    }
+
+    // ── ciel : bleu franc → gris de traîne → ciel d'orage
+    var gloom = Math.min(1, overcast * 0.8 + (storm ? 0.45 : 0) + Math.min(0.3, precip / 12));
+    var skyTop = _sbHex(_sbMix([74, 158, 214], [86, 96, 106], gloom));
+    var skyMid = _sbHex(_sbMix([142, 199, 232], [138, 148, 157], gloom));
+    var skyBot = _sbHex(_sbMix([190, 224, 243], [178, 186, 192], gloom * 0.85));
+
+    // ── soleil : masqué progressivement par la couverture
+    var sunOpacity = Math.max(0, 1 - overcast * 1.15) * (storm ? 0 : 1);
+    if (sunOpacity > 0.12) A(total > 35 ? 'sun-clouds' : 'sun', 118 + rnd() * 26, 24, total > 35 ? 156 : 140, Math.min(1, sunOpacity + 0.15), 1);
+
+    // ── cirrus / cirrostratus
+    if (high > 12) A(high > 55 ? 'cirrostratus' : 'cirrus', -30 + rnd() * 30, 2 + rnd() * 16, 270 + rnd() * 40, Math.min(0.85, 0.25 + high / 160), rnd() > 0.5 ? 1 : -1);
+
+    // ── altocumulus / altostratus
+    if (mid > 12) A(mid > 55 ? 'altostratus' : 'altocumulus', -34 + rnd() * 40, 40 + rnd() * 30, 290 + rnd() * 50, Math.min(0.95, 0.35 + mid / 150), rnd() > 0.5 ? 1 : -1);
+
+    // ── couche basse : cumulus épars, congestus sur averses, stratus si couvert
+    if (low > 10) {
+      if (low > 78) {
+        A('stratus', -40, 110 + rnd() * 24, 340, 0.95, 1);
+        A('stratus', -20, 196 + rnd() * 28, 320, 0.85, -1);
+      } else if (precip > 1.5 || low > 55) {
+        A('congestus', -30 + rnd() * 50, 74 + rnd() * 20, 290 + rnd() * 40, 0.96, rnd() > 0.5 ? 1 : -1);
+        if (low > 45) A('cumulus', 96 + rnd() * 50, 196 + rnd() * 26, 200, 0.9, -1);
+      } else {
+        A('cumulus', -24 + rnd() * 40, 150 + rnd() * 30, 180 + rnd() * 50, 0.95, 1);
+        if (low > 28) A('cumulus', 124 + rnd() * 50, 208 + rnd() * 26, 145 + rnd() * 45, 0.88, -1);
+      }
+    }
+
+    // ── convection profonde
+    if (storm) A('cumulonimbus', -26 + rnd() * 40, 26, 310, 0.97, rnd() > 0.5 ? 1 : -1);
+    else if (precip > 3) A('nimbostratus', -30 + rnd() * 40, 58, 310, 0.95, rnd() > 0.5 ? 1 : -1);
+
+    // ── précipitations (motif répété, incliné par le vent). Pas de neige : on
+    //    est en Nouvelle-Calédonie, les assets neige du design ne serviraient
+    //    jamais — c'est autant de Ko en moins à télécharger sur mobile.
+    //    `precip` est le créneau le PLUS ARROSÉ de la journée (mm/3 h), pas le
+    //    cumul du jour : c'est le grain de pluie qu'il faut dessiner, pas une
+    //    moyenne. Seuil et opacité recalés en conséquence le 15/08/2026 — avec
+    //    ceux du design (pensés pour une lame d'eau horaire) une bruine à
+    //    0,3 mm sortait un rideau de pluie plein cadre sur 5 jours sur 7.
+    if (precip > 0.15) {
+      patches.push({
+        src: 'assets/wx/' + (precip > 2.5 ? 'shower' : 'rain') + '.png',
+        y: 140, h: 300,
+        o: Math.min(0.85, 0.20 + precip / 6).toFixed(2),
+        skew: (-Math.min(24, wind * 0.42)).toFixed(1)
+      });
+    }
+
+    // ── brume / brouillard selon la visibilité
+    if (vis < 6000) A(vis < 1200 ? 'fog-low' : 'mist', -30, 250, 330, Math.min(0.9, (6000 - vis) / 6000 + 0.15), 1);
+
+    // ── éclair
+    if (storm) A('lightning', 96 + rnd() * 50, 96, 124, 0.9, rnd() > 0.5 ? 1 : -1, 'drop-shadow(0 0 14px rgba(150,180,255,.85))');
+
+    return { layers: layers, patches: patches, skyTop: skyTop, skyMid: skyMid, skyBot: skyBot };
+  }
+  // Graine stable par jour : la date suffit (le ciel d'un jour donné ne doit pas
+  // changer d'aspect quand on change de spot… mais DOIT changer quand la
+  // couverture nuageuse change, ce dont les couches se chargent déjà).
+  function sbSeed(key) {
+    var h = 2166136261, i;
+    for (i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = (h * 16777619) >>> 0; }
+    return (h % 100000) + 1;
+  }
+
+  // ─── Construction des données ──────────────────────────────────────────────
+  // Source du ciel/vent/température : celle CHOISIE par le toggle houle du reste
+  // de la page (_currentHsSrc, cf. setHsSrc()) — 'nc' lit _fcastData, 'om' lit
+  // _omFcastData (même forme de champs, les deux sont TOUJOURS peuplés en
+  // parallèle). dates[] est DÉJÀ décalé de +11 h : on lit donc en getUTC* SANS
+  // re-décaler — le piège classique du fuseau NC (CLAUDE.md) serait de le
+  // décaler une 2ᵉ fois.
+  function sbActiveSource() {
+    var src = (typeof _currentHsSrc !== 'undefined') ? _currentHsSrc : 'nc';
+    var fc = (src === 'om' && window._omFcastData) ? window._omFcastData : window._fcastData;
+    return { fc: fc, label: (src === 'om') ? 'GFS Open-Meteo' : 'meteo.nc' };
+  }
+
+  // LA SCÈNE DE CIEL VIENT D'OPEN-METEO, PAS DE LA SOURCE ACTIVE — et c'est
+  // délibéré. Le moteur du design a besoin de 6 champs : couverture basse /
+  // moyenne / haute, lame d'eau, visibilité et code temps WMO. meteo.nc n'en
+  // fournit que la couche basse : mesuré en headless le 15/08/2026 sur Dumbéa,
+  // ses cldM et cldH valaient 0 sur 6 jours sur 7, et il n'a aucun code temps.
+  // Peindre la scène avec ça, c'était un ciel sans étage moyen ni haut — donc
+  // jamais de cirrus, jamais d'altocumulus, jamais d'orage identifié comme tel.
+  // Le vent, la température et la houle, eux, restent sur la source choisie par
+  // l'utilisateur (cf. sbActiveSource) : ce sont les chiffres qu'il lit, la
+  // scène n'est qu'une illustration du temps. Indexé par ms RÉELLES pour éviter
+  // tout aller-retour de fuseau.
+  // Les deux grilles ne tombent PAS aux mêmes heures : Open-Meteo est échantillonné
+  // tous les 3 h à partir du créneau courant (4/7/10/13…), meteo.nc publie toutes
+  // les 6 h (5/11/17). Un appariement par horodatage EXACT raterait donc la
+  // plupart des créneaux et afficherait « nuages 0 % » partout — un zéro qui
+  // ressemble à une donnée alors que c'est une absence. D'où l'appariement au
+  // plus proche, plafonné à 90 min. Tableau trié par ms, recherche linéaire :
+  // quelques dizaines de points, inutile de dichotomiser.
+  function sbOmSkyList() {
+    var list = [], om = window._omFcastData;
+    if (!om || !om.dates) return list;
+    om.dates.forEach(function (dt, i) {
+      if (!dt) return;
+      list.push({
+        ms: dt.getTime(),
+        code: om.code ? om.code[i] : null,
+        vis: om.vis ? om.vis[i] : null,
+        sst: om.sst ? om.sst[i] : null,
+        cl: om.cldL ? om.cldL[i] : null,
+        cm: om.cldM ? om.cldM[i] : null,
+        ch: om.cldH ? om.cldH[i] : null,
+        cc: om.cld ? om.cld[i] : null,
+        rain: om.rain ? om.rain[i] : null
+      });
+    });
+    list.sort(function (a, b) { return a.ms - b.ms; });
+    return list;
+  }
+  function sbSkyNear(list, ms) {
+    var best = null, bd = 90 * 60000 + 1, i, d;
+    for (i = 0; i < list.length; i++) {
+      d = Math.abs(list[i].ms - ms);
+      if (d < bd) { bd = d; best = list[i]; }
+      else if (list[i].ms > ms) break;
+    }
+    return best || {};
+  }
+  // Caractère du ciel d'une journée, lu sur la fenêtre DIURNE d'Open-Meteo.
+  // Prendre la journée entière ferait entrer les nuits (souvent plus couvertes
+  // en NC) dans une image qui, elle, ne montre qu'un ciel de jour.
+  function sbDaySky(dayKey) {
+    var om = window._omFcastData, cl = [], cm = [], ch = [], cc = [];
+    var precip = null, vis = null, code = null, n = 0;
+    if (om && om.dates) {
+      om.dates.forEach(function (dt, i) {
+        if (!dt || sbDayKey(dt) !== dayKey) return;
+        var h = dt.getUTCHours();
+        if (h < SB_H_MIN || h > SB_H_MAX) return;
+        n++;
+        if (om.cldL) cl.push(om.cldL[i]);
+        if (om.cldM) cm.push(om.cldM[i]);
+        if (om.cldH) ch.push(om.cldH[i]);
+        if (om.cld) cc.push(om.cld[i]);
+        // Lame d'eau : on garde le créneau LE PLUS ARROSÉ, pas le cumul du jour
+        // (cf. le commentaire dans _sbScene) — c'est le grain de pluie à peindre.
+        if (om.rain && om.rain[i] != null && (precip === null || om.rain[i] > precip)) precip = om.rain[i];
+        if (om.vis && om.vis[i] != null && (vis === null || om.vis[i] < vis)) vis = om.vis[i];
+        if (om.code && om.code[i] != null && (code === null || om.code[i] > code)) code = om.code[i];
+      });
+    }
+    if (!n) return null;
+    return {
+      code: code, cover: sbMean(cc), low: sbMean(cl), mid: sbMean(cm), high: sbMean(ch),
+      precip: precip || 0, vis: vis
+    };
+  }
+
+  function sbDayKey(dt) {
+    return dt.getUTCFullYear() + '-' + sbPad(dt.getUTCMonth() + 1) + '-' + sbPad(dt.getUTCDate());
+  }
+  function sbDayParts(k) {
+    var p = k.split('-');
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12));
+    return { d: +p[2], mo: +p[1] - 1, dow: d.getUTCDay() };
+  }
+  // Moyenne des valeurs non nulles — `null` si la série est entièrement vide,
+  // pour ne pas transformer une absence de donnée en un 0 qui, lui, se dessine
+  // (un ciel « 0 % de nuages » n'est PAS la même chose qu'un ciel inconnu).
+  function sbMean(arr) {
+    var n = 0, s = 0, i;
+    for (i = 0; i < arr.length; i++) if (arr[i] != null) { s += arr[i]; n++; }
+    return n ? s / n : null;
+  }
+
+  function sbBuildData() {
+    var act = sbActiveSource(), fc = act.fc;
+    if (!fc || !fc.dates || !fc.dates.length) return null;
+    var skyList = sbOmSkyList();
+    // Jour NC courant, pour ne garder que le présent et l'avenir : ce tableau
+    // est un outil de prévision, une colonne « hier » n'y a rien à faire (même
+    // règle que _gwGroupDays côté widget).
+    var nowNC = new Date(Date.now() + 11 * 3600000);
+    var todayKey = sbDayKey(nowNC);
+    var byDay = {}, order = [];
+    fc.dates.forEach(function (dt, i) {
+      if (!dt) return;
+      var k = sbDayKey(dt);
+      if (k < todayKey) return;
+      if (!byDay[k]) { byDay[k] = { key: k, idx: [] }; order.push(k); }
+      byDay[k].idx.push(i);
+    });
+    order = order.slice(0, SB_MAX_DAYS);
+    if (!order.length) return null;
+
+    var days = order.map(function (k) {
+      var idx = byDay[k].idx;
+      var tmax = null, tmin = null, ssts = [], ws = [], slots = [], hasAny = false;
+      idx.forEach(function (i) {
+        var dt = fc.dates[i], h = dt.getUTCHours();
+        var sky = sbSkyNear(skyList, dt.getTime());
+        var t = fc.tAir ? fc.tAir[i] : null;
+        if (t != null) { if (tmax === null || t > tmax) tmax = t; if (tmin === null || t < tmin) tmin = t; }
+        var sst = (fc.sst && fc.sst[i] != null) ? fc.sst[i] : (sky.sst != null ? sky.sst : null);
+        if (sst != null) ssts.push(sst);
+        if (h >= SB_H_MIN && h <= SB_H_MAX && fc.wSpd) ws.push(fc.wSpd[i]);
+        slots.push({
+          h: h, i: i,
+          hs: fc.sw1h ? fc.sw1h[i] : null, t: fc.sw1t ? fc.sw1t[i] : null, sd: fc.sw1d ? fc.sw1d[i] : null,
+          ws: fc.wSpd ? fc.wSpd[i] : null, wd: fc.wDir ? fc.wDir[i] : null, wg: fc.wGst ? fc.wGst[i] : null,
+          pwr: fc.pwr ? fc.pwr[i] : null,
+          // Nuages/pluie du détail : ceux d'Open-Meteo, pour dire la MÊME chose
+          // que la scène juste au-dessus (cf. sbOmSkyList).
+          cl: sky.cl, cm: sky.cm, ch: sky.ch, rain: sky.rain, at: t
+        });
+        hasAny = true;
+      });
+      if (!hasAny) return null;
+      slots.sort(function (a, b) { return a.h - b.h; });
+      var om = sbDaySky(k) || { code: null, cover: null, low: null, mid: null, high: null, precip: 0, vis: null };
+      om.wind = sbMean(ws);
+      return {
+        key: k, parts: sbDayParts(k), slots: slots, cols: sbDayCols(slots),
+        tmax: tmax, tmin: tmin, sst: ssts.length ? sbMean(ssts) : null, om: om
+      };
+    }).filter(function (d) { return !!d; });
+    if (!days.length) return null;
+    return { days: days, srcLabel: act.label };
+  }
+
+  // Colonnes d'un jour = ses créneaux DIURNES réels, dégraissés à SB_MAX_COLS
+  // en gardant les extrêmes et en répartissant les autres — 5 flèches quand la
+  // source publie toutes les 3 h, 3 quand elle publie toutes les 6 h. On
+  // n'invente jamais un créneau qui n'existe pas, et on ne répète jamais deux
+  // fois le même (cf. le commentaire sur SB_H_MIN plus haut).
+  function sbDayCols(slots) {
+    var day = slots.filter(function (s) { return s.h >= SB_H_MIN && s.h <= SB_H_MAX; });
+    if (day.length <= SB_MAX_COLS) return day;
+    var out = [], i;
+    for (i = 0; i < SB_MAX_COLS; i++) out.push(day[Math.round(i * (day.length - 1) / (SB_MAX_COLS - 1))]);
+    return out;
+  }
+
+  // Créneau le plus proche d'une heure cible, à ±3 h max : au-delà, mieux vaut
+  // un trou qu'une houle de 5 h affichée en face de « 11h ». ±3 h et non ±2 h
+  // parce qu'un modèle du comparatif peut publier sur une grille décalée de
+  // celle de la source active, qui donne les heures des colonnes.
+  function sbSlotAt(slots, hour) {
+    var best = null, bd = 99, i, d;
+    for (i = 0; i < slots.length; i++) {
+      d = Math.abs(slots[i].h - hour);
+      if (d < bd) { bd = d; best = slots[i]; }
+    }
+    return bd <= 3 ? best : null;
+  }
+
+  // Série houle d'UN modèle du comparatif, ramenée au même format {d,h,hs,t,sd}.
+  // _swellCache[clé].primary porte des points {ms,h,t,dir}, ms = epoch UTC VRAI
+  // (cf. _swellToPts) et PAS la convention « +11 h déjà appliqué » du reste de ce
+  // fichier : reconvertir avant de lire en getUTC*, sinon un jour sur deux est
+  // faux silencieusement (piège fuseau, CLAUDE.md).
+  function sbModelSlotsByDay(key) {
+    var out = {};
+    if (typeof _swellCache === 'undefined' || !_swellCache || !_swellCache[key]) return out;
+    (_swellCache[key].primary || []).forEach(function (p) {
+      if (p.h == null || p.ms == null) return;
+      var dt = new Date(p.ms + 11 * 3600000);
+      var k = sbDayKey(dt);
+      (out[k] = out[k] || []).push({ h: dt.getUTCHours(), hs: p.h, t: p.t, sd: p.dir });
+    });
+    var k2; for (k2 in out) out[k2].sort(function (a, b) { return a.h - b.h; });
+    return out;
+  }
+
+  // Houle affichée : soit la source active (mêmes objets que le vent), soit un
+  // modèle du comparatif. Renvoie, PAR JOUR, un échantillon par COLONNE du jour
+  // (cf. sbDayCols) — mêmes abscisses que les flèches de vent et les étiquettes
+  // d'heure, c'est ce qui rend la courbe continue et alignée d'un jour à l'autre.
+  function sbSwellSeries() {
+    var byDayModel = (SB_SWELL_MODEL === 'auto') ? null : sbModelSlotsByDay(SB_SWELL_MODEL);
+    return SB_DATA.days.map(function (day) {
+      var src = byDayModel ? (byDayModel[day.key] || []) : day.slots;
+      return day.cols.map(function (c) {
+        var s = sbSlotAt(src, c.h);
+        return (s && s.hs != null) ? { hs: s.hs, t: s.t, sd: s.sd, h: c.h } : null;
+      });
+    });
+  }
+
+  // Reconstruit les options du sélecteur depuis SWELL_MODELS/_swellCache (déjà
+  // chargés par le comparatif plus bas — aucune requête en plus) : seuls les
+  // modèles qui ont RÉELLEMENT une série pour ce spot apparaissent (LOTUS
+  // n'existe qu'à 5 zones, par ex.).
+  function sbPopulateSwellModelSel() {
+    var sel = document.getElementById('sb-swell-model-sel');
+    if (!sel) return;
+    var opts = [{ key: 'auto', label: 'Auto (' + (SB_DATA && SB_DATA.srcLabel ? SB_DATA.srcLabel : 'source active') + ')' }];
+    if (typeof SWELL_MODELS !== 'undefined' && typeof _swellCache !== 'undefined' && _swellCache) {
+      SWELL_MODELS.forEach(function (m) {
+        var c = _swellCache[m.key];
+        if (c && c.primary && c.primary.length) opts.push({ key: m.key, label: m.label });
+      });
+    }
+    var keys = opts.map(function (o) { return o.key; });
+    if (keys.indexOf(SB_SWELL_MODEL) === -1) SB_SWELL_MODEL = 'auto';
+    sel.innerHTML = opts.map(function (o) {
+      return '<option value="' + sbEsc(o.key) + '"' + (o.key === SB_SWELL_MODEL ? ' selected' : '') + '>' + sbEsc(o.label) + '</option>';
+    }).join('');
+  }
+
+  // ─── Rendu ─────────────────────────────────────────────────────────────────
+  function sbNiceMax(v) {
+    var steps = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8], i;
+    for (i = 0; i < steps.length; i++) if (v <= steps[i] * .92) return steps[i];
+    return Math.ceil(v);
+  }
+  function sbLayout() {
+    var card = document.getElementById('sb-card');
+    var avail = (card && card.clientWidth) || (window.innerWidth - 32) || 500;
+    var n = Math.max(1, SB_DATA.days.length);
+    // Gouttière comprise dans le calcul, sinon la dernière colonne dépasse
+    // toujours d'une largeur de gouttière et la carte défile pour rien.
+    var gut = sbGutW();
+    // 150 px de plancher : en dessous, les PNG de nuages sont réduits au point
+    // qu'on ne distingue plus un cumulus d'un stratus — donc autant faire
+    // défiler. 258 = largeur native du design, inutile d'aller au-delà.
+    SB_COL_W = Math.max(150, Math.min(SB_DES_W, Math.floor((avail - gut) / n)));
+    SB_S = SB_COL_W / SB_DES_W;
+  }
+  function sbGutW() { return 52; }
+
+  // Flèche « vers où ça va » : le SVG pointe vers le HAUT à rotate(0), donc une
+  // provenance `deg` se dessine à deg+180 — même convention que partout ailleurs
+  // sur le site (cf. la légende de la carte).
+  function sbArrowSvg(deg, size, fill, stroke) {
+    var d = ((deg == null ? 0 : deg) + 180) % 360;
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 20 20" aria-hidden="true"'
+      + ' style="transform:rotate(' + d.toFixed(0) + 'deg)">'
+      + '<path d="M10 1.2 L18.6 11.4 L13.6 11.4 L13.6 18.6 L6.4 18.6 L6.4 11.4 L1.4 11.4 Z"'
+      + ' fill="' + fill + '" stroke="' + stroke + '" stroke-width="0.7"></path></svg>';
+  }
+
+  // Courbe de houle : une seule spline continue sur TOUTE la largeur, tracée
+  // par-dessus les colonnes (d'où un SVG unique en position absolue, et non un
+  // morceau par jour — recoller 7 fragments laisserait des ruptures d'angle aux
+  // frontières de jour). Trous : un point manquant coupe le tracé en deux runs
+  // séparés, plutôt que de relier deux points de part et d'autre d'un jour vide
+  // (ça inventerait une houle qui n'a jamais été prévue).
+  function sbSwellPath(series, maxV, totalW, svgH) {
+    var top = Math.round(0.10 * svgH), bottom = Math.round(0.75 * svgH);
+    function y(v) { return bottom - (Math.min(v, maxV) / maxV) * (bottom - top); }
+    var runs = [], cur = [], di, hi;
+    for (di = 0; di < series.length; di++) {
+      var nc = series[di].length || 1;
+      for (hi = 0; hi < series[di].length; hi++) {
+        var p = series[di][hi];
+        var x = di * SB_COL_W + (hi + 0.5) / nc * SB_COL_W;
+        if (!p) { if (cur.length) { runs.push(cur); cur = []; } continue; }
+        cur.push({ x: x, y: y(p.hs) });
+      }
+    }
+    if (cur.length) runs.push(cur);
+    var paths = runs.map(function (pts) {
+      // Prolongement plat jusqu'aux bords : le 1er point est à 10 % de la 1ʳᵉ
+      // colonne et le dernier à 90 % de la dernière — sans ça, l'eau s'arrête
+      // avant les bords du tableau et donne l'impression d'un trou de données.
+      var ext = pts.slice();
+      if (pts === runs[0]) ext.unshift({ x: 0, y: pts[0].y });
+      if (pts === runs[runs.length - 1]) ext.push({ x: totalW, y: pts[pts.length - 1].y });
+      var d = 'M' + ext[0].x.toFixed(1) + ' ' + ext[0].y.toFixed(1), i;
+      for (i = 1; i < ext.length; i++) {
+        var pr = ext[i - 1], cx = (pr.x + ext[i].x) / 2;
+        d += ' C' + cx.toFixed(1) + ' ' + pr.y.toFixed(1) + ',' + cx.toFixed(1) + ' ' + ext[i].y.toFixed(1)
+          + ',' + ext[i].x.toFixed(1) + ' ' + ext[i].y.toFixed(1);
+      }
+      return { line: d, fill: d + ' L' + ext[ext.length - 1].x.toFixed(1) + ' ' + svgH + ' L' + ext[0].x.toFixed(1) + ' ' + svgH + ' Z' };
+    });
+    return { paths: paths, yOf: y, top: top, bottom: bottom };
+  }
+
+  function sbRender() {
+    var grid = document.getElementById('sb-grid');
+    if (!grid || !SB_DATA) return;
+    sbLayout();
+    var days = SB_DATA.days, n = days.length;
+    var gut = sbGutW();
+    var headH = Math.max(38, sbR(74)), windH = Math.max(30, sbR(60)), skyH = sbR(SB_DES_SKY);
+    var totalW = SB_COL_W * n;
+    var series = sbSwellSeries();
+    var flat = [], di, hi;
+    for (di = 0; di < series.length; di++) for (hi = 0; hi < series[di].length; hi++) if (series[di][hi]) flat.push(series[di][hi].hs);
+    var maxV = flat.length ? sbNiceMax(Math.max.apply(null, flat) * 1.15) : 1.5;
+    // Zone d'eau : bas du ciel, mêmes proportions que le design (les 200 px du
+    // bas des 520 px de la scène).
+    var svgH = sbR(200), svgTop = skyH - svgH;
+    var geo = sbSwellPath(series, maxV, totalW, svgH);
+
+    grid.style.gridTemplateColumns = gut + 'px repeat(' + n + ',' + SB_COL_W + 'px)';
+    grid.style.gridTemplateRows = headH + 'px ' + windH + 'px ' + skyH + 'px';
+    grid.style.width = (gut + totalW) + 'px';
+
+    var html = '';
+    // ── gouttière (coin haut vide + colonne de libellés/graduations)
+    html += '<div class="sb-gut" style="grid-column:1;grid-row:1;border-bottom:1px solid var(--border);"></div>';
+    html += '<div class="sb-gut" style="grid-column:1;grid-row:2 / span 2;">'
+      + '<div class="sb-gut-lbl" style="left:' + Math.round(gut / 2 - 7) + 'px;top:' + (windH + 6) + 'px;font-size:' + sbFont(13, 10) + 'px;">Météo</div>'
+      + '<div class="sb-gut-lbl" style="left:' + Math.round(gut / 2 - 7) + 'px;bottom:6px;font-size:' + sbFont(13, 10) + 'px;">Houle (m)</div>';
+    // Graduations : 3 repères réguliers sur l'échelle réellement utilisée (elle
+    // s'adapte à la houle du moment — un axe figé à 1,5 m comme dans le design
+    // écraserait toutes les vraies houles calédoniennes).
+    [1, 2 / 3, 1 / 3].forEach(function (f) {
+      var v = maxV * f;
+      html += '<div class="sb-gut-tick" style="top:' + Math.round(windH + svgTop + geo.yOf(v)) + 'px;font-size:' + sbFont(12, 9) + 'px;">'
+        + (v < 1 ? v.toFixed(1) : (Math.round(v * 10) / 10)) + '</div>';
+    });
+    html += '</div>';
+
+    // ── ligne 1 : jour + étoiles de score
+    days.forEach(function (d, i) {
+      var p = d.parts;
+      html += '<div class="sb-head" style="grid-column:' + (i + 2) + ';grid-row:1;" data-d="' + i + '" tabindex="0" role="button"'
+        + ' aria-label="Détail du ' + SB_J_LONG[p.dow] + ' ' + p.d + ' ' + SB_M_SHORT[p.mo] + '">'
+        + '<div class="sb-dn" style="font-size:' + sbFont(19, 12) + 'px;">' + SB_J_SHORT[p.dow] + ' ' + p.d + ' ' + SB_M_SHORT[p.mo] + '</div>'
+        + '<div class="sb-stars" style="font-size:' + sbFont(14, 10) + 'px;">' + sbStarsHtml(d) + '</div></div>';
+    });
+
+    // ── ligne 2 : vent, un créneau par colonne du jour
+    days.forEach(function (d, i) {
+      var sz = Math.max(24, Math.min(sbR(42), Math.floor(SB_COL_W / Math.max(1, d.cols.length)) - 4));
+      var cells = d.cols.map(function (s) {
+        var v = (s.ws != null) ? Math.round(s.ws) : null;
+        var light = (v != null && v < SB_WIND_T[1]);
+        return '<div class="sb-w" style="width:' + sz + 'px;height:' + sz + 'px;"'
+          + ' title="' + s.h + ' h — ' + (v == null ? '—' : v + ' nds ' + compass(s.wd)) + '">'
+          + sbArrowSvg(s.wd, sz, sbWindCol(v), '#7d1414')
+          + '<b style="font-size:' + sbFont(13, 9) + 'px;color:' + (light ? '#5c3f00' : '#fff')
+          + ';text-shadow:' + (light ? '0 1px 1px rgba(255,255,255,.5)' : '0 1px 2px rgba(0,0,0,.55)') + ';">'
+          + (v == null ? '—' : v) + '</b></div>';
+      }).join('');
+      html += '<div class="sb-windrow" style="grid-column:' + (i + 2) + ';grid-row:2;">'
+        + (cells || '<span style="font-size:11px;color:#4b6377;">—</span>') + '</div>';
+    });
+
+    // ── ligne 3 : scène de ciel
+    days.forEach(function (d, i) {
+      var sc = _sbScene(d.om, sbSeed(d.key));
+      var inner = '';
+      sc.layers.forEach(function (L) {
+        // PAS de loading="lazy" : ce tableau est la première chose affichée, ses
+        // nuages sont donc au-dessus de la ligne de flottaison — les différer
+        // n'économise rien et le navigateur peut ne jamais les déclencher (en
+        // headless, le 15/08/2026, la scène sortait entièrement vide alors que
+        // les images étaient bien en cache). `decoding=async` suffit à ne pas
+        // bloquer le rendu du reste.
+        inner += '<img src="' + L.src + '" alt="" aria-hidden="true" decoding="async"'
+          + ' style="left:' + sbR(L.x) + 'px;top:' + sbR(L.y) + 'px;width:' + sbR(L.w) + 'px;height:' + sbR(L.h) + 'px;'
+          + 'opacity:' + L.o + ';transform:scaleX(' + L.sx + ');filter:' + L.filter + ';">';
+      });
+      sc.patches.forEach(function (P) {
+        inner += '<div class="sb-patch" style="top:' + sbR(P.y) + 'px;height:' + sbR(P.h) + 'px;'
+          + 'background-image:url(' + P.src + ');opacity:' + P.o + ';transform:skewX(' + P.skew + 'deg);"></div>';
+      });
+      // Pastilles température (AIR = maxi du jour, EAU = température de surface).
+      var badge = Math.max(34, sbR(58)), bx = sbR(14);
+      if (d.tmax != null) {
+        inner += '<div class="sb-temp" style="left:' + bx + 'px;top:' + sbR(34) + 'px;width:' + badge + 'px;height:' + badge
+          + 'px;background:' + sbTempCol(d.tmax) + ';" title="Air : maxi ' + Math.round(d.tmax) + '°'
+          + (d.tmin != null ? ', mini ' + Math.round(d.tmin) + '°' : '') + '">'
+          + '<span style="font-weight:700;font-size:' + sbFont(19, 12) + 'px;">' + Math.round(d.tmax) + '°</span>'
+          + '<i style="font-size:' + sbFont(9, 7) + 'px;">AIR</i></div>';
+      }
+      if (d.sst != null) {
+        inner += '<div class="sb-temp" style="left:' + bx + 'px;top:' + (sbR(34) + badge + sbR(6)) + 'px;width:' + badge + 'px;height:' + badge
+          + 'px;background:#2b7cb0;" title="Température de la mer">'
+          + '<span style="font-weight:700;font-size:' + sbFont(19, 12) + 'px;">' + Math.round(d.sst) + '°</span>'
+          + '<i style="font-size:' + sbFont(9, 7) + 'px;">EAU</i></div>';
+      }
+      // Pastille période + direction de houle : lue sur le PIC du jour, pas sur
+      // une moyenne — c'est le créneau qui décide d'une sortie.
+      var pk = null, k2;
+      for (k2 = 0; k2 < series[i].length; k2++) if (series[i][k2] && (!pk || series[i][k2].hs > pk.hs)) pk = series[i][k2];
+      if (pk) {
+        // 0,44 et non les 0,56 du design : la hauteur en clair sous la pastille
+        // (le design n'en a pas) chevauchait les étiquettes d'heure à l'échelle
+        // réduite du mobile — constaté en headless le 15/08/2026.
+        var pr = Math.max(28, sbR(44)), py = svgTop + Math.round(svgH * 0.44);
+        inner += '<div class="sb-per" style="left:' + sbR(32) + 'px;top:' + py + 'px;width:' + pr + 'px;height:' + pr
+          + 'px;font-size:' + sbFont(15, 10) + 'px;" title="Période au pic du jour'
+          + (pk.sd != null ? ' — houle de ' + compass(pk.sd) : '') + '">'
+          + (pk.t != null ? Math.round(pk.t) + 's' : '—')
+          + (pk.sd != null ? '<div class="sb-perdir" style="transform:rotate(' + (((pk.sd + 180) % 360)).toFixed(0) + 'deg);">'
+              + '<svg width="' + Math.round(pr * .48) + '" height="' + Math.round(pr * .48) + '" viewBox="0 0 20 20"'
+              + ' style="position:absolute;left:50%;top:' + (-Math.round(pr * .42)) + 'px;margin-left:' + (-Math.round(pr * .24)) + 'px;">'
+              + '<path d="M10 1.5 L18 18.5 Q10 11.5 2 18.5 Z" fill="#ffffff" stroke="#1f7dc0" stroke-width="1.4" stroke-linejoin="round"></path>'
+              + '</svg></div>' : '')
+          + '</div>';
+        inner += '<div class="sb-hs" style="left:' + sbR(32) + 'px;top:' + (py + pr + 2) + 'px;width:' + pr + 'px;font-size:'
+          + sbFont(13, 9) + 'px;">' + pk.hs.toFixed(1) + ' m</div>';
+      }
+      inner += '<div class="sb-hours" style="bottom:' + Math.max(3, sbR(6)) + 'px;font-size:' + sbFont(13, 9) + 'px;">'
+        + d.cols.map(function (c) { return '<span>' + c.h + 'h</span>'; }).join('') + '</div>';
+      html += '<div class="sb-sky' + (SB_SEL === i ? ' is-on' : '') + '" data-d="' + i + '" style="grid-column:' + (i + 2) + ';grid-row:3;'
+        + 'background:linear-gradient(180deg,' + sc.skyTop + ' 0%,' + sc.skyMid + ' 45%,' + sc.skyBot + ' 100%);">' + inner + '</div>';
+    });
+    grid.innerHTML = html;
+
+    // ── courbe de houle : un SVG unique posé PAR-DESSUS les colonnes de ciel.
+    //    Ajouté après coup (et non dans `html`) parce qu'il chevauche toutes les
+    //    colonnes : dans la grille il occuperait une cellule, pas la largeur.
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'sb-swell');
+    svg.setAttribute('width', totalW); svg.setAttribute('height', svgH);
+    svg.setAttribute('viewBox', '0 0 ' + totalW + ' ' + svgH);
+    svg.style.left = gut + 'px';
+    svg.innerHTML = geo.paths.map(function (p) {
+      return '<path d="' + p.fill + '" fill="#3f9fdc" fill-opacity=".92"></path>'
+        + '<path d="' + p.line + '" fill="none" stroke="#ffffff" stroke-width="' + Math.max(2, sbR(4)) + '" stroke-linecap="round"></path>';
+    }).join('');
+    grid.appendChild(svg);
+  }
+
+  // Étoiles = score surf du jour (0-5), au MEILLEUR créneau — même moteur
+  // (calcSurfScore, assets/score-core.js) et donc mêmes réglages ⚙ que partout
+  // ailleurs sur le site : une note différente ici de celle du widget juste en
+  // dessous serait le pire défaut possible pour cette page.
+  function sbDayScore(d) {
+    if (typeof calcSurfScore !== 'function') return null;
+    var best = null, i;
+    for (i = 0; i < d.slots.length; i++) {
+      var s = d.slots[i];
+      if (s.h < SB_H_MIN || s.h > SB_H_MAX || s.hs == null) continue;
+      var sc = calcSurfScore(s.hs, s.t, s.sd, s.ws, s.wg, s.wd, s.pwr);
+      if (sc && (best === null || sc.score > best)) best = sc.score;
+    }
+    return best;
+  }
+  function sbStarsHtml(d) {
+    var sc = sbDayScore(d), i, out = '';
+    if (sc === null) return '<span style="opacity:.35;" title="Pas de houle prévue ce jour-là">·····</span>';
+    for (i = 0; i < 5; i++) out += '<span style="color:' + (i < sc ? '#f2c200' : 'var(--border)') + ';">★</span>';
+    return out;
+  }
+  // SCORE_PARAMS n'a pas sa valeur définitive au premier rendu : la calibration
+  // automatique depuis le journal (calibrateFromJournal, mode silencieux au
+  // boot) arrive APRÈS, va chercher les sessions dans Supabase et réécrit les
+  // seuils du spot. Sans ce rafraîchissement, le tableau gardait les étoiles
+  // calculées avec les seuils PAR DÉFAUT alors que le reste de la page passait
+  // aux seuils calibrés — deux notes différentes pour le même jour sur la même
+  // page (constaté en headless le 15/08/2026 : 5 étoiles ici, 0 ailleurs).
+  // Seul le HTML des étoiles est réécrit : recharger toute la scène ferait
+  // clignoter les nuages pour rien. Appelé aussi par saveScoreParams (⚙).
+  function sbRefreshStars() {
+    if (!SB_DATA) return;
+    var els = document.querySelectorAll('#sb-grid .sb-stars'), i;
+    for (i = 0; i < els.length && i < SB_DATA.days.length; i++) els[i].innerHTML = sbStarsHtml(SB_DATA.days[i]);
+  }
+
+  // ─── Détail du jour (équivalent accessible de la scène) ────────────────────
+  function sbUpdateReadout(idx) {
+    var el = document.getElementById('sb-readout');
+    if (!el) return;
+    if (idx == null || idx < 0 || !SB_DATA.days[idx]) {
+      el.innerHTML = '<span class="hint">Touche un jour pour le détail heure par heure.</span>';
+      return;
+    }
+    var d = SB_DATA.days[idx], p = d.parts;
+    var byDayModel = (SB_SWELL_MODEL === 'auto') ? null : sbModelSlotsByDay(SB_SWELL_MODEL);
+    var swSrc = byDayModel ? (byDayModel[d.key] || []) : d.slots;
+    var lines = d.cols.map(function (c) {
+      // Houle du modèle choisi, mais vent/ciel/température TOUJOURS de la source
+      // active : un modèle du comparatif ne fournit QUE la houle (INVARIANT
+      // houle/vent, CLAUDE.md).
+      var h = c.h, sw = sbSlotAt(swSrc, h), nc = c;
+      if (!sw && !nc) return '';
+      var out = '<div>' + h + ' h — ';
+      out += sw && sw.hs != null
+        ? '<b>' + sw.hs.toFixed(1) + ' m</b>' + (sw.t != null ? '/' + Math.round(sw.t) + 's' : '') + (sw.sd != null ? ' ' + compass(sw.sd) : '')
+        : '<span class="hint">houle —</span>';
+      if (nc) {
+        if (nc.ws != null) out += ' · <span style="color:' + sbWindCol(Math.round(nc.ws)) + ';font-weight:600;">' + Math.round(nc.ws) + ' nds ' + compass(nc.wd) + '</span>';
+        if (nc.at != null) out += ' · ' + Math.round(nc.at) + '°';
+        if (nc.cl != null) out += ' · nuages bas ' + Math.round(nc.cl) + '%, moy ' + Math.round(nc.cm) + '%, haut ' + Math.round(nc.ch) + '%';
+        if (nc.rain != null && nc.rain > 0) out += ' · 💧 ' + nc.rain.toFixed(1) + ' mm';
+      }
+      return out + '</div>';
+    }).join('');
+    el.innerHTML = '<b>' + SB_J_LONG[p.dow] + ' ' + p.d + ' ' + SB_M_SHORT[p.mo] + '</b>' + lines;
+  }
+
+  function sbSelect(idx) {
+    SB_SEL = (idx === SB_SEL) ? -1 : idx;
+    var cells = document.querySelectorAll('#sb-grid .sb-sky'), i;
+    for (i = 0; i < cells.length; i++) {
+      if (i === SB_SEL) cells[i].className = 'sb-sky is-on'; else cells[i].className = 'sb-sky';
+    }
+    sbUpdateReadout(SB_SEL);
+  }
+
+  // ─── Cycle de vie ──────────────────────────────────────────────────────────
+  var SB_LOAD_IV = null;
+  function sbLoad() {
+    // Un clic rapide sur « Actualiser » pendant qu'un premier chargement attend
+    // encore les prévisions lançait un 2ᵉ sondage sans annuler le premier : les
+    // deux tournaient en parallèle jusqu'à 15 s. Un seul sondage à la fois.
+    if (SB_LOAD_IV) { clearInterval(SB_LOAD_IV); SB_LOAD_IV = null; }
+    var data = sbBuildData();
+    if (data) { sbFinishLoad(data); return; }
+    var readout = document.getElementById('sb-readout');
+    if (readout) readout.innerHTML = '<span class="hint">Chargement des prévisions…</span>';
+    var tries = 0;
+    SB_LOAD_IV = setInterval(function () {
+      tries++;
+      var d2 = sbBuildData();
+      if (d2) { clearInterval(SB_LOAD_IV); SB_LOAD_IV = null; sbFinishLoad(d2); }
+      else if (tries > 30) {
+        clearInterval(SB_LOAD_IV); SB_LOAD_IV = null;
+        if (readout) readout.innerHTML = '<span class="hint">Prévisions pas encore chargées pour ce spot — réessaie dans un instant.</span>';
+      }
+    }, 500);
+  }
+  function sbFinishLoad(data) {
+    SB_DATA = data;
+    SB_SEL = -1;
+    var card = document.getElementById('sb-card');
+    if (card) card.style.display = '';
+    var nameEl = document.getElementById('sb-spot-name');
+    if (nameEl) {
+      var sp = (typeof SPOTS !== 'undefined' && typeof currentSpot !== 'undefined') ? SPOTS[currentSpot] : null;
+      nameEl.textContent = sp ? sp.name : '';
+    }
+    var srcEl = document.getElementById('sb-src');
+    if (srcEl) srcEl.textContent = 'vent, température, houle : ' + (SB_DATA.srcLabel || 'source active') + ' · ciel (nuages, pluie, visibilité) : Open-Meteo';
+    sbPopulateSwellModelSel();
+    // _swellCache se remplit d'un coup (Promise.all sur plusieurs modèles) mais
+    // peut prendre quelques secondes : un seul rattrapage différé, pas un
+    // sondage en boucle — la fenêtre où ça manque est courte.
+    if (typeof _swellCache === 'undefined' || !_swellCache) setTimeout(sbPopulateSwellModelSel, 3000);
+    if (!SB_ATTACHED) { sbAttach(); SB_ATTACHED = true; }
+    sbRender();
+    sbUpdateReadout(null);
+  }
+  function sbRelayout() { if (SB_DATA) sbRender(); }
+
+  function sbAttach() {
+    var grid = document.getElementById('sb-grid');
+    function pick(e) {
+      var t = e.target;
+      while (t && t !== grid && (!t.getAttribute || t.getAttribute('data-d') === null)) t = t.parentNode;
+      if (!t || t === grid) return;
+      sbSelect(+t.getAttribute('data-d'));
+    }
+    grid.addEventListener('click', pick);
+    grid.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(e); }
+    });
+    window.addEventListener('resize', sbRelayout);
+    document.getElementById('sb-refresh').addEventListener('click', sbLoad);
+    // Changer de modèle ne touche ni le spot ni le ciel/vent : un simple
+    // redessin suffit.
+    document.getElementById('sb-swell-model-sel').addEventListener('change', function () {
+      SB_SWELL_MODEL = this.value; sbRender(); sbUpdateReadout(SB_SEL);
+    });
+    sbPatchLoadForecast();
+  }
+
+  // Rustine posée UNE fois : elle enveloppe la fonction QUI CHANGE DE SPOT
+  // partout sur cette page (17+ points d'appel — l'éditer à chacun serait bien
+  // plus risqué) pour rafraîchir ce tableau quand le spot change. Même besoin
+  // que sbOnSourceChange(), signalé le 12/08/2026 (« c'est bloqué sur un seul
+  // spot ») sur le météogramme que ce tableau remplace.
+  function sbPatchLoadForecast() {
+    if (SB_PATCHED || typeof loadForecast !== 'function') return;
+    SB_PATCHED = true;
+    var orig = loadForecast;
+    loadForecast = function () {
+      var r = orig.apply(this, arguments);
+      if (r && typeof r.then === 'function') {
+        r.then(function () { try { sbLoad(); } catch (_) {} })
+         .catch(function () { try { sbLoad(); } catch (_) {} });
+      }
+      return r;
+    };
+  }
+  // Appelé par setHsSrc() quand la source houle change ailleurs sur la page.
+  function sbOnSourceChange() { if (SB_DATA) sbLoad(); }
+
+  // Amorçage. Ce bloc est inline TRÈS haut dans le <body> (le tableau est la
+  // première image de la page) : à ce moment-là ni loadForecast() ni
+  // calcSurfScore() n'existent encore, ils sont déclarés dans les <script>
+  // suivants. D'où l'attente de 'load' — et non un appel immédiat, qui
+  // laisserait SB_ATTACHED à true sans jamais poser la rustine de changement de
+  // spot. sbLoad() sonde ensuite jusqu'à ce que les prévisions arrivent, la
+  // carte restant masquée d'ici là (pas de cadre vide au premier rendu).
+  if (document.readyState === 'complete') sbLoad();
+  else window.addEventListener('load', sbLoad);
+  </script>
+
   <!-- ═══ WIDGET PRÉVISIONS GLOBAL — vue synthétique, lisible en 3s (EPIC 1) ═══ -->
   <div class="card" id="gw-widget" style="display:none;">
     <div class="gw-head">
@@ -719,933 +1586,6 @@ canvas#yw-canvas{display:block;touch-action:pan-y}
     </div>
   </div>
 
-  <!-- Météogramme illustré : ciel réel par altitude + houle continue, porté de
-       semaine.html/build-week.mjs le 12/08/2026 pour le spot COURANT de cette
-       page (window._fcastData, déjà chargé — aucun fetch séparé). Accordéon
-       fermé par défaut et chargé PARESSEUSEMENT (à l'ouverture, cf. le
-       listener 'toggle' dans le script juste en dessous) : ce n'est pas la
-       référence chiffrée de la page (#gw-widget l'est), un complément visuel
-       optionnel qui ne doit pas ralentir le premier rendu. Pas de sélecteur
-       de spot/modèle ni de marée dupliquée : "cette représentation-là, rien
-       d'autre", demandé ce jour-là — juste la scène ciel+houle+vent, pour le
-       spot déjà affiché plus haut. -->
-  <details class="card" id="yw-acc" style="margin-bottom:12px;padding:14px;">
-    <summary style="cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;">🌤️ Ciel &amp; houle illustrés</summary>
-    <div class="yw-card" id="yw-card" style="margin-top:10px;">
-      <div class="yw-top">
-        <div>
-          <div class="yw-title">🌤️ <span id="yw-spot-name"></span></div>
-          <div id="yw-src" style="font-size:10.5px;color:var(--faint);margin-top:1px;"></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <!-- Modèle houle : liste reconstruite depuis SWELL_MODELS/_swellCache
-               (déjà chargés par le comparatif juste en dessous, cf.
-               ywPopulateSwellModelSel) — ne change QUE la courbe/le badge
-               houle, jamais le ciel/vent (cf. yw-src ci-dessus), comme sur
-               semaine.html. Rétabli le 12/08/2026 ("remettre menu de
-               sélection de modèle"). -->
-          <select id="yw-swell-model-sel" aria-label="Choisir le modèle houle"
-            style="background:var(--ocean);color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:0 8px;min-height:32px;font-size:11px;font-family:inherit;max-width:185px;"></select>
-          <button class="yw-refresh" id="yw-refresh" type="button">↻ Actualiser</button>
-        </div>
-      </div>
-      <div class="yw-scroll" id="yw-scroll">
-        <div class="yw-inner" id="yw-inner">
-          <div class="yw-row" id="yw-head"></div>
-          <div class="yw-row yw-wind" id="yw-wind"></div>
-          <!-- aria-hidden : scène purement illustrative, sans équivalent
-               texte possible (nuages/pluie dessinés) — le contenu
-               ACCESSIBLE équivalent, ce sont les boutons jour (aria-label)
-               et #yw-readout ci-dessous (aria-live), pas ce canvas.
-               Ajouté le 13/08/2026 en auditant ce chantier. -->
-          <canvas id="yw-canvas" aria-hidden="true"></canvas>
-          <div class="yw-axis-wrap" id="yw-axis-wrap"><div class="yw-axis" id="yw-axis"></div></div>
-        </div>
-      </div>
-      <div class="yw-readout" id="yw-readout" aria-live="polite"><span class="hint">Touche un jour pour le détail heure par heure.</span></div>
-      <div class="yw-leg">
-        <div><b>Flèche</b> = direction vers laquelle vent/houle se dirigent (même convention que le reste du site)</div>
-        <div><b>Couleur du vent</b> = vitesse, mêmes seuils que le reste du site (7/12/17/23 nds)</div>
-        <div><b>Ciel</b> = nuages bas/moyens/hauts réels (Open-Meteo GFS) — les bas sont ceux qui amènent la pluie</div>
-        <div><b>Traits obliques</b> = précipitation réelle, inclinés dans le sens du vent</div>
-      </div>
-    </div>
-  </details>
-  <script>
-  // ═══════════════════════════════════════════════════════════════════════
-  // MÉTÉOGRAMME ILLUSTRÉ — voir le commentaire HTML juste au-dessus. Toute
-  // la logique de dessin (ciel continu par interpolation, houle en runs
-  // séparés par jour manquant, etc.) est reprise à l'identique de
-  // build-week.mjs : ne modifier qu'un seul des deux fichiers fait diverger
-  // le rendu entre previsions.html et semaine.html, cf. leur commentaire
-  // d'origine sur ce même risque.
-  // ═══════════════════════════════════════════════════════════════════════
-  var YW_DAY_W0 = 104, YW_SKY_H0 = 112, YW_SWELL_H0 = 60, YW_AXIS_H0 = 16;
-  var YW_DAY_W = YW_DAY_W0, YW_SCALE = 1;
-  var YW_SKY_H = YW_SKY_H0, YW_SWELL_H = YW_SWELL_H0, YW_AXIS_H = YW_AXIS_H0;
-  var YW_SCENE_H = YW_SKY_H + YW_SWELL_H + YW_AXIS_H;
-  var YW_HOVER = -1, YW_DPR = 1, YW_DATA = null, YW_ATTACHED = false, YW_PATCHED = false;
-  // 'auto' = houle de la source active (yw-src, cf. ywActiveSource) — toute
-  // autre valeur = une clé SWELL_MODELS, la courbe/le badge vient alors de
-  // _swellCache[clé] (déjà chargé par le comparatif "Houle — comparatif
-  // modèles" juste en dessous). Le ciel/vent ne suit JAMAIS ce choix, cf.
-  // ywActiveSource — même séparation que MG_MODEL côté semaine.html.
-  var YW_SWELL_MODEL = 'auto';
-  var YW_AXIS_LABELS = [];
-  var YW_M_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-  var YW_J_LONG  = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
-  var YW_J_SHORT = ['dim','lun','mar','mer','jeu','ven','sam'];
-
-  function ywEsc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-  // Mêmes seuils/couleurs que windCol() (assets/settings-utils.js — pas chargé
-  // par previsions.html, d'où cette copie locale) ; _panelLight() vient de
-  // charts-core.js, déjà chargé.
-  var YW_WIND_T = [7, 12, 17, 23];
-  function ywWindCol(v) {
-    var t = YW_WIND_T;
-    return (typeof _panelLight === 'function' && _panelLight())
-      ? (v == null ? '#5c7080' : v < t[0] ? '#127a4e' : v < t[1] ? '#1a729b' : v < t[2] ? '#a8631f' : v < t[3] ? '#b45309' : '#c73e3e')
-      : (v == null ? '#3d5468' : v < t[0] ? '#3dba8a' : v < t[1] ? '#4fa3c7' : v < t[2] ? '#e8a057' : v < t[3] ? '#e8874a' : '#e05c5c');
-  }
-
-  // Construit YW_DATA depuis LA SOURCE ACTUELLEMENT CHOISIE par le toggle
-  // houle du reste de la page (_currentHsSrc, cf. setHsSrc()) — 'nc' lit
-  // _fcastData, 'om' lit _omFcastData (même forme de champs, les deux sont
-  // TOUJOURS peuplés en parallèle). AVANT le 12/08/2026 ce bloc ne lisait que
-  // _fcastData sans regarder _currentHsSrc : le météogramme restait donc
-  // figé sur meteo.nc même en basculant sur GFS ailleurs sur la page — signalé
-  // le même jour ("ça change pas selon le modèle choisi"). dates[] est DÉJÀ
-  // décalé de +11h (cf. previsions.html: "new Date(new Date(d.time).getTime()
-  // +11*3600000)") : on lit donc en getUTC* SANS re-décaler — le piège
-  // classique du fuseau NC (CLAUDE.md) serait de le décaler une 2e fois.
-  // Fenêtre diurne 6h-17h et 7 jours, mêmes bornes que semaine.html (alignées
-  // le 12/08/2026), mais ici en cadence RÉELLE (previsions.html charge bien
-  // plus fin que les 4 créneaux/jour de la page hebdo).
-  function ywActiveSource() {
-    var src = (typeof _currentHsSrc !== 'undefined') ? _currentHsSrc : 'nc';
-    var fc = (src === 'om' && window._omFcastData) ? window._omFcastData : window._fcastData;
-    return { fc: fc, label: (src === 'om') ? 'GFS Open-Meteo' : 'meteo.nc' };
-  }
-
-  // Reconstruit les options de #yw-swell-model-sel depuis SWELL_MODELS/
-  // _swellCache (déjà chargés par le comparatif "Houle — comparatif
-  // modèles" plus bas sur la page — aucune requête en plus) : seuls les
-  // modèles qui ont RÉELLEMENT une série pour ce spot apparaissent (LOTUS
-  // n'existe qu'à 5 zones, par ex.). "auto" = houle de la source active
-  // (meteo.nc/GFS, cf. ywActiveSource), toujours en tête.
-  function ywPopulateSwellModelSel() {
-    var sel = document.getElementById('yw-swell-model-sel');
-    if (!sel) return;
-    var autoLabel = 'Auto (' + (YW_DATA && YW_DATA.srcLabel ? YW_DATA.srcLabel : 'source active') + ')';
-    var opts = [{ key: 'auto', label: autoLabel }];
-    if (typeof SWELL_MODELS !== 'undefined' && typeof _swellCache !== 'undefined' && _swellCache) {
-      SWELL_MODELS.forEach(function (m) {
-        var c = _swellCache[m.key];
-        if (c && c.primary && c.primary.length) opts.push({ key: m.key, label: m.label });
-      });
-    }
-    var keys = opts.map(function (o) { return o.key; });
-    if (keys.indexOf(YW_SWELL_MODEL) === -1) YW_SWELL_MODEL = 'auto';
-    sel.innerHTML = opts.map(function (o) {
-      return '<option value="' + o.key + '"' + (o.key === YW_SWELL_MODEL ? ' selected' : '') + '>' + ywEsc(o.label) + '</option>';
-    }).join('');
-  }
-
-  // Série houle d'UN modèle du comparatif, au format slot {d,h,hs,t,sd} déjà
-  // utilisé partout ici — _swellCache[clé].primary porte des points {ms,h,t,
-  // dir}, ms = epoch UTC VRAI (cf. _swellToPts : "dt.getTime()-11*3600000"),
-  // PAS la convention "+11h déjà appliqué" du reste de ce fichier : reconvertir
-  // avant de lire en getUTC*, sinon c'est le piège fuseau classique (CLAUDE.md)
-  // — un jour sur deux faux silencieusement.
-  function ywModelSwellSlotsFor(key) {
-    if (typeof _swellCache === 'undefined' || !_swellCache || !_swellCache[key]) return [];
-    var pts = _swellCache[key].primary || [];
-    // Houle secondaire : disponible pour certains modèles du comparatif (MF/
-    // GFS ont une vraie 2ᵉ houle native, cf. _swellToPts) — indexée par ms
-    // pour la recoller au bon point primaire. Rétablie le 12/08/2026 : elle
-    // n'était montrée qu'en mode 'auto', alors que d'autres modèles en ont
-    // aussi ("je ne vois pas... la houle secondaire pour tous les modèles").
-    var secByMs = {};
-    (_swellCache[key].secondary || []).forEach(function (p) { if (p.ms != null) secByMs[p.ms] = p; });
-    var HOUR_MIN = YW_DATA.hourMin, HOUR_MAX = YW_DATA.hourMax;
-    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-    var out = [];
-    pts.forEach(function (p) {
-      if (p.h == null) return;
-      var dt = new Date(p.ms + 11 * 3600000);
-      var hour = dt.getUTCHours();
-      if (hour < HOUR_MIN || hour > HOUR_MAX) return;
-      var dayKey = dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate());
-      var sp = secByMs[p.ms];
-      out.push({
-        d: dayKey, h: hour, hs: p.h, t: p.t, sd: p.dir,
-        hs2: sp ? sp.h : null, per2: sp ? sp.t : null, sd2: sp ? sp.dir : null
-      });
-    });
-    return out;
-  }
-
-  function ywBuildData() {
-    var act = ywActiveSource(), fc = act.fc;
-    if (!fc || !fc.dates || !fc.dates.length) return null;
-    var HOUR_MIN = 6, HOUR_MAX = 17, MAX_DAYS = 7;
-    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-    var dayMinMax = {}, daySeen = [], raw = [];
-    fc.dates.forEach(function (dt, i) {
-      var dayKey = dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate());
-      var hour = dt.getUTCHours();
-      if (fc.tAir && fc.tAir[i] != null) {
-        var mm = dayMinMax[dayKey] || (dayMinMax[dayKey] = { tmax: -999, tmin: 999 });
-        if (fc.tAir[i] > mm.tmax) mm.tmax = fc.tAir[i];
-        if (fc.tAir[i] < mm.tmin) mm.tmin = fc.tAir[i];
-      }
-      if (daySeen.indexOf(dayKey) === -1) daySeen.push(dayKey);
-      if (hour < HOUR_MIN || hour > HOUR_MAX) return;
-      if (fc.sw1h[i] == null) return;
-      raw.push({ dayKey: dayKey, hour: hour, i: i });
-    });
-    // Jours RÉELLEMENT affichés = ceux qui ont de la houle (raw), pas tous
-    // les jours où _fcastData a un point QUELCONQUE (daySeen, qui inclut les
-    // jours vent-seul au-delà de l'horizon houle) : une colonne "pas de
-    // donnée" en fin de semaine n'apportait rien — demandé le 12/08/2026
-    // ("si y'a pas de donnée, ne pas afficher le jour").
-    var days = [];
-    raw.forEach(function (r) { if (days.indexOf(r.dayKey) === -1) days.push(r.dayKey); });
-    days = days.slice(0, MAX_DAYS);
-    var keep = {}; days.forEach(function (k) { keep[k] = 1; });
-    var slots = raw.filter(function (r) { return keep[r.dayKey]; }).map(function (r) {
-      var i = r.i;
-      return {
-        d: r.dayKey, h: r.hour,
-        hs: fc.sw1h[i], t: fc.sw1t ? fc.sw1t[i] : null, sd: fc.sw1d ? fc.sw1d[i] : null,
-        hs2: fc.sw2h ? fc.sw2h[i] : null, per2: fc.sw2t ? fc.sw2t[i] : null, sd2: fc.sw2d ? fc.sw2d[i] : null,
-        ws: fc.wSpd ? fc.wSpd[i] : null, wd: fc.wDir ? fc.wDir[i] : null,
-        cl: fc.cldL ? fc.cldL[i] : null, cm: fc.cldM ? fc.cldM[i] : null, ch: fc.cldH ? fc.cldH[i] : null,
-        precip: fc.rain ? fc.rain[i] : null, code: null,
-        at: fc.tAir ? fc.tAir[i] : null
-      };
-    });
-    if (!slots.length) return null;
-    var daily = {};
-    days.forEach(function (k) { if (dayMinMax[k]) daily[k] = dayMinMax[k]; });
-    return { days: days, slots: slots, daily: daily, hourMin: HOUR_MIN, hourMax: HOUR_MAX, srcLabel: act.label };
-  }
-
-  function ywDayParts(k) {
-    var p = k.split('-');
-    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12));
-    return { d: +p[2], mo: +p[1] - 1, dow: d.getUTCDay() };
-  }
-  function ywPrecipFromCode(code, mm) {
-    if (code == null) return (mm > 0.2) ? 'rain' : 'none';
-    if (code >= 95) return 'storm';
-    if (code >= 80 && code <= 82) return 'shower';
-    if (code >= 61 && code <= 65) return 'rain';
-    if (code >= 51 && code <= 57) return 'drizzle';
-    return (mm > 0.2) ? 'rain' : 'none';
-  }
-  function ywRng(seed) {
-    return function () {
-      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
-  }
-  function ywSeed(s) {
-    var h = 2166136261, i;
-    for (i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return h >>> 0;
-  }
-  function ywLerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
-  function ywRgba(c, a) { return 'rgba(' + c[0].toFixed(0) + ',' + c[1].toFixed(0) + ',' + c[2].toFixed(0) + ',' + (a == null ? 1 : a) + ')'; }
-  function ywNiceMax(v) {
-    var steps = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8], i;
-    for (i = 0; i < steps.length; i++) if (v <= steps[i] * .92) return steps[i];
-    return Math.ceil(v);
-  }
-  function ywGridSteps(maxV) {
-    if (maxV <= 0.5) return [0.5];
-    if (maxV <= 1) return [0.5, 1];
-    if (maxV <= 1.5) return [0.5, 1, 1.5];
-    var step = maxV > 5 ? 2 : 1, steps = [], v;
-    for (v = step; v <= maxV + 1e-6; v += step) steps.push(v);
-    return steps;
-  }
-  function ywCatmull(p0, p1, p2, p3, t) {
-    var t2 = t * t, t3 = t2 * t;
-    return {
-      x: .5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
-      y: .5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y +4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
-    };
-  }
-  function ywInterpAt(xArr, vArr, xRel) {
-    var n = xArr.length;
-    if (n === 1) return vArr[0];
-    if (xRel <= xArr[0]) return vArr[0];
-    if (xRel >= xArr[n - 1]) return vArr[n - 1];
-    var i;
-    for (i = 0; i < n - 1; i++) {
-      if (xRel >= xArr[i] && xRel <= xArr[i + 1]) {
-        var t = (xRel - xArr[i]) / (xArr[i + 1] - xArr[i]);
-        return vArr[i] + (vArr[i + 1] - vArr[i]) * t;
-      }
-    }
-    return vArr[n - 1];
-  }
-  function ywArrow(ctx, x, y, fromDeg, size, fill) {
-    ctx.save(); ctx.translate(x, y); ctx.rotate((fromDeg + 180) * Math.PI / 180);
-    ctx.beginPath();
-    ctx.moveTo(0, -size); ctx.lineTo(size * .62, size * .6); ctx.lineTo(0, size * .24); ctx.lineTo(-size * .62, size * .6);
-    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
-    ctx.restore();
-  }
-  function ywCloudPuff(ctx, cx, cy, scale, op, tone) {
-    tone = tone || 0;
-    ctx.save(); ctx.globalAlpha = op;
-    var lobes = [[0, -3, 15], [-15, 3, 12], [15, 3, 12], [-6, -7, 10], [7, -8, 11], [0, 6, 14]];
-    ctx.fillStyle = ywRgba(ywLerp([26, 32, 40], [4, 5, 7], tone * .5), .32 + tone * .24);
-    lobes.forEach(function (o) {
-      ctx.beginPath(); ctx.ellipse(cx + o[0] * scale, cy + o[1] * scale + 4.5 * scale, o[2] * scale, o[2] * .82 * scale, 0, 0, 7); ctx.fill();
-    });
-    var hi = ywLerp([255, 255, 255], [186, 192, 200], tone);
-    var lo = ywLerp([196, 208, 218], [46, 51, 60], tone);
-    lobes.forEach(function (o) {
-      var lx = cx + o[0] * scale, ly = cy + o[1] * scale, r = o[2] * scale;
-      var grd = ctx.createRadialGradient(lx - r * .38, ly - r * .42, r * .12, lx, ly, r * 1.25);
-      grd.addColorStop(0, ywRgba(hi)); grd.addColorStop(.65, ywRgba(ywLerp(hi, lo, .5))); grd.addColorStop(1, ywRgba(lo));
-      ctx.fillStyle = grd; ctx.beginPath(); ctx.ellipse(lx, ly, r, r * .8, 0, 0, 7); ctx.fill();
-    });
-    ctx.restore();
-  }
-  function ywLightning(ctx, x, y, scale, fill) {
-    var pts = [[13, 2], [3, 14], [10, 14], [9, 22], [19, 9], [12, 9]];
-    ctx.save(); ctx.beginPath();
-    pts.forEach(function (p, i) { var px = x + p[0] * scale, py = y + p[1] * scale; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
-    ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
-  }
-  function ywTempBadge(ctx, x, y, label, rgb) {
-    var r = 9 * YW_SCALE;
-    ctx.save();
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = ywRgba(rgb, .92); ctx.fill();
-    ctx.fillStyle = '#08141f'; ctx.font = '800 ' + Math.round(8.5 * YW_SCALE) + 'px sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, x, y + .5); ctx.restore();
-  }
-  function ywSwellBadge(ctx, cx, cy, r, hTxt, pTxt, fromDeg, col) {
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7);
-    ctx.fillStyle = 'rgba(6,16,30,.88)'; ctx.fill();
-    ctx.lineWidth = Math.max(1.4, r * .1); ctx.strokeStyle = ywRgba(col); ctx.stroke();
-    if (fromDeg != null) ywArrow(ctx, cx, cy - r * .38, fromDeg, r * .4, ywRgba(col));
-    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff';
-    ctx.font = '800 ' + Math.max(9, Math.round(r * .58)) + 'px sans-serif';
-    ctx.fillText(hTxt, cx, cy + r * .52);
-    ctx.restore();
-    if (pTxt) {
-      ctx.textAlign = 'center'; ctx.fillStyle = ywRgba(col);
-      ctx.font = '700 ' + Math.max(9, Math.round(r * .34)) + 'px sans-serif';
-      ctx.fillText(pTxt, cx, cy + r + Math.max(11, r * .48));
-    }
-  }
-  function ywWindArrowSvg(wd, size) {
-    var propDeg = ((wd || 0) + 180) % 360;
-    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true">'
-      + '<g transform="rotate(' + propDeg + ',12,12)">'
-      + '<path d="M12,2 L19,14 L13.5,14 L13.5,22 L10.5,22 L10.5,14 L5,14 Z" fill="rgba(6,16,28,.82)"/>'
-      + '</g></svg>';
-  }
-
-  function ywComputeLayout() {
-    var card = document.getElementById('yw-card');
-    var avail = (card && card.clientWidth) || window.innerWidth - 32 || 500;
-    var n = Math.max(1, YW_DATA.days.length);
-    YW_DAY_W = Math.max(YW_DAY_W0, Math.min(230, Math.floor(avail / n)));
-    YW_SCALE = Math.min(2.3, YW_DAY_W / YW_DAY_W0);
-    var hScale = Math.min(1.55, YW_SCALE);
-    YW_SKY_H = Math.round(YW_SKY_H0 * hScale);
-    YW_SWELL_H = Math.round(YW_SWELL_H0 * hScale);
-    YW_AXIS_H = Math.round(YW_AXIS_H0 * Math.min(1.25, hScale));
-    YW_SCENE_H = YW_SKY_H + YW_SWELL_H + YW_AXIS_H;
-  }
-  function ywEnsureCanvasSize() {
-    ywComputeLayout();
-    var cv = document.getElementById('yw-canvas');
-    var totalW = YW_DAY_W * YW_DATA.days.length;
-    YW_DPR = Math.min(2, window.devicePixelRatio || 1);
-    cv.style.width = totalW + 'px'; cv.style.height = YW_SCENE_H + 'px';
-    cv.width = Math.round(totalW * YW_DPR); cv.height = Math.round(YW_SCENE_H * YW_DPR);
-  }
-  function ywSlotsByDay(list) {
-    var arr = Array.isArray(list) ? list : list.slots;
-    var byDay = {};
-    arr.forEach(function (s) { (byDay[s.d] = byDay[s.d] || []).push(s); });
-    var k; for (k in byDay) byDay[k].sort(function (a, b) { return a.h - b.h; });
-    return byDay;
-  }
-  function ywHourFrac(h) { return (h - YW_DATA.hourMin) / (YW_DATA.hourMax - YW_DATA.hourMin); }
-  function ywSegBounds(ds, idx) {
-    var loH = idx === 0 ? YW_DATA.hourMin : (ds[idx - 1].h + ds[idx].h) / 2;
-    var hiH = idx === ds.length - 1 ? YW_DATA.hourMax : (ds[idx].h + ds[idx + 1].h) / 2;
-    return { x0: ywHourFrac(loH) * YW_DAY_W, x1: ywHourFrac(hiH) * YW_DAY_W };
-  }
-
-  function ywRenderHeadWind() {
-    var byDay = ywSlotsByDay(YW_DATA);
-    var headHtml = '', windHtml = '';
-    YW_DATA.days.forEach(function (k) {
-      var p = ywDayParts(k);
-      var ds = byDay[k] || [];
-      headHtml += '<div class="yw-day" data-d="' + ywEsc(k) + '" tabindex="0" role="button"'
-        + ' aria-label="Détail du ' + YW_J_LONG[p.dow] + ' ' + p.d + '">'
-        + '<span class="dn">' + YW_J_SHORT[p.dow] + '</span><span class="dd">' + p.d + ' ' + YW_M_SHORT[p.mo] + '</span></div>';
-      var arrowPx = Math.max(12, Math.min(22, Math.round(15 * YW_SCALE)));
-      var segs = ds.length ? ds.map(function (s, si) {
-        var b = ywSegBounds(ds, si), w = b.x1 - b.x0;
-        var numTxt = s.ws == null ? '—' : Math.round(s.ws) + '';
-        return '<span class="yw-wseg" style="left:' + b.x0.toFixed(1) + 'px;width:' + w.toFixed(1) + 'px;background:' + ywWindCol(s.ws) + '"'
-          + ' title="' + s.h + ' h — ' + numTxt + ' nds ' + compass(s.wd) + '">'
-          + ywWindArrowSvg(s.wd, arrowPx)
-          + '<b style="font-size:' + Math.round(9 * YW_SCALE) + 'px">' + numTxt + '</b></span>';
-      }).join('') : '<span class="yw-wseg yw-wseg-empty">·</span>';
-      windHtml += '<div class="yw-day">' + segs + '</div>';
-    });
-    document.getElementById('yw-head').innerHTML = headHtml;
-    document.getElementById('yw-wind').innerHTML = windHtml;
-    document.getElementById('yw-inner').style.setProperty('--yww', YW_DAY_W + 'px');
-  }
-
-  function ywDraw() {
-    var cv = document.getElementById('yw-canvas');
-    var totalW = YW_DAY_W * YW_DATA.days.length;
-    var ctx = cv.getContext('2d');
-    ctx.setTransform(YW_DPR, 0, 0, YW_DPR, 0, 0);
-    ctx.clearRect(0, 0, totalW, YW_SCENE_H);
-    ctx.textBaseline = 'alphabetic';
-
-    var accentRgb = [79, 163, 199], warmRgb = [232, 160, 87];
-    var skyTopClear = [16, 92, 150], skyHorClear = [46, 132, 172];
-    var skyTopCloudy = [52, 74, 98], skyHorCloudy = [72, 92, 110];
-    var deepC = [4, 22, 40];
-    var byDay = ywSlotsByDay(YW_DATA);
-    // Source de la courbe/du badge houle : la source active (byDay, comme le
-    // ciel/vent) par défaut, ou un AUTRE modèle si choisi dans
-    // #yw-swell-model-sel (cf. ywModelSwellSlotsFor) — le ciel/vent restent
-    // TOUJOURS sur byDay quel que soit ce choix. Rétabli le 12/08/2026
-    // ("remettre menu de sélection de modèle"), même principe que MG_MODEL
-    // côté semaine.html.
-    var swellByDay = (YW_SWELL_MODEL === 'auto') ? byDay : ywSlotsByDay(ywModelSwellSlotsFor(YW_SWELL_MODEL));
-
-    // Points de houle pour le ruban continu, groupés en RUNS séparés à
-    // chaque jour sans donnée (cf. commentaire équivalent build-week.mjs) :
-    // un modèle du comparatif peut avoir un horizon plus court ou des trous
-    // — relier deux points de part et d'autre d'un jour VIDE inventerait une
-    // houle qui n'a jamais été prévue.
-    var ptRuns = [], curRun = [];
-    YW_DATA.days.forEach(function (k, d) {
-      var ds = swellByDay[k] || [];
-      if (!ds.length) { if (curRun.length) { ptRuns.push(curRun); curRun = []; } return; }
-      ds.forEach(function (s) {
-        if (s.hs == null) return;
-        curRun.push({ x: d * YW_DAY_W + ywHourFrac(s.h) * YW_DAY_W, y: s.hs });
-      });
-    });
-    if (curRun.length) ptRuns.push(curRun);
-    var allPts = ptRuns.length ? ptRuns.reduce(function (a, r) { return a.concat(r); }) : [];
-    var maxV = allPts.length ? ywNiceMax(Math.max.apply(null, allPts.map(function (p) { return p.y; })) * 1.2) : 1;
-    var waterTop = YW_SKY_H + Math.max(6, Math.round(10 * YW_SCALE) + 3), waterBase = YW_SKY_H + YW_SWELL_H;
-    function waterY(v) { return waterBase - (v / maxV) * (waterBase - waterTop); }
-    // Lissage LÉGER (moyenne pondérée 1-2-1) avant la spline — uniquement le
-    // TRACÉ, jamais le pic utilisé par le badge (qui reste lu sur ds, plus
-    // bas, non lissé). previsions.html charge la houle à l'heure réelle (pas
-    // 4 créneaux/jour comme semaine.html) : sur autant de points rapprochés,
-    // le bruit hour-à-heure du modèle donnait une courbe dentelée ("courbes
-    // laides", signalé le 12/08/2026) — un vrai changement de houle reste
-    // visible, seule la micro-variation d'un point à l'autre s'atténue. Runs
-    // courts (peu de créneaux/jour, cas semaine.html) laissés tels quels :
-    // rien à lisser sur 2-4 points, et ça effacerait le peu de donnée réelle
-    // qu'ils portent.
-    var surfRuns = ptRuns.map(function (run) {
-      var sm = run.length < 8 ? run : run.map(function (p, i) {
-        var y0 = run[Math.max(0, i - 1)].y, y1 = p.y, y2 = run[Math.min(run.length - 1, i + 1)].y;
-        return { x: p.x, y: (y0 + 2 * y1 + y2) / 4 };
-      });
-      var xy = sm.map(function (p) { return { x: p.x, y: waterY(p.y) }; });
-      var surf = xy.length ? [xy[0]] : [], i, k2;
-      for (i = 0; i < xy.length - 1; i++) {
-        var p0 = xy[i - 1] || xy[i], p1 = xy[i], p2 = xy[i + 1], p3 = xy[i + 2] || xy[i + 1];
-        for (k2 = 1; k2 <= 8; k2++) surf.push(ywCatmull(p0, p1, p2, p3, k2 / 8));
-      }
-      return surf;
-    });
-
-    YW_DATA.days.forEach(function (k, d) {
-      var x0 = d * YW_DAY_W, ds = byDay[k] || [];
-      if (!ds.length) {
-        // Fond OPAQUE (pas un voile translucide à 3%) : semaine.html est
-        // TOUJOURS en thème sombre, un voile quasi invisible y suffisait,
-        // mais previsions.html supporte le thème clair — sur --deep blanc, ce
-        // voile ne se voyait plus du tout, donnant un "trou blanc" en
-        // permanence sur les jours sans donnée (repéré le 12/08/2026). La
-        // scène est une illustration de ciel : elle reste sombre quel que
-        // soit le thème du site, comme les jours AVEC donnée juste à côté.
-        ctx.fillStyle = '#0d1f3c'; ctx.fillRect(x0, 0, YW_DAY_W, YW_SKY_H + YW_SWELL_H);
-        ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = '600 ' + Math.round(9.5 * YW_SCALE) + 'px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('pas de donnée', x0 + YW_DAY_W / 2, YW_SKY_H / 2);
-        ctx.textAlign = 'left';
-        return;
-      }
-      var xArr = ds.map(function (s) { return ywHourFrac(s.h) * YW_DAY_W; });
-      var clArr = ds.map(function (s) { return s.cl != null ? s.cl : 0; });
-      var cmArr = ds.map(function (s) { return s.cm != null ? s.cm : 0; });
-      var chArr = ds.map(function (s) { return s.ch != null ? s.ch : 0; });
-      var sevArr = ds.map(function (s) {
-        var pt = ywPrecipFromCode(s.code, s.precip);
-        return { none: 0, drizzle: .04, rain: .12, shower: .2, storm: .32 }[pt] || 0;
-      });
-      var bgStep = Math.max(4, Math.round(6 * YW_SCALE)), xr;
-      for (xr = 0; xr < YW_DAY_W; xr += bgStep) {
-        var xrEnd = Math.min(YW_DAY_W, xr + bgStep), xc = (xr + xrEnd) / 2;
-        var clI = ywInterpAt(xArr, clArr, xc), cmI = ywInterpAt(xArr, cmArr, xc), chI = ywInterpAt(xArr, chArr, xc);
-        var toneI = Math.min(1, (clI / 100) * .85 + (cmI / 100) * .45 + (chI / 100) * .12);
-        var topI = ywLerp(skyTopClear, skyTopCloudy, toneI), horI = ywLerp(skyHorClear, skyHorCloudy, toneI);
-        var gI = ctx.createLinearGradient(0, 0, 0, YW_SKY_H);
-        gI.addColorStop(0, ywRgba(topI)); gI.addColorStop(1, ywRgba(horI));
-        ctx.fillStyle = gI; ctx.fillRect(x0 + xr, 0, xrEnd - xr, YW_SKY_H + YW_SWELL_H);
-        var sevI = ywInterpAt(xArr, sevArr, xc);
-        if (sevI > 0.005) { ctx.fillStyle = 'rgba(8,16,26,' + sevI.toFixed(3) + ')'; ctx.fillRect(x0 + xr, 0, xrEnd - xr, YW_SKY_H + YW_SWELL_H); }
-      }
-
-      var repSlot = ds[0];
-      ds.forEach(function (s) { if ((s.cl != null ? s.cl : 100) < (repSlot.cl != null ? repSlot.cl : 100)) repSlot = s; });
-      var repCl = repSlot.cl != null ? repSlot.cl : 0;
-      if (repCl < 55 && ywPrecipFromCode(repSlot.code, repSlot.precip) === 'none') {
-        var sunT = ywHourFrac(repSlot.h);
-        var minXFrac = Math.min(.42, (34 * YW_SCALE) / YW_DAY_W);
-        var sunX = x0 + Math.max(minXFrac, Math.min(.88, sunT)) * YW_DAY_W;
-        var sunY = YW_SKY_H * (.46 - .24 * Math.sin(Math.PI * Math.max(0, Math.min(1, sunT))));
-        var sunR = (13 - repCl / 100 * 5) * Math.min(1.3, YW_SCALE);
-        var sunIntensity = Math.max(.16, 1 - (repCl / 100) * .85);
-        var sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.6);
-        sunGlow.addColorStop(0, ywRgba(warmRgb, .42 * sunIntensity)); sunGlow.addColorStop(1, ywRgba(warmRgb, 0));
-        ctx.fillStyle = sunGlow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.6, 0, 7); ctx.fill();
-        ctx.save(); ctx.translate(sunX, sunY);
-        ctx.strokeStyle = ywRgba([255, 244, 210], .4 * sunIntensity); ctx.lineWidth = 1.4;
-        var rayN = 8, ri;
-        for (ri = 0; ri < rayN; ri++) {
-          var ra = ri / rayN * Math.PI * 2;
-          ctx.beginPath(); ctx.moveTo(Math.cos(ra) * sunR * 1.35, Math.sin(ra) * sunR * 1.35);
-          ctx.lineTo(Math.cos(ra) * sunR * 2.05, Math.sin(ra) * sunR * 2.05); ctx.stroke();
-        }
-        ctx.restore();
-        var sunGrd = ctx.createRadialGradient(sunX - sunR * .3, sunY - sunR * .35, sunR * .1, sunX, sunY, sunR);
-        sunGrd.addColorStop(0, ywRgba([255, 250, 225], sunIntensity)); sunGrd.addColorStop(1, ywRgba(warmRgb, sunIntensity));
-        ctx.fillStyle = sunGrd; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, 7); ctx.fill();
-      }
-
-      var hrng = ywRng(ywSeed(k) + 1), hx = 6 * YW_SCALE;
-      while (hx < YW_DAY_W - 6 * YW_SCALE) {
-        var chAt = ywInterpAt(xArr, chArr, hx);
-        if (chAt > 12) {
-          var hy = YW_SKY_H * (.08 + hrng() * .18), hw = 14 + hrng() * 12;
-          ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(.4, chAt / 100 * .4).toFixed(2) + ')'; ctx.lineWidth = 1.2;
-          ctx.beginPath(); ctx.moveTo(x0 + hx, hy); ctx.lineTo(x0 + hx + hw, hy - 1.5); ctx.stroke();
-        }
-        hx += 10 * YW_SCALE + hrng() * 14 * YW_SCALE;
-      }
-      var mrng = ywRng(ywSeed(k) + 500), mx = 8 * YW_SCALE;
-      while (mx < YW_DAY_W - 8 * YW_SCALE) {
-        var cmAt = ywInterpAt(xArr, cmArr, mx);
-        if (cmAt > 8) ywCloudPuff(ctx, x0 + mx, YW_SKY_H * (.24 + mrng() * .22), .26 + cmAt / 100 * .32, .5, .25);
-        mx += 14 * YW_SCALE + mrng() * 16 * YW_SCALE;
-      }
-      var lrng = ywRng(ywSeed(k) + 900), lx = 8 * YW_SCALE;
-      while (lx < YW_DAY_W - 8 * YW_SCALE) {
-        var clAt = ywInterpAt(xArr, clArr, lx);
-        if (clAt > 5) {
-          var toneAt = Math.min(1, (clAt / 100) * .85 + (ywInterpAt(xArr, cmArr, lx) / 100) * .45 + (ywInterpAt(xArr, chArr, lx) / 100) * .12);
-          ywCloudPuff(ctx, x0 + lx, YW_SKY_H * (.42 + lrng() * .34), .38 + clAt / 100 * .58, Math.min(.95, .5 + clAt / 100 * .45), toneAt);
-        }
-        lx += 12 * YW_SCALE + lrng() * 16 * YW_SCALE;
-      }
-
-      ds.forEach(function (s, si) {
-        var b = ywSegBounds(ds, si), xs = x0 + b.x0, segW = b.x1 - b.x0;
-        var ptype = ywPrecipFromCode(s.code, s.precip);
-        if (ptype !== 'none') {
-          var prng = ywRng(ywSeed(k) + si * 777 + 3);
-          if (ptype === 'shower' || ptype === 'storm') {
-            var curtains = 2 + Math.round(prng() * 2), cI;
-            for (cI = 0; cI < curtains; cI++) {
-              var cx0 = xs + prng() * segW, cw = 10 + prng() * 8;
-              var cg = ctx.createLinearGradient(cx0, 0, cx0 + cw * .3, YW_SKY_H + YW_SWELL_H);
-              cg.addColorStop(0, 'rgba(255,255,255,0)'); cg.addColorStop(.5, 'rgba(255,255,255,.12)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
-              ctx.fillStyle = cg;
-              ctx.beginPath(); ctx.moveTo(cx0, 0); ctx.lineTo(cx0 + cw, 0);
-              ctx.lineTo(cx0 + cw * .3, YW_SKY_H + YW_SWELL_H); ctx.lineTo(cx0 - cw * .7, YW_SKY_H + YW_SWELL_H);
-              ctx.closePath(); ctx.fill();
-            }
-          }
-          var mm = s.precip != null ? s.precip : 1;
-          var dens = Math.round(Math.min(90, 18 + mm * 18));
-          var len = { drizzle: 8, rain: 14, shower: 19, storm: 23 }[ptype] || 11;
-          ctx.strokeStyle = ptype === 'drizzle' ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.78)';
-          ctx.lineWidth = ptype === 'storm' ? 1.6 : 1.3;
-          var rDir = ((s.wd || 0) + 180) * Math.PI / 180;
-          var rTiltX = Math.cos(rDir) * Math.min(.9, (s.ws || 0) / 25);
-          var r;
-          for (r = 0; r < dens; r++) {
-            var rx = xs + prng() * segW, ry = prng() * (YW_SKY_H + YW_SWELL_H * .6);
-            ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + len * rTiltX, ry + len); ctx.stroke();
-          }
-          if (ptype === 'storm') ywLightning(ctx, xs + segW * (.2 + prng() * .5), YW_SKY_H * .12, .7 + prng() * .3, 'rgba(255,244,180,.95)');
-        }
-      });
-
-      var day = YW_DATA.daily[k];
-      if (day) {
-        ywTempBadge(ctx, x0 + 11 * YW_SCALE, 13 * YW_SCALE, Math.round(day.tmax) + '°', warmRgb);
-        ywTempBadge(ctx, x0 + 11 * YW_SCALE, 32 * YW_SCALE, Math.round(day.tmin) + '°', accentRgb);
-      }
-      if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.beginPath(); ctx.moveTo(x0 + .5, 0); ctx.lineTo(x0 + .5, YW_SKY_H); ctx.stroke(); }
-    });
-
-    ctx.save();
-    ctx.beginPath(); ctx.rect(0, YW_SKY_H, totalW, YW_SWELL_H); ctx.clip();
-    surfRuns.forEach(function (surf) {
-      if (!surf.length) return;
-      var wg2 = ctx.createLinearGradient(0, YW_SKY_H, 0, waterBase + 24);
-      wg2.addColorStop(0, ywRgba(ywLerp(accentRgb, [255, 255, 255], .3), .97));
-      wg2.addColorStop(.45, ywRgba(accentRgb, .97));
-      wg2.addColorStop(1, ywRgba(deepC, .98));
-      ctx.beginPath(); ctx.moveTo(surf[0].x, waterBase + 30);
-      surf.forEach(function (p) { ctx.lineTo(p.x, p.y); });
-      ctx.lineTo(surf[surf.length - 1].x, waterBase + 30); ctx.closePath();
-      ctx.fillStyle = wg2; ctx.fill();
-      ctx.beginPath(); surf.forEach(function (p, pi) { pi ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
-      ctx.strokeStyle = ywRgba(ywLerp(accentRgb, [255, 255, 255], .6)); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
-    });
-    var ywYSteps = ywGridSteps(maxV);
-    YW_AXIS_LABELS = ywYSteps.map(function (v) { return { v: v, y: waterY(v) }; });
-    ywYSteps.forEach(function (v) {
-      var gy = waterY(v) + .5;
-      ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(totalW, gy); ctx.stroke();
-    });
-    ctx.restore();
-
-    YW_DATA.days.forEach(function (k, d) {
-      if (d === YW_HOVER) { ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(d * YW_DAY_W, 0, YW_DAY_W, YW_SKY_H + YW_SWELL_H); }
-      if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(d * YW_DAY_W + .5, YW_SKY_H); ctx.lineTo(d * YW_DAY_W + .5, YW_SKY_H + YW_SWELL_H); ctx.stroke(); }
-    });
-
-    YW_DATA.days.forEach(function (k, d) {
-      var ds = swellByDay[k];
-      if (!ds || !ds.length) {
-        // Jour affiché (ciel/vent viennent de la source active) mais SANS
-        // donnée pour le modèle houle choisi — son horizon peut être plus
-        // court que celui de meteo.nc/GFS (MARC par ex., cf. modelsForSpot).
-        // Un vide silencieux ici lisait comme un bug ("parfois il manque des
-        // jours", signalé le 12/08/2026) : dire explicitement pourquoi plutôt
-        // que de laisser deviner.
-        if (YW_SWELL_MODEL !== 'auto') {
-          // Puce de fond derrière le texte (pas juste une opacité sur le
-          // dégradé houle, qui varie de clair en haut à très sombre en bas —
-          // contraste imprévisible selon où tombe le texte) : même
-          // traitement que les autres étiquettes du canvas (mgTempBadge
-          // etc), fond sombre translucide + texte clair, contraste garanti
-          // quel que soit le fond dessous. Ajusté le 13/08/2026 en auditant
-          // ce chantier.
-          var nx0 = d * YW_DAY_W + YW_DAY_W / 2, ny0 = YW_SKY_H + YW_SWELL_H / 2;
-          var lbl = 'modèle indisponible';
-          ctx.save();
-          ctx.font = '600 ' + Math.round(9 * YW_SCALE) + 'px sans-serif';
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          var tw = ctx.measureText(lbl).width;
-          ctx.fillStyle = 'rgba(6,16,30,.7)';
-          ctx.fillRect(nx0 - tw / 2 - 6, ny0 - 9 * YW_SCALE, tw + 12, 18 * YW_SCALE);
-          ctx.fillStyle = 'rgba(255,255,255,.7)';
-          ctx.fillText(lbl, nx0, ny0);
-          ctx.restore();
-        }
-        return;
-      }
-      var peak = ds[0]; ds.forEach(function (s) { if (s.hs > peak.hs) peak = s; });
-      var px = d * YW_DAY_W + ywHourFrac(peak.h) * YW_DAY_W;
-      var R = Math.max(15, Math.min(30, YW_DAY_W * .155));
-      var rightPad = R + 3;
-      px = Math.max(d * YW_DAY_W + R + 3, Math.min(d * YW_DAY_W + YW_DAY_W - rightPad, px));
-      if (d === 0) px = Math.max(px, R + 40);
-      // margin = R (rayon, place au-dessus du centre) + décalage du texte de
-      // période EN DESSOUS (cf. ywSwellBadge: cy+r+max(11,r*.48)) + marge. La
-      // borne BASSE utilisait margin*.55 (place insuffisante) : sur un pic
-      // bas (proche de l'axe), le centre était poussé si près du bord que la
-      // légende de période sortait du rect de clip juste en dessous — texte
-      // invisible, "je ne vois pas la période" signalé le 12/08/2026, visible
-      // dès qu'un modèle du comparatif a une amplitude différente de
-      // meteo.nc. Même marge complète aux deux bornes.
-      var margin = R + Math.max(11, R * .48) + 2;
-      var py = Math.min(Math.max(waterY(peak.hs), YW_SKY_H + margin), YW_SKY_H + YW_SWELL_H - margin);
-      ctx.save();
-      ctx.beginPath(); ctx.rect(d * YW_DAY_W + 1, 0, YW_DAY_W - 2, YW_SKY_H + YW_SWELL_H); ctx.clip();
-      ywSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', peak.t != null ? Math.round(peak.t) + 's' : null, peak.sd, accentRgb);
-      // Houle secondaire, satellite orange en haut à droite du badge
-      // principal — demandée le 12/08/2026 ("il n'y a pas la houle
-      // secondaire"). peak.hs2 est un RÉSIDU calculé côté previsions.html
-      // quand la source n'a pas de vraie houle 2 native (cf. le commentaire
-      // de ywUpdateReadout) — presque jamais null, donc gardée derrière le
-      // même seuil de magnitude (>0,4 m) que le détail heure par heure et
-      // l'ancien badge de semaine.html, pour ne pas afficher du bruit comme
-      // si c'était une vraie 2ᵉ houle.
-      if (peak.hs2 != null && peak.hs2 > 0.4 && peak.per2 != null) {
-        var R2 = R * .6;
-        ywSwellBadge(ctx, px + R * .82, py - R * .82, R2, '+' + peak.hs2.toFixed(1) + 'm', Math.round(peak.per2) + 's', peak.sd2, warmRgb);
-      }
-      ctx.restore();
-    });
-    ctx.textAlign = 'center';
-
-    ctx.fillStyle = '#0d1f3c'; ctx.fillRect(0, YW_SKY_H + YW_SWELL_H, totalW, YW_AXIS_H);
-    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(0, YW_SKY_H + YW_SWELL_H + .5); ctx.lineTo(totalW, YW_SKY_H + YW_SWELL_H + .5); ctx.stroke();
-    ctx.fillStyle = '#7d94ab'; ctx.font = '500 ' + Math.round(9 * YW_SCALE) + 'px sans-serif';
-    // Étiquettes DÉCIMÉES : previsions.html charge la houle à l'heure réelle
-    // (jusqu'à plusieurs points/heure aux frontières entre séries), pas les
-    // 4 créneaux/jour de semaine.html d'où ce code est porté — tout étiqueter
-    // donnait des heures collées/superposées ("gère mieux les abscisses
-    // horaires", signalé le 12/08/2026). Un minimum d'écart en PIXELS entre
-    // deux étiquettes consécutives, comparable à la largeur d'un "17h" à
-    // cette échelle — les traits de grille verticaux (silencieux, cf.
-    // panelDayBands du même esprit sur charts-core.js), eux, restent tous
-    // tracés : seul le TEXTE est décimé.
-    var ywMinLabelGap = 24 * YW_SCALE;
-    YW_DATA.days.forEach(function (k, d) {
-      var ds = byDay[k] || [];
-      if (d > 0) { ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(d * YW_DAY_W + .5, YW_SKY_H + YW_SWELL_H); ctx.lineTo(d * YW_DAY_W + .5, YW_SCENE_H); ctx.stroke(); }
-      var lastX = null;
-      ds.forEach(function (s) {
-        var x = d * YW_DAY_W + ywHourFrac(s.h) * YW_DAY_W;
-        if (lastX != null && x - lastX < ywMinLabelGap) return;
-        ctx.fillText(s.h + 'h', x, YW_SKY_H + YW_SWELL_H + YW_AXIS_H * .75);
-        lastX = x;
-      });
-    });
-  }
-
-  function ywRenderAxis() {
-    var wrap = document.getElementById('yw-axis-wrap'), axis = document.getElementById('yw-axis');
-    wrap.style.top = YW_SKY_H + 'px';
-    wrap.style.height = YW_SWELL_H + 'px';
-    wrap.style.width = (YW_DAY_W * YW_DATA.days.length) + 'px';
-    axis.innerHTML = YW_AXIS_LABELS.map(function (a) {
-      var lbl = (a.v < 1 ? a.v.toFixed(1) : a.v.toFixed(0)) + 'm';
-      return '<span style="top:' + (a.y - YW_SKY_H).toFixed(1) + 'px">' + lbl + '</span>';
-    }).join('');
-  }
-
-  function ywUpdateReadout(dayKey) {
-    var el = document.getElementById('yw-readout');
-    if (dayKey == null) { el.innerHTML = '<span class="hint">Touche un jour pour le détail heure par heure.</span>'; return; }
-    // Cadence branchée sur le modèle houle actif (cf. #yw-swell-model-sel) :
-    // même principe que mgUpdateReadout côté semaine.html. 'auto' reproduit
-    // le comportement d'avant ce chantier — YW_DATA.slots directement.
-    var useModel = YW_SWELL_MODEL !== 'auto';
-    var ds = useModel
-      ? ywModelSwellSlotsFor(YW_SWELL_MODEL).filter(function (s) { return s.d === dayKey; }).sort(function (a, b) { return a.h - b.h; })
-      : YW_DATA.slots.filter(function (s) { return s.d === dayKey; });
-    if (!ds.length) {
-      el.innerHTML = '<span class="hint">' + (useModel ? 'Ce modèle ne publie rien ce jour-là.' : 'Pas de créneau ce jour-là.') + '</span>';
-      return;
-    }
-    var p = ywDayParts(dayKey);
-    var lines = ds.map(function (s) {
-      // ncAt : le créneau de la source active À LA MÊME HEURE, s'il existe —
-      // seule source de vent/ciel/température (INVARIANT houle/vent,
-      // CLAUDE.md) : un modèle du comparatif ne fournit QUE la houle. En mode
-      // 'auto', ncAt = s (comportement identique à avant ce chantier).
-      var ncAt = useModel ? (YW_DATA.slots.filter(function (x) { return x.d === dayKey && x.h === s.h; })[0] || null) : s;
-      // s.hs2 en mode 'auto' (sw2h) est un RÉSIDU calculé (Hs-H1-Hvent) quand
-      // meteo.nc n'a pas de vraie houle 2 native — presque jamais null, donc
-      // "!= null" seul affichait "+0.0m/0s —" en continu. En mode modèle
-      // (ywModelSwellSlotsFor), s.hs2 vient de _swellCache[key].secondary
-      // (vraie donnée native si le modèle en a une, MF/GFS par ex., sinon
-      // simplement absente) — même seuil de magnitude (> 0.4 m) dans les deux
-      // cas, mais PLUS masquée pour les autres modèles depuis le 12/08/2026
-      // ("je ne vois pas... la houle secondaire pour tous les modèles").
-      var sec = (s.hs2 != null && s.hs2 > 0.4 && s.per2 != null)
-        ? (' <span class="hint">+ ' + s.hs2.toFixed(1) + 'm/' + Math.round(s.per2) + 's' + (s.sd2 != null ? ' ' + compass(s.sd2) : '') + '</span>')
-        : '';
-      var sky = (ncAt && ncAt.cl != null) ? (' · nuages bas ' + Math.round(ncAt.cl) + '%, moy ' + Math.round(ncAt.cm) + '%, haut ' + Math.round(ncAt.ch) + '%') : '';
-      var rain = (ncAt && ncAt.precip != null && ncAt.precip > 0) ? (' · 💧 ' + ncAt.precip.toFixed(1) + ' mm') : '';
-      var temp = (ncAt && ncAt.at != null) ? (' · ' + Math.round(ncAt.at) + '°') : '';
-      var wind = ncAt ? (' · <span style="color:' + ywWindCol(ncAt.ws) + '">' + (ncAt.ws == null ? '—' : Math.round(ncAt.ws)) + ' nds ' + compass(ncAt.wd) + '</span>') : '';
-      var perDir = (s.t != null ? Math.round(s.t) + 's' : '') + (s.sd != null ? (s.t != null ? ' ' : '') + compass(s.sd) : '');
-      return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>' + (perDir ? '/' + perDir : '') + sec
-        + wind + temp + sky + rain + '</div>';
-    }).join('');
-    el.innerHTML = '<b>' + YW_J_LONG[p.dow] + ' ' + p.d + ' ' + YW_M_SHORT[p.mo] + '</b>' + lines;
-  }
-
-  function ywSetHover(dayIdx) {
-    // mousemove tire ce point à chaque pixel parcouru (60-120+/s) — sans ce
-    // garde-fou, chaque déplacement de souris DANS la même colonne de jour
-    // redessinait tout le canvas (nuages/pluie/spline) pour un résultat
-    // strictement identique. Plus sensible ici que sur semaine.html :
-    // previsions.html charge la houle à l'heure réelle, donc plus de
-    // créneaux à retracer par redessin. Trouvé le 13/08/2026 en auditant
-    // les perfs de ce chantier.
-    if (dayIdx === YW_HOVER) return;
-    YW_HOVER = dayIdx;
-    ywUpdateReadout(dayIdx >= 0 ? YW_DATA.days[dayIdx] : null);
-    ywDraw();
-  }
-
-  function ywRender() {
-    var nameEl = document.getElementById('yw-spot-name');
-    if (nameEl) {
-      var sp = (typeof SPOTS !== 'undefined' && typeof currentSpot !== 'undefined') ? SPOTS[currentSpot] : null;
-      nameEl.textContent = sp ? sp.name : '';
-    }
-    // Source houle affichée EXPLICITEMENT (meteo.nc ou GFS Open-Meteo, cf.
-    // ywActiveSource) : plusieurs sources coexistent sur cette page, ne pas
-    // dire laquelle alimente cette scène serait ambigu — signalé le
-    // 12/08/2026 ("préciser sources météo").
-    var srcEl = document.getElementById('yw-src');
-    if (srcEl) srcEl.textContent = YW_DATA.srcLabel ? ('vent/ciel : ' + YW_DATA.srcLabel) : '';
-    ywPopulateSwellModelSel();
-    // _swellCache se remplit d'un coup (Promise.all sur 6 modèles, cf.
-    // _renderSwellCompare) mais peut prendre plusieurs secondes — si le
-    // météogramme est ouvert avant qu'elle résolve, le sélecteur ne
-    // proposait que "Auto" jusqu'au prochain clic sur "Actualiser". Un seul
-    // rattrapage différé (pas un sondage en boucle) : la fenêtre où ça
-    // manque est courte, pas la peine d'un mécanisme plus lourd. Trouvé le
-    // 13/08/2026 en auditant ce chantier.
-    if (typeof _swellCache === 'undefined' || !_swellCache) {
-      setTimeout(function () { if (document.getElementById('yw-acc').open) ywPopulateSwellModelSel(); }, 3000);
-    }
-    ywComputeLayout();
-    ywRenderHeadWind();
-    ywEnsureCanvasSize();
-    ywDraw();
-    ywRenderAxis();
-    ywUpdateReadout(null);
-    YW_HOVER = -1;
-  }
-  function ywRelayout() {
-    if (!YW_DATA) return;
-    ywComputeLayout();
-    ywRenderHeadWind();
-    ywEnsureCanvasSize();
-    ywDraw();
-    ywRenderAxis();
-  }
-  function ywAttachEvents() {
-    var head = document.getElementById('yw-head');
-    function onPick(e) {
-      var t = e.target;
-      while (t && t !== head && (!t.getAttribute || !t.getAttribute('data-d'))) t = t.parentNode;
-      if (!t || t === head) return;
-      var idx = YW_DATA.days.indexOf(t.getAttribute('data-d'));
-      if (idx === -1) return;
-      ywSetHover(idx === YW_HOVER ? -1 : idx);
-    }
-    head.addEventListener('click', onPick);
-    head.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(e); }
-    });
-    var cv = document.getElementById('yw-canvas');
-    function onCanvasPoint(clientX) {
-      var rect = cv.getBoundingClientRect();
-      var d = Math.max(0, Math.min(YW_DATA.days.length - 1, Math.floor((clientX - rect.left) / YW_DAY_W)));
-      ywSetHover(d);
-    }
-    cv.addEventListener('mousemove', function (e) { onCanvasPoint(e.clientX); });
-    cv.addEventListener('mouseleave', function () { ywSetHover(-1); });
-    cv.addEventListener('touchstart', function (e) {
-      if (e.touches && e.touches.length === 1) onCanvasPoint(e.touches[0].clientX);
-    }, { passive: true });
-    window.addEventListener('resize', ywRelayout);
-    // Changer de modèle ne touche ni le spot ni le ciel/vent (cf. le
-    // commentaire sur swellByDay dans ywDraw()) : pas besoin de ywRender()
-    // complet, juste redessiner le canvas/l'axe/le détail déjà ouvert.
-    document.getElementById('yw-swell-model-sel').addEventListener('change', function () {
-      YW_SWELL_MODEL = this.value; ywDraw(); ywRenderAxis();
-      ywUpdateReadout(YW_HOVER >= 0 ? YW_DATA.days[YW_HOVER] : null);
-    });
-    ywPatchLoadForecast();
-  }
-
-  // Rustine posée UNE fois, à l'ouverture du météogramme (loadForecast()
-  // existe forcément à ce stade — appelée bien avant dans le flux normal de
-  // la page). Enveloppe la fonction QUI CHANGE DE SPOT partout sur cette
-  // page (17+ points d'appel, cf. `grep loadForecast(` — l'éditer à chacun
-  // aurait été bien plus risqué) pour rafraîchir le météogramme s'il est
-  // déjà ouvert quand le spot change — même besoin que ywOnSourceChange(),
-  // signalé le 12/08/2026 ("c'est bloqué sur un seul spot").
-  function ywPatchLoadForecast() {
-    if (YW_PATCHED || typeof loadForecast !== 'function') return;
-    YW_PATCHED = true;
-    var orig = loadForecast;
-    loadForecast = function () {
-      var r = orig.apply(this, arguments);
-      if (r && typeof r.then === 'function') {
-        r.then(function () { try { ywOnSourceChange(); } catch (_) {} })
-         .catch(function () { try { ywOnSourceChange(); } catch (_) {} });
-      }
-      return r;
-    };
-  }
-
-  // Appelé par setHsSrc() (cf. previsions.html, toggle meteo.nc/GFS) quand la
-  // source houle change ailleurs sur la page — ne rafraîchit QUE si
-  // l'accordéon est déjà ouvert : sinon ywLoad() relira de toute façon l'état
-  // à jour à la prochaine ouverture, pas la peine de dessiner pour rien
-  // pendant que c'est fermé.
-  function ywOnSourceChange() {
-    var acc = document.getElementById('yw-acc');
-    if (acc && acc.open) ywLoad();
-  }
-
-  // Reconstruit YW_DATA depuis la source active (cf. ywActiveSource) et
-  // redessine — appelé à l'ouverture de l'accordéon, par "↻ Actualiser", et
-  // par ywOnSourceChange() ci-dessus. Le spot affiché peut aussi avoir changé
-  // depuis le dernier rendu (pas de hook simple et fiable vers le mécanisme
-  // de changement de spot du reste de la page) : rafraîchir à l'ouverture
-  // couvre le cas courant sans devoir s'y accrocher.
-  var YW_LOAD_IV = null; // setInterval en cours (attente _fcastData), s'il y en a un
-  function ywLoad() {
-    // Un clic rapide sur "Actualiser", ou un ferme/rouvre de l'accordéon
-    // pendant qu'un premier chargement attend encore _fcastData, lançait un
-    // 2e setInterval SANS annuler le premier — les deux tournaient en
-    // parallèle jusqu'à 15 s, chacun capable d'appeler ywFinishLoad(). Un
-    // seul sondage à la fois. Trouvé le 13/08/2026 en auditant ce chantier.
-    if (YW_LOAD_IV) { clearInterval(YW_LOAD_IV); YW_LOAD_IV = null; }
-    var data = ywBuildData();
-    if (data) { ywFinishLoad(data); return; }
-    var readout = document.getElementById('yw-readout');
-    if (readout) readout.innerHTML = '<span class="hint">Chargement des prévisions…</span>';
-    var tries = 0;
-    YW_LOAD_IV = setInterval(function () {
-      tries++;
-      data = ywBuildData();
-      if (data) { clearInterval(YW_LOAD_IV); YW_LOAD_IV = null; ywFinishLoad(data); }
-      else if (tries > 30) {
-        clearInterval(YW_LOAD_IV); YW_LOAD_IV = null;
-        if (readout) readout.innerHTML = '<span class="hint">Prévisions pas encore chargées pour ce spot — réessaie dans un instant.</span>';
-      }
-    }, 500);
-  }
-  function ywFinishLoad(data) {
-    YW_DATA = data;
-    if (!YW_ATTACHED) { ywAttachEvents(); YW_ATTACHED = true; }
-    ywRender();
-  }
-  document.getElementById('yw-refresh').addEventListener('click', ywLoad);
-  document.getElementById('yw-acc').addEventListener('toggle', function () {
-    if (this.open) ywLoad();
-  });
-  </script>
 
   <!-- Comparatif houle multi-modèles (meteo.nc vs GFS Open-Meteo) — sous le widget météo -->
   <div class="card" id="swell-cmp-card" style="margin-bottom:12px;display:none;">
@@ -4154,13 +4094,11 @@ function setHsSrc(src, skipRedraw) {
   // Tableau + conditions actuelles
   renderTable(d.dates||[],d.sw1h||[],d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
   try { renderGlobalWidget(); } catch(_){} // le widget global suit le toggle de source
-  // Météogramme illustré (accordéon sous #gw-widget, cf. plus bas dans le
-  // fichier) : même logique — s'il est OUVERT, le rebasculer avec le toggle
-  // doit le rafraîchir tout de suite, sinon il resterait figé sur l'ancienne
-  // source (signalé le 12/08/2026, "ça change pas selon le modèle choisi").
-  // S'il est fermé, ywLoad() relira de toute façon _currentHsSrc à jour à
-  // la prochaine ouverture — pas besoin de le forcer ici.
-  try { if (typeof ywOnSourceChange === 'function') ywOnSourceChange(); } catch(_){}
+  // Tableau ciel & houle (#sb-card, au-dessus de #gw-widget) : même logique —
+  // basculer la source avec le toggle doit le rafraîchir tout de suite, sinon
+  // il resterait figé sur l'ancienne (signalé le 12/08/2026, "ça change pas
+  // selon le modèle choisi", sur le météogramme qu'il remplace).
+  try { if (typeof sbOnSourceChange === 'function') sbOnSourceChange(); } catch(_){}
   if(d.sw1h&&d.sw1h.length) renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0]);
 
   // Badge source
@@ -4820,7 +4758,11 @@ async function loadForecast(i) {
     // best_match vs 3.4/4.0/3.1 kt gfs_seamless à la même heure). Le comparatif
     // vent doit vraiment comparer du GFS, pas un mélange best_match anonyme.
     var omWindUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + s.lat + '&longitude=' + s.lon
-      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,temperature_2m&wind_speed_unit=kn&models=gfs_seamless&forecast_days=10&timezone=GMT';
+      // weather_code ajouté le 15/08/2026 pour le tableau « Ciel & houle » : c'est
+      // le SEUL champ qui distingue orage / averse / bruine / pluie continue —
+      // la lame d'eau (precipitation) seule ne dit pas la nature du phénomène, et
+      // meteo.nc n'expose aucun code temps. Gratuit (même requête, même modèle).
+      + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,temperature_2m,weather_code&wind_speed_unit=kn&models=gfs_seamless&forecast_days=10&timezone=GMT';
 
     // ─── FETCH (parallèle + rendu progressif — BONUS 3) ──────────────────────
     // Token non IP-bound : marine/météo en direct rpcache (ncFetch) ; marées/obs via ncGet
@@ -5428,7 +5370,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     var omNow=new Date();
     var omNi=omH.time.findIndex(function(t){return new Date(t+'Z').getTime()+11*3600000>=omNow.getTime()-3600000;}); 
     if(omNi<0)omNi=0;
-    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omSw2t=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[],omCld=[],omRain=[],omCldL=[],omCldM=[],omCldH=[],omTAir=[],omSst=[];
+    var omLbl=[],omSw1h=[],omSw2h=[],omWndH=[],omTotH=[],omSw1t=[],omSw1d=[],omSw2d=[],omSw2t=[],omWSpd=[],omWGst=[],omWDir=[],omPwr=[],omDates=[],omVis=[],omCld=[],omRain=[],omCldL=[],omCldM=[],omCldH=[],omTAir=[],omSst=[],omCode=[];
     for(var oi=omNi;oi<omH.time.length;oi+=3){
       var omUtc=new Date(omH.time[oi]+'Z');
       var odt=new Date(omUtc.getTime()+11*3600000); // heure NC en UTC
@@ -5453,6 +5395,18 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
       omCldM.push(omW&&omW.cloud_cover_mid&&omW.cloud_cover_mid[oi]!=null?Math.round(omW.cloud_cover_mid[oi]):null);
       omCldH.push(omW&&omW.cloud_cover_high&&omW.cloud_cover_high[oi]!=null?Math.round(omW.cloud_cover_high[oi]):null);
       omTAir.push(omW&&omW.temperature_2m&&omW.temperature_2m[oi]!=null?omW.temperature_2m[oi]:null);
+      // Code temps WMO du créneau : on garde le MAX des 3 heures couvertes par ce
+      // pas (même fenêtre que _rainSlot juste en dessous, oi..oi+2) — les codes
+      // WMO sont ordonnés par sévérité croissante, donc le max = le phénomène le
+      // plus marqué du créneau, pas une moyenne qui n'aurait aucun sens sur un code.
+      omCode.push((function(){
+        if(!omW||!omW.weather_code) return null;
+        var mx=null;
+        for(var r4=oi;r4<Math.min(oi+3,omW.weather_code.length);r4++){
+          if(omW.weather_code[r4]!=null&&(mx===null||omW.weather_code[r4]>mx)) mx=omW.weather_code[r4];
+        }
+        return mx;
+      })());
       omSst.push(omH.sea_surface_temperature&&omH.sea_surface_temperature[oi]!=null?omH.sea_surface_temperature[oi]:null);
       omRain.push(omW?_rainSlot(omW, oi):null);
       var ohs=omH.swell_wave_height[oi],oT=omH.swell_wave_period[oi];
@@ -5462,7 +5416,7 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     // empiriquement, 2026-07-27 — pas un résidu comme meteo.nc). Absent jusqu'ici
     // sur _omFcastData (undefined -> traité à tort comme non-natif ailleurs, ex.
     // exclusion du comparatif §_swellToPts, marqueur "≈" du widget).
-    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,sw2t:omSw2t,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis,cld:omCld,rain:omRain,cldL:omCldL,cldM:omCldM,cldH:omCldH,tAir:omTAir,sst:omSst,
+    _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,sw2t:omSw2t,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis,cld:omCld,rain:omRain,cldL:omCldL,cldM:omCldM,cldH:omCldH,tAir:omTAir,sst:omSst,code:omCode,
       sw2Native: !!omH.secondary_swell_wave_height};
   }
   _currentHsSrc = useNC ? 'nc' : 'om';
@@ -9449,6 +9403,10 @@ async function calibrateFromJournal(silent) {
     if (calibrated > 0) {
       if (changed > 0) saveSpots();
       loadScoreParams(SPOTS[currentSpot]);
+      // Les étoiles du tableau ciel & houle ont été calculées avec les seuils
+      // d'AVANT cette calibration (elle arrive après le premier rendu) — cf. le
+      // commentaire de sbRefreshStars().
+      try { if (typeof sbRefreshStars === 'function') sbRefreshStars(); } catch(_) {}
       if (silent) {
         if (changed > 0) {
           console.info('[Calib] Scores recalibrés depuis le journal :', calibrated, 'spot(s),', changed, 'valeur(s)');
@@ -9737,6 +9695,9 @@ function saveScoreParams(params) {
   if (spot) { spot.scoreParams = Object.assign({}, params); saveSpots(); }
   // Compatibilité: aussi en global
   try { localStorage.setItem('surf-score-params', JSON.stringify(params)); } catch(e) {}
+  // Étoiles du tableau ciel & houle : même moteur de score, elles doivent bouger
+  // en même temps que les réglages ⚙.
+  try { if (typeof sbRefreshStars === 'function') sbRefreshStars(); } catch(_) {}
 }
 
 
@@ -17636,6 +17597,7 @@ function openNavBMSDetail() {
 <button id="quick-nav-fab" class="show" onclick="_toggleQuickNav()" title="Navigation rapide" aria-label="Navigation rapide">🧭</button>
 <div id="quick-nav-menu">
   <button onclick="_quickNavTo('bsf-wrap')">🏄 Meilleurs créneaux</button>
+  <button onclick="_quickNavTo('sb-card')">🌤️ Ciel &amp; houle</button>
   <button onclick="_quickNavTo('gw-widget')">📊 Widget météo</button>
   <button onclick="_quickNavTo('swell-cmp-card')">🆚 Comparatif houle</button>
   <button onclick="_quickNavTo('wg-arome-card')">🌀 AROME / Puissance</button>
