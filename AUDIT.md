@@ -7180,3 +7180,170 @@ distinction 0/vide tenue de la saisie jusqu'au CSV.
 `blocs[1]` (389 Ko), pas `blocs[2]` comme dans `previsions.html` — `blocs[2]` n'est
 que l'enregistrement du service worker (197 car.). Un `node --check` sur le mauvais
 bloc ne valide rien.
+
+---
+
+## 2026-08-16 (suite) — Saisie d'une session : un seul créneau, une source de prévision nommée
+
+Retour utilisateur : « le journal quand on rentre une session c'est un peu le bazar,
+les conditions sont fixées sur meteo.nc alors qu'on choisit entre plusieurs modèles,
+puis l'étendue horaire est indiquée sur la courbe de marée à la fin donc je ne sais
+pas si les conditions affichées correspondent à ces horaires ».
+
+Diagnostic : le formulaire portait **deux chaînes de temps indépendantes** et **deux
+chaînes de modèles** qui ne se parlaient pas.
+
+### Ce qui était faux
+
+**1. Les conditions décrivaient « maintenant », pas la session.**
+`_autoFillConditions` calait `_refMs = Date.now()` sauf si la date était STRICTEMENT
+future. Une session du matin saisie le soir était donc pré-remplie avec les conditions
+du soir, sous une étiquette qui n'annonçait aucune heure. Idem pour le repli GFS, qui
+interrogeait `&current=`. → cible unique `_sessionStartMs()` (date + heure de début,
+UTC+11), et repli GFS passé en `&hourly=` sur la journée visée.
+Mesuré après correctif sur Ilot Ténia (MARC, 16/08) : **22h → 1,9 m / 18 s ; 08h →
+1,5 m / 10 s**. L'écart n'était pas cosmétique.
+
+**2. Le widget marée déplaçait l'heure en silence.**
+`renderTideWidget` écrivait `hourEl.value = String(startH)` par affectation directe —
+qui ne déclenche aucun événement `change`. Tracer sa plage 8h→11h ne prévenait donc ni
+les conditions, ni le tableau des modèles, ni le repère vertical du graphe. C'est
+exactement le « je ne sais pas si ça correspond » signalé. → notification explicite
+(sautée pendant un glisser, la valeur y est transitoire).
+
+**3. Changer l'heure ne recalculait que le tableau.** Le listener de `f-session-hour`
+n'appelait que `_updateModelReliabilityFormSection()`.
+
+**4. Un remplissage GFS FANTÔME contredisait la source affichée.**
+`#forecast-strip` n'a **jamais** été affiché (son seul `style.display` assigné valait
+`'none'`), mais `_refreshForecastStrip` complétait quand même les champs restés vides
+avec du GFS pendant que le hint annonçait « ✅ Worker · meteo.nc » et que `fcst_model`
+enregistrait `'nc'`. Un écart ressenti sur une période GFS était donc imputé à
+meteo.nc dans le bloc ② des stats. → les deux fonctions et l'encart sont supprimés.
+Un trou laissé vide est plus honnête qu'un trou comblé sans le dire.
+
+### Ce qui a été construit
+
+- **Bloc « Créneau de la session » en tête** (date + début + durée + widget marée
+  remonté depuis le bas du bloc Conditions), avec un récapitulatif permanent
+  `⏱ 16/08 · 08h → 11h30 (3.5h)`. INVARIANT posé : toute écriture de la date, de
+  l'heure ou des plages passe par `_onSessionWindowChanged()` (débounce 250 ms, clé
+  `date|heure` — `renderTideWidget` est rappelé à chaque `mousemove`, on ne veut pas
+  une requête réseau par pixel).
+- **Sélecteur « Prérempli depuis »** alimenté par `_ensureSlotModelRows()`, le MÊME
+  cache (clé `spot|date|heure`) que le tableau de fiabilité : le préremplissage et le
+  vote portent désormais sur un seul jeu de prévisions. Choisir MARC/MFWAM/ECMWF…
+  remplit Hs/période/direction/vent avec SA prévision au créneau et écrit son nom
+  dans `fcst_model` — le bloc ② des stats peut donc enfin mesurer le biais d'un autre
+  modèle que nc/gfs (son agrégation était déjà générique, elle n'a pas eu à changer).
+- **L'heure réellement lue est affichée.** meteo.nc temps réel ne contient pas les
+  heures écoulées : viser 06h à 20h renvoie 20h. Vérifié en headless — le libellé dit
+  « Conditions à 06h (début de session) — ⚠ prévision lue à 20h » et la note oriente
+  vers une prévision archivée, qui, elle, couvre bien 06h.
+
+### Garde-fous ajoutés
+
+- **Édition d'une session existante** : `hs/period/wind` chargés depuis la base sont
+  marqués `userEdited='1'` (avant : `'0'`). Sans ça, le recalcul automatique du
+  créneau aurait écrasé ce qui avait été réellement vu ce jour-là. Le sélecteur de
+  source reste le moyen explicite de les remplacer (il passe `force=true`).
+- **Arrivée d'un token meteo.nc** : ne relance plus l'autofill si un modèle archivé a
+  été choisi (son hint ne porte pas de `✅`, il passait pour un échec).
+- Repli annoncé, jamais silencieux, si le modèle choisi n'a rien au nouveau créneau.
+
+### Vérification
+
+`node --check` sur les 3 blocs inline. Headless Edge, données réelles, spot Ilot
+Ténia : **0 erreur JS**, 7 modèles archivés listés, sélection MARC → champs remplis +
+`fcst_model='marc'`, puis plage 8h→11h30 tracée → heure 8, durée 3,50 auto, et
+conditions **relues sur MARC à 08h** (le modèle choisi survit au changement de
+créneau). Capture 520 px relue : bloc créneau et en-tête Conditions lisibles.
+
+### Re-vérification demandée : le cas « date/heure déjà passées » (le plus fréquent)
+
+Contrôle ciblé sur ce cas — il a fait sortir **quatre défauts de plus**, tous corrigés :
+
+**5. `targetDate` n'était fourni que par le changement de DATE.** Les autres appels
+(`handleSpotChange`, `_applyStationPick`, ouverture) appelaient `_autoFillConditions()`
+sans argument : choisir la date de samedi PUIS changer de spot repartait chercher la
+météo d'AUJOURD'HUI, cache d'archive jamais consulté. → date résolue depuis le champ
+(`_targetDate`), tout le corps de la fonction y est branché.
+
+**6. « Passé » se mesurait sur la DATE, pas sur le CRÉNEAU.** `targetDate < today`
+ratait le cas le plus courant : loguer le soir une session du matin même. On partait
+alors sur le temps réel, qui ne contient plus les heures écoulées. → `_isHistory` =
+« créneau antérieur à maintenant − 30 min », donc le cache d'archive sert aussi le
+matin du jour même.
+
+**7. Une ligne de cache VIDE bloquait le repli.** `_loadDailyCache` peut renvoyer un
+objet (donc truthy) dont hs/période/vent sont tous `null` : le `if (!ncData)` du repli
+GFS ne se déclenchait pas et le formulaire affichait « ✅ Cache NC » avec les champs
+**vides**. Mesuré sur une session à J-3. → un hit ne compte que s'il porte au moins une
+grandeur ; après correctif, J-3 se remplit (0,4 m / 13 s / 5 nds à 6h, GFS archive).
+
+**8. `_saveDailyCache` DÉTRUISAIT le détail horaire de previsions.html.** L'upsert
+remplaçait `data` en bloc : l'instantané plat d'index.html écrasait le `hours[]` (24 h)
+écrit par `_saveForecastDays` sous le même id. D'où, le lendemain matin, une relecture
+à 6h qui retombait sur la valeur de 20h. → relecture + fusion, `hours[]` préservé.
+Prouvé par harnais Node avec Supabase stubbé (3 cas : écriture plate sur ligne riche /
+payload porteur de `hours[]` / première écriture) — aucune écriture en base réelle.
+
+**Deux ajustements de justesse en découlent :**
+- Seuil de l'avertissement d'heure porté à **1,5 h** : meteo.nc marine est au pas de
+  3 h, donc jusqu'à 1,5 h d'écart n'est que l'arrondi de grille (un créneau 06h lisant
+  05h à J+2 faisait crier au loup pour rien).
+- `fcst_model` n'est plus attribué si le préremplissage n'a RIEN écrit, et les
+  **directions** reçoivent le même garde-fou que Hs/période/vent (elles n'ont pas de
+  drapeau `userEdited`, elles étaient donc réécrites sans condition — en édition, la
+  direction relevée était remplacée par celle du modèle).
+
+**Suite de scénarios rejouée en headless sur données réelles (0 erreur JS) :**
+
+| Scénario | Résultat |
+|---|---|
+| Aujourd'hui, créneau 06h déjà passé | cache consulté, `⚠ prévision lue à 20h`, 7 modèles archivés proposés |
+| Date passée J-3 | `📅 GFS archive · 6h` → 0,4 m / 13 s / 5 nds **remplis** (vides avant) |
+| Changement de spot sur date passée | reste sur J-3 (ne repart plus sur aujourd'hui) |
+| Session future J+2 | temps réel repris, plus d'avertissement parasite |
+| Plage marée 9h→12h tracée | heure 9, durée 3h, créneau et conditions suivent |
+| Édition : session vécue 2,7 m/16 s/4 nds, heure corrigée | scalaires **et** directions intacts, `fcst_model` non volé |
+| Édition : choix explicite d'un modèle | écrase bien, `fcst_model='marc'` |
+
+**Limite connue, non corrigeable rétroactivement** : les lignes `meteo_cache` déjà
+écrasées avant le correctif 8 ont perdu leur `hours[]`. Pour ces dates-là, une session
+du matin lira l'instantané du soir — l'avertissement le dit, et le sélecteur de modèle
+archivé donne la bonne valeur. Les lignes futures sont protégées.
+
+### Troisième passe (relecture ligne à ligne du diff) — 3 failles fermées
+
+**9. Une promesse rejetée bloquait TOUT.** `_ensureSlotModelRows` n'avait pas de
+gestionnaire de rejet, et `_applyCondSource` comme `_renderModelTableInto` l'attendent
+tous deux : une seule requête ratée (réseau coupé, session Supabase expirée) laissait le
+préremplissage muet ET le tableau figé sur « Chargement… ». → repli vers `null`, état
+déjà géré proprement partout ailleurs. Sonde de contrôle : écoute de
+`unhandledrejection` en plus de `error`, aucun des deux ne se déclenche.
+
+**10. Le sélecteur avait deux comportements opposés.** Choisir un modèle écrasait les
+champs (`force`), mais revenir à « meteo.nc temps réel » ne faisait rien de visible si
+les champs portaient déjà des valeurs. → le retour à `live` lève les drapeaux de saisie.
+
+**11. Le modèle choisi était perdu en silence sur 3 chemins.** `handleSpotChange`,
+`_applyStationPick` et l'enregistrement du panneau ⚙ Réglages appelaient
+`_autoFillConditions()` en direct : après avoir choisi MARC, changer de spot retombait
+sur meteo.nc pendant que le sélecteur affichait toujours « MARC ». → les trois passent
+par `_applyCondSource`. Les deux derniers changent les COORDONNÉES sans changer le NOM
+du spot : la clé du cache modèles (`spot|date|heure`) y étant aveugle, elle est
+invalidée à la main.
+
+**Contrôles de non-régression** : `node --check` sur les 3 blocs inline + `sw.js` ;
+audit des `getElementById` (aucun id référencé absent du HTML) ; aucun `let`/`const`/
+fonction fléchée introduit (convention ES5 du projet tenue).
+
+**Parcours complet rejoué, 0 erreur / 0 rejet non géré :** créneau passé du jour →
+cache + avertissement ; J-3 → GFS archive rempli ; choix MARC → `fcst_model='marc'` ;
+changement de spot → **le modèle survit** ; retour à `live` → reprend la main ; plage
+marée 9h→12h → heure 9, créneau `09h → 12h (3h)`, conditions relues à 09h.
+Capture 430 px (largeur téléphone réelle) relue : rien ne déborde.
+
+`sw.js` bumpé en `surf-nc-v81` : le cache est en stale-while-revalidate, sans bump la
+correction n'arriverait qu'au deuxième lancement de la PWA.
