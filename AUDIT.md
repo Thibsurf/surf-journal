@@ -7347,3 +7347,160 @@ Capture 430 px (largeur téléphone réelle) relue : rien ne déborde.
 
 `sw.js` bumpé en `surf-nc-v81` : le cache est en stale-while-revalidate, sans bump la
 correction n'arriverait qu'au deuxième lancement de la PWA.
+
+---
+
+## 2026-08-17 - Audit final a 4 agents du formulaire de session
+
+Apres trois passes de correctifs ou je trouvais encore des defauts a chaque relecture,
+audit croise confie a **quatre auditeurs independants** (logique/mecanique, UX/design,
+integrite des donnees, regressions/couplages), en lecture seule, chacun avec sa propre
+sonde pour eviter les collisions. Chaque constat a ete **reverifie a la main** avant
+correction : un agent qui se trompe ne doit pas faire casser du code sain.
+
+Verdict : ma propre relecture avait laisse passer **un defaut bloquant et deux pertes de
+donnees**. Les agents ont aussi confirme deux soupcons formules sans mesure (passage de
+minuit, pagination non deterministe).
+
+### Bloquant - l'invariant du chantier etait faux sur le geste principal
+
+`renderTideWidget` ecrit `hourEl.value` a CHAQUE `mousemove` du glisser. La garde
+`if (_tideDragStart === null)` ne sautait que la *notification*, pas l'affectation : au
+`mouseup` la valeur etait donc **deja** a jour, le test `if (hourEl.value !== ...)` tombait
+faux, et `_onSessionWindowChanged` n'etait **jamais** appele. Tracer sa plage de maree -
+l'interaction que tout le chantier visait - ne resynchronisait rien.
+Le harnais du 16/08 posait `tideRanges` par affectation puis appelait `renderTideWidget()`
+une fois, hors glisser : il ne pouvait pas le voir. Correctif : notification sortie du test
+et placee en fin de `renderTideWidget`, une seule sortie pour tous les chemins.
+Verifie avec de VRAIS `MouseEvent` dispatches sur le canvas : 1 appel a
+`_onSessionWindowChanged`, 1 a `_applyCondSource`, heure 8, conditions relues.
+
+### Corruption de donnees
+
+**Corriger la DATE d'une session en edition effacait les conditions vecues.** `#f-date`
+est le meme element pour l'ajout et l'edition ; son passage en attribut `onchange` a rendu
+`_clearAutofillFields()` inconditionnel, or il remet `dataset.userEdited` a `'0'` - soit
+l'annulation exacte du garde-fou pose la veille. Mesure : 2,7 m/16 s/4 nds remplaces par
+la prevision d'un modele, ecarts ressentis conserves en reference a des valeurs disparues.
+Aggrave par le commit : avant, l'ecouteur etait pose dans `openAddSession`, donc jamais
+arme sur le parcours `?openSession=` puis Detail puis Modifier.
+Correctif : `_clearAutofillFields(keepOwned)`. Verifie : scalaires ET directions preserves.
+
+**`status` ecrit dans un vocabulaire que personne ne comprend.** index.html ecrivait
+`status: data.source`, soit `'worker'`/`'direct'`/`'historique'`, alors que previsions.html
+protege les donnees meteo.nc par `status === 'nc'` (deux gardes : `:4644` et `:16670`). La
+protection « NC > GFS » ne se declenchait donc **jamais** contre les lignes du Journal.
+Correctif : statut normalise en `'nc'`/`'gfs'` a l'ecriture.
+
+**La fusion `hours[]` faisait passer du GFS pour du meteo.nc.** `_loadDailyCache` forcait
+`source:'cache_nc'` sans jamais lire `status` (pourtant SELECTe). En preservant `hours[]`,
+la fusion du 16/08 faisait gagner un tableau horaire d'origine GFS sur un instantane NC,
+sous l'etiquette « Cache NC » et impute a `'nc'` - le defaut meme pour lequel
+`#forecast-strip` avait ete supprime, deplace d'un cran. Correctif : provenance reelle
+propagee (`origin`, `hoursSource`), etiquette « Cache GFS » et `fcst_model` corriges. Et si
+la relecture necessaire a la fusion echoue (RLS, hors ligne), on **n'ecrit plus du tout**
+plutot que de detruire `hours[]` en silence.
+
+### Justesse
+
+- **`_condHourGap` ne franchissait pas minuit** (soupcon confirme) : creneau 00h / lecture
+  23h la veille = arrondi de grille d'1 h, calcule **23**. Avertissement rouge injustifie
+  sur toutes les sessions de fin de nuit. Correctif : distance circulaire, testee sur
+  10 couples.
+- **Aucune borne en JOURS.** Une date au-dela de l'horizon du modele retenait la derniere
+  ligne disponible - mesure a J+16 : ecart d'heure 0, bandeau vert, chiffres vieux de
+  7 jours, et archivage de cet instantane sous la date future. Correctif : `_condReadDayGap`.
+- **Pagination triee sur `issued_at`, non unique.** Toutes les lignes d'un run de cron
+  partagent le meme `issued_at` ; Postgres ne garantit aucun ordre stable a ex aequo, des
+  lignes pouvaient etre **sautees** entre pages. La regle etait deja ecrite dans l'audit du
+  16/08 (`_sbFetchAllPages` trie sur `id`) sans avoir ete reportee ici. Correctif :
+  `.order('id')` en second critere.
+- **Verrou `_autofillBusy`** : une demande arrivee pendant un chargement etait ignoree
+  **sans reessai**, et `_slotLastKey` deja avance empechait toute reparation ulterieure.
+  Mesure : chiffres de 05h figes sous un en-tete 15h. Correctif : mise en attente puis rejeu.
+- **`session_hour` enregistre ecrase** par le widget maree a la reouverture, puis
+  reenregistre (7 vers 10). Correctif : une heure sauvee est marquee comme choix utilisateur.
+- **Promesse en vol republiee** apres changement de coordonnees (le nom du spot ne change
+  pas, la cle se reconstruit a l'identique). Correctif : compteur `_slotModelSeq`, comme
+  `_tideLoadSeq` ailleurs dans le fichier.
+- **`_slotChangeTimer` jamais annule** : un debounce arme avant fermeture s'executait sur
+  le formulaire suivant.
+- **Hint et `_condReadHour` repeints meme sans ecriture** : en edition, l'en-tete annoncait
+  « MARC · Hs 1,6m » au-dessus de champs valant 2,7 m, et effacait l'avertissement d'heure.
+- **Directions reecrites** des qu'un seul scalaire vide avait ete rempli - cas d'une session
+  ou seule la direction avait ete notee.
+
+### Etat d'ecran non reinitialise (cause d'un bug muet)
+
+`openAddSession` remettait a zero les variables mais **aucun element du DOM** : bandeau,
+options et valeur du selecteur, etiquette, note survivaient d'un formulaire a l'autre.
+Mesure : « MF global · archive » affiche sur une session vide, select sur `mf` pendant que
+l'etat interne valait `live`. **Consequence en cascade** : `_onNewToken` decidait de
+relancer le preremplissage en cherchant des symboles dans le TEXTE du bandeau ; ce residu
+ne les contenait pas, donc l'arrivee d'un token meteo.nc ne relancait plus rien.
+Correctif : `_resetSlotState()` (variables + ecran) dans les deux flux, et decision de
+`_onNewToken` prise sur une **variable d'etat** (`_condFillState`), plus sur du texte.
+
+### UX - corrige
+
+- **Contraste** : `--text-faint` valait `#3d5468`, soit **2,3:1** mesure, pour du texte de
+  9-10 px (seuil AA : 4,5:1). previsions.html avait deja fait ce constat et migre vers
+  `#728aa1` (**5,06:1**) ; index.html n'avait pas suivi, les deux fichiers nommant la meme
+  variable differemment (`--faint` vs `--text-faint`), ce qui a masque l'oubli.
+- **Troncatures reelles** (mesurees) : `#f-swell-dir-deg` affichait « 20! » pour 205 (boite
+  de 50 px pour 57 px de contenu), passe a 62 px ; les `input[type=time]` de l'editeur de
+  plage coupaient les minutes (75 px), passes a 92 px.
+- **Le selecteur de source tronquait son propre contenu** : label au-dessus, select pleine
+  largeur, options raccourcies en « (archive) ».
+- **Le detail d'une session ne montrait RIEN** de ce que le chantier enregistre : ni heure,
+  ni plage, ni source - l'ecran ou l'on relit ses sessions rendait la plainte d'origine
+  intacte. Correctif : ligne « Conditions relevees : a 08h · session 08h vers 11h30 ·
+  prevision MARC WW3 ».
+- **Chaque champ porte desormais son instant** (`Hs (m) a 08h`) : l'en-tete peut etre a
+  200 px apres defilement, et le champ Maree juste en dessous decrit, LUI, toute la fenetre.
+- **Textes** : bandeau reduit a la provenance (il recopiait Hs/periode/vent affiches 40 px
+  plus bas, et l'heure deja presente deux fois ailleurs) ; note du selecteur reduite d'une
+  phrase a sept mots ; chapeau des ecarts qui disait deux fois la meme chose dont une en
+  anglais ; avertissement de biais passe en infobulle. La note ne pretend plus qu'aucune
+  prevision n'est archivee « pour ce spot » quand aucun spot n'est choisi.
+- **Accessibilite** : `aria-expanded` sur le bloc pliable ; etoiles de notation rendues
+  atteignables au clavier (`role="radio"` + Entree/Espace + `aria-checked` synchronise) -
+  il etait jusque-la impossible de noter une session sans souris.
+
+### Verifie SAIN par les agents (a ne pas re-suspecter)
+
+Fuseau UTC+11 : sorties **identiques** sous `America/Los_Angeles` et `Pacific/Noumea` sur
+40 lignes. Aucune reference orpheline dans tout le depot apres la suppression de
+`#forecast-strip`/`_scrollToTideWidget`. Le deplacement du widget maree **resout** le piege
+`clientWidth = 0` au lieu de le creer (canvas 423x112, 47 376 pixels traces, contre 0x0
+avant). `sw.js` correctement bumpe. Lien profond `?openSession=` intact. Export CSV sain.
+Les 8 cles de `fcst_model` resolues partout, memes couleurs qu'en previsions.html.
+Ecritures Supabase : `.select()` enchaine partout, distinction 0/null tenue.
+
+### Laisse a la decision de l'utilisateur (NON fait)
+
+- **Remonter le choix du Spot au-dessus du bloc Creneau** et replier le widget maree
+  derriere son recapitulatif : le selecteur de spot est a **y=936 px**, deux ecrans de
+  defilement, alors qu'il conditionne station, modeles et port de maree. Modale totale
+  mesuree : **4 636 px**, 107 controles.
+- Afficher une **amplitude sur la fenetre** (`Hs 1,5 a 1,7 m`) plutot qu'une valeur
+  ponctuelle : plus juste, mais casse les colonnes scalaires `hs`/`period` et les ecarts.
+- **Deux editeurs d'heure de plage** font exactement la meme chose (`#tide-time-editor`
+  ouvert par le crayon, et `#tide-range-times-wrap` toujours visible) : en supprimer un.
+- **Biais de selection** dans le bloc 2 des stats : `'nc'`/`'gfs'` s'accumulent par defaut,
+  les six autres modeles seulement sur choix explicite - populations non comparables, et
+  les sessions anterieures au 16/08 portent un ecart mesure contre la mauvaise heure.
+- **`'gfs'` designe deux sources differentes** : les appels Open-Meteo du Journal ne portent
+  aucun `&models=` (donc `best_match`), alors que les lignes archivees sont epinglees sur
+  `ncep_gfswave025`/`gfs_seamless`.
+
+### Verification
+
+`node --check` sur les 3 blocs inline et sur `sw.js`. Croisement id / `getElementById` :
+aucun id manquant. Balises de `#modal-add` equilibrees (73/73). Harnais Node sur
+`_condHourGap` (10 couples dont 4 autour de minuit) et sur la fusion `_saveDailyCache`
+(Supabase stubbe, aucune ecriture reelle). Headless Edge sur donnees reelles, `error` **et**
+`unhandledrejection` ecoutes, **0 erreur** : vrai glisser souris donne une resynchronisation
+effective ; correction de date en edition preserve valeurs et directions ; reouverture donne
+un ecran vierge. Capture a largeur telephone reelle (modale contrainte a 398 px, le piege
+des 518 px etant confirme par l'auditeur UX).

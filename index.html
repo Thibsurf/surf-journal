@@ -51,7 +51,12 @@
   --border-hover: rgba(255,255,255,0.16);
   --text: #e8eef4;
   --text-muted: #7a94aa;
-  --text-faint: #3d5468;
+  /* #3d5468 ne faisait que 2,3:1 sur --deep (mesuré), pour du texte de 9-10 px —
+     très en dessous du seuil AA de 4,5:1. previsions.html avait déjà fait ce
+     constat et migré vers #728aa1 (5,06:1 ici) ; index.html n'avait pas suivi,
+     les deux fichiers nommant la même variable différemment (--faint vs
+     --text-faint), ce qui a masqué l'oubli. Audit UX du 17/08/2026. */
+  --text-faint: #728aa1;
   --accent: #4fa3c7;
   --accent-warm: #e8a057;
   --tube: #7b6cf6;
@@ -1115,7 +1120,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
 
     <!-- ── Bloc 2 : Conditions (collapsible) ── -->
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:1rem;overflow:hidden;">
-      <button onclick="toggleSection('sec-conditions',this)" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--glass);border:none;color:var(--text);cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;">
+      <button onclick="toggleSection('sec-conditions',this)" aria-expanded="false" aria-controls="sec-conditions" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--glass);border:none;color:var(--text);cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;">
         🌊 Conditions <span id="sec-conditions-arrow">▼</span>
       </button>
       <div id="sec-conditions" style="padding:12px 14px;display:none;">
@@ -1135,8 +1140,8 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
             <span id="autofill-hint" style="font-size:10px;color:var(--text-muted);text-align:right;"></span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <label class="form-label" for="f-cond-model" style="margin-bottom:0;font-size:10px;white-space:nowrap;">Prérempli depuis</label>
-            <select class="form-select" id="f-cond-model" onchange="_onCondModelChange()" style="flex:1;min-width:150px;padding:6px 8px;font-size:12px;">
+            <label class="form-label" for="f-cond-model" style="margin-bottom:2px;font-size:10px;flex-basis:100%;">Prérempli depuis</label>
+            <select class="form-select" id="f-cond-model" onchange="_onCondModelChange()" title="Le modèle choisi remplit les champs avec sa prévision au créneau, et c'est lui qui recevra tes écarts ressentis." style="flex:1;min-width:150px;padding:6px 8px;font-size:12px;">
               <option value="live">meteo.nc (temps réel)</option>
             </select>
           </div>
@@ -1145,11 +1150,11 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
         </div>
         <div class="form-row-3">
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label" for="f-hs">Hs (m)</label>
+            <label class="form-label" id="lbl-hs" for="f-hs">Hs (m)</label>
             <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
           </div>
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label" for="f-period">Période (s)</label>
+            <label class="form-label" id="lbl-period" for="f-period">Période (s)</label>
             <input type="number" class="form-input" id="f-period" placeholder="14" step="0.5" min="0">
           </div>
           <div class="form-group" style="margin-bottom:10px;">
@@ -1162,14 +1167,14 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
                 <option>S</option><option>SSO</option><option>SO</option><option>OSO</option>
                 <option>O</option><option>ONO</option><option>NO</option><option>NNO</option>
               </select>
-              <input type="number" class="form-input" id="f-swell-dir-deg" placeholder="°" min="0" max="359" style="width:52px;text-align:center;padding:10px 6px;" oninput="syncSwellDir()">
+              <input type="number" class="form-input" id="f-swell-dir-deg" placeholder="°" min="0" max="359" style="width:62px;text-align:center;padding:10px 4px;" oninput="syncSwellDir()">
             </div>
             <input type="hidden" id="f-swell-dir">
           </div>
         </div>
         <div class="form-row-3">
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label" for="f-wind">Vent (nds)</label>
+            <label class="form-label" id="lbl-wind" for="f-wind">Vent (nds)</label>
             <input type="number" class="form-input" id="f-wind" placeholder="5" step="1" min="0">
           </div>
           <div class="form-group" style="margin-bottom:10px;">
@@ -1184,7 +1189,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
                 <option>O</option><option>ONO</option><option>NO</option><option>NNO</option>
                 <option>Tournant</option><option>Onshore</option>
               </select>
-              <input type="number" class="form-input" id="f-wind-dir-deg" placeholder="°" min="0" max="359" style="width:52px;text-align:center;padding:10px 6px;" oninput="syncWindDir()">
+              <input type="number" class="form-input" id="f-wind-dir-deg" placeholder="°" min="0" max="359" style="width:62px;text-align:center;padding:10px 4px;" oninput="syncWindDir()">
             </div>
             <input type="hidden" id="f-wind-dir">
           </div>
@@ -1203,8 +1208,8 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
              titre, libellés raccourcis avec icônes cohérentes avec les chips du détail et
              les blocs ②/④ des stats. -->
         <div style="margin:6px 0 8px;">
-          <label class="form-label" style="margin-bottom:2px;">Écart à la prévision — c'était comment vs le forecast&nbsp;?</label>
-          <div style="font-size:10px;color:var(--text-muted);">Plus petit/court/mou… ou plus gros/long/fort que prévu, sur chaque grandeur. Signé, ça mesure le biais du modèle (bloc ② des stats). Facultatif.</div>
+          <label class="form-label" style="margin-bottom:2px;">Vs la prévision <span style="font-weight:400;text-transform:none;letter-spacing:0;">(facultatif)</span></label>
+          <div style="font-size:10px;color:var(--text-muted);">Ce que tu as vu, comparé aux chiffres ci-dessus.</div>
         </div>
         <div class="form-group" style="margin-bottom:8px;">
           <label class="form-label">🌊 Taille (Hs)
@@ -1263,7 +1268,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
             <button type="button" onclick="setWindDelta(2)" data-delta="2" class="windd-btn" title="Nettement plus fort que prévu"
               style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Fort</button>
           </div>
-          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">⚠ Ces réponses n'ont de sens que sur les jours où tu as surfé — les houles ratées par un modèle ne génèrent aucune session, donc aucune donnée (biais de sélection, cf. audit).</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;" title="Les houles ratées par un modèle ne génèrent aucune session, donc aucune donnée : la mesure ne porte que sur les jours surfés (biais de sélection).">⚠ Mesure biaisée : on ne logue que les jours surfés.</div>
         </div>
       </div>
     </div>
@@ -1280,10 +1285,13 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
     </div>
     <div class="form-group">
       <label class="form-label">Qualité de la session</label>
-      <div class="star-picker" id="f-qual-stars">
-        <span onclick="setStars(1)">★</span><span onclick="setStars(2)">★</span>
-        <span onclick="setStars(3)">★</span><span onclick="setStars(4)">★</span>
-        <span onclick="setStars(5)">★</span>
+      <!-- role=radio + tabindex + Entrée/Espace : ces étoiles étaient de simples
+           <span onclick>, donc impossible de noter une session au clavier ou au
+           lecteur d'écran (audit a11y du 17/08/2026). -->
+      <div class="star-picker" id="f-qual-stars" role="radiogroup" aria-label="Qualité de la session">
+        <span role="radio" tabindex="0" aria-checked="false" aria-label="1 étoile sur 5" onclick="setStars(1)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span><span role="radio" tabindex="0" aria-checked="false" aria-label="2 étoiles sur 5" onclick="setStars(2)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span>
+        <span role="radio" tabindex="0" aria-checked="false" aria-label="3 étoiles sur 5" onclick="setStars(3)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span><span role="radio" tabindex="0" aria-checked="false" aria-label="4 étoiles sur 5" onclick="setStars(4)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span>
+        <span role="radio" tabindex="0" aria-checked="false" aria-label="5 étoiles sur 5" onclick="setStars(5)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span>
       </div>
     </div>
     <!-- « Fiabilité meteo.nc/GFS » 1-5 RETIRÉE (02/08/2026) : doublon flou et NON signé
@@ -2314,6 +2322,18 @@ function _fmtHmDec(dec) {
 // _autoFillConditions / _applyModelToConditions) — null tant qu'aucun
 // préremplissage n'a abouti.
 var _condReadHour = null;
+// Écart en JOURS entre le créneau visé et la ligne réellement retenue. Sans lui,
+// une date au-delà de l'horizon du modèle (mesuré : flux worker s'arrêtant à
+// J+8) retenait la DERNIÈRE ligne disponible — à 7 jours de distance — avec un
+// écart d'heure de 0, donc un bandeau vert « ✅ Worker » et aucun avertissement,
+// pour des chiffres sans aucun rapport (audit du 17/08/2026).
+var _condReadDayGap = 0;
+// État du préremplissage, en VARIABLE et non déduit du texte affiché : le repli
+// de _onNewToken testait la présence de '✅'/'GFS' dans le hint, ce qui devenait
+// faux dès qu'un libellé changeait ou qu'un hint résiduel traînait d'un
+// formulaire précédent (mesuré : « 📦 MF global · archivé » sur un formulaire
+// vide empêchait toute relance à l'arrivée d'un token).
+var _condFillState = 'vide';   // 'vide' | 'ok' | 'echec'
 
 // L'écart entre heure voulue et heure lue mérite-t-il un avertissement ?
 // Seuil à 1,5 h et pas 1 h : meteo.nc marine est échantillonné toutes les 3 h,
@@ -2321,9 +2341,16 @@ var _condReadHour = null;
 // signaler ferait crier au loup sur le cas parfaitement normal (vérifié le
 // 16/08/2026 : un créneau 06h lisait 05h sur une session à J+2). Au-delà, c'est
 // que la source ne couvre pas le créneau, et là il faut le dire.
+//
+// Distance CIRCULAIRE (audit du 17/08/2026) : une soustraction brute sur des
+// heures 0-23 donnait 23 pour le couple (créneau 00h, prévision lue à 23h la
+// veille), qui n'est qu'un arrondi de grille d'une heure. L'avertissement rouge
+// se déclenchait donc à tort sur toutes les sessions de fin/début de nuit, et la
+// note poussait à changer de source sans raison.
 function _condHourGap() {
   if (_condReadHour == null) return 0;
-  return Math.abs(_condReadHour - _getSessionHour());
+  var d = Math.abs(_condReadHour - _getSessionHour()) % 24;
+  return d > 12 ? 24 - d : d;
 }
 
 // Récapitulatif du créneau + libellé « ces chiffres décrivent quoi ». Un seul
@@ -2331,8 +2358,17 @@ function _condHourGap() {
 function _updateSessionSlotSummary() {
   var slot = _sessionSlot();
   var hasRanges = (typeof tideRanges !== 'undefined' && tideRanges && tideRanges.length > 0);
-  var startDec = hasRanges ? tideRanges[0].start : slot.hour;
-  var endDec = hasRanges ? tideRanges[tideRanges.length - 1].end
+  // Le début affiché doit être CELUI QUI PILOTE les conditions, c'est-à-dire
+  // `f-session-hour`. Le récapitulatif lisait toujours `tideRanges[0].start`
+  // alors que l'étiquette lit le sélecteur : dès que l'heure était choisie à la
+  // main (le widget marée cesse alors de l'écraser), les deux se contredisaient
+  // — « 06h → 08h » en tête, « Conditions à 10h » en dessous. C'était le
+  // problème d'origine reconstitué dans le bloc censé le supprimer (audit du
+  // 17/08/2026). Les plages ne fournissent le début que si elles pilotent encore.
+  var hourEl = document.getElementById('f-session-hour');
+  var rangesDrive = hasRanges && !(hourEl && hourEl.dataset.userEdited === '1');
+  var startDec = rangesDrive ? tideRanges[0].start : slot.hour;
+  var endDec = rangesDrive ? tideRanges[tideRanges.length - 1].end
              : (slot.duration != null ? slot.hour + slot.duration : null);
   var el = document.getElementById('session-slot-summary');
   if (el) {
@@ -2347,7 +2383,11 @@ function _updateSessionSlotSummary() {
     var lbl = 'Conditions à ' + (slot.hour < 10 ? '0' : '') + slot.hour + 'h (début de session)';
     // Écart entre l'heure VOULUE et l'heure réellement lue dans la prévision :
     // le dire est le seul moyen de ne pas prendre un repli pour une mesure.
-    if (_condHourGap() > 1.5) {
+    // L'écart en JOURS passe en premier : c'est le plus grave et le plus muet.
+    if (_condReadDayGap >= 1) {
+      lbl += ' — ⚠ hors de portée du modèle (prévision décalée de ' + _condReadDayGap + ' j)';
+      condEl.style.color = 'var(--accent-warm)';
+    } else if (_condHourGap() > 1.5) {
       lbl += ' — ⚠ prévision lue à ' + (_condReadHour < 10 ? '0' : '') + _condReadHour + 'h';
       condEl.style.color = 'var(--accent-warm)';
     } else {
@@ -2355,6 +2395,15 @@ function _updateSessionSlotSummary() {
     }
     condEl.textContent = lbl;
   }
+  // Chaque champ porte son propre instant (audit UX du 17/08/2026) : l'en-tête
+  // peut être à 200 px de là après défilement, et le champ Marée juste en dessous
+  // décrit, LUI, toute la fenêtre — deux sémantiques temporelles cohabitaient
+  // sans être distinguées. On lève l'ambiguïté à l'endroit où elle se pose.
+  var _hLbl = ' à ' + (slot.hour < 10 ? '0' : '') + slot.hour + 'h';
+  [['lbl-hs', 'Hs (m)'], ['lbl-period', 'Période (s)'], ['lbl-wind', 'Vent (nds)']].forEach(function(p) {
+    var el = document.getElementById(p[0]);
+    if (el) el.textContent = p[1] + _hLbl;
+  });
   _updateCondModelNote();
 }
 
@@ -2364,6 +2413,38 @@ function _updateSessionSlotSummary() {
 // refetcher quand seule la durée change (elle ne déplace pas la lecture).
 var _slotChangeTimer = null;
 var _slotLastKey = null;
+
+// Remise à zéro de TOUT l'état du créneau — variables ET éléments d'écran.
+// openAddSession/editSession ne réinitialisaient que les variables : le bandeau
+// de provenance, les options et la valeur du sélecteur « Prérempli depuis » et
+// l'étiquette du créneau survivaient d'un formulaire à l'autre (audit du
+// 17/08/2026, mesuré : « 📦 MF global · archivé » affiché sur une nouvelle
+// session vide, avec le select sur `mf` pendant que l'état interne valait
+// `live`). Effet en cascade : ce bandeau résiduel faisait croire à
+// _onNewToken que le préremplissage avait réussi, donc plus aucune relance à
+// l'arrivée d'un token meteo.nc.
+function _resetSlotState() {
+  _condSourceChoice = 'live';
+  _condReadHour = null;
+  _condReadDayGap = 0;
+  _condFillState = 'vide';
+  _slotLastKey = null;
+  _slotModelRowsKey = null; _slotModelRows = null; _slotModelRowsP = null; _slotModelSeq++;
+  _slotModelCount = 0;
+  // Un débounce armé juste avant une fermeture s'exécutait sur le formulaire
+  // SUIVANT, avec la clé de l'ancien.
+  if (_slotChangeTimer) { clearTimeout(_slotChangeTimer); _slotChangeTimer = null; }
+  var hint = document.getElementById('autofill-hint');
+  if (hint) { hint.textContent = ''; hint.style.color = 'var(--text-muted)'; }
+  var stInfo = document.getElementById('autofill-station-info');
+  if (stInfo) stInfo.innerHTML = '';
+  var lbl = document.getElementById('cond-slot-label');
+  if (lbl) { lbl.textContent = ''; lbl.style.color = 'var(--accent)'; }
+  var note = document.getElementById('cond-model-note');
+  if (note) note.textContent = '';
+  var sel = document.getElementById('f-cond-model');
+  if (sel) sel.innerHTML = '<option value="live">meteo.nc (temps réel)</option>';
+}
 function _onSessionWindowChanged(opts) {
   _updateSessionSlotSummary();
   var slot = _sessionSlot();
@@ -2374,7 +2455,7 @@ function _onSessionWindowChanged(opts) {
   if (_slotChangeTimer) clearTimeout(_slotChangeTimer);
   _slotChangeTimer = setTimeout(function() {
     _slotChangeTimer = null;
-    _slotModelRowsKey = null;          // les modèles se relisent au nouveau créneau
+    _slotModelRowsKey = null; _slotModelRowsP = null;   // les modèles se relisent au nouveau créneau
     _applyCondSource(false);
     if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
   }, 250);
@@ -2387,7 +2468,9 @@ function _onSessionWindowChanged(opts) {
 function _onSessionDateChange() {
   var dateEl = document.getElementById('f-date');
   if (!dateEl) return;
-  _clearAutofillFields();
+  // En ÉDITION, les conditions à l'écran sont un RELEVÉ, pas un préremplissage :
+  // on ne les efface pas pour un changement de date (cf. _clearAutofillFields).
+  _clearAutofillFields(!!editingSessionId);
   _autofillBusy = false;               // débloque un autofill resté en vol
   if (typeof updateShomLink === 'function') updateShomLink();   // redessine aussi la marée du jour
   _onSessionWindowChanged({ force: true });
@@ -2402,14 +2485,23 @@ function _onSessionDateChange() {
 var _condSourceChoice = 'live';
 var _slotModelRows = null, _slotModelRowsKey = null, _slotModelRowsP = null;
 
+// Compteur de génération, comme _tideLoadSeq et showSpotDetail._gen ailleurs dans
+// le fichier. La clé seule ne suffisait pas : _applyStationPick et le panneau ⚙
+// Réglages changent les COORDONNÉES du spot sans changer son NOM, posent
+// `_slotModelRowsKey = null`, puis reconstruisent une chaîne IDENTIQUE — une
+// requête encore en vol pour l'ancien point retrouvait donc `key` valide et
+// publiait ses lignes (audit du 17/08/2026, mesuré : réponse lente de l'ancien
+// point servie à la place de la nouvelle).
+var _slotModelSeq = 0;
 function _ensureSlotModelRows(spot, date, hour) {
   var key = spot + '|' + date + '|' + hour;
   if (_slotModelRowsKey === key && _slotModelRowsP) return _slotModelRowsP;
   _slotModelRowsKey = key;
+  var seq = ++_slotModelSeq;
   _slotModelRowsP = _fetchModelTableRows(spot, date, hour).then(function(rows) {
     // Une demande plus récente a pris la main pendant l'attente réseau : ne pas
     // publier un résultat périmé (même garde que _tideLoadReal).
-    if (_slotModelRowsKey === key) _slotModelRows = rows;
+    if (seq === _slotModelSeq && _slotModelRowsKey === key) _slotModelRows = rows;
     return rows;
   }, function(err) {
     // Un REJET (réseau coupé, table absente, session Supabase expirée) ne doit pas
@@ -2418,7 +2510,7 @@ function _ensureSlotModelRows(spot, date, hour) {
     // préremplissage muet ET le tableau bloqué sur « Chargement… ». On dégrade
     // vers « aucun modèle archivé », état déjà géré proprement partout.
     console.warn('[slot] lecture des modèles archivés impossible:', err && err.message);
-    if (_slotModelRowsKey === key) _slotModelRows = null;
+    if (seq === _slotModelSeq && _slotModelRowsKey === key) _slotModelRows = null;
     return null;
   });
   return _slotModelRowsP;
@@ -2431,7 +2523,7 @@ function _populateCondModelSelect(rows) {
   var keys = rows ? MODEL_RELIABILITY_ORDER.filter(function(k) { return rows[k]; }) : [];
   var html = '<option value="live">meteo.nc (temps réel)</option>';
   keys.forEach(function(k) {
-    html += '<option value="' + k + '">' + MODEL_RELIABILITY_LABELS[k].label + ' — prévision archivée</option>';
+    html += '<option value="' + k + '">' + MODEL_RELIABILITY_LABELS[k].label + ' (archivé)</option>';
   });
   sel.innerHTML = html;
   // Le choix courant peut ne plus exister (autre spot, autre date) → repli
@@ -2449,18 +2541,27 @@ var _slotModelCount = 0;
 function _updateCondModelNote() {
   var note = document.getElementById('cond-model-note');
   if (!note) return;
+  // Pas encore de spot : ne rien affirmer. La note annonçait « aucune prévision
+  // archivée pour ce spot » sur un formulaire neuf où aucun spot n'était choisi
+  // — une affirmation sur un objet inexistant (audit UX du 17/08/2026).
+  var spotVal = (typeof getSpotValue === 'function') ? getSpotValue() : '';
+  if (!spotVal || spotVal === '__autre__') { note.textContent = ''; return; }
   if (!_slotModelCount) {
     note.textContent = 'Aucune prévision archivée pour ce spot à cette date : seul le temps réel meteo.nc est disponible.';
     return;
   }
-  var txt = _slotModelCount + ' modèle(s) archivé(s) à ce créneau. En choisir un remplit les champs avec SA prévision — et c\'est lui qui recevra tes écarts ressentis.';
+  // Texte raccourci (audit UX du 17/08/2026) : il expliquait sur trois lignes le
+  // fonctionnement d'un <select> situé juste au-dessus. Le « c'est lui qui
+  // recevra tes écarts » passe en infobulle du sélecteur.
+  var txt = _slotModelCount + ' modèle(s) archivé(s) à ce créneau.';
   // Cas très courant et jusqu'ici muet : on loge le soir une session du matin.
   // Le flux meteo.nc temps réel ne contient PAS les heures déjà écoulées, il
   // renvoie donc la première heure encore disponible (mesuré : créneau 06h →
   // prévision lue à 20h, Hs et vent sans rapport). Les prévisions archivées,
   // elles, couvrent bien 06h : on oriente vers la seule option juste.
-  if (_condSourceChoice === 'live' && _condHourGap() > 1.5) {
-    txt += ' ⚠ meteo.nc temps réel ne couvre pas ce créneau (il ne garde pas les heures passées) — une prévision archivée y sera plus juste.';
+  // C'est de l'information NEUVE, elle reste — seulement raccourcie.
+  if (_condSourceChoice === 'live' && (_condHourGap() > 1.5 || _condReadDayGap >= 1)) {
+    txt += ' ⚠ meteo.nc temps réel ne couvre pas ce créneau — choisis une prévision archivée.';
   }
   note.textContent = txt;
 }
@@ -2487,9 +2588,14 @@ function _applyModelToConditions(k, force) {
   // drapeau userEdited sur ces champs, donc on ne les écrase que si le modèle a
   // eu la main sur les scalaires, ou si le champ est vide.
   function dirOk(hiddenId) {
-    if (force || wroteAny) return true;
+    if (force) return true;                 // choix explicite : il l'emporte
     var el = document.getElementById(hiddenId);
-    return !el || !el.value;
+    if (!el || !el.value) return true;      // vide : rien à protéger
+    var owns = ['f-hs','f-period','f-wind'].some(function(id) {
+      var e2 = document.getElementById(id);
+      return e2 && e2.dataset.userEdited === '1' && e2.value !== '';
+    });
+    return wroteAny && !owns;               // même règle que _dirWritable
   }
   if (typeof setDirFields === 'function') {
     if (r.dir != null && dirOk('f-swell-dir')) {
@@ -2501,24 +2607,27 @@ function _applyModelToConditions(k, force) {
         (_degToCardinal(r.wind.dir) || '') + ' (' + Math.round(r.wind.dir) + '°)');
     }
   }
-  // Le modèle choisi devient celui à qui les écarts ressentis sont imputés — mais
-  // seulement s'il a vraiment rempli quelque chose (même règle que l'autofill : en
-  // édition, une valeur vécue bloque l'écriture, le modèle n'a donc rien fourni).
-  // Un choix explicite (force) écrit toujours, donc ce test ne le gêne jamais.
-  if (wroteAny) window._lastFcstModel = k;
+  // ── Rien écrit = rien à annoncer ───────────────────────────────────────────
+  // Le garde-fou `wroteAny` protégeait `fcst_model` mais PAS le bandeau ni
+  // `_condReadHour` (audit du 17/08/2026) : en édition, où les valeurs vécues
+  // bloquent l'écriture, l'en-tête affichait « 📦 MARC · Hs 1,6m · 8s » au-dessus
+  // de champs valant 2,7 m / 16 s, et effaçait au passage l'avertissement d'heure.
+  // On sort sans rien repeindre — la fonction reste « vraie » (le modèle existe
+  // bien au créneau), pour que _applyCondSource ne se replie pas à tort.
+  if (!wroteAny) return true;
+  window._lastFcstModel = k;
   // Les prévisions archivées sont indexées à l'heure demandée (targetH) : la
   // valeur retenue EST celle du créneau, pas un repli — d'où atHour = heure du
   // créneau, sans avertissement à afficher.
   _condReadHour = _getSessionHour();
+  _condReadDayGap = 0;
+  _condFillState = 'ok';
   var info = MODEL_RELIABILITY_LABELS[k];
   var hint = document.getElementById('autofill-hint');
   if (hint) {
-    var parts = [];
-    if (r.val != null) parts.push('Hs ' + (+r.val).toFixed(1) + 'm');
-    if (r.period != null) parts.push(Math.round(r.period) + 's');
-    if (r.wind && r.wind.kt != null) parts.push('Vent ' + Math.round(r.wind.kt) + ' nds');
-    hint.innerHTML = '📦 <b style="color:' + info.col + ';">' + info.label + '</b> · archivé'
-      + (parts.length ? ' · ' + escapeHtml(parts.join(' · ')) : '');
+    // Les valeurs ne sont plus répétées ici : elles sont dans les champs 40 px
+    // plus bas, et l'heure est déjà dans l'étiquette du créneau (audit UX).
+    hint.innerHTML = '📦 <b style="color:' + info.col + ';">' + escapeHtml(info.label) + '</b> · archivé';
     hint.style.color = 'var(--text-muted)';
   }
   if (typeof _updateObsDeltaRef === 'function') _updateObsDeltaRef();
@@ -2599,12 +2708,8 @@ function openAddSession() {
   tideRanges = [];
   setObsDelta(null); setWindDelta(null); setPeriodDelta(null);
   window._lastFcstModel = null;
-  // Créneau : repartir d'un état propre (une nouvelle session n'hérite ni du
-  // modèle choisi la fois d'avant, ni de l'heure de lecture précédente).
-  _condSourceChoice = 'live';
-  _condReadHour = null;
-  _slotLastKey = null;
-  _slotModelRowsKey = null; _slotModelRows = null;
+  // Créneau : repartir d'un état propre — variables ET écran (cf. _resetSlotState).
+  _resetSlotState();
   // Heure session par défaut = heure actuelle en NC, pas celle de l'appareil
   // (même correctif que AUDIT-previsions.md chantier 6, ici sur index.html)
   var defHour = new Date(Date.now() + 11 * 3600000).getUTCHours();
@@ -2813,22 +2918,40 @@ async function _saveDailyCache(date, lat, lon, spotName, data) {
     // sur la valeur de 20h — précisément le décalage qu'on vient de corriger
     // ailleurs. On relit donc l'existant et on conserve `hours[]` s'il est le seul
     // à en avoir. (Deux `.select()` : le piège RLS silencieux vaut aussi ici.)
-    var prevHours = null;
+    var prevHours = null, prevHoursSource = null, readOk = false;
     try {
-      var pr = await sb.from('meteo_cache').select('data').eq('id', id).maybeSingle();
+      var pr = await sb.from('meteo_cache').select('data,status').eq('id', id).maybeSingle();
+      readOk = !(pr && pr.error);
       var pd = pr && pr.data && pr.data.data;
-      if (pd && pd.hours && pd.hours.length) prevHours = pd.hours;
-    } catch (e) {}
+      if (pd && pd.hours && pd.hours.length) {
+        prevHours = pd.hours;
+        prevHoursSource = pd.hoursSource || pd.source || (pr.data && pr.data.status) || null;
+      }
+    } catch (e) { readOk = false; }
+    // Si la RELECTURE a échoué (RLS, hors ligne), on ne sait pas ce qu'on écrase :
+    // écrire quand même détruirait hours[] exactement comme avant le correctif,
+    // en silence. On s'abstient — perdre une écriture de cache est sans gravité,
+    // perdre les 24 h archivées par previsions.html ne l'est pas.
+    if (!readOk) { console.warn('[cache] relecture impossible → écriture annulée pour ne pas écraser hours[]', id); return; }
     if (prevHours && !(data && data.hours && data.hours.length)) {
-      data = Object.assign({}, data, { hours: prevHours });
+      // On conserve AUSSI d'où viennent ces heures : sans ça, un hours[] GFS
+      // repris sous un instantané meteo.nc se faisait passer pour du meteo.nc.
+      data = Object.assign({}, data, { hours: prevHours, hoursSource: prevHoursSource });
     }
+    // `status` NORMALISÉ en 'nc' | 'gfs'. index.html y écrivait son vocabulaire
+    // interne ('worker' / 'direct' / 'historique'), alors que previsions.html
+    // protège les données meteo.nc par `status === 'nc'` (previsions.html:4644 et
+    // :16670) : la garde « NC > GFS » ne se déclenchait donc JAMAIS contre les
+    // lignes du Journal, et un passage de previsions.html en mode GFS écrasait un
+    // vrai relevé meteo.nc (audit du 17/08/2026).
+    var _st = (data.source === 'worker' || data.source === 'direct' || data.source === 'nc') ? 'nc' : 'gfs';
     var res = await sb.from('meteo_cache').upsert({
       id: id,
       spot_name: spotName,
       lat: lat,
       lon: lon,
       data: data,
-      status: data.source,
+      status: _st,
       updated_at: new Date().toISOString()
     }, { onConflict: 'id' });
     if (res && res.error) { console.warn('[cache] Refus serveur:', res.error.message); return; }
@@ -2848,8 +2971,18 @@ async function _loadDailyCache(date, lat, lon, targetHour) {
   try {
     var res = await sb.from('meteo_cache').select('data,status').eq('id', id).maybeSingle();
     if (res.data && res.data.data) {
-      console.log('[cache] Cache NC trouvé ✅', id);
-      var out = Object.assign({}, res.data.data, { source: 'cache_nc' });
+      console.log('[cache] Cache trouvé ✅', id);
+      var raw = res.data.data;
+      // `origin` = provenance RÉELLE de la ligne, conservée pour l'appelant. La
+      // colonne `status` était SELECTée puis jetée, et `source` écrasé par
+      // 'cache_nc' : impossible de distinguer une ligne meteo.nc d'une ligne GFS,
+      // et tout était imputé à meteo.nc (audit du 17/08/2026). On garde les deux :
+      // hoursSource décrit hours[] (posé par la fusion de _saveDailyCache),
+      // sinon la provenance de la ligne elle-même.
+      var out = Object.assign({}, raw, {
+        source: 'cache_nc',
+        origin: raw.source || res.data.status || null
+      });
       if (targetHour != null && out.hours && out.hours.length) {
         var best = null, bestDiff = Infinity;
         out.hours.forEach(function(row) {
@@ -2858,10 +2991,19 @@ async function _loadDailyCache(date, lat, lon, targetHour) {
           if (diff < bestDiff) { bestDiff = diff; best = row; }
         });
         if (best) {
-          out.hs = best.hs; out.period = best.period; out.swellDir = best.swellDir;
-          out.windKt = best.windKt; out.windDir = best.windDir;
+          // Ne remplacer que ce que l'entrée horaire porte VRAIMENT : un champ
+          // null dans hours[] détruisait sinon une valeur que l'instantané plat
+          // avait, alors qu'on ne cherchait qu'à préciser l'heure.
+          if (best.hs != null) out.hs = best.hs;
+          if (best.period != null) out.period = best.period;
+          if (best.swellDir != null) out.swellDir = best.swellDir;
+          if (best.windKt != null) out.windKt = best.windKt;
+          if (best.windDir != null) out.windDir = best.windDir;
           out.atHour = best.h;   // heure réellement retenue (peut différer de targetHour)
-          console.log('[cache] Heure la plus proche de ' + targetHour + 'h → ' + best.h + 'h');
+          // hours[] peut venir d'un AUTRE écrivain que l'instantané plat (fusion) :
+          // c'est SA provenance qui compte puisque ce sont ses valeurs qu'on sert.
+          if (raw.hoursSource) out.origin = raw.hoursSource;
+          console.log('[cache] Heure la plus proche de ' + targetHour + 'h → ' + best.h + 'h (origine ' + out.origin + ')');
         }
       }
       return out;
@@ -2881,22 +3023,47 @@ function _cacheDayFor(targetDate, today) {
 var _autofillBusy = false; // lock : un seul autofill à la fois
 
 // Vide les champs conditions remplis par l'autofill (appelé avant un refetch pour une nouvelle date)
-function _clearAutofillFields() {
+// keepOwned = true : ne PAS toucher aux valeurs que l'utilisateur possède
+// (saisies à la main, ou chargées depuis une session enregistrée). Ajouté le
+// 17/08/2026 après audit : le passage en attribut `onchange` a rendu cet appel
+// systématique en ÉDITION, où il remettait dataset.userEdited à '0' — annulant
+// exactement le garde-fou censé protéger les conditions vécues. Corriger une
+// faute de frappe dans la date d'une vieille session remplaçait donc ce qu'on
+// avait VU par la prévision d'un modèle, en gardant les écarts ressentis qui
+// référençaient les anciennes valeurs. Mesuré : 2,7 m/16 s/4 nds → 0,3 m/18 s/3 nds.
+function _clearAutofillFields(keepOwned) {
+  var owned = {};
+  if (keepOwned) {
+    ['f-hs','f-period','f-wind'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.dataset.userEdited === '1' && el.value !== '') owned[id] = 1;
+    });
+  }
   ['f-hs','f-period','f-wind',
    'f-swell-dir','f-swell-dir-card','f-swell-dir-deg',
    'f-wind-dir','f-wind-dir-card','f-wind-dir-deg'].forEach(function(id) {
+    // Les directions suivent le sort des scalaires : elles n'ont pas de drapeau
+    // propre, mais elles appartiennent au même relevé.
+    var base = id.replace(/-card$|-deg$/, '').replace('f-swell-dir', 'f-hs').replace('f-wind-dir', 'f-wind');
+    if (keepOwned && (owned[id] || owned[base])) return;
     var el = document.getElementById(id); if (el) el.value = '';
   });
   // Le champ est vidé volontairement (nouvelle date) : lever le drapeau de saisie
   // manuelle pour que le prochain autofill puisse à nouveau le remplir.
   ['f-hs','f-period','f-wind'].forEach(function(id) {
+    if (owned[id]) return;
     var el = document.getElementById(id); if (el) el.dataset.userEdited = '0';
   });
   var hint = document.getElementById('autofill-hint');
   if (hint) hint.textContent = '';
   var stInfoEl = document.getElementById('autofill-station-info');
   if (stInfoEl) stInfoEl.innerHTML = '';
-  window._lastFcstModel = null;
+  // Le préremplissage n'a plus rien fourni : plus personne à qui imputer les
+  // écarts ressentis. Sauf si on préserve un relevé possédé — dans ce cas le
+  // modèle qui l'a fourni reste celui de la session.
+  if (!keepOwned) window._lastFcstModel = null;
+  _condFillState = 'vide';
+  _condReadHour = null;
   if (typeof _updateObsDeltaRef === 'function') _updateObsDeltaRef();
 }
 
@@ -2915,8 +3082,19 @@ function _bindConditionsManualFlag() {
   });
 }
 
+// Demande arrivée pendant qu'un autofill tourne : mémorisée puis rejouée à la fin.
+// Avant (audit du 17/08/2026) le verrou se contentait d'IGNORER la demande, sans
+// aucun réessai : changer d'heure pendant un chargement laissait définitivement
+// les chiffres de l'ancien créneau sous l'en-tête du nouveau — et comme
+// `_slotLastKey` avait déjà été avancé, aucun événement ultérieur ne réparait
+// l'état. Mesuré : créneau 06h en cours, passage à 15h → « lue à 05h » figé.
+var _autofillPending = null;
 async function _autoFillConditions(targetDate) {
-  if (_autofillBusy) { console.log('[autofill] déjà en cours, ignoré'); return; }
+  if (_autofillBusy) {
+    _autofillPending = { date: targetDate };
+    console.log('[autofill] déjà en cours → demande mise en attente');
+    return;
+  }
   _autofillBusy = true;
   try {
   var hint = document.getElementById('autofill-hint');
@@ -3151,6 +3329,10 @@ async function _autoFillConditions(targetDate) {
               // les heures déjà écoulées, viser 6h le soir renvoie forcément autre
               // chose. On l'affiche au lieu de laisser croire qu'on a lu 6h.
               atHour:   _ncHourOfIso(wBest.time),
+              // Millisecondes de la ligne retenue : sert à mesurer la distance en
+              // JOURS au créneau visé (une date au-delà de l'horizon du modèle
+              // retient la dernière ligne dispo, à plusieurs jours de là).
+              atMs:     new Date(wBest.time).getTime(),
               source: 'worker'
             };
             console.log('[autofill] Worker OK ✅', ncData);
@@ -3190,6 +3372,7 @@ async function _autoFillConditions(targetDate) {
               windKt:   ncBest.wind_speed_kt          != null ? ncBest.wind_speed_kt           : null,
               windDir:  ncBest.wind_direction         != null ? ncBest.wind_direction          : null,
               atHour:   _ncHourOfIso(ncBest.time),
+              atMs:     new Date(ncBest.time).getTime(),
               source: 'direct'
             };
             console.log('[autofill] NC direct (fallback) ✅', ncData);
@@ -3251,17 +3434,26 @@ async function _autoFillConditions(targetDate) {
   // les afficher confondues était précisément le mensonge à supprimer. Repli sur
   // l'heure du créneau quand la source ne sait pas la dire (vieille ligne de cache
   // écrite avant que `atHour` n'existe).
+  // Provenance RÉELLE d'une ligne de cache : `data.source` est écrit dans le JSON
+  // par celui qui l'a produite (index.html : 'worker'/'direct' ; previsions.html :
+  // 'nc'/'gfs'). _loadDailyCache l'écrasait par 'cache_nc' sans jamais le lire —
+  // d'où un tableau horaire d'origine GFS resservi sous « ✅ Cache NC » et imputé
+  // à meteo.nc dans les statistiques (audit du 17/08/2026). On distingue.
+  var _cacheWasGfs = (data && data.source === 'cache_nc' && /gfs|historique/.test(String(data.origin || '')));
   var _readH = (data && data.atHour != null && !isNaN(data.atHour)) ? data.atHour : _slotHour;
   var sourceLabel = data
     ? (data.source === 'worker'      ? '✅ Worker · ' + station.name
       : data.source === 'direct'    ? '✅ meteo.nc · ' + station.name
-      : data.source === 'cache_nc'  ? '✅ Cache NC · ' + station.name + ' · ' + _readH + 'h'
-      : data.source === 'historique' ? '📅 GFS archive · ' + station.name + ' · ' + _readH + 'h'
+      : data.source === 'cache_nc'  ? (_cacheWasGfs ? '📅 Cache GFS · ' : '✅ Cache NC · ') + station.name
+      : data.source === 'historique' ? '📅 GFS archive · ' + station.name
       : '⚠️ GFS fallback · ' + station.name)
     : null;
 
   if (!data) {
     if (hint) { hint.textContent = '⚠ Données indisponibles'; hint.style.color = 'var(--accent-warm)'; }
+    _condFillState = 'echec';
+    _condReadHour = null; _condReadDayGap = 0;
+    _updateSessionSlotSummary();
     return;
   }
 
@@ -3289,7 +3481,11 @@ async function _autoFillConditions(targetDate) {
   // dernier modèle LU (vérifié : corriger l'heure d'une vieille session le passait de
   // 'nc' à 'gfs'), donc imputait l'écart ressenti à un modèle qui n'avait rien fourni.
   if (_wroteAny) {
-    window._lastFcstModel = (data.source === 'worker' || data.source === 'direct' || data.source === 'cache_nc') ? 'nc'
+    // Une ligne de cache dont la donnée vient d'Open-Meteo s'impute à 'gfs', pas
+    // à 'nc' : sinon l'écart ressenti d'une session est porté au crédit (ou au
+    // débit) de meteo.nc alors que les chiffres sortaient du GFS.
+    window._lastFcstModel = _cacheWasGfs ? 'gfs'
+      : (data.source === 'worker' || data.source === 'direct' || data.source === 'cache_nc') ? 'nc'
       : data.source ? 'gfs' : null;
   }
 
@@ -3304,10 +3500,19 @@ async function _autoFillConditions(targetDate) {
   // (trou repéré le 16/08/2026 en vérifiant le garde-fou des scalaires). Règle
   // alignée : on n'écrit une direction que si le préremplissage a effectivement eu
   // la main sur les scalaires, ou si le champ est encore vide.
+  // Une direction ne se laisse écraser que si elle est VIDE, ou si le
+  // préremplissage est maître de l'ensemble du relevé (aucun scalaire possédé).
+  // `_wroteAny` seul ne suffisait pas : il suffisait qu'UN champ vide ait été
+  // rempli pour que les directions relevées soient remplacées — cas d'une
+  // session où seule la direction avait été notée (audit du 17/08/2026).
+  var _ownsAnyScalar = ['f-hs','f-period','f-wind'].some(function(id) {
+    var el = document.getElementById(id);
+    return el && el.dataset.userEdited === '1' && el.value !== '';
+  });
   function _dirWritable(hiddenId) {
-    if (_wroteAny) return true;
     var el = document.getElementById(hiddenId);
-    return !el || !el.value;
+    if (!el || !el.value) return true;      // vide : rien à protéger
+    return _wroteAny && !_ownsAnyScalar;    // sinon, seulement si rien n'est possédé
   }
   if (typeof setDirFields === 'function') {
     if (data.swellDir != null && _dirWritable('f-swell-dir')) {
@@ -3332,11 +3537,11 @@ async function _autoFillConditions(targetDate) {
   }
 
   if (hint) {
-    var parts = [];
-    if (data.hs != null) parts.push('Hs ' + (+data.hs).toFixed(1) + 'm');
-    if (data.period != null) parts.push(Math.round(data.period) + 's');
-    if (data.windKt != null) parts.push('Vent ' + Math.round(data.windKt) + ' nds');
-    hint.textContent = sourceLabel + (parts.length ? ' · ' + parts.join(' · ') : '');
+    // Le bandeau ne porte plus que la PROVENANCE. Il répétait Hs/période/vent —
+    // une copie littérale des trois champs situés 40 px plus bas — et l'heure,
+    // déjà présente dans l'étiquette du créneau : trois affichages de la même
+    // heure sur un écran (audit UX du 17/08/2026).
+    hint.textContent = sourceLabel;
     hint.style.color = (_isHistory || data.source === 'gfs') ? 'var(--accent-warm)' : 'var(--success)';
   }
 
@@ -3344,9 +3549,25 @@ async function _autoFillConditions(targetDate) {
   // signalée si elle s'en écarte (cf. _updateSessionSlotSummary). C'est ce qui
   // manquait pour pouvoir répondre à « ces chiffres, ils sont de quand ? ».
   _condReadHour = (data.atHour != null && !isNaN(data.atHour)) ? data.atHour : null;
+  // Distance en JOURS : l'écart d'heure seul ne voit RIEN quand la date visée
+  // dépasse l'horizon du modèle (la dernière ligne disponible peut tomber à la
+  // bonne heure, mais une semaine plus tôt). Mesuré à J+16 : écart d'heure 0,
+  // bandeau vert, chiffres d'il y a 7 jours.
+  _condReadDayGap = (data.atMs != null && !isNaN(data.atMs))
+    ? Math.floor(Math.abs(data.atMs - _slotMs) / 86400000) : 0;
+  _condFillState = _wroteAny ? 'ok' : _condFillState;
   _updateSessionSlotSummary();
   } catch(e) { console.warn('[autofill] exception:', e); }
-  finally { _autofillBusy = false; } // toujours libérer même en cas d'erreur
+  finally {
+    _autofillBusy = false; // toujours libérer même en cas d'erreur
+    // Une demande est arrivée pendant le fetch : la rejouer, sinon l'écran reste
+    // sur un créneau que l'utilisateur a déjà quitté. `setTimeout(0)` pour sortir
+    // du `finally` avant de relancer (et laisser le verrou vraiment libéré).
+    if (_autofillPending) {
+      var _pend = _autofillPending; _autofillPending = null;
+      setTimeout(function() { _applyCondSource(true); }, 0);
+    }
+  }
 }
 
 // ── #forecast-strip SUPPRIMÉ (16/08/2026) ────────────────────────────────
@@ -3378,7 +3599,7 @@ function _applyStationPick(spotVal) {
   // Le NOM du spot n'a pas changé, ses COORDONNÉES si : la clé du cache des modèles
   // (spot|date|heure) ne s'en aperçoit pas et resservirait les lignes de l'ancien
   // point. On l'invalide à la main — même raison dans le panneau ⚙ Réglages.
-  _slotModelRowsKey = null; _slotModelRows = null;
+  _slotModelRowsKey = null; _slotModelRows = null; _slotModelRowsP = null; _slotModelSeq++;
   _applyCondSource(false);
   if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
 }
@@ -3445,7 +3666,13 @@ function editSession() {
       : tideRanges.length ? Math.round(tideRanges[0].start)
       : new Date(Date.now() + 11 * 3600000).getUTCHours()
     );
-    editHourSel.dataset.userEdited = '0';
+    // Une heure ENREGISTRÉE est un choix de l'utilisateur, pas un défaut à
+    // rafraîchir : la marquer comme telle, sinon renderTideWidget la remplace par
+    // `round(tide_ranges[0].start)` dès la réouverture — et saveSession
+    // réenregistre cette valeur (audit du 17/08/2026, mesuré : session_hour 7
+    // réécrit en 10). Même protection que hs/période/vent juste en dessous, qui
+    // l'avaient déjà ; elle avait été oubliée sur l'heure.
+    editHourSel.dataset.userEdited = (s.session_hour != null) ? '1' : '0';
   }
   _bindSessionHourManualFlag();
   // hs/période/vent viennent de la session ENREGISTRÉE : ce sont des valeurs
@@ -3467,12 +3694,16 @@ function editSession() {
   setWindDelta(s.wind_delta != null ? s.wind_delta : null);
   setPeriodDelta(s.period_delta != null ? s.period_delta : null);
   window._lastFcstModel = s.fcst_model || null;
+  // État propre d'abord (écran compris), PUIS la source réelle de cette session :
+  // sans le reset, le sélecteur restait sur le modèle du formulaire précédent.
+  _resetSlotState();
   // Le sélecteur « Prérempli depuis » repart de ce qui a RÉELLEMENT rempli cette
   // session ('nc' historique = temps réel meteo.nc, cf. _autoFillConditions).
   _condSourceChoice = (s.fcst_model && s.fcst_model !== 'nc') ? s.fcst_model : 'live';
+  // Les conditions viennent de la base : l'état est « rempli », pas « vide »,
+  // sinon l'arrivée d'un token relancerait un préremplissage par-dessus un relevé.
+  _condFillState = 'ok';
   _condReadHour = s.session_hour != null ? s.session_hour : null;
-  _slotLastKey = null;
-  _slotModelRowsKey = null; _slotModelRows = null;
   _updateObsDeltaRef();
   // Directions
   setDirFields('f-swell-dir','f-swell-dir-card','f-swell-dir-deg', s.swell_dir||'');
@@ -3727,12 +3958,12 @@ function renderTideWidget() {
           + '<input type="time" value="'+v1+'" min="00:00" max="23:59" '
           + 'onchange="updateTideRangeTime('+i+',0,this.value)" '
           + 'style="background:var(--deep);border:1px solid rgba(79,163,199,0.4);border-radius:4px;'
-          + 'color:var(--accent);font-size:11px;padding:2px 4px;width:75px;">'
+          + 'color:var(--accent);font-size:11px;padding:2px 4px;width:92px;">'
           + '<span style="color:var(--faint);">→</span>'
           + '<input type="time" value="'+v2+'" min="00:00" max="23:59" '
           + 'onchange="updateTideRangeTime('+i+',1,this.value)" '
           + 'style="background:var(--deep);border:1px solid rgba(79,163,199,0.4);border-radius:4px;'
-          + 'color:var(--accent);font-size:11px;padding:2px 4px;width:75px;">'
+          + 'color:var(--accent);font-size:11px;padding:2px 4px;width:92px;">'
           + '</div>';
       }).join('<div style="width:1px;height:20px;background:var(--border);margin:0 6px;"></div>');
     } else {
@@ -3767,15 +3998,14 @@ function renderTideWidget() {
     var hourEl = document.getElementById('f-session-hour');
     if (hourEl && hourEl.dataset.userEdited !== '1') {
       var startH = Math.max(0, Math.min(23, Math.round(tideRanges[0].start)));
-      if (hourEl.value !== String(startH)) {
-        hourEl.value = String(startH);
-        // Cette écriture était MUETTE jusqu'au 16/08/2026 : une affectation
-        // directe ne déclenche pas d'événement `change`, donc tracer sa plage
-        // 8h→11h déplaçait l'heure sans que les conditions ni le tableau des
-        // modèles ne le sachent. On prévient explicitement — sauf pendant un
-        // glisser, où la valeur est transitoire (le mouseup rejoue le rendu).
-        if (_tideDragStart === null) _onSessionWindowChanged();
-      }
+      // Écriture simple. La NOTIFICATION est sortie d'ici (audit du 17/08/2026) :
+      // elle était imbriquée dans `if (hourEl.value !== String(startH))` et sautée
+      // pendant un glisser. Or le glisser ÉCRIT la valeur à chaque mousemove — au
+      // relâchement elle était donc déjà à jour, le test tombait faux, et la
+      // resynchronisation n'avait JAMAIS lieu sur le geste principal du widget.
+      // Le harnais du 16/08 ne l'avait pas vu : il posait tideRanges par
+      // affectation puis appelait renderTideWidget() une seule fois, hors glisser.
+      hourEl.value = String(startH);
     }
     var tideEl = document.getElementById('f-tide');
     if (tideEl && (!tideEl.value || tideEl.dataset.fromTide === '1')) {
@@ -3802,6 +4032,12 @@ function renderTideWidget() {
   // avoir à instrumenter chacun. Texte seul, aucun réseau — sans danger même
   // appelé à chaque mousemove.
   if (typeof _updateSessionSlotSummary === 'function') _updateSessionSlotSummary();
+  // Resynchronisation du reste (conditions, modèles, repère) : UNE SEULE sortie,
+  // ici, quel que soit le chemin qui a modifié les plages. Hors glisser, où la
+  // valeur est transitoire — le mouseup/touchend rejoue le rendu et déclenche.
+  // _onSessionWindowChanged porte déjà sa propre détection de changement
+  // (clé date|heure) et son débounce : l'appeler à chaque rendu est sans coût.
+  if (_tideDragStart === null && typeof _onSessionWindowChanged === 'function') _onSessionWindowChanged();
 }
 
 // Ouvrir l'éditeur d'heure précise pour la plage i
@@ -4566,7 +4802,15 @@ async function _fetchModelTableRows(spotVal, dateVal, sessionHour) {
         .select('model,kind,lat,lon,hours,issued_at').eq('date', dateVal)
         .in('kind', ['swell_primary', 'swell_secondary', 'wave', 'wind'])
         .gte('lat', latLo).lte('lat', latHi).gte('lon', lonLo).lte('lon', lonHi)
+        // `id` en second critère : toutes les lignes d'un même run de cron
+        // partagent le MÊME `issued_at`, et Postgres ne garantit aucun ordre
+        // stable entre deux requêtes à ex æquo — des lignes pouvaient donc être
+        // SAUTÉES d'une page à l'autre, faisant disparaître un modèle par
+        // intermittence. C'est la règle que `_sbFetchAllPages` applique déjà
+        // (tri sur la clé primaire) et que l'audit du 16/08 avait écrite noir sur
+        // blanc sans la reporter ici.
         .order('issued_at', { ascending: false })
+        .order('id', { ascending: true })
         .range(_pg * _PAGE, _pg * _PAGE + _PAGE - 1);
       if (rr.error) { if (_pg === 0) return null; break; }
       if (!rr.data || !rr.data.length) break;
@@ -5027,6 +5271,34 @@ function _deltaWord(kind, v) {
   if (+v === 0) return 'conforme';
   return (Math.abs(v) === 2 ? 'nettement ' : '') + (v < 0 ? m.neg : m.pos);
 }
+// Contexte du créneau dans le DÉTAIL d'une session (audit UX du 17/08/2026).
+// Le formulaire enregistre session_hour, tide_ranges et fcst_model, mais l'écran
+// où l'on RELIT ses sessions n'en montrait rien : on y retrouvait « Houle 1.6m »
+// sous une date, sans heure ni source — exactement la plainte d'origine, intacte.
+// Tout est déjà en base, il n'y avait qu'à l'afficher.
+function _renderSlotContextDetail(s) {
+  var bits = [];
+  var h = _sessionHourOf(s);
+  if (h != null) bits.push('à ' + (h < 10 ? '0' : '') + h + 'h');
+  if (s.tide_ranges && s.tide_ranges.length) {
+    var r0 = s.tide_ranges[0], rN = s.tide_ranges[s.tide_ranges.length - 1];
+    if (r0.start != null && rN.end != null) {
+      bits.push('session ' + _fmtHmDec(r0.start) + '→' + _fmtHmDec(rN.end));
+    }
+  } else if (s.duration_h) {
+    bits.push(s.duration_h + 'h à l\'eau');
+  }
+  if (s.fcst_model) {
+    var info = MODEL_RELIABILITY_LABELS[s.fcst_model];
+    bits.push('prévision ' + (info ? info.label : s.fcst_model));
+  }
+  if (!bits.length) return '';
+  return '<div class="detail-item" style="grid-column:1/-1;">'
+    + '<div class="detail-label">Conditions relevées</div>'
+    + '<div class="detail-value" style="font-size:13px;">' + escapeHtml(bits.join(' · ')) + '</div>'
+    + '</div>';
+}
+
 function _renderDeltaChipsDetail(s) {
   var chips = ['obs_delta', 'period_delta', 'wind_delta'].filter(function(k) { return s[k] != null; }).map(function(k) {
     var v = s[k], col = DELTA_COLORS[String(v)] || 'var(--text-muted)';
@@ -5216,6 +5488,7 @@ async function openDetail(id) {
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem;">${dateStr}</div>
     ${moves ? `<div style="margin-bottom:1rem;display:flex;gap:4px;flex-wrap:wrap;">${moves}</div>` : ''}
     <div class="detail-grid">
+      ${_renderSlotContextDetail(s)}
       ${s.hs ? `<div class="detail-item"><div class="detail-label">Houle (Hs)</div><div class="detail-value">${s.hs}m ${s.swell_dir ? '· '+escapeHtml(s.swell_dir) : ''}</div></div>` : ''}
       ${s.period ? `<div class="detail-item"><div class="detail-label">Période</div><div class="detail-value">${s.period}s</div></div>` : ''}
       ${s.wind_kts != null ? `<div class="detail-item"><div class="detail-label">Vent</div><div class="detail-value">${s.wind_kts} nds ${s.wind_dir ? '· '+escapeHtml(s.wind_dir) : ''}</div></div>` : ''}
@@ -6841,18 +7114,15 @@ function _onNewToken(tok, source) {
   // Re-déclencher l'autofill si le formulaire est ouvert et que l'autofill a échoué ou est vide
   var modal = document.getElementById('modal-add');
   var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
-  var hintEl = document.getElementById('autofill-hint');
   var isFormOpen = modal && modal.classList.contains('open');
-  var hintText = hintEl ? hintEl.textContent.trim() : '';
-  // Ne relance que si l'autofill n'a pas encore réussi (pas de ✅ NC/worker/cache)
-  // Ne relance PAS si NC/Worker déjà affiché (✅), ne relance QUE si vide/erreur/GFS
-  var hasNcData = hintText.includes('✅') || hintText.includes('Cache NC');
-  var needsRefresh = !hasNcData && (!hintText || hintText.includes('⏳') || hintText.includes('GFS') || hintText.includes('?') || hintText.includes('indisponible'));
-  // …et JAMAIS si l'utilisateur a explicitement choisi un modèle archivé comme
-  // source du préremplissage : l'arrivée d'un token meteo.nc ne doit pas écraser
-  // son choix (le hint d'un modèle archivé ne porte pas de ✅, il passait donc
-  // pour un échec d'autofill aux yeux du test ci-dessus).
-  if (_condSourceChoice && _condSourceChoice !== 'live') needsRefresh = false;
+  // Décision prise sur l'ÉTAT, plus sur le texte affiché (audit du 17/08/2026).
+  // L'ancien test cherchait '✅' / 'GFS' / '⏳' dans le bandeau : il devenait faux
+  // au moindre changement de libellé, et un bandeau résiduel d'un formulaire
+  // précédent (« 📦 MF global · archivé ») le faisait conclure à un succès —
+  // donc aucune relance alors que le formulaire était vide.
+  // On relance si, et seulement si : la source est le temps réel meteo.nc, et
+  // le préremplissage n'a pas abouti.
+  var needsRefresh = (_condSourceChoice === 'live') && (_condFillState !== 'ok');
   if (isFormOpen && spotVal && needsRefresh) {
     var dateEl = document.getElementById('f-date');
     console.log('[App] Nouveau token → relance autofill', spotVal);
@@ -7243,7 +7513,12 @@ async function saveProfileData() {
 // ══ UI HELPERS ══
 function setStars(n) {
   selectedQuality = n;
-  document.querySelectorAll('#f-qual-stars span').forEach((s, i) => s.classList.toggle('active', i < n));
+  document.querySelectorAll('#f-qual-stars span').forEach((s, i) => {
+    s.classList.toggle('active', i < n);
+    // Sans aria-checked, un lecteur d'écran annonce cinq boutons radio dont
+    // aucun n'est coché, quelle que soit la note choisie.
+    s.setAttribute('aria-checked', (i + 1) === n ? 'true' : 'false');
+  });
 }
 function setCommentStars(n) {
   selectedCommentQuality = n;
@@ -7443,6 +7718,9 @@ function toggleSection(id, btn) {
   var open = el.style.display !== 'none';
   el.style.display = open ? 'none' : 'block';
   if (arrow) arrow.textContent = open ? '▼' : '▲';
+  // État annoncé aux lecteurs d'écran : le bouton pilote une section pliable,
+  // sans aria-expanded rien ne dit si elle est ouverte (audit a11y du 17/08/2026).
+  if (btn && btn.setAttribute) btn.setAttribute('aria-expanded', open ? 'false' : 'true');
 }
 
 // ══ DIRECTION HELPERS ══
@@ -7658,7 +7936,7 @@ function showSpotSourceSettings() {
     // modèles (spot|date|heure) est aveugle à ça, on l'invalide (cf.
     // _applyStationPick). Et on passe par _applyCondSource pour ne pas perdre
     // en silence le modèle choisi dans « Prérempli depuis ».
-    _slotModelRowsKey = null; _slotModelRows = null;
+    _slotModelRowsKey = null; _slotModelRows = null; _slotModelRowsP = null; _slotModelSeq++;
     _applyCondSource(false);
     if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
   };
