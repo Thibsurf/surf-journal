@@ -1544,7 +1544,8 @@ async function sendMagicLinkJournal() {
       options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true }
     });
     if (res.error) throw res.error;
-    _authMsg('info', '📬 <b>Email envoyé à ' + email + '</b><br>Ouvre-le <b>sur cet appareil</b> et clique le lien : tu seras connecté automatiquement.<br><span style="opacity:.8">Rien au bout d\'une minute ? Regarde les <b>spams</b>.</span>');
+    // escapeHtml : _authMsg écrit en innerHTML et `email` sort d'un champ libre.
+    _authMsg('info', '📬 <b>Email envoyé à ' + escapeHtml(email) + '</b><br>Ouvre-le <b>sur cet appareil</b> et clique le lien : tu seras connecté automatiquement.<br><span style="opacity:.8">Rien au bout d\'une minute ? Regarde les <b>spams</b>.</span>');
   } catch(e) { _authMsg('err', _frAuthErrJ(e)); }
   finally { if (btn) { btn.disabled = false; btn.textContent = '✉️ Recevoir un lien magique par email'; } }
 }
@@ -1556,7 +1557,7 @@ async function sendPasswordResetJournal() {
   try {
     var res = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
     if (res.error) throw res.error;
-    _authMsg('info', '📬 <b>Email de réinitialisation envoyé à ' + email + '</b><br>Clique le lien <b>sur cet appareil</b> : la page te demandera ton nouveau mot de passe.<br><span style="opacity:.8">Pense aux <b>spams</b>.</span>');
+    _authMsg('info', '📬 <b>Email de réinitialisation envoyé à ' + escapeHtml(email) + '</b><br>Clique le lien <b>sur cet appareil</b> : la page te demandera ton nouveau mot de passe.<br><span style="opacity:.8">Pense aux <b>spams</b>.</span>');
   } catch(e) { _authMsg('err', _frAuthErrJ(e)); }
 }
 
@@ -2546,6 +2547,14 @@ async function _loadDailyCache(date, lat, lon, targetHour) {
   return null;
 }
 
+// Date sous laquelle archiver un relevé dans meteo_cache : celle que la donnée
+// DÉCRIT, pas celle du jour où on l'a récupérée. Les deux ne coïncident que pour
+// une session saisie le jour même — pour une session future (le cas d'usage
+// « je prépare la sortie de samedi »), la prévision porte sur targetDate.
+function _cacheDayFor(targetDate, today) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(targetDate || '') ? targetDate : today;
+}
+
 var _autofillBusy = false; // lock : un seul autofill à la fois
 
 // Vide les champs conditions remplis par l'autofill (appelé avant un refetch pour une nouvelle date)
@@ -2626,7 +2635,13 @@ async function _autoFillConditions(targetDate) {
               return '<option value="' + s.lat + ',' + s.lon + '">' + s.name + '</option>';
             }).join('')
           + '</select>'
-          + '<button type="button" onclick="_applyStationPick(\'' + spotVal + '\')" style="margin-top:4px;background:var(--accent);border:none;color:var(--ocean);border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:600;width:100%;">Utiliser cette station</button>';
+          // Le nom passe par un data-attribut échappé, PAS par une chaîne JS
+          // interpolée dans onclick="" : les spots sont en saisie libre (« + Autre »)
+          // et une apostrophe — courante en français, « Passe d'Uitoé », « L'Anse » —
+          // fermait la chaîne et cassait le bouton (au mieux), ou exécutait le reste
+          // comme du code. Même parti pris que window._spotNames[i] sur la page Spots
+          // et que _modelTableCtx pour le tableau de fiabilité (audit du 16/08/2026).
+          + '<button type="button" data-spot="' + escapeHtml(spotVal) + '" onclick="_applyStationPick(this.getAttribute(\'data-spot\'))" style="margin-top:4px;background:var(--accent);border:none;color:var(--ocean);border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:600;width:100%;">Utiliser cette station</button>';
       }
       return;
   } else if (!station) {
@@ -2787,7 +2802,12 @@ async function _autoFillConditions(targetDate) {
               source: 'worker'
             };
             console.log('[autofill] Worker OK ✅', ncData);
-            _saveDailyCache(today, lat, lon, station.name, ncData);
+            // La DATE VISÉE, pas `today` : pour une session future, wBest a été
+            // choisi à targetDate + heure de session (cf. _refMs juste au-dessus).
+            // L'écrire sous l'id du jour archivait la prévision de J+3 comme si
+            // c'était la météo d'aujourd'hui — _loadDailyCache la relisait ensuite
+            // comme la vérité du jour (audit du 16/08/2026).
+            _saveDailyCache(_cacheDayFor(targetDate, today), lat, lon, station.name, ncData);
           }
         }
       } catch(e) { console.warn('[autofill] Worker error:', e.message); }
@@ -2823,7 +2843,7 @@ async function _autoFillConditions(targetDate) {
               source: 'direct'
             };
             console.log('[autofill] NC direct (fallback) ✅', ncData);
-            _saveDailyCache(today, lat, lon, station.name, ncData);
+            _saveDailyCache(_cacheDayFor(targetDate, today), lat, lon, station.name, ncData);
           }
         } else if (ncRes.status === 401) {
           try { localStorage.removeItem('nc-token'); } catch(_) {}
@@ -4700,20 +4720,51 @@ function _renderModelReliabilitySection(s) {
 // openDetail() a déjà injecté le HTML ci-dessus de façon synchrone — le
 // tableau lui-même (async, dépend d'une requête réseau) est peuplé juste
 // après, une fois le conteneur #model-table-detail-<id> présent dans le DOM.
+// Heure de session pour la lecture des modèles. `session_hour` n'existe que depuis
+// le 28/07/2026 : mesuré le 16/08, 70 des 76 sessions ne l'ont pas, et toutes
+// retombaient donc sur midi. Or la plupart portent des `tide_ranges` — le créneau
+// marée sélectionné à la saisie DIT l'heure de la session. On s'en sert avant de
+// se rabattre sur midi, exactement comme _getSessionHour() le fait au formulaire.
+function _sessionHourOf(s) {
+  if (s && s.session_hour != null) return s.session_hour;
+  if (s && s.tide_ranges && s.tide_ranges.length && s.tide_ranges[0].start != null) {
+    return Math.max(0, Math.min(23, Math.round(s.tide_ranges[0].start)));
+  }
+  return null;   // _fetchModelTableRows retombera sur 12h, et l'UI l'annonce
+}
+
 function _mountModelTableDetail(s) {
   var el = document.getElementById('model-table-detail-' + s.id);
   if (!el) return;
-  _renderModelTableInto(el, s.spot || (s.spots && s.spots[0]) || '', s.date, { sessionId: s.id, session: s, formMode: false, sessionHour: s.session_hour });
+  _renderModelTableInto(el, s.spot || (s.spots && s.spots[0]) || '', s.date, { sessionId: s.id, session: s, formMode: false, sessionHour: _sessionHourOf(s) });
 }
-function _reopenModelTableDetail(sessionId) {
-  var s = (allSessions || []).find(function(x) { return x.id === sessionId; });
-  if (!s) return;
+// Efface un vote PARTOUT où il peut vivre : localStorage (repli), copie mémoire,
+// ET Supabase. Sans le dernier, « Changer → » ne faisait qu'un oubli de façade :
+// l'ancien vote restait en base et réapparaissait au prochain chargement si
+// l'utilisateur refermait sans revoter — en contradiction avec ce que l'écran
+// venait de montrer (audit du 16/08/2026).
+async function _clearModelVoteEverywhere(sessionId) {
   try {
     var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
     delete store[sessionId];
     localStorage.setItem('model-reliability', JSON.stringify(store));
   } catch (e) {}
-  if (s.model_reliability) s.model_reliability = null; // repli localStorage tant que non re-voté
+  var s = (allSessions || []).find(function(x) { return x.id === sessionId; });
+  if (s) s.model_reliability = null;
+  if (sb && await _hasModelReliabilityColumnJournal()) {
+    // .select() comme partout ailleurs : un update RLS-bloqué ne lève pas d'erreur.
+    try {
+      var r = await sb.from('sessions').update({ model_reliability: null }).eq('id', sessionId).select('id');
+      if (r.error || !r.data || !r.data.length) console.warn('[vote] effacement Supabase sans effet', r.error);
+      else _bumpData();
+    } catch (e) { console.warn('[vote] effacement Supabase:', e); }
+  }
+}
+
+async function _reopenModelTableDetail(sessionId) {
+  var s = (allSessions || []).find(function(x) { return x.id === sessionId; });
+  if (!s) return;
+  await _clearModelVoteEverywhere(sessionId);
   openDetail(sessionId);
 }
 
@@ -4755,17 +4806,11 @@ function _updateModelReliabilityFormSection() {
 
 // "Changer" depuis le formulaire : efface le vote déjà mis de côté (pending
 // ou déjà associé à l'id en édition) pour réafficher le tableau de vote.
-function _resetModelVoteInForm() {
+async function _resetModelVoteInForm() {
   var dateVal = document.getElementById('f-date') ? document.getElementById('f-date').value : '';
   var spotVal = (typeof getSpotValue === 'function') ? getSpotValue() : '';
   if (editingSessionId) {
-    try {
-      var store = JSON.parse(localStorage.getItem('model-reliability') || '{}');
-      delete store[editingSessionId];
-      localStorage.setItem('model-reliability', JSON.stringify(store));
-    } catch (e) {}
-    var s = (allSessions || []).find(function(x) { return x.id === editingSessionId; });
-    if (s) s.model_reliability = null;
+    await _clearModelVoteEverywhere(editingSessionId);   // Supabase compris, cf. ci-dessus
   } else {
     _clearPendingModelVote(spotVal, dateVal);
   }
@@ -4824,7 +4869,7 @@ async function openDetail(id) {
       ${s.price_cfp ? `<div class="detail-item"><div class="detail-label">Prix bateau</div><div class="detail-value">${s.price_cfp.toLocaleString('fr')} CFP</div></div>` : ''}
       ${s.shared_with && s.shared_with.length ? `<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">Surfeurs</div><div class="detail-value">${escapeHtml(s.shared_with.join(', '))}</div></div>` : ''}
       ${_renderDeltaChipsDetail(s)}
-      ${(isOwn && s.hs) ? _renderModelReliabilitySection(s) : ''}
+      ${(isOwn && s.hs != null) ? _renderModelReliabilitySection(s) : ''}
     </div>
     ${s.observations ? `<div style="margin-top:1rem;padding:12px 14px;background:var(--glass);border-radius:var(--radius-sm);font-size:13px;color:var(--text);line-height:1.7;">${escapeHtml(s.observations)}</div>` : ''}
     ${isOwn ? `<div style="margin-top:1rem;text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteSession('${s.id}')">Supprimer</button></div>` : ''}
@@ -4838,7 +4883,10 @@ async function openDetail(id) {
     document.getElementById('detail-comments-section').style.display = 'none';
   }
   document.getElementById('modal-detail').classList.add('open');
-  if (isOwn && s.hs) _mountModelTableDetail(s);
+  // `!= null` et non truthy : une session à hs = 0 (mer plate, cas réel que
+  // _numField/_fillNumField s'échinent à préserver de bout en bout) faisait
+  // disparaître TOUT l'outil de fiabilité houle, sans un mot (audit du 16/08).
+  if (isOwn && s.hs != null) _mountModelTableDetail(s);
 }
 
 async function loadComments(sessionId) {
@@ -5461,16 +5509,54 @@ var _windTruthStation = '__all__';
 // change d'onglet ou de station, pas à chaque redessin.
 var _windTruthPairs = null;
 
+// Lit TOUTES les lignes d'une requête, par pages de 1000.
+//
+// ══ Pourquoi ce helper existe (audit du 16/08/2026) ══
+// PostgREST plafonne TOUTE réponse à 1000 lignes, SANS erreur ni signal : au-delà,
+// le client reçoit un sous-ensemble et croit avoir le tout. Le piège a déjà mordu
+// une fois (bug « je n'ai que 4 modèles », corrigé le 03/08 dans
+// _fetchModelTableRows) et mordait encore ici : mesuré le 16/08, la requête vent de
+// la vérité terrain remonte 1819 lignes (aro 346 + ecmwf 726 + aifs 747) pour un
+// plafond de 1000 — 45 % des runs étaient jetés, et comme aucune de ces requêtes
+// n'ordonnait, LESQUELS étaient jetés variait d'un appel à l'autre. Le classement
+// par duels et les biais par échéance étaient donc calculés sur un échantillon
+// arbitraire et non reproductible.
+// Tri sur `id` (clé primaire, donc UNIQUE) et pas sur issued_at/date : avec un tri
+// à ex æquo, deux pages consécutives peuvent se recouvrir ou sauter des lignes,
+// ce qui rendrait la pagination aussi peu fiable que le plafond qu'elle corrige.
+// Vérifié le 16/08 : model_forecast_cache et observations_history ont toutes deux
+// une colonne `id`.
+async function _sbFetchAllPages(build, orderCol) {
+  var PAGE = 1000, MAX_PAGES = 30, out = [];   // 30 000 lignes = borne de sécurité
+  for (var p = 0; p < MAX_PAGES; p++) {
+    var q = build().order(orderCol || 'id', { ascending: true }).range(p * PAGE, p * PAGE + PAGE - 1);
+    var r = await q;
+    if (r.error) return { error: r.error, data: out };
+    if (!r.data || !r.data.length) break;
+    out = out.concat(r.data);
+    if (r.data.length < PAGE) break;           // dernière page atteinte
+  }
+  return { error: null, data: out };
+}
+
 // Construit la liste des appariements prévision ↔ observation, chacun portant son
 // échéance. Une PAIRE = une heure cible, un modèle, une station, un run.
 async function _windTruthBuildPairs() {
   if (_windTruthPairs) return _windTruthPairs;
-  var fcWind = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
-    .eq('kind', 'wind').in('model', ['aro', 'ecmwf', 'aifs']).in('spot_name', WIND_TRUTH_STATIONS);
-  var fcMarc = await sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
-    .eq('kind', 'wave').eq('model', 'marc').in('spot_name', WIND_TRUTH_STATIONS);
-  var oh = await sb.from('observations_history').select('station_name,date,hours')
-    .in('station_name', WIND_TRUTH_STATIONS);
+  // Paginé : ces trois tables dépassent (ou dépasseront) 1000 lignes, cf.
+  // _sbFetchAllPages — sans quoi le bloc juge les modèles sur un extrait arbitraire.
+  var fcWind = await _sbFetchAllPages(function () {
+    return sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
+      .eq('kind', 'wind').in('model', ['aro', 'ecmwf', 'aifs']).in('spot_name', WIND_TRUTH_STATIONS);
+  });
+  var fcMarc = await _sbFetchAllPages(function () {
+    return sb.from('model_forecast_cache').select('model,spot_name,date,hours,issued_at')
+      .eq('kind', 'wave').eq('model', 'marc').in('spot_name', WIND_TRUTH_STATIONS);
+  });
+  var oh = await _sbFetchAllPages(function () {
+    return sb.from('observations_history').select('station_name,date,hours')
+      .in('station_name', WIND_TRUTH_STATIONS);
+  });
   if (fcWind.error || fcMarc.error || oh.error || !oh.data || !oh.data.length) return null;
 
   var obsByKey = {};
@@ -5696,7 +5782,9 @@ async function _renderWindTruthBlock() {
         + ';border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:' + (on ? '600' : '400') + ';">'
         + WIND_TRUTH_METRICS[k].label + '</button>';
     }).join('');
-    var stOpts = ['<option value="__all__">Les 2 stations</option>'].concat(
+    // Libellé dérivé de la liste, pas figé : il annonçait « Les 2 stations » alors
+    // que Poé a été ajoutée le 14/08/2026 et qu'elles sont 3 (audit du 16/08).
+    var stOpts = ['<option value="__all__">Toutes les stations (' + WIND_TRUTH_STATIONS.length + ')</option>'].concat(
       WIND_TRUTH_STATIONS.map(function(st) {
         return '<option value="' + escapeHtml(st) + '"' + (st === _windTruthStation ? ' selected' : '') + '>' + escapeHtml(st) + '</option>';
       })).join('');
@@ -6377,14 +6465,14 @@ async function openUserProfile(userId) {
 
 // ══ TOKEN & WORKER STATUS ══════════════════════════════════════════════════
 
-// Quand un nouveau token arrive : mettre � jour UI + relancer l'autofill si formulaire ouvert
+// Quand un nouveau token arrive : mettre à jour UI + relancer l'autofill si formulaire ouvert
 function _onNewToken(tok, source) {
   if (!tok || tok.length < 20) return;
   try { localStorage.setItem('nc-token', tok); localStorage.setItem('nc-token-date', String(Date.now())); } catch(_) {}
   _updateTokenUI(tok, Date.now(), source || 'extension');
   _updateExtBadge(tok);
   checkTokenAndWorkerStatus();
-  // Re-d�clencher l'autofill si le formulaire est ouvert et que l'autofill a �chou� ou est vide
+  // Re-déclencher l'autofill si le formulaire est ouvert et que l'autofill a échoué ou est vide
   var modal = document.getElementById('modal-add');
   var spotVal = typeof getSpotValue === 'function' ? getSpotValue() : '';
   var hintEl = document.getElementById('autofill-hint');
@@ -6396,7 +6484,7 @@ function _onNewToken(tok, source) {
   var needsRefresh = !hasNcData && (!hintText || hintText.includes('⏳') || hintText.includes('GFS') || hintText.includes('?') || hintText.includes('indisponible'));
   if (isFormOpen && spotVal && needsRefresh) {
     var dateEl = document.getElementById('f-date');
-    console.log('[App] Nouveau token ? relance autofill', spotVal);
+    console.log('[App] Nouveau token → relance autofill', spotVal);
     _autoFillConditions(dateEl ? dateEl.value : null);
   }
 }
@@ -7073,7 +7161,8 @@ function showSpotSourceSettings() {
     + 'width:min(440px,96vw);box-shadow:0 12px 40px rgba(0,0,0,.7);font-size:13px;color:var(--text);';
 
   div.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
-    + '<div style="font-weight:700;color:var(--accent);font-size:14px;">⚙ Sources — ' + spot + '</div>'
+    // escapeHtml : nom de spot en saisie libre injecté en innerHTML (audit 16/08).
+    + '<div style="font-weight:700;color:var(--accent);font-size:14px;">⚙ Sources — ' + escapeHtml(spot) + '</div>'
     + '<button id="ssd-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">×</button>'
     + '</div>'
 
@@ -7137,7 +7226,9 @@ function showSpotSourceSettings() {
     // Label personnalisé
     + '<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">Nom affiché (optionnel)</div>'
     + '<div style="font-size:9px;color:var(--text-faint);margin-bottom:5px;">Surnom court affiché à côté du spot — ex: "Dumbéa" au lieu de "Passe de Dumbéa". Laisse vide = nom officiel de la station.</div>'
-    + '<input type="text" id="ssd-label" value="'+(cfg.label||station.name)+'" placeholder="ex: Dumbéa, Ouano, Boulari…" '
+    // value="" non échappé : un guillemet dans le surnom (champ libre juste au-dessus)
+    // refermait l'attribut et laissait injecter d'autres attributs (audit 16/08).
+    + '<input type="text" id="ssd-label" value="'+escapeHtml(cfg.label||station.name)+'" placeholder="ex: Dumbéa, Ouano, Boulari…" '
     + 'style="width:100%;background:var(--glass);border:1px solid var(--border);border-radius:6px;'
     + 'color:var(--text);font-size:12px;padding:6px 8px;outline:none;margin-bottom:14px;">'
 
@@ -7825,7 +7916,14 @@ function redrawHeatmap() {
 
   function colorForVal(v) {
     if (v===null) return 'rgba(255,255,255,0.04)';
-    var t = (v-vMin)/(vMax-vMin);
+    // vMax === vMin (spot à une seule session, ou toutes à la même valeur) donnait
+    // 0/0 = NaN → 'rgba(NaN,NaN,NaN,.85)', déclaration CSS invalide donc IGNORÉE :
+    // la case n'avait aucun fond et le spot paraissait n'avoir aucune session.
+    // Mesuré le 16/08/2026 sur les données réelles : 5 spots concernés en mode
+    // « Hs » / « Puissance » (Ouano, Skatepark, Trois cailloux, Droite de Boulari,
+    // Golfy Gauche). Valeur unique → milieu de l'échelle, seule lecture honnête :
+    // il n'y a pas de « fort » ni de « faible » sans point de comparaison.
+    var t = (vMax > vMin) ? (v-vMin)/(vMax-vMin) : 0.5;
     if (metric==='quality') {
       var cols=['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];
       return cols[Math.round(v)]||'#4fa3c7';
@@ -7875,7 +7973,10 @@ function redrawHeatmap() {
 
   // Légende
   html+='<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">';
-  html+='<span style="font-size:10px;color:var(--text-faint);">'+mNames[0]+'</span>';
+  // Libellé de l'échelle. Affichait `mNames[0]`, soit littéralement « Jan » en tête
+  // de la légende des couleurs — reliquat de copier-coller, sans rapport (audit 16/08).
+  html+='<span style="font-size:10px;color:var(--text-faint);">'
+    + (metric==='quality' ? 'Qualité' : metric==='hs' ? 'Hs' : 'Puissance') + ' :</span>';
   if(metric==='quality') {
     [1,2,3,4,5].forEach(function(q){
       var cols=['','#e05c5c','#e8a057','#4fa3c7','#3dba8a','#7b6cf6'];

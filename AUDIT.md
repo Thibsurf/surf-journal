@@ -7070,3 +7070,113 @@ Nettoyage : accordéon `#yw-acc` et ses ~930 lignes supprimés (CSS `.yw-*`,
 gabarit, moteur canvas, `ywOnSourceChange`) ; `setHsSrc()` appelle désormais
 `sbOnSourceChange()` ; entrée « 🌤️ Ciel & houle » ajoutée à la navigation
 rapide. `previsions.html` : 17 744 → 17 665 lignes malgré le nouveau bloc.
+
+---
+
+## 2026-08-16 — Audit du Journal de sessions (`index.html`) + robustesse CI MARC
+
+Audit demandé sur le journal des sessions et son outil de fiabilité houle.
+Méthode : lecture intégrale du bloc inline principal (~6 900 lignes), `node --check`,
+recherche d'ids DOM dupliqués (aucun), smoke test headless Edge, et **requêtes REST
+réelles sur Supabase** pour chiffrer plutôt que supposer.
+
+### Ce qui produisait des chiffres FAUX
+
+**1. « Vérité terrain vent » retombait dans le plafond des 1000 lignes.**
+Les 3 requêtes de `_windTruthBuildPairs` n'avaient ni `order`, ni `range`, ni
+pagination. Mesuré le 16/08 : la requête vent remonte **2065 lignes** (aro 382 +
+ecmwf 831 + aifs 852) pour un plafond PostgREST de 1000 — **52 % des runs jetés**,
+et sans tri, LESQUELS variait d'un appel à l'autre. Le classement par duels, les
+biais par échéance et les `n=` étaient donc calculés sur un échantillon arbitraire
+et non reproductible. C'est exactement le bug « je n'ai que 4 modèles » du 03/08,
+qui n'avait été corrigé que dans `_fetchModelTableRows`.
+→ Helper `_sbFetchAllPages(build, orderCol)`, tri sur `id` (clé primaire, donc
+UNIQUE : un tri à ex æquo sur `issued_at`/`date` ferait se recouvrir les pages).
+Vérifié sur données réelles : 1000 → 2065 lignes, **0 doublon** entre pages.
+
+**2. Le cache météo était écrit sous la MAUVAISE date pour une session future.**
+`_autoFillConditions` choisit bien `wBest` à `targetDate` + heure de session, puis
+appelait `_saveDailyCache(today, …)` : la prévision de J+3 était archivée dans
+`meteo_cache` sous l'id du jour, et `_loadDailyCache` la relisait ensuite comme la
+météo d'aujourd'hui. → `_cacheDayFor(targetDate, today)`, testé (futur / jour même /
+absent / valeur bidon).
+
+### Bugs d'affichage
+
+**3. Heatmap : cases invisibles.** `t=(v-vMin)/(vMax-vMin)` = `0/0` = `NaN` quand un
+spot n'a qu'une valeur → `rgba(NaN,NaN,NaN,.85)`, déclaration CSS **invalide donc
+ignorée** : la case n'avait aucun fond, le spot paraissait sans session. Mesuré :
+5 spots concernés en mode Hs/Puissance (Ouano, Skatepark, Trois cailloux, Droite de
+Boulari, Golfy Gauche). → repli sur le milieu d'échelle (seule lecture honnête sans
+point de comparaison).
+
+**4. Légende de la heatmap :** affichait `mNames[0]`, soit littéralement « Jan » en
+tête de l'échelle de couleurs. Reliquat de copier-coller. → libellé de la grandeur.
+
+**5. Apostrophe non échappée.** `onclick="_applyStationPick('<spot>')"` : les spots
+sont en saisie libre (« + Autre ») et une apostrophe — « Passe d'Uitoé », « L'Anse » —
+fermait la chaîne JS. Même famille dans `showSpotSourceSettings` (nom en innerHTML,
+surnom en `value=""`). Vérifié : 0 des 15 spots actuels a une apostrophe, le champ
+reste ouvert. → `data-spot` échappé + `escapeHtml` (même parti pris que
+`window._spotNames[i]` sur la page Spots). Idem sur l'email des messages d'auth.
+
+**6. « Les 2 stations »** alors que Poé a été ajoutée le 14/08 et qu'elles sont 3.
+→ libellé dérivé de `WIND_TRUTH_STATIONS.length`.
+
+### Fragilités corrigées
+
+- **`hs = 0` masquait tout l'outil de fiabilité** (`isOwn && s.hs`) — une mer plate
+  est un cas réel, que `_numField`/`_fillNumField` s'échinent justement à préserver.
+  → `s.hs != null`.
+- **Heure de session : 70 des 76 sessions n'ont pas `session_hour`** (champ créé le
+  28/07) et retombaient toutes sur midi. Or la plupart portent des `tide_ranges`, qui
+  DISENT l'heure. → `_sessionHourOf()` : `session_hour` → début du 1er créneau marée
+  → `null` (midi, annoncé par l'UI). L'heure 0 reste distinguée du « non renseigné ».
+- **« Changer → » ne changeait rien en base** : `_reopenModelTableDetail` /
+  `_resetModelVoteInForm` n'effaçaient que localStorage + la copie mémoire ; refermer
+  sans revoter faisait réapparaître l'ancien vote. → `_clearModelVoteEverywhere()`,
+  avec `.select()` de contrôle comme partout ailleurs.
+- **Service worker** : `cache.match()` étant sensible à la query, chaque
+  `index.html?openSession=<uuid>` (lien profond depuis Prévisions) ratait le cache
+  PUIS s'y ajoutait — autant de copies de 480 Ko, jamais un hit. → `ignoreSearch`
+  sur les navigations, et on n'écrit pas les navigations à query. `CACHE_NAME` → v80.
+- Mojibake réparé dans 2 commentaires (`mettre � jour`).
+
+### Robustesse CI — MARC
+
+Run `31938557226` en échec : `ConnectTimeout` sur `tds1.ifremer.fr` dès le **premier**
+appel (`.dds`). Vérifié dans la foulée : le serveur répond de nouveau (200 en 1,8 s)
+et les 4 runs précédents passaient — indisponibilité passagère, pas une régression.
+Le script tolérait déjà les échecs PARTIELS (un point en timeout n'invalide pas les
+autres) mais rien ne couvrait les deux appels de préambule, bloquants pour tout le job.
+→ `marc_get()` : 4 tentatives, backoff exponentiel + jitter, reprise **uniquement** sur
+erreur réseau/5xx (un 4xx est un vrai bug de notre côté, le réessayer le masquerait).
+Testé unitairement (reprise réseau OK, 4xx lève immédiatement). Run relancé : succès,
+217 lignes, 0 échec sur 31 points — le trou de 9h15 est comblé.
+
+### Constaté, NON corrigé (décision à prendre)
+
+- **`model_forecast_cache` = 113 836 lignes** (mesuré). C'est ce volume qui rend les
+  plafonds PostgREST inévitables ; la compaction P1 (`db-compaction.yml`) semble
+  toujours non activée dans Actions.
+- **`shared_tokens` en écriture anon** : `_pushNcTokenToSupabase` écrit avec la clé
+  anon, contournant le `X-Push-Key` que le Worker impose (`worker.js:334`). La
+  protection du Worker ne sert à rien si la RLS de la table laisse passer l'anon.
+  À vérifier côté dashboard Supabase.
+- Vote par variable seul : `votedModel: undefined` est supprimé par `JSON.stringify`,
+  donc la section réaffiche le tableau (chips allumées) au lieu d'un état « enregistré ».
+  Comportement défendable, laissé tel quel.
+
+### Ce qui tient bien
+
+`escapeHtml` systématique sur les champs libres ; `.select()` après **chaque**
+update/delete (le piège RLS silencieux est traité partout) ; convention fuseau
+respectée (`_localDayStr`, `+11:00` explicite) ; gardes de concurrence réels
+(`_tideLoadSeq`, `showSpotDetail._gen`, `saveBoat._busy`, `submitComment._busy`) ;
+anti-écrasement par relecture (`_sessionSharedWithUpdate`, `_profileBoardsUpdate`) ;
+distinction 0/vide tenue de la saisie jusqu'au CSV.
+
+**Piège d'outillage à retenir** : dans `index.html`, le bloc inline principal est
+`blocs[1]` (389 Ko), pas `blocs[2]` comme dans `previsions.html` — `blocs[2]` n'est
+que l'enregistrement du service worker (197 car.). Un `node --check` sur le mauvais
+bloc ne valide rien.

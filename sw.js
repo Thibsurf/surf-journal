@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v79';
+const CACHE_NAME = 'surf-nc-v80';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -127,12 +127,22 @@ self.addEventListener('fetch', event => {
   // un écran blanc/skeleton à chaque lancement), et rafraîchit le cache en tâche de fond
   // pour que la PROCHAINE ouverture ait la version à jour. Compromis assumé : un lancement
   // peut afficher une version d'un cran en retard, jamais un écran d'attente.
+  // Navigation avec query : `index.html?openSession=<uuid>` (lien profond depuis
+  // previsions.html vers une session) et les retours d'auth Supabase produisent une
+  // URL différente à chaque fois. cache.match() étant sensible à la query, chacune
+  // ratait le cache PUIS s'y ajoutait comme une entrée à part : autant de copies de
+  // 480 Ko de la même page, et jamais un hit (audit du 16/08/2026). On ignore donc
+  // la query à la lecture, et on ne l'écrit pas — la page est la même, seul le
+  // paramètre change, et il est lu en JS au chargement.
+  const isNav = event.request.mode === 'navigation';
+  const hasQuery = new URL(event.request.url).search !== '';
+
   event.respondWith(
     caches.open(CACHE_NAME).then(cache =>
-      cache.match(event.request).then(cached => {
+      cache.match(event.request, { ignoreSearch: isNav }).then(cached => {
         const network = fetch(event.request).then(response => {
           // Ne mettre en cache que les réponses 200 OK (évite "Response body already used" sur 4xx/5xx)
-          if (response.ok && response.status === 200) cache.put(event.request, response.clone());
+          if (response.ok && response.status === 200 && !(isNav && hasQuery)) cache.put(event.request, response.clone());
           return response;
         }).catch(() => null);
 
