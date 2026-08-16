@@ -1867,10 +1867,15 @@ function _cachedQuery(key, ttlMs, fetcher) {
 async function loadMySessions() {
   if (!sb || !currentUser) { renderSessionsList([]); renderDashStats([]); return; }
   try {
-    const { data, error } = await sb.from('sessions').select('*')
-      .eq('user_id', currentUser.id).order('date', { ascending: false });
-    if (error) console.error("❌ Erreur chargement sessions:", error);
-    allSessions = data || [];
+    // Paginé (cf. _sbFetchAllPages) : au-delà de 1000 sessions, une lecture simple
+    // serait tronquée SANS erreur — le journal afficherait un total faux et les
+    // stats seraient calculées sur un extrait, sans que rien ne le signale.
+    const res = await _sbFetchAllPages(function () {
+      return sb.from('sessions').select('*')
+        .eq('user_id', currentUser.id).order('date', { ascending: false });
+    });
+    if (res.error) console.error("❌ Erreur chargement sessions:", res.error);
+    allSessions = res.data || [];
     console.log("📋 Sessions chargées:", allSessions.length);
   } catch(e) {
     console.error("❌ Exception loadMySessions:", e);
@@ -4948,7 +4953,9 @@ async function deleteSession(id) {
 async function loadGroupSessions() {
   if (!sb) { document.getElementById('group-list').innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Configure Supabase d\'abord</div></div>'; return; }
   const data = await _cachedQuery('group', 45000, function () {
-    return sb.from('sessions').select('*').eq('is_shared', true).order('date', { ascending: false }).then(function (r) { return r.data; });
+    return _sbFetchAllPages(function () {
+      return sb.from('sessions').select('*').eq('is_shared', true).order('date', { ascending: false });
+    }).then(function (r) { return r.data; });
   });
   const sessions = data || [];
   const el = document.getElementById('group-list');
@@ -4974,7 +4981,9 @@ async function loadStats(mode) {
     sessions = allSessions;
   } else {
     sessions = (await _cachedQuery('allSessionsOrdered', 45000, function () {
-      return sb.from('sessions').select('*').order('date', { ascending: false }).then(function (r) { return r.data; });
+      return _sbFetchAllPages(function () {
+        return sb.from('sessions').select('*').order('date', { ascending: false });
+      }).then(function (r) { return r.data; });
     })) || [];
   }
   renderStats(sessions, el);
@@ -6151,7 +6160,9 @@ async function showAliasTool() {
   var allSess = [];
   if (sb) {
     try {
-      var { data } = await sb.from('sessions').select('id,shared_with,date,spot,user_id');
+      var { data } = await _sbFetchAllPages(function () {
+        return sb.from('sessions').select('id,shared_with,date,spot,user_id');
+      });
       allSess = (data || []).filter(function(s) { return s.shared_with && s.shared_with.length; });
     } catch(e) {}
   }
@@ -6304,8 +6315,10 @@ async function openUserProfile(userId) {
   // Récupérer toutes les sessions partagées de l'utilisateur
   var sessions = [];
   try {
-    var res = await sb.from('sessions').select('*')
-      .eq('user_id', userId).eq('is_shared', true).order('date', {ascending: false});
+    var res = await _sbFetchAllPages(function () {
+      return sb.from('sessions').select('*')
+        .eq('user_id', userId).eq('is_shared', true).order('date', {ascending: false});
+    });
     sessions = res.data || [];
   } catch(e) { console.warn(e); }
 
@@ -7442,7 +7455,7 @@ let spotsGroupData = [];
 async function loadSpotsPage() {
   if (sb) {
     spotsGroupData = (await _cachedQuery('allSessions', 45000, function () {
-      return sb.from('sessions').select('*').then(function (r) { return r.data; });
+      return _sbFetchAllPages(function () { return sb.from('sessions').select('*'); }).then(function (r) { return r.data; });
     })) || [];
   } else {
     spotsGroupData = allSessions;
@@ -8004,7 +8017,7 @@ async function loadRanking() {
   if(!sb){el.innerHTML='<div class="empty"><div class="empty-title">Configure Supabase</div></div>';return;}
   el.innerHTML='<div class="loading-state"><div class="spinner"></div></div>';
   var allData=[],profileMap={};
-  try{allData=(await _cachedQuery('allSessions',45000,function(){return sb.from('sessions').select('*').then(function(r){return r.data;});}))||[];}catch(e){console.warn(e);}
+  try{allData=(await _cachedQuery('allSessions',45000,function(){return _sbFetchAllPages(function(){return sb.from('sessions').select('*');}).then(function(r){return r.data;});}))||[];}catch(e){console.warn(e);}
   try{var pr=await sb.from('profiles').select('id,username');
     if(pr&&pr.data)pr.data.forEach(function(p){profileMap[p.id]=p.username||p.id.slice(0,8);});
   }catch(e){console.warn('profiles RLS:',e);}
@@ -8197,7 +8210,11 @@ async function exportSessionsCSV() {
   if (!sb) { setExportStatus('Connexion Supabase requise', false); return; }
   setExportStatus('⏳ Chargement des sessions…');
   try {
-    var res = await sb.from('sessions').select('*').eq('user_id', currentUser.id).order('date', { ascending: false });
+    // Paginé : un export CSV tronqué à 1000 lignes perdrait des sessions SANS
+    // que rien ne le signale — le pire endroit pour ce piège.
+    var res = await _sbFetchAllPages(function () {
+      return sb.from('sessions').select('*').eq('user_id', currentUser.id).order('date', { ascending: false });
+    });
     if (res.error) throw res.error;
     var rows = res.data || [];
     // `spot_2`/`spot_3` N'EXISTENT PAS dans la table (la colonne est `spots`, un
@@ -8273,7 +8290,10 @@ async function exportFuelLogsCSV() {
   setExportStatus('⏳ Chargement des données carburant…');
   try {
     // Récupère les sessions de l'utilisateur avec boat_id et données nécessaires pour calculer la conso
-    var resS = await sb.from('sessions').select('id,date,spot,duration_h,distance_nm,boat_id,price_cfp,shared_with').eq('user_id', currentUser.id).order('date', { ascending: false });
+    // Paginé, même raison que exportSessionsCSV : un export tronqué perdrait des lignes en silence.
+    var resS = await _sbFetchAllPages(function () {
+      return sb.from('sessions').select('id,date,spot,duration_h,distance_nm,boat_id,price_cfp,shared_with').eq('user_id', currentUser.id).order('date', { ascending: false });
+    });
     if (resS.error) throw resS.error;
     var sessions = (resS.data || []).filter(function(s){ return s.boat_id && s.duration_h; });
 
@@ -8362,7 +8382,7 @@ async function loadBoatsPage() {
     el.innerHTML='<div class="empty"><div class="empty-icon">&#x26F5;</div><div class="empty-title">Aucun bateau enregistré</div></div>';
     return;
   }
-  var r2=sb?await sb.from('sessions').select('*'):{data:allSessions};
+  var r2=sb?await _sbFetchAllPages(function(){return sb.from('sessions').select('*');}):{data:allSessions};
   var sessions=(r2&&r2.data)?r2.data:allSessions;
   var html='';
   boats.forEach(function(b,bi){
