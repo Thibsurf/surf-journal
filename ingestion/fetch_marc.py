@@ -29,8 +29,10 @@ satellite/le comparatif (houle 3, houle 4, etc.).
 import concurrent.futures
 import json
 import logging
+import random
 import re
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -90,6 +92,49 @@ STATIONS = [
 ]
 
 
+def marc_get(url, timeout=30, attempts=4):
+    """GET vers le THREDDS d'Ifremer, avec reprise sur erreur RÉSEAU.
+
+    Ajouté le 16/08/2026 après l'échec du run 31938557226 : `tds1.ifremer.fr` a mis
+    plus de 30 s à répondre sur la TOUTE PREMIÈRE requête (`.dds`), un unique
+    ConnectTimeout a donc fait sortir run() en exception et perdre l'ingestion des
+    ~30 points — alors que les 4 runs précédents et le run manuel de vérification
+    (200 en 1,8 s) passaient sans problème : indisponibilité passagère du serveur,
+    pas une régression de code.
+
+    Le script tolérait DÉJÀ les échecs partiels (un point en timeout n'invalide pas
+    les autres, cf. run()), mais rien ne couvrait les deux appels de préambule
+    (get_time_length / get_last_time_days) qui, eux, sont bloquants pour tout le job.
+
+    Reprise uniquement sur erreur réseau/5xx : un 4xx (URL ou index hors bornes)
+    est une vraie erreur de notre côté, la réessayer ne ferait que masquer un bug.
+    Backoff exponentiel + jitter pour ne pas retomber en rafale sur un serveur qui
+    est justement en train de saturer ("avec douceur", comme la concurrence à 4).
+    """
+    last = None
+    for i in range(attempts):
+        try:
+            r = requests.get(url, timeout=timeout)
+            if r.status_code >= 500:
+                raise requests.exceptions.HTTPError(f"HTTP {r.status_code}", response=r)
+            r.raise_for_status()
+            return r
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.HTTPError) as e:
+            resp = getattr(e, "response", None)
+            if resp is not None and resp.status_code < 500:
+                raise                      # 4xx : erreur de requête, pas de reprise
+            last = e
+            if i == attempts - 1:
+                break
+            delay = min(30, 2 ** i * 3) + random.uniform(0, 1.5)
+            logger.warning("Ifremer injoignable (%s) — reprise %d/%d dans %.1fs",
+                           e, i + 1, attempts - 1, delay)
+            time.sleep(delay)
+    raise last
+
+
 def fetch_spots():
     """Même source que fetch_arome.py : table shared_spots, id='default', champ JSON spots."""
     try:
@@ -122,8 +167,7 @@ def dedup_points(points):
 def get_time_length():
     """.dds : lit la longueur ACTUELLE du dataset agrégé (grandit à chaque run,
     jamais figée — même principe que _fetchMarcWave côté client)."""
-    r = requests.get(f"{MARC_BASE}.dds", timeout=30)
-    r.raise_for_status()
+    r = marc_get(f"{MARC_BASE}.dds", timeout=30)
     m = re.search(r"time\s*=\s*(\d+)", r.text)
     if not m:
         raise RuntimeError("longueur time introuvable dans .dds")
@@ -139,8 +183,7 @@ def get_last_time_days(n):
     re-clampé par sécurité à l'index N-1 -> une fenêtre d'UN SEUL point à chaque
     fois. Passé inaperçu côté client car le widget retombait alors silencieusement
     sur meteo.nc (avant le correctif "pas de repli, juste un message")."""
-    r = requests.get(f"{MARC_BASE}.ascii?time%5B{n-1}:1:{n-1}%5D", timeout=30)
-    r.raise_for_status()
+    r = marc_get(f"{MARC_BASE}.ascii?time%5B{n-1}:1:{n-1}%5D", timeout=30)
     vals = parse_flat(r.text, "time")
     if not vals:
         raise RuntimeError("valeur de temps introuvable pour le dernier index")
@@ -223,8 +266,7 @@ def find_nearest_valid_cell(lat_idx, lon_idx, t_probe_idx, radius=3):
     c1 = min(180, lon_idx + radius)
     url = (f"{MARC_BASE}.ascii?hs%5B{t_probe_idx}:1:{t_probe_idx}%5D"
            f"%5B{r0}:1:{r1}%5D%5B{c0}:1:{c1}%5D")
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
+    r = marc_get(url, timeout=30)
     grid = parse_grid_block(r.text, "hs")
     best = None
     best_d2 = None
@@ -244,8 +286,7 @@ def fetch_point(point, t0, t1, lat_idx, lon_idx):
     for v in vars_:
         parts.append(f"{v}%5B{t0}:1:{t1}%5D%5B{lat_idx}:1:{lat_idx}%5D%5B{lon_idx}:1:{lon_idx}%5D")
     url = f"{MARC_BASE}.ascii?" + ",".join(parts)
-    r = requests.get(url, timeout=60)
-    r.raise_for_status()
+    r = marc_get(url, timeout=60)
     text = r.text
 
     times = parse_flat(text, "time")
