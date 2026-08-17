@@ -291,11 +291,36 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 @media(max-width:720px){.g2,.g3{grid-template-columns:1fr;}}
 
 /* SPOT TABS */
-.spot-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem;}
+.spot-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem;align-items:center;}
 .stab{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:none;
   color:var(--muted);font-family:var(--font-b);font-size:12px;cursor:pointer;transition:all .2s;}
 .stab.active{background:rgba(79,163,199,.15);border-color:var(--accent);color:var(--accent);}
 .stab:hover:not(.active){color:var(--text);border-color:var(--border-h);}
+/* ═══ FAVORIS + PASTILLE DE SCORE (18/08/2026) ═══════════════════════════════
+   La rangée de spots devenait un mur de pastilles en grandissant. Deux réponses,
+   sans menu déroulant (qui cacherait justement l'info qu'on veut voir d'un coup) :
+   les spots épinglés passent devant, les autres se replient derrière « + N autres » ;
+   et chaque pastille porte un point de couleur = meilleur score du jour au spot.
+
+   ⚠ CONTRAINTE STRUCTURELLE : cinq endroits du fichier font
+   `querySelectorAll('.stab').forEach(function(b,j){ ... j===i ... })`, donc l'ordre
+   DOM des .stab DOIT rester celui de SPOTS. Les favoris sont donc remontés par
+   `order` (réordonnancement VISUEL d'un conteneur flex), jamais en déplaçant les
+   nœuds, et les spots repliés sont masqués en display:none — ils restent dans le
+   DOM, donc les indices ne bougent pas. */
+.stab-wrap{display:inline-flex;align-items:center;gap:2px;}
+.stab-wrap.is-hidden{display:none;}
+.stab-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;
+  vertical-align:middle;background:var(--border);flex-shrink:0;}
+.stab-star{background:none;border:0;padding:3px 5px;margin:0;cursor:pointer;line-height:1;
+  font-size:12px;color:var(--faint);opacity:.45;transition:opacity .15s,color .15s;
+  min-width:26px;min-height:26px;border-radius:50%;}
+.stab-star:hover{opacity:1;color:var(--warm);background:var(--glass);}
+.stab-star.is-pinned{opacity:1;color:var(--warm);}
+.stab-star:focus-visible{outline:2px solid var(--accent);outline-offset:1px;opacity:1;}
+.stab-more{padding:6px 13px;border-radius:20px;border:1px dashed var(--border);background:none;
+  color:var(--faint);font-family:var(--font-b);font-size:12px;cursor:pointer;transition:all .2s;}
+.stab-more:hover{color:var(--text);border-color:var(--border-h);}
 
 /* STAT CARDS */
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:1.25rem;}
@@ -3629,15 +3654,76 @@ var currentSpot=0, charts={};
 
 function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
+// ─── Favoris de spots ────────────────────────────────────────────────────────
+// Stockés par NOM et non par index : les index bougent dès qu'on ajoute, retire
+// ou réordonne un spot, ce qui aurait épinglé un spot au hasard après coup.
+var SPOT_FAV_KEY = 'surf-spot-favs';
+var _spotFavs = (function(){
+  try { var v = JSON.parse(localStorage.getItem(SPOT_FAV_KEY)); return (v && v.length) ? v : []; }
+  catch(e) { return []; }
+})();
+// Replié par défaut seulement s'il y a assez de spots pour que ça vaille le coup
+// ET au moins un favori — sinon replier masquerait tout sans rien mettre en avant.
+// Choix mémorisé : redéplier à chaque chargement serait une corvée quotidienne
+// pour qui préfère voir toute la liste.
+var _spotsExpanded = (function(){
+  try { return localStorage.getItem('surf-spots-expanded') === '1'; } catch(e) { return false; }
+})();
+function _isSpotFav(name){ return _spotFavs.indexOf(name) >= 0; }
+function _saveSpotFavs(){ try { localStorage.setItem(SPOT_FAV_KEY, JSON.stringify(_spotFavs)); } catch(e){} }
+function toggleSpotFav(name, ev){
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  var k = _spotFavs.indexOf(name);
+  if (k >= 0) _spotFavs.splice(k,1); else _spotFavs.push(name);
+  _saveSpotFavs();
+  buildSpotTabs();
+}
+function toggleSpotsExpanded(){
+  _spotsExpanded = !_spotsExpanded;
+  try { localStorage.setItem('surf-spots-expanded', _spotsExpanded ? '1' : '0'); } catch(e){}
+  buildSpotTabs();
+}
+
+// Meilleur score du jour PAR SPOT, dérivé des sessions déjà calculées par le
+// Best Session Finder (findBestSessions) : aucune requête supplémentaire.
+// Renseigné par renderBestSessions ; vide tant que le BSF n'a pas tourné, auquel
+// cas les pastilles restent grises (état « pas encore su », pas « mauvais »).
+var _spotDayScore = {};
+function _spotScoreColor(sc){
+  if (sc == null) return 'var(--border)';
+  var cols = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
+  return cols[Math.min(5, Math.max(0, Math.round(sc)))];
+}
+
 function buildSpotTabs() {
   var el=document.getElementById('spot-tabs');
   el.innerHTML='';
+  var nFav = SPOTS.filter(function(s){ return _isSpotFav(s.name); }).length;
+  // Le repli n'a de sens qu'au-delà d'une poignée de spots ET avec des favoris :
+  // sans favori, tout replier ne laisserait rien à cliquer.
+  var canCollapse = (SPOTS.length > 6) && nFav > 0;
+  var collapsed = canCollapse && !_spotsExpanded;
+  var nHidden = 0;
+
   SPOTS.forEach(function(s,i){
+    var fav = _isSpotFav(s.name);
+    var wrap=document.createElement('div');
+    wrap.className='stab-wrap';
+    // Réordonnancement VISUEL uniquement (cf. commentaire CSS .stab-wrap) :
+    // l'ordre DOM reste celui de SPOTS, dont dépendent 5 autres call sites.
+    if (fav) wrap.style.order = '-1';
+    if (collapsed && !fav && i !== currentSpot) { wrap.classList.add('is-hidden'); nHidden++; }
+
     var btn=document.createElement('button');
-    btn.className='stab'+(i===0?' active':'');
-    var spotLabel = s.name;
-    if (s.scoreParams) spotLabel += ' ⚙';  // Indique des réglages custom
-    btn.textContent = spotLabel;
+    btn.className='stab'+(i===currentSpot?' active':'');
+    btn.setAttribute('data-spot-idx', i);
+    var dot=document.createElement('span');
+    dot.className='stab-dot';
+    var sc = _spotDayScore[s.name];
+    dot.style.background = _spotScoreColor(sc);
+    dot.title = (sc == null) ? 'Score du jour non calculé' : ('Meilleur score du jour : ' + Math.round(sc) + '/5');
+    btn.appendChild(dot);
+    btn.appendChild(document.createTextNode(s.name + (s.scoreParams ? ' ⚙' : '')));
     btn.onclick=function(){
       currentSpot=i;
       document.querySelectorAll('.stab').forEach(function(b,j){b.classList.toggle('active',j===i);});
@@ -3649,8 +3735,33 @@ function buildSpotTabs() {
       _recenterSpotMap(i);
       loadForecast(i);
     };
-    el.appendChild(btn);
+    wrap.appendChild(btn);
+
+    // Étoile SŒUR du bouton, pas imbriquée dedans : un élément focusable à
+    // l'intérieur d'un <button> est invalide et inatteignable au clavier.
+    var star=document.createElement('button');
+    star.type='button';
+    star.className='stab-star'+(fav?' is-pinned':'');
+    star.textContent = fav ? '★' : '☆';
+    star.title = fav ? 'Retirer des favoris' : 'Épingler en tête';
+    star.setAttribute('aria-label', (fav ? 'Retirer ' : 'Épingler ') + s.name);
+    star.setAttribute('aria-pressed', fav ? 'true' : 'false');
+    star.onclick=function(ev){ toggleSpotFav(s.name, ev); };
+    wrap.appendChild(star);
+
+    el.appendChild(wrap);
   });
+
+  if (canCollapse) {
+    var more=document.createElement('button');
+    more.type='button';
+    more.className='stab-more';
+    more.textContent = collapsed ? ('+ ' + nHidden + ' autre' + (nHidden>1?'s':'')) : '− replier';
+    more.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    more.onclick=toggleSpotsExpanded;
+    // Après tous les .stab dans le DOM : n'affecte aucun indice.
+    el.appendChild(more);
+  }
 }
 
 // Init déplacé en bas du script (après toutes les déclarations)
@@ -9113,6 +9224,20 @@ function _tideLabel(level01, phase, height) {
 function renderBestSessions(sessions) {
   var wrap = document.getElementById('bsf-cards');
   if (!wrap) return;
+
+  // Alimente les pastilles de score de la rangée de spots au passage : le BSF a
+  // déjà calculé un score par créneau et par spot, inutile de recalculer quoi que
+  // ce soit. On retient le MEILLEUR score par spot (c'est la question que pose la
+  // pastille : « est-ce que ça vaut le coup d'aller là ? »).
+  if (sessions && sessions.length) {
+    _spotDayScore = {};
+    sessions.forEach(function(s){
+      var prev = _spotDayScore[s.spot];
+      if (prev == null || s.score > prev) _spotDayScore[s.spot] = s.score;
+    });
+    if (typeof buildSpotTabs === 'function') buildSpotTabs();
+  }
+
   if (!sessions || !sessions.length) {
     wrap.innerHTML = '<div style="color:var(--faint);font-size:11px;padding:8px;">Aucun créneau trouvé</div>';
     return;

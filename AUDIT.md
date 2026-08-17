@@ -7712,6 +7712,54 @@ donc le total reste plus compact qu'avant la fusion. Le fondu bas s'arrete plus 
 du zoom navigateur (tout grossit), a ne pas confondre avec le bug de cadrage ci-dessus, qui
 lui venait de la hauteur en px fixe.
 
+**Hauteur, 3e passe (18/08).** Le bandeau faisait ~12:1 la ou la maquette est a ~5:1
+(mesure faite sur les deux captures cote a cote, pas a l'oeil) : trois fois plus fin, d'ou
+« vague et surfeur coupes ». `9.5vw` -> `20vw` (clamp 180-460px) : le ratio vaut 5:1 de 900
+a 2300 px, la fenetre visible couvre y 48-78 %, donc tube (52-72 %) ET surfeur (68-74 %)
+entiers — simule aux 8 largeurs avant d'ecrire la regle, puis verifie en rendu reel.
+`object-position` 69 % -> 63 % (recentree sur l'ensemble tube+surfeur).
+
+## 2026-08-18 — Rangee de spots : favoris + pastille de score
+
+Demande : « la section spots est bien mais s'il y en a beaucoup ca devient complique,
+comment faire ca plus propre sans menu deroulant trop old school ? ». Un `<select>` cacherait
+justement l'information qu'on veut voir d'un coup d'oeil. Deux mecanismes a la place :
+
+- **Favoris** (etoile par spot) : les spots epingles passent en tete, les autres se replient
+  derriere « + N autres ». Stockes **par NOM** (`surf-spot-favs`) et non par index — les index
+  bougent des qu'on ajoute/retire/reordonne un spot, ce qui aurait epingle un spot au hasard.
+  Repli actif seulement si > 6 spots ET >= 1 favori (sinon on masquerait tout sans rien mettre
+  en avant), et le spot ACTIF reste toujours visible meme non epingle. Etat deplie memorise.
+- **Pastille de score** : point de couleur = meilleur score du jour au spot, derive des
+  sessions **deja calculees** par `findBestSessions` (le BSF les produit avec `spotIdx` et
+  `score`) — aucune requete supplementaire. Gris tant que le BSF n'a pas tourne : c'est
+  « pas encore su », pas « mauvais ».
+
+**Le piege structurel de ce chantier.** Cinq endroits du fichier font
+`document.querySelectorAll('.stab').forEach(function(b,j){ ... j===i ... })` : **l'ordre DOM
+des `.stab` DOIT rester celui de `SPOTS`**. Remonter les favoris en deplacant les noeuds aurait
+donc silencieusement fait pointer chaque clic sur le mauvais spot. Les favoris sont remontes
+par `order` (reordonnancement **visuel** d'un conteneur flex) et les spots replies masques en
+`display:none` — dans les deux cas les noeuds restent en place et les indices tiennent.
+Verifie explicitement : `ordreDOM=SPOTS:true` **avant ET apres** epinglage.
+
+Etoile posee en **soeur** du `<button>` et non dedans : un element focusable a l'interieur
+d'un `<button>` est invalide et inatteignable au clavier. Le bouton « + N autres » est ajoute
+apres tous les `.stab`, donc il ne decale aucun indice.
+
+Au passage, `buildSpotTabs` remettait l'etat actif sur l'index 0 a chaque reconstruction
+(`i===0?' active':''`) au lieu du spot courant — corrige (`i===currentSpot`), visible des que
+le BSF reconstruit la rangee.
+
+**Classement « Meilleurs creneaux » compacte** (demande) : les pastilles de score etaient
+empilees SOUS le rang, ce qui imposait deux lignes par creneau ; passees en ligne avec le rang,
+tout tient sur une seule. 3 creneaux = 3 lignes au lieu de 6. `flex-wrap` conserve pour les
+ecrans etroits.
+
+Verification : headless, **0 erreur JS**, 8 pastilles / 8 spots, 8 points, 8 etoiles,
+epinglage persiste en `localStorage`, « + N autres » apparait bien une fois un favori pose,
+clic spot -> `currentSpot` suit, scores recuperes du BSF.
+
 **Environnement de verification.** Headless Edge sur ce poste plante/bloque de facon
 intermittente sur cette page (nombreux iframes cross-origin : Windy, Leaflet+Esri, Supabase
 — chacun son propre process renderer sous l'isolation de site Chromium). Cause identifiee :
