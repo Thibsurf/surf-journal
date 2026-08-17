@@ -179,10 +179,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
    et surfeur coupés ». À 20vw le ratio vaut 5:1 de 900 à 2300 px, donc la fenêtre
    visible couvre y 48-78 % : tube (52-72 %) ET surfeur (68-74 %) entiers. */
 .site-banner .hb-photo{position:relative;width:100%;height:clamp(180px,20vw,460px);overflow:hidden;}
-/* 63 % et non 50 % : le centre géométrique de la photo tombe en plein ciel. Repères
-   mesurés sur la photo (grille de pourcentages) : tube y 52-72 %, surfeur y 68-74 %,
-   x≈43 %. 63 % centre la fenêtre sur l'ensemble tube+surfeur (48-78 % à 20vw). */
-.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 63%;
+/* 67 % et non 63 % : retour utilisateur 18/08/2026 — encore un peu trop de ciel
+   au-dessus du tube, pas assez d'eau bleu marine sous le surfeur. Repères mesurés
+   sur la photo (grille de pourcentages) : tube y 52-72 %, surfeur y 68-74 %,
+   x≈43 %. 67 % décale la fenêtre 6 pts vers le bas (48-78 % → 52-82 % à 20vw) :
+   elle démarre pile au sommet du tube (52 %) au lieu de garder 4 pts de ciel,
+   et s'étend 4 pts plus loin sous le surfeur pour révéler l'eau. */
+.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 67%;
   filter:contrast(1.1) saturate(1.06) brightness(.96);}
 .site-banner .hb-scrim{position:absolute;inset:0;
   /* La nav n'est plus sur la photo (barre dédiée au-dessus) : seul le titre a
@@ -194,8 +197,11 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* Filet dégradé de la 5A : marque la fin de la bannière sans trait dur. */
 .site-banner .hb-rule{height:1px;width:100%;
   background:linear-gradient(90deg,rgba(79,163,199,.55) 0%,rgba(79,163,199,.12) 55%,rgba(79,163,199,0) 100%);}
+/* gap en clamp comme le h1 juste en dessous : à 7px fixe le sous-titre collait au
+   titre sur les grands écrans, où le h1 grimpe jusqu'à 64px (retour utilisateur
+   18/08/2026, "espace inter ligne insuffisant"). */
 .site-banner .hb-bottom{position:absolute;left:0;right:0;bottom:0;padding:0 1.5rem 14px;
-  display:flex;flex-direction:column;gap:7px;}
+  display:flex;flex-direction:column;gap:clamp(8px,1.4vw,18px);}
 /* Taille en vw comme la photo : un titre en px fixe paraissait minuscule dans une
    bannière qui, elle, grandit avec l'écran (la 5A le pose à 52px pour 230px de photo). */
 .site-banner .hb-h1{margin:0;font-family:var(--font-d);font-weight:600;
