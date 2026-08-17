@@ -120,51 +120,53 @@ body{font-family:var(--font-b);background:var(--ocean);color:var(--text);min-hei
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 50% -10%,rgba(79,163,199,.07) 0%,transparent 70%);pointer-events:none;z-index:0;}
 
 /* ═══ BANNIÈRE PHOTO (demandée le 17/08/2026, adaptée de la maquette Claude
-   Design « 4A ») ═══ Reste au-dessus de la nav (pas sticky, elle défile) : la
-   nav garde donc son rôle de SEUL point d'entrée persistant de la navigation.
-   Volontairement compacte (bien en-deçà des 300px de la maquette) — le 1er
-   widget (Meilleurs créneaux) doit rester visible sans defiler. Scrim sombre +
-   texte blanc plutôt que les couleurs claires de la maquette : ça reste lisible
-   à l'identique en thème sombre ET clair sans variante par thème, la photo
-   fournissant déjà tout le contraste. Polices du site (var(--font-d)/--font-b),
-   pas d'import Google Fonts supplémentaire — même traitement « nom + suffixe
-   coloré » que le logo de la nav juste en-dessous. */
+   Design « 5A » le 18/08/2026 — la « 4A » d'origine avait une nav en overlay
+   flottant SUR la photo, illisible sur les zones claires du ciel malgré un
+   dégradé dédié ; la 5A la remplace par une bande à fond plein AU-DESSUS de la
+   photo, qui règle le problème structurellement plutôt qu'en rustine) ═══
+   Reste au-dessus de la nav (pas sticky, elle défile) : la nav garde donc son
+   rôle de SEUL point d'entrée persistant de la navigation. Volontairement
+   compacte — le 1er widget (Meilleurs créneaux) doit rester visible sans
+   défiler. Fond de bande + scrim sombres codés en dur (pas de var(--deep), qui
+   vaut blanc en thème clair) : la bannière reste volontairement identique
+   dans les deux thèmes, la photo fournissant déjà tout le contraste. Polices
+   du site (var(--font-d)/--font-b), pas d'import Google Fonts supplémentaire —
+   même traitement « nom + suffixe coloré » que le logo de la nav juste en-dessous. */
 /* Préfixe hb- (hero banner) et NON sb- : sb- désigne déjà partout ailleurs sur
    cette page le bloc « Ciel & houle » (.sb-card, .sb-top, .sb-sky…) — un même
    préfixe aurait marché ici grâce à la spécificité (.site-banner .sb-x bat
    .sb-x tout court) mais serait resté un piège pour la prochaine modif. */
-.site-banner{position:relative;width:100%;overflow:hidden;background:var(--deep);}
+.site-banner{position:relative;width:100%;overflow:hidden;background:#0a1826;
+  border-bottom:1px solid rgba(124,198,228,.16);}
+.site-banner .hb-toolbar{position:relative;display:flex;align-items:center;
+  flex-wrap:wrap;justify-content:space-between;gap:6px 16px;padding:9px 1.5rem;
+  background:#0a1826;}
+.site-banner .hb-eyebrow{font:500 10px/1 var(--font-b);letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(159,210,232,.75);white-space:nowrap;}
+.site-banner .hb-nav{display:flex;align-items:center;flex-wrap:wrap;gap:7px 16px;}
+.site-banner .hb-sep{width:1px;height:11px;background:rgba(255,255,255,.25);}
+.site-banner .hb-link{-webkit-appearance:none;appearance:none;display:inline-block;
+  font:500 11px/1 var(--font-b);letter-spacing:.08em;text-transform:uppercase;margin:0;
+  color:rgba(214,233,243,.68);text-decoration:none;white-space:nowrap;padding:2px 0;
+  border:0;border-bottom:1px solid transparent;border-radius:0;background:none;
+  cursor:pointer;}
+.site-banner .hb-link:hover{color:#fff;}
+.site-banner .hb-link.active{color:#fff;border-bottom-color:var(--accent);}
 /* Hauteur en vw (bornée par clamp), PAS en px fixe : object-fit:cover ne montre
    qu'une tranche verticale dont la hauteur SOURCE dépend du ratio hauteur/largeur
    du conteneur (largeur toujours pleine page). Une hauteur fixe en px devient
    proportionnellement plus fine à mesure que l'écran s'élargit — sur un écran
    large (mesuré : ~2837px), le tube de la photo sortait carrément du cadre.
-   En vw, la tranche visible reste la même quelle que soit la largeur d'écran. */
-.site-banner .hb-photo{position:relative;width:100%;height:clamp(160px,13vw,240px);overflow:hidden;}
-.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 63%;}
+   En vw, la tranche visible reste la même quelle que soit la largeur d'écran.
+   Un peu plus basse qu'avant (13vw→10.5vw) : la bande-outils au-dessus prend
+   maintenant sa propre hauteur, la bannière totale doit rester compacte. */
+.site-banner .hb-photo{position:relative;width:100%;height:clamp(128px,10.5vw,195px);overflow:hidden;}
+.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 64%;}
 .site-banner .hb-scrim{position:absolute;inset:0;
-  /* 3 couches : diagonale gauche (sous le titre), fondu bas→haut (sous le titre
-     aussi) et une bande pleine largeur ancrée en haut — celle-ci est ce qui
-     garantit la lisibilité de la nav quand la photo affiche un ciel clair
-     du côté droit (mesuré : sans elle, SESSIONS/SPOTS/LA SEMAINE tombaient
-     sous 3:1 de contraste sur un ciel clair). */
+  /* La nav n'est plus sur la photo (bande dédiée ci-dessus) : seul le titre a
+     encore besoin d'un fondu, en bas-gauche uniquement. */
   background:linear-gradient(100deg,rgba(4,14,24,.72) 0%,rgba(4,14,24,.38) 32%,rgba(4,14,24,.06) 56%,rgba(4,14,24,0) 72%),
-             linear-gradient(to top,rgba(4,14,24,.55) 0%,rgba(4,14,24,0) 46%),
-             linear-gradient(to bottom,rgba(2,10,18,.5) 0%,rgba(2,10,18,0) 46px);}
-.site-banner .hb-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;
-  flex-wrap:wrap;justify-content:space-between;gap:6px 16px;padding:10px 1.5rem;}
-.site-banner .hb-eyebrow{font:500 10px/1 var(--font-b);letter-spacing:.18em;text-transform:uppercase;
-  color:rgba(255,255,255,.82);text-shadow:0 1px 3px rgba(0,0,0,.55);white-space:nowrap;}
-.site-banner .hb-nav{display:flex;align-items:center;flex-wrap:wrap;gap:7px 16px;}
-.site-banner .hb-sep{width:1px;height:11px;background:rgba(255,255,255,.3);}
-.site-banner .hb-link{-webkit-appearance:none;appearance:none;display:inline-block;
-  font:500 11px/1 var(--font-b);letter-spacing:.08em;text-transform:uppercase;margin:0;
-  color:rgba(255,255,255,.85);text-shadow:0 1px 3px rgba(0,0,0,.55);text-decoration:none;
-  white-space:nowrap;padding:2px 0;
-  border:0;border-bottom:1px solid transparent;border-radius:0;background:none;
-  cursor:pointer;}
-.site-banner .hb-link:hover{color:#fff;}
-.site-banner .hb-link.active{color:#fff;border-bottom-color:var(--accent);}
+             linear-gradient(to top,rgba(4,14,24,.6) 0%,rgba(4,14,24,0) 50%);}
 .site-banner .hb-bottom{position:absolute;left:0;right:0;bottom:0;padding:0 1.5rem 12px;
   display:flex;flex-direction:column;gap:5px;}
 .site-banner .hb-h1{margin:0;font:600 27px/1 var(--font-d);color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.35);}
@@ -175,7 +177,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   color:rgba(232,238,244,.7);white-space:nowrap;}
 @media(max-width:680px){
   .site-banner .hb-photo{height:clamp(96px,22vw,140px);}
-  .site-banner .hb-top{display:none;} /* la nav ☰ juste en-dessous fait déjà tout le travail sur téléphone */
+  .site-banner .hb-toolbar{display:none;} /* la nav ☰ juste en-dessous fait déjà tout le travail sur téléphone */
   .site-banner .hb-bottom{padding:0 .9rem 10px;}
   .site-banner .hb-h1{font-size:21px;}
   .site-banner .hb-tag{display:none;}
@@ -683,23 +685,23 @@ html.widget-mode #gw-widget { margin-bottom:0; }
      bannière gère donc son propre état actif via _hbSyncNav(), en parallèle, sans
      toucher au système existant. -->
 <header class="site-banner" id="site-banner">
+  <div class="hb-toolbar">
+    <span class="hb-eyebrow">Nouvelle-Calédonie · Lagon sud</span>
+    <div class="hb-nav" role="navigation" aria-label="Accès rapide">
+      <button type="button" class="hb-link active" data-tab="forecast" onclick="showTab('forecast');_hbSyncNav('forecast');">Prévisions</button>
+      <button type="button" class="hb-link" data-tab="compare" onclick="showTab('compare');_hbSyncNav('compare');">Comparer</button>
+      <button type="button" class="hb-link" data-tab="map" onclick="showTab('map');_hbSyncNav('map');">Carte spots</button>
+      <button type="button" class="hb-link" data-tab="windy" onclick="showTab('windy');_hbSyncNav('windy');">Windy</button>
+      <button type="button" class="hb-link" data-tab="synop" onclick="showTab('synop');_hbSyncNav('synop');">Isofronts</button>
+      <button type="button" class="hb-link" data-tab="maree" onclick="showTab('maree');_hbSyncNav('maree');">Marée &amp; Pêche</button>
+      <button type="button" class="hb-link" data-tab="enso" onclick="showTab('enso');_hbSyncNav('enso');">ENSO</button>
+      <span class="hb-sep" aria-hidden="true"></span>
+      <a class="hb-link" href="https://thibsurf.github.io/surf-journal/">Journal des sessions</a>
+    </div>
+  </div>
   <div class="hb-photo">
     <img src="assets/hero-banniere.jpg" alt="Vague creuse et surfeur, Nouvelle-Calédonie" loading="eager" fetchpriority="high" decoding="async">
     <div class="hb-scrim"></div>
-    <div class="hb-top">
-      <span class="hb-eyebrow">Nouvelle-Calédonie · Lagon sud</span>
-      <div class="hb-nav" role="navigation" aria-label="Accès rapide">
-        <button type="button" class="hb-link active" data-tab="forecast" onclick="showTab('forecast');_hbSyncNav('forecast');">Prévisions</button>
-        <button type="button" class="hb-link" data-tab="compare" onclick="showTab('compare');_hbSyncNav('compare');">Comparer</button>
-        <button type="button" class="hb-link" data-tab="map" onclick="showTab('map');_hbSyncNav('map');">Carte spots</button>
-        <button type="button" class="hb-link" data-tab="windy" onclick="showTab('windy');_hbSyncNav('windy');">Windy</button>
-        <button type="button" class="hb-link" data-tab="synop" onclick="showTab('synop');_hbSyncNav('synop');">Isofronts</button>
-        <button type="button" class="hb-link" data-tab="maree" onclick="showTab('maree');_hbSyncNav('maree');">Marée &amp; Pêche</button>
-        <button type="button" class="hb-link" data-tab="enso" onclick="showTab('enso');_hbSyncNav('enso');">ENSO</button>
-        <span class="hb-sep" aria-hidden="true"></span>
-        <a class="hb-link" href="https://thibsurf.github.io/surf-journal/">Journal des sessions</a>
-      </div>
-    </div>
     <div class="hb-bottom">
       <!-- p et non h1 : la nav juste en-dessous porte déjà le h1 de page
            (« Surf NC — Prévisions ») — un 2e h1 casserait le plan de titres. -->
