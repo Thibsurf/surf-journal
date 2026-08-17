@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v83';
+const CACHE_NAME = 'surf-nc-v84';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -70,7 +70,10 @@ const ASSETS = [
   '/surf-journal/assets/wx/shower.png',
   '/surf-journal/assets/wx/mist.png',
   '/surf-journal/assets/wx/fog-low.png',
-  '/surf-journal/assets/wx/lightning.png'
+  '/surf-journal/assets/wx/lightning.png',
+  // Bannière photo de previsions.html (17/08/2026) : 1re chose visible au chargement,
+  // sans elle un lancement hors-ligne montrerait un bandeau vide.
+  '/surf-journal/assets/hero-banniere.jpg'
 ];
 
 self.addEventListener('install', event => {
