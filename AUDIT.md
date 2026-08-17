@@ -7673,6 +7673,45 @@ de la photo reduite (13vw -> 10.5vw) pour compenser la hauteur ajoutee par la ba
 et garder le total compact. `object-position` recalculee (63% -> 64%, verifie par
 comparatif Pillow de plusieurs valeurs plutot qu'a l'oeil).
 
+**5A, pour de vrai (18/08, apres 2e retour utilisateur).** « Ca ne ressemble pas a la
+banniere 5A, notamment la position des menus. » Exact : j'avais lu la 5A comme « une barre
+sombre au-dessus de la photo » alors que son intitule dit **« banniere + barre outils
+FONDUES »**. Dans la maquette, la barre contient les outils DU SITE a gauche (Maj, pastille
+d'etat, theme, ☰) et les liens de vue a droite — et il n'y a **pas** de seconde barre claire
+en dessous. Je gardais les deux, d'ou un empilement que la maquette ne montre nulle part.
+
+Correctif : l'ancien `<nav>` clair est **supprime**, son contenu (5 elements + le ☰) migre
+dans `.hb-toolbar`, qui devient `sticky` et reprend son `z-index:1000`. Points a savoir :
+
+- **Le scoping de variables plutot que `!important`.** Cette barre est sombre dans les DEUX
+  themes, mais elle heberge des boutons stylas en `var(--faint)`/`var(--border)`, et le JS
+  pose `var(--ok)`/`--bad`/`--warm` **en style inline** sur le bouton token (`_updateTokenBtn`).
+  Un `!important` dans la feuille de style **ne peut pas** battre un style inline. Redefinir
+  les variables sur `.hb-toolbar` (valeurs du theme sombre) resout le probleme a la source :
+  l'inline `var(--ok)` se resout a la valeur sombre pour toute la sous-arborescence. Mesure
+  apres coup, les 3 etats du token et les 4 autres elements : 5,00:1 a 8,19:1 sur `#0a1826`.
+- **Le `<h1>` revient au wordmark** : c'est l'ancien `<nav>` qui le portait (« Surf NC — vue »).
+  Verifie : exactement 1 `<h1>` dans le document. `showTab()` met a jour `#nav-current` sous
+  garde `if (_navCur && ...)`, donc sa disparition est sans effet.
+- **`#main-menu` re-ancre a gauche** (`left:12px`, `transform-origin:top left`, `top:51px` =
+  46px de barre + bordure) : le ☰ est desormais a gauche, comme dans la 5A.
+- **Mobile : la barre RESTE** — elle porte le ☰. Seuls les liens de vue sont masques (ils
+  sont deja dans le menu). L'iteration precedente masquait toute la barre, ce qui aurait
+  supprime le ☰ une fois la fusion faite.
+- Regle `html.widget-mode nav` mise a jour en `.site-banner` (elle ne matchait plus rien).
+
+**Cadrage, la vraie cause.** `object-fit:cover` scale sur la LARGEUR : la tranche verticale
+visible vaut `2400*H/W` px source. Repères releves sur la photo par grille de pourcentages
+(et non a l'oeil) : tube y 52-72 %, surfeur y 68-74 %, x≈43 %. A `object-position:...66%` le
+surfeur etait rase par le bord bas ; **69 %** le pose dans le tiers bas avec le tube au-dessus.
+Hauteur passee a `clamp(150px,9.5vw,280px)` — payee par la disparition du `<nav>` de 52 px,
+donc le total reste plus compact qu'avant la fusion. Le fondu bas s'arrete plus tard
+(89 % au lieu de 84 %) pour ne pas manger le surfeur.
+
+**Note pour la prochaine fois** : « plus je zoome plus l'image grossit » — comportement normal
+du zoom navigateur (tout grossit), a ne pas confondre avec le bug de cadrage ci-dessus, qui
+lui venait de la hauteur en px fixe.
+
 **Environnement de verification.** Headless Edge sur ce poste plante/bloque de facon
 intermittente sur cette page (nombreux iframes cross-origin : Windy, Leaflet+Esri, Supabase
 — chacun son propre process renderer sous l'isolation de site Chromium). Cause identifiee :
