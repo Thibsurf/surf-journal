@@ -136,13 +136,24 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
    cette page le bloc « Ciel & houle » (.sb-card, .sb-top, .sb-sky…) — un même
    préfixe aurait marché ici grâce à la spécificité (.site-banner .sb-x bat
    .sb-x tout court) mais serait resté un piège pour la prochaine modif. */
-.site-banner{position:relative;width:100%;overflow:hidden;background:#0a1826;
-  border-bottom:1px solid rgba(124,198,228,.16);}
-.site-banner .hb-toolbar{position:relative;display:flex;align-items:center;
-  flex-wrap:wrap;justify-content:space-between;gap:6px 16px;padding:9px 1.5rem;
-  background:#0a1826;}
-.site-banner .hb-eyebrow{font:500 10px/1 var(--font-b);letter-spacing:.18em;text-transform:uppercase;
-  color:rgba(159,210,232,.75);white-space:nowrap;}
+.site-banner{position:relative;width:100%;background:#0a1826;}
+/* La barre outils est STICKY et porte toute la navigation : c'est elle qui a
+   remplacé l'ancien <nav> clair du site (maquette 5A = « bannière + barre outils
+   fondues »). D'où z-index 1000 (repris de l'ancien nav) et min-height fixe :
+   #main-menu s'ancre juste dessous avec un `top` qui doit rester cohérent. */
+.site-banner .hb-toolbar{position:sticky;top:0;z-index:1000;display:flex;align-items:center;
+  flex-wrap:wrap;justify-content:space-between;gap:6px 16px;padding:8px 1.5rem;min-height:46px;
+  background:#0a1826;border-bottom:1px solid rgba(124,198,228,.14);
+  /* Cette barre est sombre dans LES DEUX thèmes. Les boutons qu'elle héberge
+     (token, thème, ☰, pastille source) sont stylés en var(--faint)/--border, et le
+     JS pose var(--ok)/--bad/--warm EN INLINE sur le bouton token. Redéfinir ces
+     variables ici — plutôt que surcharger chaque règle en !important, ce qui ne
+     marcherait de toute façon pas contre un style inline — les fait resoudre aux
+     valeurs du thème SOMBRE pour toute la sous-arborescence, y compris inline. */
+  --text:#e8eef4;--muted:#7a94aa;--faint:#8ba6ba;
+  --glass:rgba(255,255,255,.06);--border:rgba(255,255,255,.14);--border-h:rgba(255,255,255,.28);
+  --accent:#4fa3c7;--warm:#e8a057;--ok:#3dba8a;--bad:#e05c5c;}
+.site-banner .hb-tools{display:flex;align-items:center;gap:.6rem;flex-shrink:0;}
 .site-banner .hb-nav{display:flex;align-items:center;flex-wrap:wrap;gap:7px 16px;}
 .site-banner .hb-sep{width:1px;height:11px;background:rgba(255,255,255,.25);}
 .site-banner .hb-link{-webkit-appearance:none;appearance:none;display:inline-block;
@@ -152,43 +163,61 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   cursor:pointer;}
 .site-banner .hb-link:hover{color:#fff;}
 .site-banner .hb-link.active{color:#fff;border-bottom-color:var(--accent);}
-/* Hauteur en vw (bornée par clamp), PAS en px fixe : object-fit:cover ne montre
-   qu'une tranche verticale dont la hauteur SOURCE dépend du ratio hauteur/largeur
-   du conteneur (largeur toujours pleine page). Une hauteur fixe en px devient
-   proportionnellement plus fine à mesure que l'écran s'élargit — sur un écran
-   large (mesuré : ~2837px), le tube de la photo sortait carrément du cadre.
-   En vw, la tranche visible reste la même quelle que soit la largeur d'écran.
-   Un peu plus basse qu'avant (13vw→10.5vw) : la bande-outils au-dessus prend
-   maintenant sa propre hauteur, la bannière totale doit rester compacte. */
-.site-banner .hb-photo{position:relative;width:100%;height:clamp(128px,10.5vw,195px);overflow:hidden;}
-.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 64%;}
+/* Hauteur en vw (bornée par clamp), PAS en px fixe. `object-fit:cover` scale
+   l'image sur la LARGEUR du conteneur : la tranche verticale visible vaut donc
+   2400*H/W pixels source (2400 = largeur de l'image). Avec une hauteur fixe en px,
+   ce nombre s'effondre quand l'écran s'élargit — mesuré sur l'écran de
+   l'utilisateur (~2837 px) : 110 px de source, soit 6,9 % de la photo, une lamelle
+   où le surfeur (y≈70 %) et le tube (y 52-72 %) ne tenaient plus.
+   En vw le ratio reste constant, donc la tranche aussi : ~14-16 % de 900 à 3440 px,
+   ce qui couvre y≈58-74 % — tube ET surfeur dans le cadre partout (vérifié par
+   simulation Pillow aux 6 largeurs, pas à l'œil).
+   Ce surcroît de hauteur est payé par la fusion de la barre outils : l'ancien
+   <nav> clair de 52 px a disparu, le total reste plus compact qu'avant. */
+.site-banner .hb-photo{position:relative;width:100%;height:clamp(150px,9.5vw,280px);overflow:hidden;}
+/* 69 % et non 50 % : le centre géométrique de la photo tombe en plein ciel. Repères
+   mesurés sur la photo (grille de pourcentages) : tube y 52-72 %, surfeur y 68-74 %,
+   x≈43 %. À 69 % le surfeur occupe le tiers bas du bandeau et le tube le remplit —
+   à 66 % il était rasé par le bord inférieur. */
+.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 69%;
+  filter:contrast(1.1) saturate(1.06) brightness(.96);}
 .site-banner .hb-scrim{position:absolute;inset:0;
-  /* La nav n'est plus sur la photo (bande dédiée ci-dessus) : seul le titre a
-     encore besoin d'un fondu, en bas-gauche uniquement. */
-  background:linear-gradient(100deg,rgba(4,14,24,.72) 0%,rgba(4,14,24,.38) 32%,rgba(4,14,24,.06) 56%,rgba(4,14,24,0) 72%),
-             linear-gradient(to top,rgba(4,14,24,.6) 0%,rgba(4,14,24,0) 50%);}
-.site-banner .hb-bottom{position:absolute;left:0;right:0;bottom:0;padding:0 1.5rem 12px;
-  display:flex;flex-direction:column;gap:5px;}
-.site-banner .hb-h1{margin:0;font:600 27px/1 var(--font-d);color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.35);}
-.site-banner .hb-h1 span{color:var(--accent);}
-.site-banner .hb-tag{display:flex;align-items:center;gap:9px;}
-.site-banner .hb-tag i{display:inline-block;width:22px;height:1px;background:rgba(232,238,244,.55);}
-.site-banner .hb-tag span{font:500 9px/1 var(--font-b);letter-spacing:.22em;text-transform:uppercase;
-  color:rgba(232,238,244,.7);white-space:nowrap;}
+  /* La nav n'est plus sur la photo (barre dédiée au-dessus) : seul le titre a
+     encore besoin d'un fondu, en bas-gauche. Le fondu vertical descend jusqu'au
+     #0a1826 OPAQUE en bas (maquette 5A) : la photo se fond dans la page au lieu
+     de s'arrêter net sur une arête. */
+  background:linear-gradient(100deg,rgba(4,14,24,.78) 0%,rgba(4,14,24,.42) 30%,rgba(4,14,24,.08) 54%,rgba(4,14,24,0) 70%),
+             linear-gradient(to bottom,rgba(10,24,38,.42) 0%,rgba(10,24,38,0) 22%,rgba(10,24,38,0) 62%,rgba(10,24,38,.5) 89%,#0a1826 100%);}
+/* Filet dégradé de la 5A : marque la fin de la bannière sans trait dur. */
+.site-banner .hb-rule{height:1px;width:100%;
+  background:linear-gradient(90deg,rgba(79,163,199,.55) 0%,rgba(79,163,199,.12) 55%,rgba(79,163,199,0) 100%);}
+.site-banner .hb-bottom{position:absolute;left:0;right:0;bottom:0;padding:0 1.5rem 14px;
+  display:flex;flex-direction:column;gap:7px;}
+/* Taille en vw comme la photo : un titre en px fixe paraissait minuscule dans une
+   bannière qui, elle, grandit avec l'écran (la 5A le pose à 52px pour 230px de photo). */
+.site-banner .hb-h1{margin:0;font-family:var(--font-d);font-weight:600;
+  font-size:clamp(26px,2.7vw,50px);line-height:1;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.4);}
+.site-banner .hb-h1 span{color:#7cc6e4;font-style:italic;}
+.site-banner .hb-tag{display:flex;align-items:center;gap:10px;}
+.site-banner .hb-tag i{display:inline-block;width:26px;height:1px;background:rgba(124,198,228,.8);}
+.site-banner .hb-tag span{font:500 9px/1 var(--font-b);letter-spacing:.26em;text-transform:uppercase;
+  color:rgba(207,230,241,.8);white-space:nowrap;}
 @media(max-width:680px){
-  .site-banner .hb-photo{height:clamp(96px,22vw,140px);}
-  .site-banner .hb-toolbar{display:none;} /* la nav ☰ juste en-dessous fait déjà tout le travail sur téléphone */
-  .site-banner .hb-bottom{padding:0 .9rem 10px;}
-  .site-banner .hb-h1{font-size:21px;}
+  .site-banner .hb-photo{height:clamp(104px,26vw,150px);}
+  /* La barre reste : elle porte le ☰ et les boutons du site. Seuls les liens de
+     vue disparaissent — ils vivent déjà dans le menu ☰, à portée de pouce. */
+  .site-banner .hb-nav{display:none;}
+  .site-banner .hb-toolbar{padding:6px .7rem;min-height:44px;}
+  .site-banner .hb-tools{gap:.45rem;margin-left:auto;}
+  .site-banner .hb-bottom{padding:0 .9rem 11px;}
   .site-banner .hb-tag{display:none;}
 }
-html.widget-mode .site-banner{display:none;}
+/* (le masquage en mode widget est groupé avec les autres, plus bas) */
 
-/* NAV */
-nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:blur(12px);
-  border-bottom:1px solid var(--border);padding:0 1.5rem;height:52px;display:flex;align-items:center;gap:1rem;}
-.logo{font-family:var(--font-d);font-size:1.05rem;color:var(--text);margin-right:auto;}
-.logo span{color:var(--accent);}
+/* NAV — l'ancien bandeau clair <nav> (logo « Surf NC », outils, ☰) a été FUSIONNÉ
+   dans .hb-toolbar de la bannière le 18/08/2026 (maquette 5A). Ses règles propres
+   (nav{}, .logo, .logo-suffix) ont donc été retirées ; ce qui reste ci-dessous
+   concerne les éléments déplacés, qui existent toujours. */
 #last-update{font-size:11px;color:var(--faint);white-space:nowrap;}
 /* Pastille source réduite à son point de couleur (texte complet au survol/tap) :
    le bandeau reste léger. La navigation vit désormais dans le menu ☰. */
@@ -203,13 +232,15 @@ nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:
 #nav-hamburger.open{color:var(--accent);border-color:var(--accent);background:var(--glass);}
 
 /* ─── POPOVER DE NAVIGATION ────────────────────────────────────────────────── */
-#main-menu{position:fixed;top:56px;right:12px;z-index:1001;
+/* Ancré SOUS la barre outils de la bannière (min-height 46px + 1px de bordure) et
+   à GAUCHE, puisque le ☰ y est désormais à gauche (disposition 5A). */
+#main-menu{position:fixed;top:51px;left:12px;z-index:1001;
   width:min(300px,calc(100vw - 24px));
   background:var(--nav-bg-mobile);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
   border:1px solid var(--border);border-radius:16px;padding:10px;
   box-shadow:0 16px 44px rgba(0,0,0,.42),0 3px 10px rgba(0,0,0,.28);
   /* visibility+opacity (pas display) → l'apparition s'anime réellement */
-  visibility:hidden;opacity:0;transform:translateY(-8px) scale(.97);transform-origin:top right;
+  visibility:hidden;opacity:0;transform:translateY(-8px) scale(.97);transform-origin:top left;
   transition:opacity .16s ease,transform .16s ease,visibility 0s .16s;pointer-events:none;}
 #main-menu.open{visibility:visible;opacity:1;transform:none;pointer-events:auto;
   transition:opacity .16s ease,transform .16s ease;}
@@ -229,15 +260,10 @@ nav{position:sticky;top:0;z-index:1000;background:var(--nav-bg);backdrop-filter:
 .mm-item.mm-fuel{color:#e8c44a;}
 @media(max-width:680px){
   #last-update{display:none;}
-  .logo{font-size:.95rem;}
-  /* Bandeau compact mobile : moins de padding/gap, suffixe de vue masqué (la
-     vue courante est surlignée dans le menu ☰). */
-  nav{padding:0 .7rem;gap:.5rem;}
-  .logo-suffix{display:none;}
   #data-source-badge{padding:2px 6px;}
   #nav-hamburger{padding:6px 9px;}
   /* Menu : ancré aux deux bords, une seule colonne (plus lisible sur téléphone). */
-  #main-menu{top:54px;right:8px;left:8px;width:auto;}
+  #main-menu{top:50px;right:8px;left:8px;width:auto;}
   .mm-grid{grid-template-columns:1fr;}
   /* Padding horizontal du conteneur réduit sur mobile : 1.5rem coûtait ~12% de la
      largeur d'un écran 390px — récupéré au profit des graphes et tableaux. */
@@ -571,7 +597,7 @@ table.ft .night td{background:var(--night-row);}
 @keyframes convLeft{0%,100%{transform:translateX(0);opacity:.6}50%{transform:translateX(11px);opacity:1}}
 
 /* ── MODE WIDGET (?widget=1) : uniquement le météogramme, sans chrome ── */
-html.widget-mode nav,
+html.widget-mode .site-banner,
 html.widget-mode #token-sync-status,
 html.widget-mode #main-menu,
 html.widget-mode .container > *:not(#gw-widget),
@@ -686,7 +712,28 @@ html.widget-mode #gw-widget { margin-bottom:0; }
      toucher au système existant. -->
 <header class="site-banner" id="site-banner">
   <div class="hb-toolbar">
-    <span class="hb-eyebrow">Nouvelle-Calédonie · Lagon sud</span>
+    <div class="hb-tools">
+      <span id="last-update" style="font-size:11px;color:var(--faint);"></span>
+      <span id="data-source-badge" onclick="showNetDiagPanel()"
+        title="Source des données — toucher pour le diagnostic réseau"
+        style="display:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;cursor:pointer;
+        border:1px solid var(--border);white-space:nowrap;"></span>
+      <button onclick="showNcTokenPrompt()" id="token-btn"
+        title="Token meteo.nc"
+        style="background:none;border:1px solid var(--border);color:var(--faint);
+        padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:11px;
+        white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
+        🔑 <span id="token-btn-label" style="font-size:11px;"></span></button>
+      <button onclick="toggleTheme()" id="theme-toggle-btn"
+        title="Basculer thème clair / sombre"
+        aria-label="Basculer thème clair / sombre" aria-pressed="false"
+        style="background:none;border:1px solid var(--border);color:var(--faint);
+        padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:13px;line-height:1;
+        white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;">
+        <span id="theme-toggle-icon" aria-hidden="true">🌙</span></button>
+      <button id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Ouvrir le menu de navigation"
+        aria-haspopup="true" aria-expanded="false" aria-controls="main-menu">☰</button>
+    </div>
     <div class="hb-nav" role="navigation" aria-label="Accès rapide">
       <button type="button" class="hb-link active" data-tab="forecast" onclick="showTab('forecast');_hbSyncNav('forecast');">Prévisions</button>
       <button type="button" class="hb-link" data-tab="compare" onclick="showTab('compare');_hbSyncNav('compare');">Comparer</button>
@@ -703,12 +750,13 @@ html.widget-mode #gw-widget { margin-bottom:0; }
     <img src="assets/hero-banniere.jpg" alt="Vague creuse et surfeur, Nouvelle-Calédonie" loading="eager" fetchpriority="high" decoding="async">
     <div class="hb-scrim"></div>
     <div class="hb-bottom">
-      <!-- p et non h1 : la nav juste en-dessous porte déjà le h1 de page
-           (« Surf NC — Prévisions ») — un 2e h1 casserait le plan de titres. -->
-      <p class="hb-h1">Coups <span>de surf</span></p>
-      <div class="hb-tag"><i></i><span>Prévisions marine</span></div>
+      <!-- Redevenu le h1 de la page : l'ancien <nav> qui en portait un
+           (« Surf NC — Prévisions ») a été fusionné dans la barre ci-dessus. -->
+      <h1 class="hb-h1">Coups <span>de surf</span></h1>
+      <div class="hb-tag"><i></i><span>Prévisions marine · Journal de sessions</span></div>
     </div>
   </div>
+  <div class="hb-rule"></div>
 </header>
 <script>
 // Etat actif de la mini-nav de la bannière — voir le commentaire HTML au-dessus
@@ -720,30 +768,6 @@ function _hbSyncNav(name){
   }
 }
 </script>
-
-<nav>
-  <h1 class="logo" style="margin:0 auto 0 0;">Surf <span>NC</span><span class="logo-suffix" id="nav-current"> — Prévisions</span></h1>
-  <span id="last-update" style="font-size:11px;color:var(--faint);"></span>
-  <span id="data-source-badge" onclick="showNetDiagPanel()"
-    title="Source des données — toucher pour le diagnostic réseau"
-    style="display:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;cursor:pointer;
-    border:1px solid var(--border);white-space:nowrap;"></span>
-  <button onclick="showNcTokenPrompt()" id="token-btn"
-    title="Token meteo.nc"
-    style="background:none;border:1px solid var(--border);color:var(--faint);
-    padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:11px;
-    white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;gap:4px;">
-    🔑 <span id="token-btn-label" style="font-size:11px;"></span></button>
-  <button onclick="toggleTheme()" id="theme-toggle-btn"
-    title="Basculer thème clair / sombre"
-    aria-label="Basculer thème clair / sombre" aria-pressed="false"
-    style="background:none;border:1px solid var(--border);color:var(--faint);
-    padding:3px 9px;border-radius:var(--rs);cursor:pointer;font-size:13px;line-height:1;
-    white-space:nowrap;font-family:var(--font-b);display:flex;align-items:center;">
-    <span id="theme-toggle-icon" aria-hidden="true">🌙</span></button>
-  <button id="nav-hamburger" onclick="toggleNavMenu()" aria-label="Ouvrir le menu de navigation"
-    aria-haspopup="true" aria-expanded="false" aria-controls="main-menu">☰</button>
-</nav>
 
 <!-- Menu de navigation UNIQUE (☰) : toutes les vues + les autres pages. Remplace
      l'ancienne rangée de 8 onglets qui saturait le bandeau. Les boutons de vue
