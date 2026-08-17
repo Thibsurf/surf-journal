@@ -375,6 +375,23 @@ nav {
 }
 
 /* ── STAR PICKER ── */
+/* Créneau : la marée est repliée derrière son récapitulatif. Le chevron tourne
+   à l'ouverture. `list-style:none` + le pseudo WebKit : sans les deux, Safari/iOS
+   garde son triangle natif à gauche et décale tout le texte. Cible tactile de
+   44 px assurée par le padding, ce n'est pas un accident. */
+#tide-summary-toggle {
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px;
+  padding: 10px 2px; font-size: 11px; color: var(--accent); min-height: 44px;
+  border-radius: 6px;
+}
+#tide-summary-toggle::-webkit-details-marker { display: none; }
+#tide-summary-toggle::after {
+  content: '▾'; margin-left: auto; color: var(--text-muted);
+  transition: transform .2s; flex-shrink: 0;
+}
+#tide-details[open] > #tide-summary-toggle::after { transform: rotate(180deg); }
+#tide-summary-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .star-picker { display: flex; gap: 4px; }
 .star-picker span {
   font-size: 1.5rem; cursor: pointer;
@@ -959,95 +976,6 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
     </div>
     <input type="hidden" id="edit-session-id">
 
-    <!-- ── Bloc 1 : CRÉNEAU de la session ───────────────────────────────────
-         Remonté en tête le 16/08/2026 (et le widget marée avec lui, il vivait
-         auparavant tout en bas du bloc « Conditions »). Motif : la fenêtre
-         horaire est ce qui DÉTERMINE les conditions affichées et la lecture des
-         modèles. La laisser en dernier revenait à demander « c'était comment vs
-         la prévision ? » avant même d'avoir dit QUAND — et rien ne garantissait
-         que les chiffres du haut décrivaient la plage tracée en bas (ils
-         décrivaient en fait l'instant présent, cf. _autoFillConditions).
-         INVARIANT : toute écriture de la date, de l'heure de début ou des plages
-         marée doit passer par _onSessionWindowChanged() — c'est lui qui
-         resynchronise conditions + tableau des modèles + repère du graphe. ── -->
-    <div style="border:1px solid rgba(79,163,199,.25);border-radius:var(--radius-sm);padding:10px 12px 12px;margin-bottom:1rem;background:rgba(79,163,199,.05);">
-      <div style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">⏱ Créneau de la session</div>
-      <div class="form-row-3">
-        <div class="form-group" style="margin-bottom:8px;">
-          <label class="form-label" for="f-date">Date</label>
-          <input type="date" class="form-input" id="f-date" onchange="_onSessionDateChange()">
-        </div>
-        <div class="form-group" style="margin-bottom:8px;">
-          <label class="form-label" for="f-session-hour">Début</label>
-          <select class="form-select" id="f-session-hour"></select>
-        </div>
-        <div class="form-group" style="margin-bottom:8px;">
-          <label class="form-label" for="f-duration">Durée (h)</label>
-          <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12" oninput="updateFuelEstimate();_updateSessionSlotSummary()">
-        </div>
-      </div>
-      <!-- Récapitulatif du créneau, mis à jour à chaque changement : c'est la
-           phrase à laquelle TOUT le reste du formulaire se réfère. Élément
-           permanent (jamais reconstruit) — piège des gabarits rendus une fois. -->
-      <div id="session-slot-summary" style="font-size:11px;color:var(--accent);margin-bottom:8px;"></div>
-
-      <!-- Widget marée interactif (déplacé ici depuis le bloc Conditions) -->
-      <div id="tide-widget" style="background:rgba(10,22,40,.35);border:1px solid rgba(79,163,199,0.15);border-radius:var(--radius-sm);padding:10px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-          <span style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">🌊 Marée — trace ta plage
-            <!-- Date décrite par la courbe : la marée dépend du jour (~50 min de
-                 décalage quotidien), l'afficher évite de croire à une courbe générique. -->
-            <span id="tide-date-label" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);"></span></span>
-          <!-- Les 4 premières valeurs sont HISTORIQUES (déjà en base dans
-               sessions.tide_port) : ne jamais les renommer. Les suivantes sont les
-               autres stations de marée meteo.nc (14 au total, cf. TIDE_STATIONS). -->
-          <select id="tide-port" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="renderTideWidget()">
-            <option value="noumea">Nouméa</option>
-            <option value="tomo">Tomo (Dumbéa)</option>
-            <option value="bourail">Bourail</option>
-            <option value="thio">Thio</option>
-            <option value="prony">Baie du Prony</option>
-            <option value="ouinne">Baie de Ouinné</option>
-            <option value="kuto">Kuto (Île des Pins)</option>
-            <option value="touho">Touho</option>
-            <option value="hienghene">Hienghène</option>
-            <option value="banare">Baie de Banaré</option>
-            <option value="kone">Foué (Koné)</option>
-            <option value="koumac">Paagoumène (Koumac)</option>
-            <option value="lifou">Chépénéhé (Lifou)</option>
-            <option value="mare">La Roche (Maré)</option>
-            <option value="ouvea">Wadrilla (Ouvéa)</option>
-          </select>
-        </div>
-        <div id="tide-chart-wrap" style="position:relative;height:120px;background:#0a1628;border-radius:6px;padding:4px;margin-bottom:8px;cursor:crosshair;user-select:none;">
-          <canvas id="tide-canvas" width="600" height="112" style="width:100%;height:100%;"></canvas>
-          <div id="tide-hint" style="position:absolute;top:4px;right:6px;font-size:9px;color:rgba(255,255,255,.4);pointer-events:none;">Clique &amp; glisse · ou entre les heures ci-dessous</div>
-        </div>
-        <div id="tide-plages" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
-        <!-- Éditeur d heure précise par plage -->
-        <div id="tide-time-editor" style="display:none;background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.2);border-radius:6px;padding:8px;margin-bottom:8px;">
-          <div style="font-size:10px;color:var(--accent);font-weight:500;margin-bottom:6px;">⏱ Heure exacte de la plage sélectionnée</div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <label style="font-size:10px;color:var(--text-muted);">Début</label>
-            <input type="time" id="tide-edit-start" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 6px;width:90px;" oninput="applyTideTimeEdit()">
-            <label style="font-size:10px;color:var(--text-muted);">Fin</label>
-            <input type="time" id="tide-edit-end" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 6px;width:90px;" oninput="applyTideTimeEdit()">
-            <span id="tide-edit-idx" style="display:none;"></span>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-        <button type="button" id="tide-add-range" onclick="addTideRange()" style="background:rgba(79,163,199,0.15);border:1px solid rgba(79,163,199,0.3);color:var(--accent);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">+ Ajouter plage</button>
-        <button type="button" id="tide-reset" onclick="resetTideRanges()" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">Effacer</button>
-        </div>
-        <div id="tide-range-times-wrap" style="display:none;margin-top:8px;background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.2);border-radius:6px;padding:8px;">
-          <div style="font-size:10px;color:var(--accent);margin-bottom:6px;font-weight:500;">⏱ Affiner l'heure exacte</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" id="tide-time-inputs"></div>
-        </div>
-        <div id="tide-summary" style="font-size:10px;color:var(--text-muted);margin-top:8px;line-height:1.5;"></div>
-        <a id="shom-link" href="#" target="_blank" rel="noopener" style="display:block;margin-top:6px;font-size:10px;color:var(--text-faint);text-align:center;text-decoration:none;">↗ Voir sur SHOM (vérification)</a>
-      </div>
-    </div>
-
     <div class="form-group">
       <label class="form-label" for="f-spot">Spot</label>
       <select class="form-select" id="f-spot" onchange="handleSpotChange(this)">
@@ -1084,6 +1012,91 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
         </div>
       </div>
     </div>
+    <!-- ── Bloc 1 : CRÉNEAU de la session ───────────────────────────────────
+         Remonté en tête le 16/08/2026 (et le widget marée avec lui, il vivait
+         auparavant tout en bas du bloc « Conditions »). Motif : la fenêtre
+         horaire est ce qui DÉTERMINE les conditions affichées et la lecture des
+         modèles. La laisser en dernier revenait à demander « c'était comment vs
+         la prévision ? » avant même d'avoir dit QUAND — et rien ne garantissait
+         que les chiffres du haut décrivaient la plage tracée en bas (ils
+         décrivaient en fait l'instant présent, cf. _autoFillConditions).
+         INVARIANT : toute écriture de la date, de l'heure de début ou des plages
+         marée doit passer par _onSessionWindowChanged() — c'est lui qui
+         resynchronise conditions + tableau des modèles + repère du graphe. ── -->
+    <div style="border:1px solid rgba(79,163,199,.25);border-radius:var(--radius-sm);padding:10px 12px 12px;margin-bottom:1rem;background:rgba(79,163,199,.05);">
+      <div style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">⏱ Créneau de la session</div>
+      <div class="form-row-3">
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" for="f-date">Date</label>
+          <input type="date" class="form-input" id="f-date" onchange="_onSessionDateChange()">
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" for="f-session-hour">Début</label>
+          <select class="form-select" id="f-session-hour"></select>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" for="f-duration">Durée (h)</label>
+          <input type="number" class="form-input" id="f-duration" placeholder="3.5" step="0.25" min="0.25" max="12" oninput="updateFuelEstimate();_updateSessionSlotSummary()">
+        </div>
+      </div>
+      <!-- La marée est REPLIÉE derrière son propre récapitulatif (17/08/2026).
+           Mesuré : le widget faisait 450 px de haut et poussait le choix du spot
+           à y=936, soit deux écrans de défilement avant de dire OÙ on a surfé.
+           Date/Début/Durée suffisent à la plupart des saisies ; la courbe sert à
+           AFFINER, pas à déclarer. L'en-tête repliable EST le récapitulatif, donc rien
+           n'est caché : on lit le créneau sans ouvrir.
+           Élément permanent (jamais reconstruit) — piège des gabarits rendus une fois. -->
+      <details id="tide-details">
+        <summary id="tide-summary-toggle">
+          <span id="session-slot-summary"></span>
+          <span style="color:var(--text-muted);font-size:10.5px;"> · ajuster sur la marée</span>
+        </summary>
+      <div id="tide-widget" style="background:rgba(10,22,40,.35);border:1px solid rgba(79,163,199,0.15);border-radius:var(--radius-sm);padding:10px;margin-top:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+          <span style="font-size:11px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">⏱ Ou trace ton créneau sur la marée
+            <!-- Date décrite par la courbe : la marée dépend du jour (~50 min de
+                 décalage quotidien), l'afficher évite de croire à une courbe générique. -->
+            <span id="tide-date-label" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);"></span></span>
+          <!-- Les 4 premières valeurs sont HISTORIQUES (déjà en base dans
+               sessions.tide_port) : ne jamais les renommer. Les suivantes sont les
+               autres stations de marée meteo.nc (14 au total, cf. TIDE_STATIONS). -->
+          <select id="tide-port" style="background:var(--deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px;" onchange="renderTideWidget()">
+            <option value="noumea">Nouméa</option>
+            <option value="tomo">Tomo (Dumbéa)</option>
+            <option value="bourail">Bourail</option>
+            <option value="thio">Thio</option>
+            <option value="prony">Baie du Prony</option>
+            <option value="ouinne">Baie de Ouinné</option>
+            <option value="kuto">Kuto (Île des Pins)</option>
+            <option value="touho">Touho</option>
+            <option value="hienghene">Hienghène</option>
+            <option value="banare">Baie de Banaré</option>
+            <option value="kone">Foué (Koné)</option>
+            <option value="koumac">Paagoumène (Koumac)</option>
+            <option value="lifou">Chépénéhé (Lifou)</option>
+            <option value="mare">La Roche (Maré)</option>
+            <option value="ouvea">Wadrilla (Ouvéa)</option>
+          </select>
+        </div>
+        <div id="tide-chart-wrap" style="position:relative;height:120px;background:#0a1628;border-radius:6px;padding:4px;margin-bottom:8px;cursor:crosshair;user-select:none;">
+          <canvas id="tide-canvas" width="600" height="112" style="width:100%;height:100%;"></canvas>
+          <div id="tide-hint" style="position:absolute;top:4px;right:6px;font-size:9.5px;color:rgba(255,255,255,.62);pointer-events:none;">Clique &amp; glisse · ou entre les heures ci-dessous</div>
+        </div>
+        <div id="tide-plages" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+        <button type="button" id="tide-add-range" onclick="addTideRange()" style="background:rgba(79,163,199,0.15);border:1px solid rgba(79,163,199,0.3);color:var(--accent);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">+ Ajouter plage</button>
+        <button type="button" id="tide-reset" onclick="resetTideRanges()" style="background:var(--glass);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">Effacer</button>
+        </div>
+        <div id="tide-range-times-wrap" style="display:none;margin-top:8px;background:rgba(79,163,199,0.06);border:1px solid rgba(79,163,199,0.2);border-radius:6px;padding:8px;">
+          <div style="font-size:10px;color:var(--accent);margin-bottom:6px;font-weight:500;">⏱ Affiner l'heure exacte</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" id="tide-time-inputs"></div>
+        </div>
+        <div id="tide-summary" style="font-size:10px;color:var(--text-muted);margin-top:8px;line-height:1.5;"></div>
+        <a id="shom-link" href="#" target="_blank" rel="noopener" style="display:block;margin-top:6px;font-size:10px;color:var(--text-faint);text-align:center;text-decoration:none;">↗ Voir sur SHOM (vérification)</a>
+      </div>
+      </details>
+    </div>
+
     <div class="form-group">
       <label class="form-label" for="f-boat-id">Bateau</label>
       <select class="form-select" id="f-boat-id" onchange="updateFuelEstimate()">
@@ -1152,22 +1165,32 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
           <div class="form-group" style="margin-bottom:10px;">
             <label class="form-label" id="lbl-hs" for="f-hs">Hs (m)</label>
             <input type="number" class="form-input" id="f-hs" placeholder="1.2" step="0.1" min="0">
+            <!-- Amplitude sur la FENÊTRE de session (17/08/2026). Les colonnes hs /
+                 period / wind_kts restent SCALAIRES en base : on n'enregistre donc
+                 toujours qu'une valeur, celle du début. Mais une session dure 3 h,
+                 la brise thermique monte et la houle tourne — afficher l'évolution
+                 à côté du chiffre évite de croire que ce chiffre vaut pour toute la
+                 session, sans rien casser en aval. Vide si les heures manquent. -->
+            <div id="cond-range-hs" style="font-size:10px;color:var(--text-muted);margin-top:3px;"></div>
           </div>
           <div class="form-group" style="margin-bottom:10px;">
             <label class="form-label" id="lbl-period" for="f-period">Période (s)</label>
             <input type="number" class="form-input" id="f-period" placeholder="14" step="0.5" min="0">
+            <div id="cond-range-period" style="font-size:10px;color:var(--text-muted);margin-top:3px;"></div>
           </div>
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">Dir. houle</label>
-            <div style="display:flex;gap:4px;">
-              <select class="form-select" id="f-swell-dir-card" style="flex:1;min-width:0;" onchange="syncSwellDir()">
+            <!-- Deux champs pour UNE grandeur : un attribut `for` ne peut en designer
+                 qu'un seul. Forme correcte = groupe nomme + aria-label par champ. -->
+            <label class="form-label" id="lbl-swell-dir">Dir. houle</label>
+            <div style="display:flex;gap:4px;" role="group" aria-labelledby="lbl-swell-dir">
+              <select class="form-select" id="f-swell-dir-card" aria-label="Direction de houle, point cardinal" style="flex:1;min-width:0;" onchange="syncSwellDir()">
                 <option value="">—</option>
                 <option>N</option><option>NNE</option><option>NE</option><option>ENE</option>
                 <option>E</option><option>ESE</option><option>SE</option><option>SSE</option>
                 <option>S</option><option>SSO</option><option>SO</option><option>OSO</option>
                 <option>O</option><option>ONO</option><option>NO</option><option>NNO</option>
               </select>
-              <input type="number" class="form-input" id="f-swell-dir-deg" placeholder="°" min="0" max="359" style="width:62px;text-align:center;padding:10px 4px;" oninput="syncSwellDir()">
+              <input type="number" class="form-input" id="f-swell-dir-deg" aria-label="Direction de houle, en degres" placeholder="°" min="0" max="359" style="width:62px;text-align:center;padding:10px 4px;" oninput="syncSwellDir()">
             </div>
             <input type="hidden" id="f-swell-dir">
           </div>
@@ -1176,11 +1199,12 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
           <div class="form-group" style="margin-bottom:10px;">
             <label class="form-label" id="lbl-wind" for="f-wind">Vent (nds)</label>
             <input type="number" class="form-input" id="f-wind" placeholder="5" step="1" min="0">
+            <div id="cond-range-wind" style="font-size:10px;color:var(--text-muted);margin-top:3px;"></div>
           </div>
           <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">Dir. vent</label>
-            <div style="display:flex;gap:4px;">
-              <select class="form-select" id="f-wind-dir-card" style="flex:1;min-width:0;" onchange="syncWindDir()">
+            <label class="form-label" id="lbl-wind-dir">Dir. vent</label>
+            <div style="display:flex;gap:4px;" role="group" aria-labelledby="lbl-wind-dir">
+              <select class="form-select" id="f-wind-dir-card" aria-label="Direction du vent, point cardinal" style="flex:1;min-width:0;" onchange="syncWindDir()">
                 <option value="">—</option>
                 <option>Glassy</option>
                 <option>N</option><option>NNE</option><option>NE</option><option>ENE</option>
@@ -1189,7 +1213,7 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
                 <option>O</option><option>ONO</option><option>NO</option><option>NNO</option>
                 <option>Tournant</option><option>Onshore</option>
               </select>
-              <input type="number" class="form-input" id="f-wind-dir-deg" placeholder="°" min="0" max="359" style="width:62px;text-align:center;padding:10px 4px;" oninput="syncWindDir()">
+              <input type="number" class="form-input" id="f-wind-dir-deg" aria-label="Direction du vent, en degres" placeholder="°" min="0" max="359" style="width:62px;text-align:center;padding:10px 4px;" oninput="syncWindDir()">
             </div>
             <input type="hidden" id="f-wind-dir">
           </div>
@@ -1208,24 +1232,24 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
              titre, libellés raccourcis avec icônes cohérentes avec les chips du détail et
              les blocs ②/④ des stats. -->
         <div style="margin:6px 0 8px;">
-          <label class="form-label" style="margin-bottom:2px;">Vs la prévision <span style="font-weight:400;text-transform:none;letter-spacing:0;">(facultatif)</span></label>
+          <div class="form-label" style="margin-bottom:2px;">Vs la prévision <span style="font-weight:400;text-transform:none;letter-spacing:0;">(facultatif)</span></div>
           <div style="font-size:10px;color:var(--text-muted);">Ce que tu as vu, comparé aux chiffres ci-dessus.</div>
         </div>
         <div class="form-group" style="margin-bottom:8px;">
-          <label class="form-label">🌊 Taille (Hs)
+          <div class="form-label">🌊 Taille (Hs)
             <span id="obsdelta-ref-hs" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
-          </label>
-          <div id="f-obs-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
+          </div>
+          <div id="f-obs-delta" role="group" aria-label="Écart ressenti sur Taille" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
             <button type="button" onclick="setObsDelta(-2)" data-delta="-2" class="obsd-btn" title="Nettement plus petit que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Petit</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Petit</button>
             <button type="button" onclick="setObsDelta(-1)" data-delta="-1" class="obsd-btn" title="Plus petit que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Petit</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Petit</button>
             <button type="button" onclick="setObsDelta(0)" data-delta="0" class="obsd-btn" title="Conforme à la prévision"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
             <button type="button" onclick="setObsDelta(1)" data-delta="1" class="obsd-btn" title="Plus gros que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Gros</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Gros</button>
             <button type="button" onclick="setObsDelta(2)" data-delta="2" class="obsd-btn" title="Nettement plus gros que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Gros</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Gros</button>
           </div>
         </div>
         <!-- Écart PÉRIODE à la prévision (02/08/2026) : la taille et le vent avaient leur
@@ -1236,37 +1260,37 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
              fiable, contrairement à la direction en ° au large. Signé -2..+2 comme les 2
              autres → alimente le bloc ② « calibration du préremplissage » par variable. -->
         <div class="form-group" style="margin-bottom:8px;">
-          <label class="form-label">⏱ Période
+          <div class="form-label">⏱ Période
             <span id="obsdelta-ref-per" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
-          </label>
-          <div id="f-period-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
+          </div>
+          <div id="f-period-delta" role="group" aria-label="Écart ressenti sur Période" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
             <button type="button" onclick="setPeriodDelta(-2)" data-delta="-2" class="perd-btn" title="Nettement plus courte / molle que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Courte</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Courte</button>
             <button type="button" onclick="setPeriodDelta(-1)" data-delta="-1" class="perd-btn" title="Plus courte que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Courte</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Courte</button>
             <button type="button" onclick="setPeriodDelta(0)" data-delta="0" class="perd-btn" title="Conforme à la prévision"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
             <button type="button" onclick="setPeriodDelta(1)" data-delta="1" class="perd-btn" title="Plus longue que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Longue</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Longue</button>
             <button type="button" onclick="setPeriodDelta(2)" data-delta="2" class="perd-btn" title="Nettement plus longue / creuse que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Longue</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Longue</button>
           </div>
         </div>
         <div class="form-group" style="margin-bottom:8px;">
-          <label class="form-label">🌬 Vent
+          <div class="form-label">🌬 Vent
             <span id="obsdelta-ref-wind" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>
-          </label>
-          <div id="f-wind-delta" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
+          </div>
+          <div id="f-wind-delta" role="group" aria-label="Écart ressenti sur Vent" style="display:flex;gap:4px;justify-content:space-between;align-items:center;background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;">
             <button type="button" onclick="setWindDelta(-2)" data-delta="-2" class="windd-btn" title="Nettement plus mou que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Mou</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≪ Mou</button>
             <button type="button" onclick="setWindDelta(-1)" data-delta="-1" class="windd-btn" title="Plus mou que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Mou</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&lt; Mou</button>
             <button type="button" onclick="setWindDelta(0)" data-delta="0" class="windd-btn" title="Conforme à la prévision"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">= Conforme</button>
             <button type="button" onclick="setWindDelta(1)" data-delta="1" class="windd-btn" title="Plus fort que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Fort</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">&gt; Fort</button>
             <button type="button" onclick="setWindDelta(2)" data-delta="2" class="windd-btn" title="Nettement plus fort que prévu"
-              style="flex:1;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Fort</button>
+              style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 2px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;font-size:11px;">≫ Fort</button>
           </div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:4px;" title="Les houles ratées par un modèle ne génèrent aucune session, donc aucune donnée : la mesure ne porte que sur les jours surfés (biais de sélection).">⚠ Mesure biaisée : on ne logue que les jours surfés.</div>
         </div>
@@ -1284,11 +1308,11 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
       <input type="number" class="form-input" id="f-price" placeholder="2500" step="100" min="0">
     </div>
     <div class="form-group">
-      <label class="form-label">Qualité de la session</label>
+      <label class="form-label" id="lbl-qual">Qualité de la session</label>
       <!-- role=radio + tabindex + Entrée/Espace : ces étoiles étaient de simples
            <span onclick>, donc impossible de noter une session au clavier ou au
            lecteur d'écran (audit a11y du 17/08/2026). -->
-      <div class="star-picker" id="f-qual-stars" role="radiogroup" aria-label="Qualité de la session">
+      <div class="star-picker" id="f-qual-stars" role="radiogroup" aria-labelledby="lbl-qual">
         <span role="radio" tabindex="0" aria-checked="false" aria-label="1 étoile sur 5" onclick="setStars(1)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span><span role="radio" tabindex="0" aria-checked="false" aria-label="2 étoiles sur 5" onclick="setStars(2)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span>
         <span role="radio" tabindex="0" aria-checked="false" aria-label="3 étoiles sur 5" onclick="setStars(3)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span><span role="radio" tabindex="0" aria-checked="false" aria-label="4 étoiles sur 5" onclick="setStars(4)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span>
         <span role="radio" tabindex="0" aria-checked="false" aria-label="5 étoiles sur 5" onclick="setStars(5)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">★</span>
@@ -1302,8 +1326,8 @@ const WORKER_PUSH_KEY = '019768ceac62406ad51fd34c9f26f7589356dc43';
          n'est plus alimentée. -->
     <div class="form-group" id="f-model-reliability-wrap" style="display:none;"></div>
     <div class="form-group">
-      <label class="form-label">Manœuvres & highlights</label>
-      <div class="toggle-group" id="f-moves" style="margin-bottom:8px;">
+      <label class="form-label" id="lbl-moves">Manœuvres & highlights</label>
+      <div class="toggle-group" id="f-moves" role="group" aria-labelledby="lbl-moves" style="margin-bottom:8px;">
         <button class="toggle-btn tube" data-move="tube" onclick="toggleMove(this,'tube')">🤙 Tube</button>
         <button class="toggle-btn" data-move="roller" onclick="toggleMove(this,'roller')">Roller</button>
         <button class="toggle-btn" data-move="floater" onclick="toggleMove(this,'floater')">Floater</button>
@@ -2376,7 +2400,10 @@ function _updateSessionSlotSummary() {
     var txt = (dp ? dp[3] + '/' + dp[2] : slot.date) + ' · ' + _fmtHmDec(startDec)
       + (endDec != null ? ' → ' + _fmtHmDec(endDec) : '')
       + (slot.duration != null ? ' (' + slot.duration.toFixed(2).replace(/\.?0+$/, '') + 'h)' : '');
-    el.textContent = '⏱ ' + txt + (hasRanges ? '' : ' · trace ta plage sur la marée pour affiner');
+    // Pas d'invitation à tracer ici : l'en-tête repliable qui contient cette
+    // ligne dit déjà « · ajuster sur la marée ». Les deux ensemble faisaient une
+    // phrase de deux lignes qui s'enroulait en colonnes (relu en capture 398 px).
+    el.textContent = '⏱ ' + txt;
   }
   var condEl = document.getElementById('cond-slot-label');
   if (condEl) {
@@ -2404,7 +2431,46 @@ function _updateSessionSlotSummary() {
     var el = document.getElementById(p[0]);
     if (el) el.textContent = p[1] + _hLbl;
   });
+  _updateCondRanges(slot, endDec);
   _updateCondModelNote();
+}
+
+// Amplitude de chaque grandeur sur la FENÊTRE de session, à côté de la valeur
+// ponctuelle enregistrée. Ne modifie AUCUN champ : les colonnes hs/period/
+// wind_kts restent scalaires en base et les écarts ressentis continuent de se
+// calculer sur elles. C'est un complément de lecture — une session dure 3 h, la
+// brise monte, et rien ne disait que le chiffre saisi ne valait que pour son
+// premier instant. Alimenté par `hours[]` du cache (déjà lu par _loadDailyCache).
+var _condHoursForRange = null;   // [{h, hs, period, windKt}] du jour affiché
+function _updateCondRanges(slot, endDec) {
+  var defs = [
+    ['cond-range-hs', 'hs', 1, 'm'],
+    ['cond-range-period', 'period', 0, 's'],
+    ['cond-range-wind', 'windKt', 0, ' nds']
+  ];
+  var rows = _condHoursForRange;
+  var startH = slot.hour;
+  var endH = (endDec != null) ? endDec : (slot.duration != null ? slot.hour + slot.duration : null);
+  defs.forEach(function(d) {
+    var el = document.getElementById(d[0]);
+    if (!el) return;
+    // Pas de détail horaire, ou fenêtre inconnue, ou session d'une heure : rien à
+    // dire de plus que le chiffre déjà affiché.
+    if (!rows || !rows.length || endH == null || endH - startH < 1) { el.textContent = ''; return; }
+    var lo = null, hi = null;
+    rows.forEach(function(r) {
+      if (r.h == null || r.h < startH || r.h > endH) return;
+      var v = r[d[1]];
+      if (v == null || isNaN(v)) return;
+      if (lo == null || v < lo) lo = v;
+      if (hi == null || v > hi) hi = v;
+    });
+    if (lo == null || hi == null) { el.textContent = ''; return; }
+    var f = function(x) { return d[2] ? (+x).toFixed(d[2]) : String(Math.round(x)); };
+    // Amplitude nulle : la répéter n'apprend rien.
+    el.textContent = (f(lo) === f(hi)) ? ('stable sur la session · ' + f(lo) + d[3])
+      : ('sur la session : ' + f(lo) + '→' + f(hi) + d[3]);
+  });
 }
 
 // Le créneau a bougé → tout ce qui en dépend se recalcule. Débounce 250 ms :
@@ -2428,6 +2494,7 @@ function _resetSlotState() {
   _condReadHour = null;
   _condReadDayGap = 0;
   _condFillState = 'vide';
+  _condHoursForRange = null;
   _slotLastKey = null;
   _slotModelRowsKey = null; _slotModelRows = null; _slotModelRowsP = null; _slotModelSeq++;
   _slotModelCount = 0;
@@ -2704,8 +2771,10 @@ function openAddSession() {
     var sel = document.getElementById('f-boat-id');
     if (sel && currentProfile && currentProfile.default_boat_id) sel.value = currentProfile.default_boat_id;
   });
-  // Init widget marée
+  // Init widget marée : replié sur une nouvelle session (aucune plage à montrer).
   tideRanges = [];
+  var _td = document.getElementById('tide-details');
+  if (_td) _td.open = false;
   setObsDelta(null); setWindDelta(null); setPeriodDelta(null);
   window._lastFcstModel = null;
   // Créneau : repartir d'un état propre — variables ET écran (cf. _resetSlotState).
@@ -2752,16 +2821,16 @@ function openAddSession() {
   _updateSessionSlotSummary();
   if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
   document.getElementById('modal-add').classList.add('open');
+  // La modale déclare role="dialog" aria-modal="true" mais le focus n'y entrait
+  // jamais : au lecteur d'écran elle n'existait pas, au clavier on tabulait dans
+  // la page derrière (audit a11y du 17/08/2026). Le spot est le premier champ,
+  // et c'est aussi la première décision à prendre depuis la réorganisation.
+  _focusModalStart('f-spot');
   // Auto-fill conditions dès qu'un spot est sélectionné
   var spotSel = document.getElementById('f-spot');
   if (spotSel && spotSel.value && spotSel.value !== '__autre__') {
     // Ouvrir automatiquement la section conditions
-    var secEl = document.getElementById('sec-conditions');
-    var arrEl = document.getElementById('sec-conditions-arrow');
-    if (secEl && secEl.style.display === 'none') {
-      secEl.style.display = '';
-      if (arrEl) arrEl.textContent = '▲';
-    }
+    _openConditionsSection();
     _autoFillConditions();
   }
 }
@@ -3064,6 +3133,7 @@ function _clearAutofillFields(keepOwned) {
   if (!keepOwned) window._lastFcstModel = null;
   _condFillState = 'vide';
   _condReadHour = null;
+  _condHoursForRange = null;
   if (typeof _updateObsDeltaRef === 'function') _updateObsDeltaRef();
 }
 
@@ -3196,16 +3266,25 @@ async function _autoFillConditions(targetDate) {
     }
 
     // ── Priorité 2 : GFS open-meteo historique (fallback, sans token) ──
+    // `&models=` ÉPINGLÉ (17/08/2026) : sans lui, Open-Meteo répond `best_match`,
+    // c'est-à-dire un modèle qu'il choisit lui-même et qui n'est PAS forcément
+    // GFS. Or les lignes `'gfs'` de model_forecast_cache sont écrites par le cron
+    // avec ncep_gfswave025 / gfs_seamless (cf. .github/scripts/cache-model-
+    // forecasts.mjs:295,311). La même clé `fcst_model='gfs'` désignait donc deux
+    // sources différentes selon le chemin, et le bloc ② des stats en faisait une
+    // moyenne unique. Les deux voies interrogent désormais le MÊME modèle.
     if (!ncData) {
       try {
         var targetHour = _slotHour;
         var histResponses = await Promise.all([
           fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lon
             +'&hourly=swell_wave_height,swell_wave_period,swell_wave_direction'
+            +'&models=ncep_gfswave025'
             +'&start_date='+_targetDate+'&end_date='+_targetDate+'&timezone=Pacific%2FNoumea')
             .then(function(r){return r.json();}),
           fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon
             +'&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn'
+            +'&models=gfs_seamless'
             +'&start_date='+_targetDate+'&end_date='+_targetDate+'&timezone=Pacific%2FNoumea')
             .then(function(r){return r.json();})
         ]);
@@ -3225,6 +3304,14 @@ async function _autoFillConditions(targetDate) {
             windKt:   wh.wind_speed_10m       ? wh.wind_speed_10m[bestIdx]       : null,
             windDir:  wh.wind_direction_10m   ? wh.wind_direction_10m[bestIdx]   : null,
             atHour:   htimes[bestIdx] ? parseInt(htimes[bestIdx].split('T')[1], 10) : null,
+            // Série horaire complète du jour : sert à afficher l'amplitude sur la
+            // fenêtre de session (_updateCondRanges), pas au préremplissage.
+            hours: htimes.map(function(t, i) {
+              return { h: parseInt(String(t).split('T')[1], 10),
+                       hs: mh.swell_wave_height ? mh.swell_wave_height[i] : null,
+                       period: mh.swell_wave_period ? mh.swell_wave_period[i] : null,
+                       windKt: wh.wind_speed_10m ? wh.wind_speed_10m[i] : null };
+            }),
             source: 'historique'
           };
           console.log('[autofill] Historique GFS OK ✅', _targetDate, 'h='+targetHour, omData);
@@ -3398,10 +3485,12 @@ async function _autoFillConditions(targetDate) {
         var gfsResp = await Promise.all([
           fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lon
             +'&hourly=wave_height,swell_wave_height,swell_wave_period,swell_wave_direction'
+            +'&models=ncep_gfswave025'
             +'&start_date='+_gfsDay+'&end_date='+_gfsDay+'&timezone=Pacific%2FNoumea')
             .then(function(r){return r.json();}),
           fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon
             +'&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn'
+            +'&models=gfs_seamless'
             +'&start_date='+_gfsDay+'&end_date='+_gfsDay+'&timezone=Pacific%2FNoumea')
             .then(function(r){return r.json();})
         ]);
@@ -3421,6 +3510,12 @@ async function _autoFillConditions(targetDate) {
             windKt:   _gw.wind_speed_10m       ? _gw.wind_speed_10m[_gi]       : null,
             windDir:  _gw.wind_direction_10m   ? _gw.wind_direction_10m[_gi]   : null,
             atHour:   parseInt(String(_gt[_gi]).split('T')[1], 10),
+            hours: _gt.map(function(t, i) {
+              return { h: parseInt(String(t).split('T')[1], 10),
+                       hs: _gm.swell_wave_height ? _gm.swell_wave_height[i] : null,
+                       period: _gm.swell_wave_period ? _gm.swell_wave_period[i] : null,
+                       windKt: _gw.wind_speed_10m ? _gw.wind_speed_10m[i] : null };
+            }),
             source: 'gfs'
           };
         }
@@ -3556,6 +3651,8 @@ async function _autoFillConditions(targetDate) {
   _condReadDayGap = (data.atMs != null && !isNaN(data.atMs))
     ? Math.floor(Math.abs(data.atMs - _slotMs) / 86400000) : 0;
   _condFillState = _wroteAny ? 'ok' : _condFillState;
+  // Série horaire disponible → amplitude sur la fenêtre (affichage seul).
+  _condHoursForRange = (data.hours && data.hours.length) ? data.hours : null;
   _updateSessionSlotSummary();
   } catch(e) { console.warn('[autofill] exception:', e); }
   finally {
@@ -3643,8 +3740,11 @@ function editSession() {
   document.getElementById('f-obs').value = s.observations || '';
   _fillNumField('f-distance', s.distance_nm);
   _fillNumField('f-nb-surfers', s.nb_surfers);
-  // Marée interactive
+  // Marée interactive. Ouverte d'emblée si la session PORTE des plages : il y a
+  // alors quelque chose à voir et à corriger, contrairement à une saisie neuve.
   tideRanges = s.tide_ranges || [];
+  var _tdE = document.getElementById('tide-details');
+  if (_tdE) _tdE.open = tideRanges.length > 0;
   var tp = document.getElementById('tide-port');
   if (tp) tp.value = s.tide_port || portFromLaunch(s.launch_point || '');
   setTimeout(function() { setupTideCanvas(); renderTideWidget(); }, 50);
@@ -3725,6 +3825,20 @@ function editSession() {
   _updateSessionSlotSummary();
   if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
   document.getElementById('modal-add').classList.add('open');
+  _focusModalStart('f-spot');
+}
+
+// Mémorise l'élément déclencheur et donne le focus au premier champ de la modale.
+// `preventScroll` : sans lui, iOS saute en haut du formulaire et masque le
+// clavier virtuel une fraction de seconde. Le délai laisse la modale s'afficher
+// (un .focus() sur un élément encore masqué ne prend pas).
+var _modalFocusReturn = null;
+function _focusModalStart(id) {
+  _modalFocusReturn = document.activeElement;
+  setTimeout(function() {
+    var el = document.getElementById(id);
+    if (el) { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } }
+  }, 60);
 }
 
 
@@ -3935,7 +4049,6 @@ function renderTideWidget() {
     var avgL = ((tideLevel(r.start, port, dateStr) + tideLevel(r.end, port, dateStr)) / 2).toFixed(2);
     return '<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(79,163,199,.12);border:1px solid rgba(79,163,199,.3);border-radius:14px;padding:2px 6px 2px 10px;font-size:11px;color:var(--accent);">'
       + tStart + '→' + tEnd + ' <span style="opacity:.7;">(' + dur + 'h, ~' + avgL + 'm)</span>'
-      + '<button onclick="openTideTimeEditor(' + i + ')" title="Heure précise" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;padding:0 3px;opacity:.7;">✏️</button>'
       + '<button onclick="removeTideRange(' + i + ')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:14px;padding:0 4px;">×</button>'
       + '</div>';
   }).join('');
@@ -4040,51 +4153,23 @@ function renderTideWidget() {
   if (_tideDragStart === null && typeof _onSessionWindowChanged === 'function') _onSessionWindowChanged();
 }
 
-// Ouvrir l'éditeur d'heure précise pour la plage i
-function openTideTimeEditor(i) {
-  var r = tideRanges[i];
-  if (!r) return;
-  var ed = document.getElementById('tide-time-editor');
-  var edIdx = document.getElementById('tide-edit-idx');
-  var edStart = document.getElementById('tide-edit-start');
-  var edEnd   = document.getElementById('tide-edit-end');
-  if (!ed) return;
-  function toTime(decH) {
-    var h = Math.floor(decH), m = Math.round((decH - h) * 60);
-    if (m >= 60) { h++; m = 0; }
-    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
-  }
-  edStart.value = toTime(r.start);
-  edEnd.value   = toTime(r.end);
-  edIdx.textContent = i;
-  ed.style.display = 'block';
-  edStart.focus();
-}
-
-// Appliquer la modification de l'éditeur d'heure
-function applyTideTimeEdit() {
-  var edIdx = document.getElementById('tide-edit-idx');
-  var edStart = document.getElementById('tide-edit-start');
-  var edEnd   = document.getElementById('tide-edit-end');
-  if (!edIdx || !edStart || !edEnd) return;
-  var i = parseInt(edIdx.textContent);
-  if (isNaN(i) || !tideRanges[i]) return;
-  function fromTime(t) {
-    var parts = t.split(':');
-    return parseInt(parts[0]) + (parseInt(parts[1] || '0') / 60);
-  }
-  var s = fromTime(edStart.value), e = fromTime(edEnd.value);
-  if (!isNaN(s) && !isNaN(e) && e > s) {
-    tideRanges[i] = { start: s, end: e };
-    renderTideWidget();
-  }
-}
+// L'éditeur d'heure « par plage sélectionnée » (openTideTimeEditor /
+// applyTideTimeEdit, ouvert par un crayon) a été SUPPRIMÉ le 17/08/2026 : il
+// faisait exactement la même chose que #tide-range-times-wrap, qui est
+// TOUJOURS visible dès qu'une plage existe. Deux éditeurs, deux titres quasi
+// identiques (« Heure exacte de la plage sélectionnée » / « Affiner l'heure
+// exacte ») et deux largeurs de champ différentes, dont l'une tronquait les
+// minutes. Il ne reste que celui qui est toujours à l'écran.
 
 function addTideRange() {
   tideRanges.push({ start: 8, end: 11 });
   renderTideWidget();
-  // Auto-ouvrir l'éditeur pour la nouvelle plage
-  setTimeout(function() { openTideTimeEditor(tideRanges.length - 1); }, 50);
+  // Les champs d'heure de la nouvelle plage sont déjà à l'écran
+  // (#tide-range-times-wrap) : on donne juste le focus au premier.
+  setTimeout(function() {
+    var inp = document.querySelector('#tide-time-inputs input[type=time]');
+    if (inp) inp.focus();
+  }, 50);
 }
 function removeTideRange(i) {
   tideRanges.splice(i, 1);
@@ -5057,11 +5142,17 @@ function _varVoteSectionHTML(present, votedBy) {
       var on = votedBy[key] === k;
       return '<span onclick="_castVarVote(\'' + key + '\',\'' + k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" role="button" tabindex="0" '
         + 'title="' + info.label + ' a eu la bonne ' + lbl.replace(/^[^ ]+ /, '').toLowerCase() + ' (clic pour ' + (on ? 'annuler' : 'marquer') + ')" '
-        + 'style="cursor:pointer;user-select:none;font-size:10.5px;padding:2px 7px;border-radius:10px;white-space:nowrap;border:1px solid ' + (on ? info.col : 'var(--border)') + ';'
+        + 'style="cursor:pointer;user-select:none;font-size:11px;padding:9px 11px;border-radius:10px;white-space:nowrap;flex:0 0 auto;border:1px solid ' + (on ? info.col : 'var(--border)') + ';'
         + (on ? 'background:' + info.col + ';color:#0a0f16;font-weight:700;' : 'color:var(--text-muted);') + '">' + info.label + '</span>';
     }).join('');
-    return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">'
-      + '<span style="min-width:74px;font-size:10.5px;color:var(--text-muted);">' + lbl + '</span>' + chips + '</div>';
+    // Cibles tactiles : 23 px de haut mesurés, sur un geste qui ÉCRIT en base
+    // (audit du 17/08/2026). Passées à ~36 px. Et surtout plus de `flex-wrap` :
+    // à l'enroulement, la 2ᵉ rangée de pastilles repartait sous le libellé de la
+    // variable, sans plus rien pour dire à laquelle elle appartenait. Une rangée
+    // par variable, qui défile horizontalement si besoin.
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">'
+      + '<span style="flex:0 0 74px;font-size:10.5px;color:var(--text-muted);">' + lbl + '</span>'
+      + '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;flex:1;min-width:0;">' + chips + '</div></div>';
   }).join('');
   return '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">'
     + '<div style="font-size:10px;color:var(--text-faint);margin-bottom:5px;">Affiner (optionnel) : quel modèle a eu bon <b>sur chaque aspect</b> ? Un modèle peut réussir la taille mais rater la direction.</div>'
@@ -5912,8 +6003,30 @@ function renderStats(sessions, el) {
         { key: 'period_delta', lbl: '⏱ Période' },
         { key: 'wind_delta',   lbl: '🌬 Vent'    }
       ];
+      // ── Deux populations NON COMPARABLES, séparées le 17/08/2026 ───────────
+      // Jusqu'au 16/08/2026 inclus, `_autoFillConditions` échantillonnait la
+      // prévision à `Date.now()` dès que la date n'était pas STRICTEMENT future :
+      // une session du matin saisie le soir était comparée à la prévision du soir
+      // (mesuré sur MARC/Ténia : 1,9 m/18 s à 22h contre 1,5 m/10 s à 08h). Les
+      // écarts ressentis d'avant cette date ne mesurent donc PAS le biais du
+      // modèle, mais celui de l'échantillonnage. Les moyenner avec les suivants
+      // fabriquerait un chiffre qui ne veut rien dire. On ne garde que les
+      // sessions post-correctif dans la figure, et on annonce combien sont
+      // écartées — plutôt que de jeter l'historique en silence.
+      var DELTA_EPOCH = '2026-08-17';   // 1er jour où l'échantillonnage vise le créneau
+      function _deltaEpochOf(x) {
+        // created_at = quand la LIGNE a été saisie (donc quel code l'a remplie),
+        // pas la date de la session. C'est bien la saisie qui date le biais.
+        var c = x.created_at || '';
+        return c ? String(c).slice(0, 10) : null;
+      }
+      var deltaLegacy = 0;
       var dAgg = { obs_delta: {}, period_delta: {}, wind_delta: {} };
       deltaSessions.forEach(function(s) {
+        var ep = _deltaEpochOf(s);
+        // created_at absent (vieilles lignes) → traité comme ancien : dans le doute,
+        // on n'inclut pas une mesure dont on ne peut pas dater la méthode.
+        if (!ep || ep < DELTA_EPOCH) { deltaLegacy++; return; }
         DELTA_VARS.forEach(function(dv) {
           if (s[dv.key] == null) return;
           var m = s.fcst_model;
@@ -5924,7 +6037,7 @@ function renderStats(sessions, el) {
       var block2 = '<div style="margin-bottom:12px;">'
         + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
         + '<span style="font-size:11px;font-weight:600;color:var(--text);">② Calibration du préremplissage</span>'
-        + '<span style="font-size:10px;color:var(--text-muted);">' + deltaSessions.length + ' session(s)</span>'
+        + '<span style="font-size:10px;color:var(--text-muted);">' + (deltaSessions.length - deltaLegacy) + ' session(s)</span>'
         + '</div>';
       var _anyDelta = DELTA_VARS.some(function(dv) { return Object.keys(dAgg[dv.key]).length; });
       if (!_anyDelta) {
@@ -5945,7 +6058,9 @@ function renderStats(sessions, el) {
         }).join('');
       }
       block2 += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">biais ressenti moyen : <b>+</b> = réel au-dessus de la prévision (le modèle sous-estime), <b>−</b> = en dessous (il surestime). n &lt; ' + OBS_DELTA_MIN + ' = tendance, pas encore fiable.'
+        + ' <b>meteo.nc et GFS partent gagnants</b> : ce sont les sources par défaut, les autres modèles ne sont mesurés que sur les sessions où tu les as choisis exprès — souvent celles où le temps réel ne couvrait pas le créneau. Les n ne se comparent pas entre modèles.'
         + (deltaOrphans ? ' <span style="color:var(--accent-warm);">' + deltaOrphans + ' session(s) écartée(s) : modèle de préremplissage inconnu.</span>' : '')
+        + (deltaLegacy ? ' <span style="color:var(--accent-warm);" title="Avant le 17/08/2026, la prévision de référence était lue à heure de SAISIE et non à celle de la session : ces écarts mesurent échantillonnage, pas le modèle.">' + deltaLegacy + ' session(s) antérieure(s) au correctif exclue(s).</span>' : '')
         + '</div>';
       block2 += '</div>';
 
@@ -7614,7 +7729,22 @@ function showPage(name) {
   if (name === 'boats') { loadBoatsPage(); }
 }
 
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  // Rendre le focus à ce qui a ouvert la modale : sinon, à la fermeture, le
+  // focus retombe sur <body> et la navigation au clavier repart du haut de la
+  // page (audit a11y du 17/08/2026). Un débounce du créneau encore armé est
+  // aussi annulé ici — il s'exécuterait sur le formulaire suivant.
+  if (id === 'modal-add') {
+    if (typeof _slotChangeTimer !== 'undefined' && _slotChangeTimer) {
+      clearTimeout(_slotChangeTimer); _slotChangeTimer = null;
+    }
+    if (_modalFocusReturn && _modalFocusReturn.focus) {
+      try { _modalFocusReturn.focus({ preventScroll: true }); } catch (e) {}
+    }
+    _modalFocusReturn = null;
+  }
+}
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function showSetupGuide() { document.getElementById('modal-setup').classList.add('open'); }
 
@@ -7709,6 +7839,20 @@ function updateShomLink() {
   // sélectionner ses plages sur la marée d'un autre jour.
   if (typeof renderTideWidget === 'function') renderTideWidget();
   if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();
+}
+
+// Ouverture PROGRAMMATIQUE du bloc Conditions (choix d'un spot). Factorisée le
+// 17/08/2026 : les deux sites qui le faisaient dupliquaient le code et ne
+// mettaient pas à jour `aria-expanded`, laissant un état annoncé « replié » sur
+// une section pourtant visible.
+function _openConditionsSection() {
+  var secEl = document.getElementById('sec-conditions');
+  var arrEl = document.getElementById('sec-conditions-arrow');
+  if (!secEl || secEl.style.display !== 'none') return;
+  secEl.style.display = '';
+  if (arrEl) arrEl.textContent = '▲';
+  var btn = document.querySelector('[aria-controls="sec-conditions"]');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
 }
 
 // ══ SECTION TOGGLE ══
@@ -7951,12 +8095,7 @@ function showSpotSourceSettings() {
 
 function handleSpotChange(sel) {
   // Ouvrir auto la section conditions
-  var secEl = document.getElementById('sec-conditions');
-  var arrEl = document.getElementById('sec-conditions-arrow');
-  if (secEl && secEl.style.display === 'none') {
-    secEl.style.display = '';
-    if (arrEl) arrEl.textContent = '▲';
-  }
+  _openConditionsSection();
   const custom = document.getElementById('f-spot-custom');
   custom.style.display = sel.value === '__autre__' ? 'block' : 'none';
   if (typeof _updateModelReliabilityFormSection === 'function') _updateModelReliabilityFormSection();

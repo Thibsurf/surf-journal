@@ -7504,3 +7504,115 @@ aucun id manquant. Balises de `#modal-add` equilibrees (73/73). Harnais Node sur
 effective ; correction de date en edition preserve valeurs et directions ; reouverture donne
 un ecran vierge. Capture a largeur telephone reelle (modale contrainte a 398 px, le piege
 des 518 px etant confirme par l'auditeur UX).
+
+---
+
+## 2026-08-17 (suite) - Les 5 points laisses en decision, traites + passe UX
+
+Reprise des cinq points que l'audit croise avait laisses a l'arbitrage, plus la passe
+UX/design qui allait avec. Chaque changement verifie.
+
+### 1. Ordre du formulaire - le Spot passe en tete
+
+Mesure de l'auditeur UX : le selecteur de spot etait a **y=936 px**, soit deux ecrans de
+defilement, alors qu'il conditionne la station de prevision, la liste des modeles
+archives et le port de maree par defaut. On tracait donc une plage de maree a Noumea
+avant de savoir qu'on parlait de Tenia.
+
+- Bloc **Spot remonte au-dessus du Creneau**.
+- Le **widget maree (450 px) est replie** dans un `<details>` dont le `<summary>` EST le
+  recapitulatif du creneau : rien n'est cache, on lit « 17/08 - 08h -> 11h30 (3.5h) »
+  sans ouvrir. Date/Debut/Duree suffisent a la plupart des saisies ; la courbe sert a
+  AFFINER. Replie sur une saisie neuve, **ouvert d'emblee en edition si la session porte
+  deja des plages** (il y a alors quelque chose a voir).
+- Risque identifie et verifie : le canvas dans un `<details>` ferme a `clientWidth = 0`
+  (piege documente du projet). Le `ResizeObserver` deja en place fait le rendu a
+  l'ouverture - mesure : **423 px de large, trace correct**, pas 0.
+
+### 2. Amplitude sur la fenetre de session
+
+Les colonnes `hs`/`period`/`wind_kts` **restent scalaires en base** : on enregistre
+toujours la valeur du debut, et les ecarts ressentis continuent de se calculer dessus.
+L'amplitude est un COMPLEMENT DE LECTURE affiche sous chaque champ (« sur la session :
+4 -> 10 nds »), alimenté par `hours[]` du cache et par les series horaires GFS
+desormais construites dans les deux voies de repli. Rien a migrer, rien a casser.
+Teste en isolation sur 6 cas (harnais Node, stub DOM) : brise qui monte, fenetre < 1 h,
+serie absente, fenetre inconnue, valeurs nulles, grandeur stable.
+
+### 3. Editeur d'heure de plage en double - supprime
+
+`#tide-time-editor` (ouvert par un crayon) et `#tide-range-times-wrap` (toujours visible)
+faisaient exactement la meme chose, avec deux titres quasi identiques et deux largeurs de
+champ differentes dont l'une tronquait les minutes. Le premier est supprime, avec
+`openTideTimeEditor` / `applyTideTimeEdit` et le bouton crayon. `addTideRange` donne
+maintenant le focus au premier champ d'heure de l'editeur restant.
+
+### 4. Biais de selection du bloc 2 des stats
+
+Deux corrections distinctes :
+- **Populations separees.** Avant le 17/08, `_autoFillConditions` echantillonnait a
+  `Date.now()` : les ecarts d'avant cette date mesurent l'echantillonnage, pas le modele.
+  Ils sont desormais **exclus de la figure** (test sur `created_at`, qui date la SAISIE
+  donc le code qui l'a remplie) et comptes a part sous le bloc. Les lignes sans
+  `created_at` sont traitees comme anciennes : dans le doute, on n'inclut pas une mesure
+  dont on ne peut pas dater la methode.
+- **Biais annonce.** La legende dit maintenant noir sur blanc que meteo.nc et GFS
+  « partent gagnants » (sources par defaut) et que les `n` ne se comparent pas entre
+  modeles - les autres ne sont mesures que sur les sessions ou on les a choisis expres.
+
+### 5. `'gfs'` designait deux sources differentes
+
+Les appels Open-Meteo du Journal ne portaient aucun `&models=`, donc `best_match` : un
+modele choisi par Open-Meteo, pas forcement GFS. Les lignes `'gfs'` de
+`model_forecast_cache` sont, elles, epinglees sur `ncep_gfswave025` / `gfs_seamless`
+(cf. `.github/scripts/cache-model-forecasts.mjs:295,311`). La meme cle `fcst_model='gfs'`
+recouvrait donc deux sources, que le bloc 2 moyennait ensemble. **Les 4 appels du Journal
+sont desormais epingles sur les memes modeles que le cron.**
+
+### Passe UX/design
+
+- **Cibles tactiles.** Chips de vote par variable : 23 px mesures -> **38 px**, sur un
+  geste qui ECRIT en base. Et surtout plus de `flex-wrap` : a l'enroulement, la 2e rangee
+  de pastilles repartait sous le libelle de la variable sans plus rien pour dire a
+  laquelle elle appartenait. Une rangee par variable, qui defile horizontalement.
+  Boutons d'ecart : les 44 px venaient d'un accident de retour a la ligne, ils sont
+  maintenant **intentionnels** (`min-height:44px` + centrage). Mesure : 44 px et 38 px.
+- **Accessibilite.** Le focus entre desormais dans la modale a l'ouverture (elle
+  declarait `role="dialog" aria-modal="true"` sans que le focus y aille : au lecteur
+  d'ecran elle n'existait pas, au clavier on tabulait dans la page derriere) et **revient
+  a l'element declencheur a la fermeture**. `aria-expanded` suit aussi l'ouverture
+  PROGRAMMATIQUE du bloc Conditions (deux sites dupliquaient ce code sans le mettre a
+  jour -> factorise dans `_openConditionsSection`). **Plus aucun libelle orphelin** dans
+  la modale : les directions houle/vent sont des `role="group"` nommes avec un
+  `aria-label` par champ, la qualite pointe son `radiogroup`, et les titres qui
+  n'etiquetaient aucun champ unique sont devenus des `div` (un `label` sans `for` est
+  annonce comme une etiquette orpheline).
+- **Contraste** du repere sur le canvas maree : `rgba(255,255,255,.4)` = 3,79:1 en 9 px
+  -> `.62` (~6,3:1) en 9,5 px.
+- **Redondance supprimee** : le recapitulatif disait « trace ta plage sur la maree pour
+  affiner » pendant que l'en-tete repliable disait « ajuster sur la maree » - deux lignes
+  qui s'enroulaient en colonnes a 398 px. Le recapitulatif ne porte plus que le creneau.
+
+### Bugs trouves en chemin
+
+- **Apostrophe francaise non echappee** dans une chaine JS a quotes simples (legende du
+  bloc 2) : `node --check` l'a attrapee immediatement. C'est le piege que ce depot
+  documente et qui a deja morde plusieurs fois. Reformule sans apostrophe.
+- Deux **balises litterales dans des commentaires HTML** (`<summary>`, `<label for="">`)
+  faussaient les comptages d'equilibrage de balises. Reformulees - un controle qui ment
+  est pire que pas de controle.
+- Un script de correction avait **echoue sur une assertion avant son ecriture**, laissant
+  trois associations de libelles non appliquees alors que le message disait « ok ». Detecte
+  en recomptant les libelles orphelins apres coup, pas en faisant confiance au script.
+
+### Verification
+
+`node --check` sur les 3 blocs inline et `sw.js`. Equilibrage des balises de `#modal-add` :
+div 76/76, label 22/22, details 1/1, summary 1/1, select 8/8, button 36/36. Croisement
+id / `getElementById` : aucun id manquant. Harnais Node sur `_updateCondRanges` (6 cas).
+Headless Edge sur donnees reelles, `error` **et** `unhandledrejection` ecoutes, **0
+erreur** : maree repliee a l'ouverture, spot avant la date, focus sur `f-spot`,
+`aria-expanded` a `true` apres choix du spot, 8 modeles listes, **vrai glisser souris**
+-> heure 6, duree 3.46, recapitulatif « 05h59 -> 09h27 », canvas a 423 px, conditions
+relues a 06h, et focus rendu a `f-spot` a la fermeture. Captures a 398 px (largeur de
+modale d'un telephone 430 px) relues, repliee et depliee.
