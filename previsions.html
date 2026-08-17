@@ -173,13 +173,16 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
    ce qui couvre y≈58-74 % — tube ET surfeur dans le cadre partout (vérifié par
    simulation Pillow aux 6 largeurs, pas à l'œil).
    Ce surcroît de hauteur est payé par la fusion de la barre outils : l'ancien
-   <nav> clair de 52 px a disparu, le total reste plus compact qu'avant. */
-.site-banner .hb-photo{position:relative;width:100%;height:clamp(150px,9.5vw,280px);overflow:hidden;}
-/* 69 % et non 50 % : le centre géométrique de la photo tombe en plein ciel. Repères
+   <nav> clair de 52 px a disparu.
+   20vw et non 9.5 : à 9.5vw le bandeau faisait ~12:1 alors que la maquette 5A
+   est à ~5:1 (mesuré sur les deux captures) — trois fois plus fin, d'où « vague
+   et surfeur coupés ». À 20vw le ratio vaut 5:1 de 900 à 2300 px, donc la fenêtre
+   visible couvre y 48-78 % : tube (52-72 %) ET surfeur (68-74 %) entiers. */
+.site-banner .hb-photo{position:relative;width:100%;height:clamp(180px,20vw,460px);overflow:hidden;}
+/* 63 % et non 50 % : le centre géométrique de la photo tombe en plein ciel. Repères
    mesurés sur la photo (grille de pourcentages) : tube y 52-72 %, surfeur y 68-74 %,
-   x≈43 %. À 69 % le surfeur occupe le tiers bas du bandeau et le tube le remplit —
-   à 66 % il était rasé par le bord inférieur. */
-.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 69%;
+   x≈43 %. 63 % centre la fenêtre sur l'ensemble tube+surfeur (48-78 % à 20vw). */
+.site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 63%;
   filter:contrast(1.1) saturate(1.06) brightness(.96);}
 .site-banner .hb-scrim{position:absolute;inset:0;
   /* La nav n'est plus sur la photo (barre dédiée au-dessus) : seul le titre a
@@ -196,14 +199,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* Taille en vw comme la photo : un titre en px fixe paraissait minuscule dans une
    bannière qui, elle, grandit avec l'écran (la 5A le pose à 52px pour 230px de photo). */
 .site-banner .hb-h1{margin:0;font-family:var(--font-d);font-weight:600;
-  font-size:clamp(26px,2.7vw,50px);line-height:1;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.4);}
+  font-size:clamp(28px,3.4vw,64px);line-height:1;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.4);}
 .site-banner .hb-h1 span{color:#7cc6e4;font-style:italic;}
 .site-banner .hb-tag{display:flex;align-items:center;gap:10px;}
 .site-banner .hb-tag i{display:inline-block;width:26px;height:1px;background:rgba(124,198,228,.8);}
 .site-banner .hb-tag span{font:500 9px/1 var(--font-b);letter-spacing:.26em;text-transform:uppercase;
   color:rgba(207,230,241,.8);white-space:nowrap;}
 @media(max-width:680px){
-  .site-banner .hb-photo{height:clamp(104px,26vw,150px);}
+  .site-banner .hb-photo{height:clamp(130px,34vw,230px);}
   /* La barre reste : elle porte le ☰ et les boutons du site. Seuls les liens de
      vue disparaissent — ils vivent déjà dans le menu ☰, à portée de pouce. */
   .site-banner .hb-nav{display:none;}
@@ -9128,34 +9131,33 @@ function renderBestSessions(sessions) {
     return '<div onclick="bsfSelectSpot(' + s.spotIdx + ',' + s.startMs + ')" '
       + 'role="button" tabindex="0" aria-label="Voir ' + escapeHtml(s.spot || '') + '" '
       + 'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" '
-      + 'style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;'
+      + 'style="display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer;'
       + 'transition:background .15s;' + (isLast ? '' : 'border-bottom:1px solid var(--border);') + '" '
       + 'onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" '
       + 'onmouseout="this.style.background=\'transparent\'"'
       + ' onfocus="this.style.background=\'rgba(255,255,255,.04)\'" onblur="this.style.background=\'transparent\'">'
 
-      // Rang + score (dots)
-      + '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:28px;">'
-      +   '<div style="font-size:11px;color:var(--faint);font-weight:600;">#' + (rank+1) + '</div>'
-      +   '<div>' + dots + '</div>'
+      // Rang + score, sur UNE ligne (les pastilles étaient empilées sous le rang :
+      // c'est ce qui imposait deux lignes par créneau).
+      + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
+      +   '<span style="font-size:11px;color:var(--faint);font-weight:600;">#' + (rank+1) + '</span>'
+      +   '<span style="letter-spacing:-1px;">' + dots + '</span>'
       + '</div>'
 
-      // Infos spot + horaire
-      + '<div style="flex:1;min-width:0;">'
-      +   '<div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;">'
-      +     '<span style="font-size:11px;font-weight:600;color:' + col + ';white-space:nowrap;">' + s.spot + '</span>'
-      +     '<span style="font-size:11px;color:var(--accent);">' + s.jour + '</span>'
-      +     '<span style="font-size:11px;color:var(--muted);">' + s.creneau + '</span>'
-      +   '</div>'
-      +   '<div style="display:flex;gap:10px;margin-top:3px;flex-wrap:wrap;">'
-      +     '<span style="font-size:11px;color:var(--text);">🌊 ' + s.taille + '</span>'
-      +     '<span style="font-size:11px;color:var(--muted);">💨 ' + s.vent + '</span>'
-      +     '<span style="font-size:11px;color:var(--muted);">〰 ' + tideL + '</span>'
-      +     (s.note !== 'conditions stables'
-              ? '<span style="font-size:11px;color:var(--faint);">⚠ ' + s.note + '</span>'
-              : '')
-      +     (s.calibrated ? '<span style="font-size:11px;color:var(--accent);opacity:.55;">🎯</span>' : '')
-      +   '</div>'
+      // Tout le reste sur la MÊME ligne. flex-wrap conservé : sur un écran étroit
+      // la ligne se replie au lieu de déborder, mais elle ne se replie plus jamais
+      // sur un écran large — c'était le cas avant même quand la place ne manquait pas.
+      + '<div style="flex:1;min-width:0;display:flex;align-items:baseline;gap:5px 10px;flex-wrap:wrap;">'
+      +   '<span style="font-size:11px;font-weight:600;color:' + col + ';white-space:nowrap;">' + s.spot + '</span>'
+      +   '<span style="font-size:11px;color:var(--accent);white-space:nowrap;">' + s.jour + '</span>'
+      +   '<span style="font-size:11px;color:var(--muted);white-space:nowrap;">' + s.creneau + '</span>'
+      +   '<span style="font-size:11px;color:var(--text);white-space:nowrap;">🌊 ' + s.taille + '</span>'
+      +   '<span style="font-size:11px;color:var(--muted);white-space:nowrap;">💨 ' + s.vent + '</span>'
+      +   '<span style="font-size:11px;color:var(--muted);white-space:nowrap;">〰 ' + tideL + '</span>'
+      +   (s.note !== 'conditions stables'
+            ? '<span style="font-size:11px;color:var(--faint);white-space:nowrap;">⚠ ' + s.note + '</span>'
+            : '')
+      +   (s.calibrated ? '<span style="font-size:11px;color:var(--accent);opacity:.55;">🎯</span>' : '')
       + '</div>'
 
       // Badge score compact
