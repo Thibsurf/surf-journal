@@ -7616,3 +7616,73 @@ erreur** : maree repliee a l'ouverture, spot avant la date, focus sur `f-spot`,
 -> heure 6, duree 3.46, recapitulatif « 05h59 -> 09h27 », canvas a 423 px, conditions
 relues a 06h, et focus rendu a `f-spot` a la fermeture. Captures a 398 px (largeur de
 modale d'un telephone 430 px) relues, repliee et depliee.
+
+## 2026-08-17/18 — Banniere photo de previsions.html (Claude Design)
+
+Demande utilisateur : ajouter une banniere en en-tete de previsions.html, en-tete
+seulement, sans manger la place du 1er widget (Meilleurs creneaux). Import via
+`claude_design` MCP d'un projet de maquettes (plusieurs variantes 3A/3B/4A/4B, puis 5A/5B
+ajoutees en cours de route par l'utilisateur). Utilisateur a choisi 4A puis, apres retour
+sur le rendu reel, 5A.
+
+**Photo source.** L'image du projet Design (`uploads/IMG_5679.JPG`) est tronquee a 256 KiB
+par le plafond de `get_file` du MCP — decodee, l'image ne rend correctement que le ciel,
+le reste vire au gris (JPEG baseline coupe en plein flux de scan). Le fichier complet
+(4752x3168, 4 Mo) existait deja en local dans
+`OneDrive/Bureau/2026/Secret session retour de tahiti/IMG_5679.JPG` (photo prise par
+l'utilisateur la veille) : utilise directement, redimensionne a 2400px de large, JPEG
+progressif q80 -> 211 Ko dans `assets/hero-banniere.jpg`.
+
+**Iteration 1 (4A adapte).** Nav en overlay absolu sur la photo, scrim degrade pour la
+lisibilite. `<nav class="sb-nav">` (element `<nav>` bare) capte par erreur la regle CSS
+globale `nav{position:sticky;background:var(--nav-bg);...}` du site (selecteur d'element,
+pas de classe) -> fond clair + sticky non voulus, boutons ecrases. Corrige en `<div>`.
+Prefixe de classes `sb-*` choisi par reflexe, collision avec le prefixe deja utilise
+partout par le bloc « Ciel & houle » (`sb-card`, `sb-top`, `sb-sky`...) -> renomme en
+`hb-*` avant que ca morde une future modif (la specificite masquait le probleme mais le
+piege restait).
+
+**Retour utilisateur (capture reelle, ecran ~2837 px).** Le tube de la photo etait
+completement hors cadre et les liens de nav choisis (Previsions/Sessions/Spots/La
+semaine) ne correspondaient pas a ce qui etait demande. Cause racine de la 1ere : hauteur de
+banniere en **px fixe** — `object-fit:cover` ne montre qu'une tranche verticale dont la
+hauteur SOURCE depend du ratio hauteur/largeur du conteneur ; une hauteur fixe devient
+proportionnellement plus fine a mesure que l'ecran s'elargit. Corrige en `clamp(...,vw,...)`
+: la tranche visible reste la meme quelle que soit la largeur d'ecran. Nav elargie a la
+liste complete du menu existant (Previsions/Comparer/Carte spots/Windy/Isofronts/
+Maree & Peche/ENSO + Journal des sessions), Partager exclu sur demande explicite.
+
+**Passe qualite (avant 1er commit/push).** Contraste des liens de nav en overlay
+mesure < 3:1 sur les zones claires du ciel malgre un degrade dedie -> bande de scrim
+additionnelle plein-largeur ancree en haut. 2e `<h1>` sur la page (le logo de la nav en
+porte deja un) -> `<p>`. Etat actif de la mini-nav desynchronise du vrai onglet affiche si
+change ailleurs -> `_hbSyncNav()`, **sans** ajouter `.nav-tab` aux boutons (l'ajouter aurait
+detourne le repli `querySelector('.nav-tab[onclick*=...]')` utilise par `showTab()` quand
+appelee sans bouton — Partager, boot — vers le 1er match DOM, qui aurait ete la banniere au
+lieu de l'item du menu ☰, cassant son surlignage existant).
+
+**5A (18/08) : restructuration.** Sur validation utilisateur de la maquette 5A : la nav
+en overlay flottant sur la photo, meme corrigee par la bande de scrim, restait
+structurellement fragile — son contraste dependait du contenu de la photo sous-jacente
+(deja tombe sous 3:1 une fois, cf. plus haut) et devait etre entretenu a chaque
+recadrage. La 5A remplace
+l'overlay par une **bande a fond plein** (`#0a1826`, code en dur — pas de `var(--deep)`
+qui vaut blanc en theme clair) posee en flux normal AU-DESSUS de la photo : contraste
+independant du contenu de la photo par construction (6.65:1 et 7.15:1 calcules). Hauteur
+de la photo reduite (13vw -> 10.5vw) pour compenser la hauteur ajoutee par la bande outils
+et garder le total compact. `object-position` recalculee (63% -> 64%, verifie par
+comparatif Pillow de plusieurs valeurs plutot qu'a l'oeil).
+
+**Environnement de verification.** Headless Edge sur ce poste plante/bloque de facon
+intermittente sur cette page (nombreux iframes cross-origin : Windy, Leaflet+Esri, Supabase
+— chacun son propre process renderer sous l'isolation de site Chromium). Cause identifiee :
+les invocations successives partageaient le meme `--user-data-dir` par defaut, provoquant
+un verrou de profil ; corrige en passant un `--user-data-dir` isole (repertoire temp dedie)
+a chaque invocation. Meme corrige, la machine tournait ce soir-la avec 60-100+ processus
+`msedge.exe` deja ouverts (usage normal de l'utilisateur) : contention de ressources
+occasionnelle, pas un bug du code. Verifie malgre tout : capture reelle a 900/1400/2837 px
+(3 largeurs, dont la resolution ecran reelle de l'utilisateur), diagnostic DOM/JS sur
+mobile (`toolbar display:none`, photo visible, 0 erreur JS sur toute la page de 830 Ko),
+contraste WCAG calcule (pas estime a l'oeil), relecture independante du diff par un agent
+separe (aucun probleme trouve), contenu de la page live verifie post-deploiement
+(`gh run list` + fetch de la page publiee).
