@@ -134,7 +134,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
    préfixe aurait marché ici grâce à la spécificité (.site-banner .sb-x bat
    .sb-x tout court) mais serait resté un piège pour la prochaine modif. */
 .site-banner{position:relative;width:100%;overflow:hidden;background:var(--deep);}
-.site-banner .hb-photo{position:relative;width:100%;height:132px;overflow:hidden;}
+/* Hauteur en vw (bornée par clamp), PAS en px fixe : object-fit:cover ne montre
+   qu'une tranche verticale dont la hauteur SOURCE dépend du ratio hauteur/largeur
+   du conteneur (largeur toujours pleine page). Une hauteur fixe en px devient
+   proportionnellement plus fine à mesure que l'écran s'élargit — sur un écran
+   large (mesuré : ~2837px), le tube de la photo sortait carrément du cadre.
+   En vw, la tranche visible reste la même quelle que soit la largeur d'écran. */
+.site-banner .hb-photo{position:relative;width:100%;height:clamp(160px,13vw,240px);overflow:hidden;}
 .site-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 63%;}
 .site-banner .hb-scrim{position:absolute;inset:0;
   /* 3 couches : diagonale gauche (sous le titre), fondu bas→haut (sous le titre
@@ -146,12 +152,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
              linear-gradient(to top,rgba(4,14,24,.55) 0%,rgba(4,14,24,0) 46%),
              linear-gradient(to bottom,rgba(2,10,18,.5) 0%,rgba(2,10,18,0) 46px);}
 .site-banner .hb-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;
-  justify-content:space-between;gap:16px;padding:10px 1.5rem;}
+  flex-wrap:wrap;justify-content:space-between;gap:6px 16px;padding:10px 1.5rem;}
 .site-banner .hb-eyebrow{font:500 10px/1 var(--font-b);letter-spacing:.18em;text-transform:uppercase;
   color:rgba(255,255,255,.82);text-shadow:0 1px 3px rgba(0,0,0,.55);white-space:nowrap;}
-.site-banner .hb-nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;}
+.site-banner .hb-nav{display:flex;align-items:center;flex-wrap:wrap;gap:7px 16px;}
+.site-banner .hb-sep{width:1px;height:11px;background:rgba(255,255,255,.3);}
 .site-banner .hb-link{-webkit-appearance:none;appearance:none;display:inline-block;
-  font:500 11px/1 var(--font-b);letter-spacing:.1em;text-transform:uppercase;margin:0;
+  font:500 11px/1 var(--font-b);letter-spacing:.08em;text-transform:uppercase;margin:0;
   color:rgba(255,255,255,.85);text-shadow:0 1px 3px rgba(0,0,0,.55);text-decoration:none;
   white-space:nowrap;padding:2px 0;
   border:0;border-bottom:1px solid transparent;border-radius:0;background:none;
@@ -167,7 +174,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .site-banner .hb-tag span{font:500 9px/1 var(--font-b);letter-spacing:.22em;text-transform:uppercase;
   color:rgba(232,238,244,.7);white-space:nowrap;}
 @media(max-width:680px){
-  .site-banner .hb-photo{height:90px;}
+  .site-banner .hb-photo{height:clamp(96px,22vw,140px);}
   .site-banner .hb-top{display:none;} /* la nav ☰ juste en-dessous fait déjà tout le travail sur téléphone */
   .site-banner .hb-bottom{padding:0 .9rem 10px;}
   .site-banner .hb-h1{font-size:21px;}
@@ -664,15 +671,17 @@ html.widget-mode #gw-widget { margin-bottom:0; }
 <body>
 
 <!-- Bannière photo (en-tête visuel) — voir le commentaire CSS .site-banner. Masquée
-     en mode widget via html.widget-mode .site-banner. Les 4 liens réutilisent EXACTEMENT
-     les mêmes destinations que le menu ☰ plus bas (mêmes URLs / même showTab()), pour ne
-     pas créer une 2e source de vérité de navigation. Prévisions/Spots N'ONT PAS la classe
-     .nav-tab (qui sert au surlignage du menu ☰) : showTab() est appelée SANS bouton depuis
-     plusieurs endroits (Partager, boot…) et retrouve alors le bon item de menu via
-     querySelector('.nav-tab[onclick*=...]') — en premier match DOM. Comme la bannière est
-     avant la nav dans le DOM, lui donner .nav-tab aurait détourné ce repli et cassé le
-     surlignage du menu ☰ existant. La bannière gère donc son propre état actif via
-     _hbSyncNav(), en parallèle, sans toucher au système existant. -->
+     en mode widget via html.widget-mode .site-banner. Les liens reprennent EXACTEMENT le
+     grid « Aller à » du menu ☰ (mêmes noms/showTab()) moins Partager (déjà accessible
+     partout, pas un lieu où on « va ») + Journal des sessions (seule entrée d'« Autres
+     pages » demandée ici — Sorties/La semaine/Fuel Pro restent réservées au menu ☰).
+     Aucun de ces boutons n'a la classe .nav-tab (qui sert au surlignage du menu ☰) :
+     showTab() est appelée SANS bouton depuis plusieurs endroits (Partager, boot…) et
+     retrouve alors le bon item de menu via querySelector('.nav-tab[onclick*=...]') — en
+     premier match DOM. Comme la bannière est avant la nav dans le DOM, lui donner
+     .nav-tab aurait détourné ce repli et cassé le surlignage du menu ☰ existant. La
+     bannière gère donc son propre état actif via _hbSyncNav(), en parallèle, sans
+     toucher au système existant. -->
 <header class="site-banner" id="site-banner">
   <div class="hb-photo">
     <img src="assets/hero-banniere.jpg" alt="Vague creuse et surfeur, Nouvelle-Calédonie" loading="eager" fetchpriority="high" decoding="async">
@@ -681,9 +690,14 @@ html.widget-mode #gw-widget { margin-bottom:0; }
       <span class="hb-eyebrow">Nouvelle-Calédonie · Lagon sud</span>
       <div class="hb-nav" role="navigation" aria-label="Accès rapide">
         <button type="button" class="hb-link active" data-tab="forecast" onclick="showTab('forecast');_hbSyncNav('forecast');">Prévisions</button>
-        <a class="hb-link" href="https://thibsurf.github.io/surf-journal/">Sessions</a>
-        <button type="button" class="hb-link" data-tab="map" onclick="showTab('map');_hbSyncNav('map');">Spots</button>
-        <a class="hb-link" href="https://thibsurf.github.io/surf-journal/semaine.html">La semaine</a>
+        <button type="button" class="hb-link" data-tab="compare" onclick="showTab('compare');_hbSyncNav('compare');">Comparer</button>
+        <button type="button" class="hb-link" data-tab="map" onclick="showTab('map');_hbSyncNav('map');">Carte spots</button>
+        <button type="button" class="hb-link" data-tab="windy" onclick="showTab('windy');_hbSyncNav('windy');">Windy</button>
+        <button type="button" class="hb-link" data-tab="synop" onclick="showTab('synop');_hbSyncNav('synop');">Isofronts</button>
+        <button type="button" class="hb-link" data-tab="maree" onclick="showTab('maree');_hbSyncNav('maree');">Marée &amp; Pêche</button>
+        <button type="button" class="hb-link" data-tab="enso" onclick="showTab('enso');_hbSyncNav('enso');">ENSO</button>
+        <span class="hb-sep" aria-hidden="true"></span>
+        <a class="hb-link" href="https://thibsurf.github.io/surf-journal/">Journal des sessions</a>
       </div>
     </div>
     <div class="hb-bottom">
