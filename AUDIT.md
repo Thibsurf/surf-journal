@@ -7773,3 +7773,50 @@ mobile (`toolbar display:none`, photo visible, 0 erreur JS sur toute la page de 
 contraste WCAG calcule (pas estime a l'oeil), relecture independante du diff par un agent
 separe (aucun probleme trouve), contenu de la page live verifie post-deploiement
 (`gh run list` + fetch de la page publiee).
+
+## 2026-08-18 — Icône PWA maskable + splash iOS + bannière mobile (retours utilisateur)
+
+Trois retours utilisateur sur mobile après l'ajout de l'encart conditions (`.hb-cond`) et
+l'usage de l'app installée en PWA :
+
+1. **Icône d'accueil « coupée bizarrement »** — `icon-192x192-maskable.png`/
+   `icon-512x512-maskable.png` posaient le design plein cadre (vague, texte « NC », pins)
+   jusqu'aux bords, sans zone de sécurité. Un masque OS circulaire (le plus agressif des
+   masques adaptables Android) rognait la crête de vague et le « NC ». Régénérées : design
+   réduit à 62 % du canevas, centré sur fond marine uni (`#0a1628`, = `background_color` du
+   manifest), composé depuis `icon-512x512.png` (déjà transparent aux coins) — vérifié en
+   simulant un masque circulaire strict (Pillow) : plus aucun élément du visuel ne touche la
+   zone rognée.
+2. **Logo entouré de blanc au lancement (iOS)** — `icon-180x180.png` (apple-touch-icon) a les
+   coins transparents ; sans `apple-touch-startup-image`, Safari affiche l'écran de lancement
+   sur fond blanc par défaut (il n'honore pas `background_color` du manifest ici, contrairement
+   à Android). Ajout d'un unique splash universel (`icons/apple-splash-universal.png`,
+   1170×2532, fond marine + logo centré, sans attribut `media` = repli pour tout appareil)
+   référencé dans les 4 pages. Compromis assumé : pas un jeu complet par taille d'écran/DPR
+   (effort jugé disproportionné pour le problème signalé), mais plus jamais de blanc.
+3. **Bannière mobile : titre superposé au surfeur + encart qui « cache tout »** — sur petit
+   écran la photo ne fait que 130-230px (`clamp(130px,34vw,230px)`) : pas la place pour le
+   titre ET l'encart conditions en `position:absolute` superposés à la fois. Restructuration :
+   nouveau `.hb-stage` (porte désormais la hauteur `clamp()` + le container-query `hbphoto`,
+   hérités de l'ancien `.hb-photo`) ; `.hb-photo` ne fait plus que l'image+scrim (clippée,
+   hauteur fixe). Sur mobile (`@media(max-width:680px)`), `.hb-stage` repasse en
+   `height:auto`/`container-type:normal`, et `.hb-bottom`/`.hb-cond` passent en
+   `position:static` : ils s'empilent en flux normal SOUS la photo (fond `#0a1826` du bandeau)
+   au lieu de se superposer à elle. Desktop inchangé (même box, mêmes valeurs cqh, vérifié en
+   capture 1440px). Les `.hc-*` repassent en tailles fixes sur mobile (16/15/12/14px) : plus
+   besoin de les faire tenir de force dans une hauteur contrainte, donc plus besoin du plancher
+   cqh à 11px.
+
+Vérifié : capture headless Chrome à 500px (cf. « Pièges de la vérification headless » plus haut
+dans ce fichier — 390px demandé rend en réalité 500px rogné) avant/après pour la bannière, et à
+1440px pour confirmer le desktop inchangé ; `--dump-dom` sans erreur JS après tous les
+changements ; `manifest.json` validé JSON ; `sw.js` validé `node --check`. `CACHE_NAME` bumpé
+(`v85`→`v86`), `?v=7`→`?v=8` sur les icônes du manifest (contenu de `icon-*-maskable.png`
+changé aux mêmes URLs, sans quoi certains clients auraient continué de servir les anciens
+fichiers depuis le cache HTTP/SW).
+
+**Non vérifié en conditions réelles** : rendu sur un vrai téléphone (headless seul, cf.
+limites documentées plus haut dans ce fichier). L'icône déjà installée sur l'écran d'accueil
+de l'utilisateur ne se mettra pas à jour automatiquement (limitation PWA connue, pas un bug de
+ce correctif) : il faudra retirer/ré-ajouter l'app à l'écran d'accueil après déploiement pour
+voir la nouvelle icône.

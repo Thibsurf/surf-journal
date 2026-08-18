@@ -29,6 +29,14 @@ try {
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Surf NC">
 <link rel="apple-touch-icon" href="icons/icon-180x180.png?v=6">
+<!-- iOS affiche l'icône sur fond BLANC par défaut au lancement (retour utilisateur
+     18/08/2026, "logo entouré de blanc") si aucun apple-touch-startup-image n'est
+     déclaré — Safari n'utilise pas background_color du manifest pour cet écran.
+     Une seule image universelle (sans attribut media = repli pour tout appareil) :
+     fond marine de la marque au lieu du blanc par défaut, pas un jeu complet par
+     taille d'écran (accepté : moins précis sur certains modèles, mais élimine le
+     flash blanc partout). -->
+<link rel="apple-touch-startup-image" href="icons/apple-splash-universal.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
 <link rel="icon" href="favicon.ico">
@@ -178,13 +186,21 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
    est à ~5:1 (mesuré sur les deux captures) — trois fois plus fin, d'où « vague
    et surfeur coupés ». À 20vw le ratio vaut 5:1 de 900 à 2300 px, donc la fenêtre
    visible couvre y 48-78 % : tube (52-72 %) ET surfeur (68-74 %) entiers. */
-/* container-type:size (largeur ET hauteur déjà explicites ci-dessus) : permet à
-   .hb-cond plus bas d'utiliser des unités cqh — les tailles de texte suivent la
-   VRAIE hauteur rendue de la photo, quelle que soit la formule clamp() qui l'a
-   produite (20vw ici, 34vw en mobile plus bas) — un calcul en vw séparé aurait
-   fatalement dérivé de la vraie courbe à chaque changement de seuil. */
-.site-banner .hb-photo{position:relative;width:100%;height:clamp(180px,20vw,460px);overflow:hidden;
+/* .hb-stage porte la hauteur clamp() + le container-query (cf. juste en dessous) ;
+   .hb-photo ne fait plus que la remplir (inset:0) et clipper l'image. Split fait le
+   18/08/2026 (retour utilisateur mobile, cf. media query plus bas) : .hb-bottom et
+   .hb-cond doivent pouvoir sortir de la zone clippée à hauteur fixe sur petit écran
+   sans pour autant perdre leur ancrage ni leurs unités cqh sur desktop — ils restent
+   descendants de .hb-stage (même container "hbphoto", même box), seule .hb-photo
+   (image + scrim) reste clippée à hauteur fixe.
+   container-type:size (largeur ET hauteur déjà explicites) : permet à .hb-cond plus
+   bas d'utiliser des unités cqh — les tailles de texte suivent la VRAIE hauteur
+   rendue de la photo, quelle que soit la formule clamp() qui l'a produite (20vw ici,
+   34vw en mobile plus bas) — un calcul en vw séparé aurait fatalement dérivé de la
+   vraie courbe à chaque changement de seuil. */
+.site-banner .hb-stage{position:relative;width:100%;height:clamp(180px,20vw,460px);
   container-type:size;container-name:hbphoto;}
+.site-banner .hb-photo{position:absolute;inset:0;overflow:hidden;}
 /* 67 % et non 63 % : retour utilisateur 18/08/2026 — encore un peu trop de ciel
    au-dessus du tube, pas assez d'eau bleu marine sous le surfeur. Repères mesurés
    sur la photo (grille de pourcentages) : tube y 52-72 %, surfeur y 68-74 %,
@@ -218,14 +234,24 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .site-banner .hb-tag span{font:500 9px/1 var(--font-b);letter-spacing:.26em;text-transform:uppercase;
   color:rgba(207,230,241,.8);white-space:nowrap;}
 @media(max-width:680px){
-  .site-banner .hb-photo{height:clamp(130px,34vw,230px);}
   /* La barre reste : elle porte le ☰ et les boutons du site. Seuls les liens de
      vue disparaissent — ils vivent déjà dans le menu ☰, à portée de pouce. */
   .site-banner .hb-nav{display:none;}
   .site-banner .hb-toolbar{padding:6px .7rem;min-height:44px;}
   .site-banner .hb-tools{gap:.45rem;margin-left:auto;}
-  .site-banner .hb-bottom{padding:0 .9rem 11px;}
   .site-banner .hb-tag{display:none;}
+  /* Retour utilisateur 18/08/2026 : sur petit écran (photo à 130-230px), le titre
+     se superposait au surfeur et l'encart conditions (.hb-cond, cf. plus bas)
+     débordait par-dessus tout le reste de la page. Cause : les deux étaient
+     ancrés en position:absolute PAR-DESSUS une photo trop courte pour les deux à
+     la fois. Fix : ils repassent en flux normal SOUS la photo (fond #0a1826 du
+     bandeau, déjà là — cf. .hb-scrim) au lieu de se superposer à elle. La hauteur
+     fixe (34vw) passe donc de .hb-stage (qui redevient auto, piloté par son
+     contenu : photo + titre + encart empilés) à .hb-photo seule, qui reste le
+     seul bloc à hauteur contrainte + overflow:hidden (cf. <style> plus haut). */
+  .site-banner .hb-stage{height:auto;container-type:normal;}
+  .site-banner .hb-photo{position:relative;height:clamp(130px,34vw,230px);}
+  .site-banner .hb-bottom{position:static;padding:14px .9rem 2px;}
 }
 /* (le masquage en mode widget est groupé avec les autres, plus bas) */
 
@@ -307,7 +333,21 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .site-banner .hb-cond-tight .hb-cond-sec+.hb-cond-sec{padding-top:2px!important;}
 .site-banner .hb-cond-tight .hb-cond-lbl{margin-bottom:1px!important;}
 @media(max-width:680px){
-  .site-banner .hb-cond{right:.9rem;bottom:11px;max-height:calc(100% - 22px);width:212px;padding:9px 13px;}
+  /* Suite du fix "titre superposé au surfeur / encart qui cache tout" (retour
+     utilisateur 18/08/2026, cf. .hb-stage plus haut) : l'encart quitte lui aussi
+     le survol absolu de la photo pour repasser en flux, sous le titre. Plus de
+     contrainte de hauteur (max-height:none) : il n'y a plus rien à faire tenir
+     de force dans les 130-230px de la photo, donc plus besoin des unités cqh
+     (qui de toute façon n'ont plus de container size dont dériver une fois
+     .hb-stage repassé en container-type:normal) — tailles fixes ci-dessous,
+     plus lisibles que le plancher 11px auquel le cqh retombait par manque de
+     place. */
+  .site-banner .hb-cond{position:static;width:auto;margin:10px .9rem 16px;max-height:none;
+    background:rgba(255,255,255,.055);padding:11px 14px;}
+  .site-banner .hc-main b{font-size:16px;}
+  .site-banner .hc-main-vent b{font-size:15px;}
+  .site-banner .hc-unit,.site-banner .hc-per,.site-banner .hc-sub{font-size:12px;}
+  .site-banner .hc-tide b{font-size:14px;}
 }
 
 /* NAV — l'ancien bandeau clair <nav> (logo « Surf NC », outils, ☰) a été FUSIONNÉ
@@ -867,9 +907,11 @@ html.widget-mode #gw-widget { margin-bottom:0; }
       <a class="hb-link" href="https://thibsurf.github.io/surf-journal/">Journal des sessions</a>
     </div>
   </div>
-  <div class="hb-photo">
-    <img src="assets/hero-banniere.jpg" alt="Vague creuse et surfeur, Nouvelle-Calédonie" loading="eager" fetchpriority="high" decoding="async">
-    <div class="hb-scrim"></div>
+  <div class="hb-stage">
+    <div class="hb-photo">
+      <img src="assets/hero-banniere.jpg" alt="Vague creuse et surfeur, Nouvelle-Calédonie" loading="eager" fetchpriority="high" decoding="async">
+      <div class="hb-scrim"></div>
+    </div>
     <div class="hb-bottom">
       <!-- Redevenu le h1 de la page : l'ancien <nav> qui en portait un
            (« Surf NC — Prévisions ») a été fusionné dans la barre ci-dessus. -->
@@ -883,7 +925,11 @@ html.widget-mode #gw-widget { margin-bottom:0; }
          juste après ce header), chacun dès que SA donnée arrive — même rendu
          progressif que le reste de la page, pas une 4e requête réseau dédiée.
          Démarre masqué (hb-cond-hide) pour ne jamais montrer une coquille vide
-         sur la photo si tout échoue (spot hors zone MARC, réseau down…). -->
+         sur la photo si tout échoue (spot hors zone MARC, réseau down…). Sorti de
+         .hb-photo le 18/08/2026 (retour utilisateur mobile : titre superposé au
+         surfeur + encart débordant par-dessus le reste de la page) : reste un
+         descendant de .hb-stage (même ancrage desktop, mêmes unités cqh), mais
+         .hb-photo ne fait plus que l'image — cf. .hb-stage dans le <style>. -->
     <div class="hb-cond hb-cond-hide" id="hb-cond">
       <div class="hb-cond-hd">
         <span class="hb-cond-hd-label" id="hb-cond-hd-label"></span>
