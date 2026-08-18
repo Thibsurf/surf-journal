@@ -55,13 +55,32 @@ function compass(d) {
   return (d === null || d === undefined) ? '—' : _SC_COMP[Math.round(d / 22.5) % 16];
 }
 
-function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
+// tideAdj (optionnel, 9e argument) : delta numérique déjà calculé par l'appelant
+// (cf. previsions.html `_tideAdj()`/`_tideAdjAt()`) — calcSurfScore reste sans
+// dépendance (pas de spot/marée ici), mais c'est le SEUL point où la marée entre
+// dans le score, pour que le nombre affiché soit le même partout où ce moteur
+// tourne. Avant ce paramètre, seul le Best Session Finder l'ajoutait après coup
+// (`sc.score + _tideAdj(...)`) — la carte "conditions actuelles", le tableau
+// horaire, les étoiles du jour et la carte de partage affichaient donc un score
+// qui ignorait complètement la préférence de marée réglée dans ⚙ Score, malgré
+// le texte du dialogue qui laisse croire le contraire (trouvé le 18/08/2026,
+// signalé par l'utilisateur comme "les scores ne sont pas très logiques").
+function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   if(!hs || hs < SCORE_PARAMS.minHs) return {score:0, label:'Trop petit', col:'#3d5468', details:['Hs < '+SCORE_PARAMS.minHs+'m']};
-  if(hs > SCORE_PARAMS.maxHs) return {score:1, label:'Trop gros', col:'#7a94aa', details:['Hs > '+SCORE_PARAMS.maxHs+'m']};
   if(!pwr || pwr < SCORE_PARAMS.minPwr) return {score:0, label:'Plat', col:'#3d5468', details:['Puissance insuffisante']};
 
   var details = [];
   var score = 0;
+  // maxHs n'est plus un plafond qui écrase tout à 1/5 dès qu'il est dépassé
+  // (trouvé le 18/08/2026 : un gros swell propre, longue période, offshore,
+  // tombait quand même à "Médiocre" — aucun service de référence regardé pour
+  // ce chantier (Surfline notamment, cf. leur doc "Rating of Surf Heights and
+  // Quality") ne plafonne uniquement sur la taille : le vent et la période
+  // pèsent davantage que la hauteur brute dans leurs propres barèmes publics.
+  // maxHs reste un vrai réglage personnel ("au-delà, ça ne m'intéresse plus"),
+  // appliqué comme un malus après le calcul normal, cf. plus bas — pas comme
+  // un court-circuit qui efface le reste des conditions.
+  var tooBig = hs > SCORE_PARAMS.maxHs;
 
   // Score de base sur la puissance (0-4 pts)
   if(pwr < 2)  { score = 1; }
@@ -87,15 +106,23 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
     if(diffSwell <= 45) { score = Math.min(5, score + 1); details.push('Houle idéale '+compass(swDir)); }
     else if(diffSwell > 120) { score = Math.max(0, score - 1); details.push('Houle défav. '+compass(swDir)); }
   }
-  // Direction vent: bonus/malus basé sur windDirIdeal (cap offshore du spot, réglage compas)
-  // windDirIdeal = vers où souffle le vent idéal (ex: 270 = offshore côte ouest)
-  // wDir (API) = provenance → convertir en destination avant comparaison
+  // Direction vent vs windDirIdeal (cap offshore réglé à la main pour ce spot) :
+  // INFORMATIF SEULEMENT depuis le 18/08/2026, ne touche plus au score. Avant,
+  // ce bloc ET le bloc "Effet du vent (onshore/offshore relatif à la houle)"
+  // plus bas pouvaient se contredire — windDirIdeal est un cap FIXE réglé une
+  // fois pour le spot, tandis que l'autre bloc compare le vent à la houle
+  // RÉELLE du jour ; dès que la houle du jour s'écartait de swellDirIdeal, les
+  // deux pouvaient afficher des verdicts opposés dans les mêmes `details`
+  // ("Vent défav." ET "Offshore idéal" en même temps) et s'annuler en partie
+  // sans que rien à l'écran n'explique pourquoi. Le bloc onshore/offshore
+  // ci-dessous est le seul physiquement correct un jour donné (il regarde la
+  // houle réelle, pas une direction idéale figée) — il reste donc seul à noter.
+  // windDirIdeal continue de servir de texte informatif dans le détail.
   if(wDir != null) {
     var idealWind = SCORE_PARAMS.windDirIdeal || 270;
     var wDirTo = (wDir + 180) % 360;
     var diffWind = Math.abs(((wDirTo - idealWind + 180 + 360) % 360) - 180);
     if(diffWind <= 60) { details.push('Vent favorable '+compass(wDir)); }
-    else if(diffWind > 120) { score = Math.max(0, score - 1); details.push('Vent défav. '+compass(wDir)); }
   }
 
   // Malus vent PLAT (indépendant de la direction) : sur ces spots à accès
@@ -180,7 +207,20 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr) {
     details.push('Rafales '+Math.round(wg)+'nds');
   }
 
-  score = Math.max(0, Math.min(5, Math.round(score)));
+  // maxHs dépassé : malus plutôt que le plafond dur d'avant (cf. commentaire en
+  // tête de fonction) — un gros swell propre garde une chance de rester "Bien"
+  // au lieu de tomber systématiquement à "Médiocre".
+  if(tooBig) {
+    score = Math.max(0, score - 2);
+    details.push('Hs '+hs+'m &gt; '+SCORE_PARAMS.maxHs+'m (dépasse ta limite)');
+  }
+
+  // Marée (cf. commentaire du paramètre tideAdj en tête de fonction) — seul
+  // point d'application, pour que label/couleur reflètent TOUJOURS le même
+  // nombre que celui utilisé pour trier/filtrer ailleurs (avant, un score
+  // "de base" et un score "effectif" pouvaient diverger silencieusement).
+  if(tideAdj) details.push(tideAdj > 0 ? 'Marée favorable' : 'Marée défavorable');
+  score = Math.max(0, Math.min(5, Math.round(score + (tideAdj || 0))));
   var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
   var cols = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
   return { score:score, label:labels[score], col:cols[score], details:details };

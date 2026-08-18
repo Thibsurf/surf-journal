@@ -1532,6 +1532,9 @@ function _hbCondRenderTide(pm, bm, spot){
         if (h >= SB_H_MIN && h <= SB_H_MAX && fc.wSpd) ws.push(fc.wSpd[i]);
         slots.push({
           h: h, i: i,
+          // ms = epoch RÉEL (dt est un Date déjà décalé +11h, cf. convention
+          // fuseau en tête de fichier) — ajouté pour _tideAdjAt() dans sbDayScore.
+          ms: dt.getTime() - 11 * 3600000,
           hs: fc.sw1h ? fc.sw1h[i] : null, t: fc.sw1t ? fc.sw1t[i] : null, sd: fc.sw1d ? fc.sw1d[i] : null,
           ws: fc.wSpd ? fc.wSpd[i] : null, wd: fc.wDir ? fc.wDir[i] : null, wg: fc.wGst ? fc.wGst[i] : null,
           pwr: fc.pwr ? fc.pwr[i] : null,
@@ -1851,11 +1854,14 @@ function _hbCondRenderTide(pm, bm, spot){
   // dessous serait le pire défaut possible pour cette page.
   function sbDayScore(d) {
     if (typeof calcSurfScore !== 'function') return null;
+    var spot = SPOTS[currentSpot];
     var best = null, i;
     for (i = 0; i < d.slots.length; i++) {
       var s = d.slots[i];
       if (s.h < SB_H_MIN || s.h > SB_H_MAX || s.hs == null) continue;
-      var sc = calcSurfScore(s.hs, s.t, s.sd, s.ws, s.wg, s.wd, s.pwr);
+      // Marée : cf. commentaire tête de fonction, "mêmes réglages ⚙ que partout
+      // ailleurs" ne valait pas encore pour la marée avant le 18/08/2026.
+      var sc = calcSurfScore(s.hs, s.t, s.sd, s.ws, s.wg, s.wd, s.pwr, _tideAdjAt(spot, s.ms));
       if (sc && (best === null || sc.score > best)) best = sc.score;
     }
     return best;
@@ -4657,7 +4663,12 @@ function setHsSrc(src, skipRedraw) {
   // il resterait figé sur l'ancienne (signalé le 12/08/2026, "ça change pas
   // selon le modèle choisi", sur le météogramme qu'il remplace).
   try { if (typeof sbOnSourceChange === 'function') sbOnSourceChange(); } catch(_){}
-  if(d.sw1h&&d.sw1h.length) renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0]);
+  if(d.sw1h&&d.sw1h.length) {
+    // Marée (18/08/2026) : realMs = epoch réel, d.dates[0] est déjà décalé +11h.
+    var _curSpot = SPOTS[currentSpot];
+    var _curTideAdj = (d.dates && d.dates[0]) ? _tideAdjAt(_curSpot, d.dates[0].getTime() - 11*3600000) : 0;
+    renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0],_curTideAdj);
+  }
 
   // Badge source
   var lastDate=d.dates&&d.dates.length?d.dates[d.dates.length-1]:null;
@@ -6014,7 +6025,8 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 
   // Stats actuelles (guard si données vides)
   if(lbl.length > 0) {
-    renderCurrent(sw1h[0],sw1t[0],sw1d[0],sw2h[0],totH[0],wSpd[0],wGst[0],wDir[0],pwr[0]);
+    var _rcTideAdj = dates[0] ? _tideAdjAt(spot, dates[0].getTime() - 11*3600000) : 0;
+    renderCurrent(sw1h[0],sw1t[0],sw1d[0],sw2h[0],totH[0],wSpd[0],wGst[0],wDir[0],pwr[0],_rcTideAdj);
   } else {
     // Pas de données — afficher un message clair
     var ccEl = document.getElementById('current-cond');
@@ -9328,6 +9340,22 @@ function _tideAdj(spot, tide) {
   if (p.phase && p.phase !== 'any') adj += (tide.phase === p.phase) ? 0.3 : -0.2;
   return adj;
 }
+// Variante de _tideAdj() pour les affichages qui n'ont PAS de série de marée
+// fetchée sous la main (carte "conditions actuelles", tableau horaire, étoiles
+// du jour, carte de partage — contrairement au Best Session Finder/Comparateur
+// de spots, qui ont déjà `fc.tideSeries` chargé). Réutilise `_cmpTideAt()`, le
+// modèle harmonique local (§10.5/AUDIT-previsions.md §6.6) : aucun réseau,
+// disponible pour n'importe quel timestamp — c'est ce qui rend le branchement
+// possible sans faire fetcher une série de marée à des fonctions qui n'en ont
+// jamais eu besoin jusqu'ici. `ms` = epoch réel (PAS un `.dates[]` déjà décalé
+// +11h, cf. convention fuseau en tête de fichier).
+function _tideAdjAt(spot, ms) {
+  var pref = _spotTidePref(spot);
+  if (!pref || typeof _cmpTideAt !== 'function') return 0;
+  var t = _cmpTideAt(ms);
+  if (!t) return 0;
+  return _tideAdj(spot, { level01: t.level01, phase: t.rising ? 'rising' : 'falling' });
+}
 
 function findSessionsForSpot(spot, fc) {
   loadScoreParams(spot);
@@ -9337,10 +9365,14 @@ function findSessionsForSpot(spot, fc) {
     var _dd = new Date(t), _hNC = _dd.getUTCHours() + _dd.getUTCMinutes() / 60;
     var _sun = _sunHoursLocal(t, spot.lat, spot.lon, 11);
     var daylight = !_sun || (_hNC >= _sun.rise - 0.5 && _hNC <= _sun.set + 0.5);
-    var sc = calcSurfScore(fc.hs[i], fc.T[i], fc.swDir[i],
-                           fc.ws[i], fc.wg[i], fc.wDir[i], fc.pwr[i]);
     var tide = _tideStateAt(t, fc.tideSeries, fc.tideMin, fc.tideMax);
-    var eff = Math.max(0, Math.min(5, sc.score + _tideAdj(spot, tide)));
+    // Marée déjà incluse dans sc (8e argument, cf. score-core.js) : sc.score EST
+    // le score effectif désormais, `eff` n'est plus un second calcul séparé —
+    // avant ce correctif (18/08/2026) c'était le SEUL endroit du site où la
+    // marée pesait sur le score, cf. _tideAdjAt() pour les autres.
+    var sc = calcSurfScore(fc.hs[i], fc.T[i], fc.swDir[i],
+                           fc.ws[i], fc.wg[i], fc.wDir[i], fc.pwr[i], _tideAdj(spot, tide));
+    var eff = sc.score;
     hours.push({ i:i, t:t, daylight:daylight, base:sc, eff:eff, tide:tide,
                  hs:fc.hs[i], T:fc.T[i], ws:fc.ws[i], wg:fc.wg[i], wDir:fc.wDir[i] });
   }
@@ -9683,9 +9715,9 @@ function _compareSpotMetrics(spot, fc, mode) {
       if (diff < bestDiff) { bestDiff = diff; bi = i; }
     }
     if (bi < 0) return null;
-    var sc = calcSurfScore(fc.hs[bi], fc.T[bi], fc.swDir[bi], fc.ws[bi], fc.wg[bi], fc.wDir[bi], fc.pwr[bi]);
     var tide = _tideStateAt(fc.dates[bi], fc.tideSeries, fc.tideMin, fc.tideMax);
-    var eff = Math.max(0, Math.min(5, sc.score + _tideAdj(spot, tide)));
+    var sc = calcSurfScore(fc.hs[bi], fc.T[bi], fc.swDir[bi], fc.ws[bi], fc.wg[bi], fc.wDir[bi], fc.pwr[bi], _tideAdj(spot, tide));
+    var eff = sc.score;
     return { hasData:true, score:eff, hs:fc.hs[bi], T:fc.T[bi], swDir:fc.swDir[bi],
              ws:fc.ws[bi], wDir:fc.wDir[bi], tide:tide,
              windowLabel:'~' + new Date(fc.dates[bi]).getUTCHours() + 'h',
@@ -9712,10 +9744,9 @@ function _compareSpotMetrics(spot, fc, mode) {
     // pas de créneau exploitable → on remonte la meilleure heure brute de la fenêtre
     var maxEff = 0, pkI = idxs[0];
     idxs.forEach(function(i){
-      var s2 = calcSurfScore(fc.hs[i], fc.T[i], fc.swDir[i], fc.ws[i], fc.wg[i], fc.wDir[i], fc.pwr[i]);
       var t2 = _tideStateAt(fc.dates[i], fc.tideSeries, fc.tideMin, fc.tideMax);
-      var e2 = Math.max(0, Math.min(5, s2.score + _tideAdj(spot, t2)));
-      if (e2 > maxEff) { maxEff = e2; pkI = i; }
+      var s2 = calcSurfScore(fc.hs[i], fc.T[i], fc.swDir[i], fc.ws[i], fc.wg[i], fc.wDir[i], fc.pwr[i], _tideAdj(spot, t2));
+      if (s2.score > maxEff) { maxEff = s2.score; pkI = i; }
     });
     return { hasData:true, score:maxEff, hs:fc.hs[pkI], T:fc.T[pkI], swDir:fc.swDir[pkI],
              ws:fc.ws[pkI], wDir:fc.wDir[pkI], tide:_tideStateAt(fc.dates[pkI], fc.tideSeries, fc.tideMin, fc.tideMax),
@@ -10292,7 +10323,7 @@ function saveScoreParams(params) {
 }
 
 
-function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p){
+function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p,tideAdj){
   // Visibilité depuis omFcastData[0] si disponible
   var vis0 = (_omFcastData && _omFcastData.vis && _omFcastData.vis[0] != null) ? _omFcastData.vis[0] : null;
   updateNavIndicator(ws, wg, wd, tot, dir, vis0);
@@ -10301,7 +10332,7 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p){
       +'<div class="sc-val"'+(col?' style="color:'+col+'"':'')+'>'+val+'</div>'
       +(sub?'<div class="sc-sub">'+sub+'</div>':'')+'</div>';
   }
-  var surf = calcSurfScore(hs, T, dir, ws, wg, wd, p);
+  var surf = calcSurfScore(hs, T, dir, ws, wg, wd, p, tideAdj);
   var scCol = surf.col, scTxt = surf.label;
   // Pastilles score
   var dots = '';
@@ -10366,7 +10397,9 @@ function _buildShareDayPayload() {
   // ce payload ne sert plus qu'à construire la ligne de résumé texte
   // (ShareCard.buildSummary) et à retrouver la marée du jour (dateStr).
   var hsV = d.sw1h[gi], TV = d.sw1t[gi], dirV = d.sw1d[gi], wsV = d.wSpd[gi], wgV = d.wGst ? d.wGst[gi] : null, wdV = d.wDir[gi], pV = d.pwr ? d.pwr[gi] : null;
-  var surf = (typeof calcSurfScore === 'function') ? calcSurfScore(hsV, TV, dirV, wsV, wgV, wdV, pV) : null;
+  // Marée (18/08/2026) : d.dates[gi] est déjà décalé +11h (convention fuseau).
+  var _shareTideAdj = (typeof _tideAdjAt === 'function' && d.dates[gi]) ? _tideAdjAt(SPOTS[currentSpot], d.dates[gi].getTime() - 11*3600000) : 0;
+  var surf = (typeof calcSurfScore === 'function') ? calcSurfScore(hsV, TV, dirV, wsV, wgV, wdV, pV, _shareTideAdj) : null;
 
   return {
     spotName: (SPOTS[currentSpot] && SPOTS[currentSpot].name) || '',
@@ -11264,7 +11297,12 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst,totH,
     if(dk!==lastDay){lastDay=dk;html+='<tr class="daysep"><td colspan="13"> '+days[day]+' '+dNum+'/'+mNum+'</td></tr>';}
     var isN=h<6||h>=20;
     var p=pwr[i];
-    var surfSc = calcSurfScore(sw1h[i],sw1t[i],sw1d[i],wSpd[i],wGst[i],wDir[i],p);
+    // Marée (18/08/2026) : dt est déjà décalé +11h (convention fuseau), realMs
+    // = epoch réel attendu par _tideAdjAt()/_cmpTideAt(). Colonne Score du
+    // tableau horaire — jusqu'ici tide-blind comme la carte "conditions
+    // actuelles", cf. commentaire en tête de calcSurfScore.
+    var _tblTideAdj = _tideAdjAt(SPOTS[currentSpot], dt.getTime() - 11*3600000);
+    var surfSc = calcSurfScore(sw1h[i],sw1t[i],sw1d[i],wSpd[i],wGst[i],wDir[i],p,_tblTideAdj);
     var sc2=surfSc.score;
     var sdots='';
     for(var di2=0;di2<5;di2++) sdots+='<span style="color:'+(di2<sc2?surfSc.col:'rgba(255,255,255,.12)')+';">●</span>';
