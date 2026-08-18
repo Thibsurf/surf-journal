@@ -119,6 +119,10 @@ function showScoreSettings() {
     +'<button id="sc-close-btn" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;">×</button>'
     +'</div>'
 
+    // Detail visuel du calcul pour le creneau affiche : on regle des seuils,
+    // autant voir tout de suite ce qu'ils donnent sur les conditions du moment.
+    +'<div id="sc-breakdown" style="margin-bottom:14px;">'+currentScoreBreakdownHtml()+'</div>'
+
     // ── SECTION HOULE ──
     +'<div style="font-size:11px;font-weight:700;color:#4fa3c7;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">🌊 Houle</div>'
     +sliderRow('Hs mini pour surfer (m)','minHs',p.minHs,0.1,1.5,0.1,' m')
@@ -388,6 +392,79 @@ function showScoreSettings() {
     saveScoreParams(p);
     div.remove(); loadForecast(currentSpot); showToast('Score sauvegardé pour '+SPOTS[currentSpot].name);
   };
+}
+
+// ─── RENDU VISUEL DU CALCUL DU SCORE ────────────────────────────────────────
+// Remplace l'infobulle au survol qui décrivait le barème en prose (19/08/2026 :
+// « plutôt qu'une étiquette qui s'affiche au survol, autre chose qui montre
+// visuellement comment c'est calculé »). Une prose fige une version du barème et
+// se périme en silence — celle qui était en place décrivait encore l'ancien
+// calcul par bonus le lendemain de la refonte. Ici tout est dérivé de
+// `calcSurfScore().breakdown` : le dessin ne PEUT pas diverger du calcul.
+//
+// Pas de canvas : des div à largeur proportionnelle, donc lisible au clavier,
+// sélectionnable, et correct dans les deux thèmes via les variables CSS.
+function scoreBreakdownHtml(surf) {
+  if (!surf || !surf.breakdown) return '';
+  var W = function (d) { return Math.min(100, Math.abs(d) / 10 * 100); };
+  var row = function (lbl, d, col, valTxt) {
+    return '<div style="display:grid;grid-template-columns:1fr 78px 34px;gap:6px;align-items:center;margin-bottom:3px;">'
+      + '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + lbl + '</div>'
+      + '<div style="height:8px;background:var(--glass);border-radius:4px;overflow:hidden;">'
+      +   '<div style="height:100%;width:' + W(d) + '%;background:' + col + ';border-radius:4px;"></div>'
+      + '</div>'
+      + '<div style="font-size:11px;font-weight:700;text-align:right;color:' + col + ';">' + valTxt + '</div>'
+      + '</div>';
+  };
+  var out = '<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;'
+    + 'letter-spacing:.5px;margin-bottom:8px;">\ud83e\uddee Comment cette note est calcul\u00e9e</div>';
+
+  out += row('D\u00e9part', 10, 'var(--accent)', '10');
+  for (var i = 0; i < surf.breakdown.length; i++) {
+    var b = surf.breakdown[i];
+    var pos = b.d > 0;
+    var v = (pos ? '+' : '\u2212') + (Math.round(Math.abs(b.d) * 10) / 10).toString().replace('.', ',');
+    out += row(b.lbl, b.d, pos ? '#3dba8a' : '#c1654a', v);
+  }
+  // Le total peut passer sous 0 avant d'être ramené au plancher : le dire, sinon
+  // la somme affichée ne retombe pas sur le total affiché et le dessin ment.
+  var brut = 10; for (i = 0; i < surf.breakdown.length; i++) brut += surf.breakdown[i].d;
+  if (brut < 0) out += '<div style="font-size:11px;color:var(--faint);margin:2px 0 4px;">'
+    + '(' + (Math.round(brut * 10) / 10).toString().replace('.', ',') + ' ramen\u00e9 au plancher 0)</div>';
+
+  out += '<div style="border-top:1px solid var(--border);margin:6px 0 6px;"></div>'
+    + row('<b style="color:var(--text);">Total</b>', surf.raw10, 'var(--accent)',
+          (Math.round(surf.raw10 * 10) / 10).toString().replace('.', ','))
+    + '<div style="font-size:11px;color:var(--muted);margin-top:4px;">'
+    + 'Ramen\u00e9 sur 5 : <b style="color:' + surf.col + ';">' + surf.beforeCap + '/5</b>'
+    + (surf.capLabel ? '' : ' \u2014 <b style="color:' + surf.col + ';">' + surf.label + '</b>')
+    + '</div>';
+
+  if (surf.capLabel) {
+    out += '<div style="margin-top:6px;padding:6px 8px;border-radius:6px;'
+      + 'background:rgba(193,101,74,.12);border:1px solid rgba(193,101,74,.45);'
+      + 'font-size:11px;color:var(--text);line-height:1.5;">'
+      + '\u26d4 <b>' + surf.capLabel + '</b><br>La note est <b>plafonn\u00e9e \u00e0 '
+      + surf.score + '/5 \u2014 ' + surf.label + '</b>, quels que soient les autres crit\u00e8res.</div>';
+  }
+  return out + '</div>';
+}
+
+// Le même, pour les conditions COURANTES. `_shareCtx` est déjà la photographie du
+// créneau affiché (posée par renderCurrent pour la carte de partage) : la réutiliser
+// garantit que le détail montré est celui de la note affichée, pas un recalcul
+// approchant.
+function currentScoreBreakdownHtml() {
+  try {
+    var c = window._shareCtx;
+    if (!c || typeof calcSurfScore !== 'function' || c.hs == null) return '';
+    var surf = calcSurfScore(c.hs, c.T, c.dir, c.ws, c.wg, c.wd, c.p, c.tideAdj || 0);
+    // Garde-fou : si le detail ne retombe pas sur la note affichee, ne rien
+    // montrer plutot que montrer un calcul qui n'est pas celui-la.
+    if (c.score != null && surf.score !== c.score) return '';
+    return scoreBreakdownHtml(surf);
+  } catch (e) { return ''; }
 }
 
 // ─── TOAST ────────────────────────────────────────────────────────────────

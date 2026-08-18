@@ -356,6 +356,18 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
 
   var details = [];
   var score = 10;   // échelle interne 0-10, comme tide-raider ; normalisée plus bas
+  // Detail chiffre du calcul, pour l'AFFICHER au lieu de le decrire (19/08/2026,
+  // « plutot qu'une etiquette qui s'affiche au survol, autre chose qui montre
+  // visuellement comment c'est calcule »). Chaque entree = une ligne du barème,
+  // sur l'echelle interne 0-10 ; `details` reste la version texte, encore
+  // utilisee ailleurs. `_adj` est le SEUL point qui modifie `score` a partir
+  // d'ici : impossible qu'une penalite existe sans apparaitre dans le detail.
+  var bd = [];
+  function _adj(d, lbl) {
+    score += d;
+    details.push(lbl);
+    bd.push({ lbl: lbl, d: d });
+  }
 
   // ── 1. Hauteur hors de la fenêtre du spot ────────────────────────────────
   // tide-raider : −4 / −6 / −8 selon l'écart (0,5 m / 1 m / au-delà). Adouci ici
@@ -365,9 +377,8 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   // physique — d'où un malus et non le court-circuit à 1/5 d'avant dd7a8c9.
   if(hs > SCORE_PARAMS.maxHs) {
     var over = hs - SCORE_PARAMS.maxHs;
-    var pen  = over <= 0.5 ? 2 : (over <= 1 ? 4 : 6);
-    score -= pen;
-    details.push('Hs '+hs+'m &gt; '+SCORE_PARAMS.maxHs+'m (dépasse ta limite)');
+    _adj(-(over <= 0.5 ? 2 : (over <= 1 ? 4 : 6)),
+         'Hs '+hs+'m &gt; '+SCORE_PARAMS.maxHs+'m (dépasse ta limite)');
   }
 
   // ── 2. Période ───────────────────────────────────────────────────────────
@@ -377,14 +388,11 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   if(T) {
     if(T < SCORE_PARAMS.minPeriod) {
       var dT = SCORE_PARAMS.minPeriod - T;
-      score -= (dT <= 2 ? 2 : (dT <= 4 ? 4 : 6));
-      details.push('Période courte '+_fmtT(T)+' (&lt;'+SCORE_PARAMS.minPeriod+'s)');
+      _adj(-(dT <= 2 ? 2 : (dT <= 4 ? 4 : 6)),
+           'Période courte '+_fmtT(T)+' (&lt;'+SCORE_PARAMS.minPeriod+'s)');
     }
     var pb = periodBonus(T);
-    if(pb > 0) {
-      score += pb;
-      details.push('Longue période '+_fmtT(T)+' (+'+(Math.round(pb*10)/10).toString().replace('.', ',')+')');
-    }
+    if(pb > 0) _adj(pb, 'Longue période '+_fmtT(T));
   }
 
   // ── 3. Direction de la houle ─────────────────────────────────────────────
@@ -393,9 +401,9 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   // fenêtre du spot (swellDirIdeal ± swellWindowHalf), comme chez eux.
   var fit = swellFit(swDir);
   if(fit && fit.out > 0) {
-    score -= (fit.out <= 10 ? 2 : (fit.out <= 20 ? 4 : (fit.out <= 30 ? 6 : 8)));
-    details.push((fit.out > 30 ? 'Houle hors fenêtre ' : 'Houle oblique ')
-      + compass(swDir) + ' (' + Math.round(fit.out) + '° hors fenêtre)');
+    _adj(-(fit.out <= 10 ? 2 : (fit.out <= 20 ? 4 : (fit.out <= 30 ? 6 : 8))),
+         (fit.out > 30 ? 'Houle hors fenêtre ' : 'Houle oblique ')
+         + compass(swDir) + ' (' + Math.round(fit.out) + '° hors fenêtre)');
   } else if(fit) {
     details.push('Houle dans la fenêtre '+compass(swDir));
   }
@@ -410,7 +418,7 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   var _strongKt = SCORE_PARAMS.windMalusKt || 12;
   if(sect && ws != null && ws > _GLASSY_KT) {
     var dirPen = { offshore: 0, side: 2, onshore: 4 }[sect.key];
-    if(dirPen) { score -= dirPen; details.push(sect.lbl+' '+Math.round(ws)+'nds'); }
+    if(dirPen) _adj(-dirPen, sect.lbl+' '+Math.round(ws)+'nds');
     else details.push('Offshore '+Math.round(ws)+'nds — vague peignée');
   }
 
@@ -421,28 +429,28 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   // rejoignent en bateau (mesuré le 03/08 : qualité 3,11 sous 8 nds, 2,33 à
   // 10-12 nds, p75 des sessions réussies = 8 nds).
   if(ws != null) {
-    if(ws >= _strongKt + 8)   { score -= 6; details.push('Vent très fort '+Math.round(ws)+'nds'); }
-    else if(ws >= _strongKt)  { score -= 4; details.push('Vent fort '+Math.round(ws)+'nds — nav difficile'); }
-    else if(ws >= _calmKt)    { score -= 2; details.push('Moutons/clapot '+Math.round(ws)+'nds'); }
+    if(ws >= _strongKt + 8)   _adj(-6, 'Vent très fort '+Math.round(ws)+'nds');
+    else if(ws >= _strongKt)  _adj(-4, 'Vent fort '+Math.round(ws)+'nds — nav difficile');
+    else if(ws >= _calmKt)    _adj(-2, 'Moutons/clapot '+Math.round(ws)+'nds');
     else if(ws <= _GLASSY_KT) { details.push(ws < 2 ? 'Glassy (vent nul)' : 'Vent très faible ('+Math.round(ws)+'nds)'); }
   }
 
   // ── 6. Rafales ───────────────────────────────────────────────────────────
   if(wg && wg > SCORE_PARAMS.gustMalusKt) {
-    score -= 2;
-    details.push('Rafales '+Math.round(wg)+'nds');
+    _adj(-2, 'Rafales '+Math.round(wg)+'nds');
   }
 
   // ── 7. Marée ─────────────────────────────────────────────────────────────
   // tideAdj est exprimé sur l'échelle 0-5 par l'appelant (±0,3 à ±0,5) : ×2 pour
   // le porter sur l'échelle interne 0-10.
   if(tideAdj) {
-    score += tideAdj * 2;
-    details.push(tideAdj > 0 ? 'Marée favorable' : 'Marée défavorable');
+    _adj(tideAdj * 2, tideAdj > 0 ? 'Marée favorable' : 'Marée défavorable');
   }
 
   // ── Normalisation 0-10 → 0-5 (tide-raider : Math.min(5, round(score/10*5))) ──
-  score = Math.min(5, Math.round(Math.max(0, score) / 10 * 5));
+  var raw10 = Math.max(0, score);
+  score = Math.min(5, Math.round(raw10 / 10 * 5));
+  var beforeCap = score;
 
   // ── PLAFONDS : les facteurs limitants ────────────────────────────────────
   // Appliqués APRÈS la normalisation et après la marée : une marée favorable ne
@@ -450,10 +458,11 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   // indépendants, on garde le plus bas.
   var wc = windCeiling(ws);
   var cap = Math.min(pc.cap, wc.cap);
+  var why = null;
   if(cap < score) {
     // Nommer celui qui mord vraiment, pas les deux : le détail sert à comprendre
     // en un coup d'œil ce qui gâche le créneau.
-    var why = (wc.cap < pc.cap) ? wc.label : pc.label;
+    why = (wc.cap < pc.cap) ? wc.label : pc.label;
     if(wc.cap === pc.cap && wc.label) why = pc.label + ' + ' + wc.label;
     details.push(why + ' → plafonné « ' + _SC_LABELS[cap] + ' »');
     score = cap;
@@ -464,7 +473,12 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   }
 
   return { score:score, label:_SC_LABELS[score], col:_SC_COLS[score], details:details,
-           periodClass:pc.key, windSector:sect ? sect.key : null, swellFit:fit ? fit.key : null };
+           periodClass:pc.key, windSector:sect ? sect.key : null, swellFit:fit ? fit.key : null,
+           // Matiere du rendu visuel (cf. scoreBreakdownHtml, settings-utils.js) :
+           // `start` + la somme des `breakdown[].d` = `raw10`, invariant asserte
+           // dans test_score.js — le dessin ne peut donc pas mentir sur le calcul.
+           start:10, breakdown:bd, raw10:raw10, beforeCap:beforeCap,
+           cap:cap, capLabel:(cap < beforeCap ? why : null) };
 }
 
 // Puissance de la houle en kW/m — ½·Hs²·T, formule Windguru, la même que celle

@@ -269,6 +269,41 @@ section('Marée (9e argument, dd7a8c9) : elle pèse, mais pas sur la nature de l
   ok(viol === 0, 'aucun ajustement de marée ne franchit le plafond période', viol + ' violations');
 }
 
+// ── 8ter. Detail du calcul ──────────────────────────────────────────
+section('Detail du calcul : le dessin ne peut pas mentir sur le score');
+{
+  // `breakdown` est la matiere du rendu visuel qui remplace l'ancienne infobulle
+  // en prose. Si sa somme ne retombe pas sur le total, le dessin affiche un
+  // calcul qui n'est pas celui qui a produit la note — exactement le defaut de
+  // la prose, en pire (il aurait l'air verifiable).
+  let bad = 0, vides = 0, capIncoherent = 0;
+  for (const hs of [0.6, 1.2, 2.0, 4.5]) for (const T of [6, 9, 12, 16, 20])
+    for (const ws of [1, 8, 14, 25]) for (const sd of [200, 260, 90])
+      for (const adj of [0, 0.5, -0.5]) {
+        const r = sc(hs, T, sd, ws, ws * 1.3, ONSHORE, null, adj);
+        if (!r.breakdown) { bad++; continue; }
+        const somme = r.start + r.breakdown.reduce((a, b) => a + b.d, 0);
+        if (Math.abs(r.raw10 - Math.max(0, somme)) > 1e-9) {
+          bad++;
+          failures.push(`somme du detail != total : ${hs}m ${T}s ${ws}nds → ${somme} vs raw10=${r.raw10}`);
+        }
+        // Toute penalite doit etre nommee : un score degrade sans ligne de detail
+        // est une note qu'on ne peut pas expliquer a l'utilisateur.
+        if (r.raw10 < 10 && r.breakdown.length === 0) { vides++; }
+        // capLabel present si et seulement si le plafond a mordu.
+        if ((r.score < r.beforeCap) !== (r.capLabel != null)) { capIncoherent++; }
+      }
+  ok(bad === 0, 'depart + somme des lignes = total, sur 720 combinaisons', bad + ' ecarts');
+  ok(vides === 0, "aucune note degradee sans ligne de detail qui l'explique", vides + " cas");
+  ok(capIncoherent === 0, "le plafond est nomme si et seulement s'il mord", capIncoherent + " cas");
+
+  // Cas concret : le plafond mord, et le detail le dit.
+  const r = sc(1.2, 8, 200, 2, 3, OFFSHORE, null, 0);
+  ok(r.capLabel && /[Mm]er de vent/.test(r.capLabel), 'le plafond nomme la mer de vent', r.capLabel);
+  ok(r.beforeCap > r.score, 'et la note avant plafond etait plus haute',
+     r.beforeCap + ' → ' + r.score);
+}
+
 // ── 9. Robustesse ────────────────────────────────────────────────────────────
 section('Robustesse : jamais de NaN, jamais hors 0-5');
 {

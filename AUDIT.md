@@ -8191,3 +8191,69 @@ Cas signalés, tous conformes : 1,2 m / 8 s → 2/5 · 2,5 m / 6 s → 1/5 · 21
 visible au sélecteur satellite, image chargée, 0 erreur JS.
 
 `sw.js` : `CACHE_NAME` v91 → **v92**.
+
+---
+
+## 2026-08-19 (suite 3) — Le calcul du score se montre au lieu de se décrire
+
+Demande : « mets à jour les infos, et plutôt qu'une étiquette qui s'affiche au
+survol, autre chose qui montre visuellement comment c'est calculé ».
+
+### Pourquoi l'infobulle devait partir, au-delà de l'ergonomie
+
+Le ⓘ ajouté par `946b443` décrivait le barème **en prose**, avec cette mise en
+garde honnête dans le code : « Texte tenu à jour manuellement en miroir de
+assets/score-core.js — pas de source unique possible ici ». Le miroir a cassé en
+moins de 24 h : après la refonte, il décrivait encore le calcul par bonus
+(« direction idéale (+1), vent calme (+1) »), alors que le moteur partait de 10
+et soustrayait. **Et rien ne pouvait le signaler** — c'est du texte.
+
+Remplacé par un rendu **dérivé du calcul lui-même** : `calcSurfScore` expose
+désormais `breakdown` (une ligne par pénalité/bonus, sur l'échelle interne 0-10),
+`raw10`, `beforeCap`, `cap` et `capLabel`. Le dessin ne peut plus diverger du
+calcul, puisqu'il n'a pas d'autre source.
+
+### Le rendu
+
+`scoreBreakdownHtml()` (assets/settings-utils.js) : une ligne par critère, barre
+de largeur proportionnelle à |delta|, verte pour un bonus, rouge pour une
+pénalité, puis le total, la conversion sur 5, et — s'il mord — un encart nommant
+le plafond. Pas de canvas : des `div`, donc sélectionnable et correct dans les
+deux thèmes via les variables CSS.
+
+```
+🧮 COMMENT CETTE NOTE EST CALCULÉE
+Départ              ██████████   10
+Sideshore 23nds     ██           −2
+Vent très fort 23nds████         −6
+Total               ██            2
+Ramené sur 5 : 1/5 — Médiocre
+```
+
+Affiché à deux endroits : en tête de ⚙ Score (on règle des seuils, autant voir
+tout de suite ce qu'ils donnent) et dans ⚙ Réglages spot, là où était le ⓘ.
+
+### Le piège évité : un détail qui ne retombe pas sur sa note
+
+Première version : le rendu recalculait la marée de son côté
+(`_tideAdj(spot, null)`). Or `renderCurrent` reçoit `tideAdj` de son appelant —
+les deux pouvaient donner des nombres différents, et **un détail qui ne retombe
+pas sur sa note est pire qu'absent : il a l'air vérifiable**. Corrigé en faisant
+transiter la valeur exacte par `_shareCtx`, plus un garde-fou qui n'affiche rien
+si le rejeu ne redonne pas la note affichée.
+
+`_adj()` est désormais le seul point qui modifie le score dans `calcSurfScore` :
+une pénalité ne peut pas exister sans apparaître dans le détail.
+
+### Vérification
+
+`test_score.js` **48/48** (+5). Le bloc ajouté vérifie sur **720 combinaisons**
+que `départ + somme des lignes = total` (plancher 0 compris), qu'aucune note
+dégradée n'est sans ligne qui l'explique, et que le plafond est nommé si et
+seulement s'il mord.
+
+Headless Edge : parcours complet depuis le bouton visible, détail rempli dans les
+deux dialogues, marée transportée, **rejeu == note affichée**, somme cohérente
+avec `raw10`, sélecteur satellite présent, 0 erreur JS. Capture d'écran relue.
+
+`sw.js` : `CACHE_NAME` v92 → **v93**.

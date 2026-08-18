@@ -10458,6 +10458,12 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p,tideAdj){
     spotName: (SPOTS[currentSpot] && SPOTS[currentSpot].name) || '',
     ts: Date.now(),
     hs:hs, T:T, dir:dir, hs2:hs2, tot:tot, ws:ws, wg:wg, wd:wd, p:p,
+    // La maree EXACTE passee a calcSurfScore ci-dessus. Le detail visuel du
+    // calcul (currentScoreBreakdownHtml) rejoue cet appel a l'identique : la
+    // recalculer de son cote pouvait donner un autre nombre que la note
+    // affichee, et un detail qui ne retombe pas sur sa note est pire
+    // qu'absent — il a l'air verifiable.
+    tideAdj: tideAdj || 0,
     score: surf.score, scoreLabel: surf.label,
     onshoreLimit: (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.onshoreLimit : 45),
     offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135),
@@ -17648,18 +17654,12 @@ function showSpotSettings(forceOpen) {
     +'<div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:12px;">'
     +'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;'
     +'letter-spacing:.5px;margin-bottom:10px;">🏄 Score surf — paramètres pour ce spot '
-    +'<span style="cursor:help;text-transform:none;font-weight:400;letter-spacing:normal;" '
-    +'title="Le score (0-5) part de la puissance de la houle (hauteur² × période). '
-    +'Ajustements : houle dans la fenêtre du spot (+1) ou hors fenêtre (−1 à −2), '
-    +'longue période (+1), vent selon son secteur ET sa force — offshore de +1 à −3, '
-    +'sideshore de 0 à −3, onshore de −2 à −4, et mer d&#39;huile +1 quelle que soit '
-    +'la direction ; rafales fortes (−1), marée si réglée (±0,3 à ±0,5), Hs au-delà '
-    +'de ta limite perso (−2, sans écraser le reste). ENFIN un PLAFOND selon la '
-    +'période, appliqué après tout le reste : mer de vent ≤ 10 s = « Passable » au '
-    +'mieux, quels que soient la taille et le vent (1,20 m à 8 s n&#39;est pas un bon '
-    +'jour). Le secteur du vent se mesure sur la normale au récif, que tu traces sur '
-    +'la vue satellite dans ⚙ Score. Même calcul partout sur le site — carte '
-    +'conditions actuelles, tableau horaire, étoiles du jour.">ⓘ</span></div>'
+    // L'infobulle au survol qui decrivait le bareme en prose est remplacee par
+    // le detail VISUEL ci-dessous (19/08/2026). Une prose fige une version du
+    // calcul et se perime en silence : celle-ci decrivait encore le bareme par
+    // bonus le lendemain de sa refonte, et personne ne pouvait le voir.
+    +'</div>'
+    +'<div id="ss-breakdown" style="margin-bottom:12px;">'+(typeof currentScoreBreakdownHtml==='function'?currentScoreBreakdownHtml():'')+'</div>'
 
     // Stats du journal pour CE spot — rempli en asynchrone, sert à affiner les
     // paramètres ci-dessous avec les vraies sessions (étoiles comprises)
