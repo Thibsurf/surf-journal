@@ -2346,6 +2346,9 @@ function _hbCondRenderTide(pm, bm, spot){
           <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
           <button id="tbl-btn-aifs" onclick="switchTable('aifs')" title="ECMWF AIFS-single (modèle IA) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">AIFS</button>
           <button id="tbl-btn-marc" onclick="switchTable('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
+          <!-- LOTUS ajouté le 18/08/2026 — présent dans _swellCache depuis le 02/08 mais
+               oublié de TABLE_SRC_DEFS/ce sélecteur jusqu'ici. -->
+          <button id="tbl-btn-lotus" onclick="switchTable('lotus')" title="Surfline — modèle propriétaire LOTUS. Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa/Boulari)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">LOTUS</button>
         </div>
       </div>
     </div>
@@ -2432,11 +2435,21 @@ function _hbCondRenderTide(pm, bm, spot){
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;">🌊 Hs — <span id="hs-spot-lbl" style="color:var(--accent);"></span></div>
         <span id="hs-model-badge" style="font-size:11px;font-weight:400;color:var(--faint);text-transform:none;letter-spacing:0;"></span>
-        <!-- Toggle source -->
-        <div style="display:flex;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;">
-          <div style="display:flex;background:rgba(255,255,255,.05);border-radius:20px;border:1px solid var(--border);padding:2px;gap:2px;">
-            <button id="btn-src-nc" onclick="setHsSrc('nc')" title="Données officielles Météo-France Nouvelle-Calédonie (meteo.nc) — plus précises localement, nécessitent un token." style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;">🛰 meteo.nc</button>
-            <button id="btn-src-om" onclick="setHsSrc('om')" title="Modèle GFS (NOAA) via Open-Meteo — résolution plus grossière, mais accessible sans token." style="padding:3px 12px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;">🌐 GFS</button>
+        <!-- Toggle source — 8 modèles (18/08/2026, avant : seuls meteo.nc/GFS
+             étaient sélectionnables ici alors que 6 autres tournent déjà dans
+             le comparatif houle juste en dessous et dans le tableau horaire.
+             Mêmes clés/couleurs que TABLE_SRC_DEFS, mêmes textes que la ligne
+             de boutons du tableau (📋) — une seule description par modèle. -->
+        <div style="display:flex;flex-wrap:wrap;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;max-width:100%;">
+          <div style="display:flex;flex-wrap:wrap;background:rgba(255,255,255,.05);border-radius:20px;border:1px solid var(--border);padding:2px;gap:2px;">
+            <button id="btn-src-nc" onclick="setHsSrc('nc')" title="Données officielles Météo-France Nouvelle-Calédonie (meteo.nc) — plus précises localement, nécessitent un token." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;white-space:nowrap;">🛰 meteo.nc</button>
+            <button id="btn-src-om" onclick="setHsSrc('om')" title="Modèle GFS (NOAA) via Open-Meteo — résolution plus grossière, mais accessible sans token." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">🌐 GFS</button>
+            <button id="btn-src-bom" onclick="setHsSrc('bom')" title="Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km). Depuis le comparatif houle : peut manquer le temps du 1er chargement." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">BOM</button>
+            <button id="btn-src-mf" onclick="setHsSrc('mf')" title="Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine — grille 0,083° (~9 km). Depuis le comparatif houle : peut manquer le temps du 1er chargement." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
+            <button id="btn-src-ecmwf" onclick="setHsSrc('ecmwf')" title="ECMWF IFS-HRES, direct depuis Open Data — grille 0,25° (~28 km). Depuis le comparatif houle : peut manquer le temps du 1er chargement." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
+            <button id="btn-src-aifs" onclick="setHsSrc('aifs')" title="ECMWF AIFS-single (modèle IA) — grille 0,25° (~28 km). Depuis le comparatif houle : peut manquer le temps du 1er chargement." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">AIFS</button>
+            <button id="btn-src-marc" onclick="setHsSrc('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km), le plus fin. Depuis le comparatif houle : peut manquer le temps du 1er chargement." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
+            <button id="btn-src-lotus" onclick="setHsSrc('lotus')" title="Surfline — modèle propriétaire LOTUS, jusqu'à 6 trains directionnels natifs. Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa/Boulari) — absent ailleurs. Depuis le comparatif houle : peut manquer le temps du 1er chargement." style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">LOTUS</button>
           </div>
         </div>
       </div>
@@ -4054,7 +4067,7 @@ function buildSpotTabs() {
       loadScoreParams(); // Charger les params de score du spot
       // Appliquer la source houle préférée du spot
       var sp = SPOTS[i];
-      if (sp && sp.hsSrc) { _currentHsSrc = sp.hsSrc; updateHsToggleUI(); }
+      if (sp && sp.hsSrc) { _currentHsSrc = _normHsSrc(sp.hsSrc); updateHsToggleUI(); }
       _recenterSpotMap(i);
       loadForecast(i);
     };
@@ -4652,14 +4665,45 @@ window.addEventListener('nc-token-updated', function(ev) {
 var _fcastData = {};
 var _ncFcastData = null; // données meteo.nc séparées (pour le toggle)
 var _omFcastData = null; // données Open-Meteo séparées pour le toggle
-var _currentHsSrc = 'nc'; // source active: 'nc' ou 'om'
+var _currentHsSrc = 'nc'; // source active: 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf' | 'aifs' | 'marc' | 'lotus'
+// GFS/Open-Meteo porte DEUX clés différentes dans ce fichier depuis toujours :
+// 'om' partout côté rendu (_currentHsSrc/_tableSrc/TABLE_SRC_DEFS/_omFcastData)
+// mais 'gfs' côté comparatif houle (_swellCache/SWELL_MODELS) ET dans
+// spot.hsSrc persisté (⚙ Réglages spot, avant le 18/08/2026). Jusqu'ici
+// inoffensif : chaque lecture de _currentHsSrc ne testait QUE `=== 'nc'`, donc
+// peu importait la chaîne exacte de l'autre branche. Les nouveaux sélecteurs
+// génériques (updateHsToggleUI/TABLE_SRC_DEFS) testent désormais une égalité
+// stricte par clé — sans cette normalisation, un spot.hsSrc='gfs' déjà
+// enregistré n'allumerait plus aucun bouton. À utiliser à toute lecture de
+// spot.hsSrc.
+function _normHsSrc(v) { return v === 'gfs' ? 'om' : (v || 'nc'); }
 var _forecastCache = {};  // cache BSF : { spotName → { fc, _ts } }
 
 function setHsSrc(src, skipRedraw) {
   _currentHsSrc = src;
   updateHsToggleUI();
   if(skipRedraw) return;
-  var d = (src==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
+  var isExtra = (src!=='nc' && src!=='om');
+  var d;
+  if (isExtra) {
+    // BOM/MF/ECMWF/AIFS/MARC/LOTUS (18/08/2026) : leurs données viennent du
+    // comparatif houle (_swellCache), fetché à part et plus lentement (réseau
+    // externe) — pas encore là au tout premier rendu de la page. Plutôt que
+    // d'effacer la carte/le tableau déjà affichés (comportement historique
+    // sur nc/gfs, qui EUX sont toujours prêts en même temps), on les laisse
+    // en l'état et on prévient — _renderSwellCompare() rappelle setHsSrc()
+    // une fois _swellCache prêt (même pattern que switchTable()).
+    d = _swellCacheToFcastShape(src);
+    if (!d) {
+      if (typeof showToast === 'function') {
+        var _lbl = (TABLE_SRC_DEFS[src] && TABLE_SRC_DEFS[src].label) || src;
+        showToast('⏳ ' + _lbl + ' — en cours de chargement (comparatif houle), réessaie dans un instant');
+      }
+      return;
+    }
+  } else {
+    d = (src==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
+  }
   if(!d || !d.lbl || !d.lbl.length) return;
 
   // Mettre à jour TOUS les graphiques
@@ -4681,17 +4725,25 @@ function setHsSrc(src, skipRedraw) {
     renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0],_curTideAdj);
   }
 
-  // Badge source
+  // Badge source — TABLE_SRC_DEFS comme source unique du libellé/couleur pour
+  // les 6 modèles étendus (18/08/2026) ; nc/gfs gardent leur badge historique
+  // avec la note "raf. Open-Meteo" (spécifique à meteo.nc, sans équivalent
+  // ailleurs), inchangé pour ne rien casser de ce qui marchait déjà.
   var lastDate=d.dates&&d.dates.length?d.dates[d.dates.length-1]:null;
   var lastStr=lastDate?(String(lastDate.getUTCDate?lastDate.getUTCDate():lastDate.getDate()).padStart(2,'0')+'/'+(lastDate.getUTCMonth?lastDate.getUTCMonth()+1:lastDate.getMonth()+1)):'';
   var badgeEl=document.getElementById('hs-model-badge');
   if(badgeEl) {
-    var _gfsNote = (src==='nc' && _ncFcastData && d.wGstFromGFS)
-      ? ' <span style="font-size:11px;color:rgba(79,163,199,.6);border:1px solid rgba(79,163,199,.2);padding:0px 4px;border-radius:5px;" title="Rafales non fournies par l\'API meteo.nc — complétées par Open-Meteo (modèle GFS)">raf. Open-Meteo</span>'
-      : '';
-    badgeEl.innerHTML = src==='nc'&&_ncFcastData
-      ?'<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 6px;border-radius:8px;">meteo.nc</span>'+_gfsNote+(lastStr?' <span style="font-size:11px;color:var(--faint);">au '+lastStr+'</span>':'')
-      :'<span style="background:rgba(79,163,199,.1);color:var(--muted);border:1px solid var(--border);padding:1px 6px;border-radius:8px;">GFS · Open-Meteo</span>'+(lastStr?' <span style="font-size:11px;color:var(--faint);">au '+lastStr+'</span>':'');
+    if (isExtra) {
+      var _def = TABLE_SRC_DEFS[src] || { label: src, col: '#8aa0b3', bg: 'var(--glass)' };
+      badgeEl.innerHTML = '<span style="background:'+_def.bg+';color:'+_def.col+';border:1px solid '+_rgbaFromHex(_def.col,.3)+';padding:1px 6px;border-radius:8px;">'+escapeHtml(_def.label)+'</span>'+(lastStr?' <span style="font-size:11px;color:var(--faint);">au '+lastStr+'</span>':'');
+    } else {
+      var _gfsNote = (src==='nc' && _ncFcastData && d.wGstFromGFS)
+        ? ' <span style="font-size:11px;color:rgba(79,163,199,.6);border:1px solid rgba(79,163,199,.2);padding:0px 4px;border-radius:5px;" title="Rafales non fournies par l\'API meteo.nc — complétées par Open-Meteo (modèle GFS)">raf. Open-Meteo</span>'
+        : '';
+      badgeEl.innerHTML = src==='nc'&&_ncFcastData
+        ?'<span style="background:rgba(61,186,138,.15);color:#3dba8a;border:1px solid rgba(61,186,138,.3);padding:1px 6px;border-radius:8px;">meteo.nc</span>'+_gfsNote+(lastStr?' <span style="font-size:11px;color:var(--faint);">au '+lastStr+'</span>':'')
+        :'<span style="background:rgba(79,163,199,.1);color:var(--muted);border:1px solid var(--border);padding:1px 6px;border-radius:8px;">GFS · Open-Meteo</span>'+(lastStr?' <span style="font-size:11px;color:var(--faint);">au '+lastStr+'</span>':'');
+    }
   }
 }
 
@@ -5143,16 +5195,17 @@ function _renderSpotReliabilityCard(el, spotName, byModel) {
 }
 
 
+// Généralisé le 18/08/2026 pour les 8 sources (avant : 2 boutons nc/om en dur,
+// `else` traitait tout ce qui n'était pas 'nc' comme 'om' — silencieusement
+// faux pour les 6 nouveaux). Ids `btn-src-<clé>`, mêmes couleurs que
+// TABLE_SRC_DEFS (source unique déjà utilisée par switchTable()/le badge).
 function updateHsToggleUI() {
-  var btnNc=document.getElementById('btn-src-nc'), btnOm=document.getElementById('btn-src-om');
-  if(!btnNc||!btnOm) return;
-  if(_currentHsSrc==='nc') {
-    btnNc.style.background='rgba(61,186,138,.2)'; btnNc.style.color='#3dba8a'; btnNc.style.fontWeight='600';
-    btnOm.style.background='none'; btnOm.style.color='var(--muted)'; btnOm.style.fontWeight='400';
-  } else {
-    btnOm.style.background='rgba(79,163,199,.2)'; btnOm.style.color='#4fa3c7'; btnOm.style.fontWeight='600';
-    btnNc.style.background='none'; btnNc.style.color='var(--muted)'; btnNc.style.fontWeight='400';
-  }
+  Object.keys(TABLE_SRC_DEFS).forEach(function(k) {
+    var b = document.getElementById('btn-src-' + k);
+    if (!b) return;
+    if (k === _currentHsSrc) { b.style.background = TABLE_SRC_DEFS[k].bg; b.style.color = TABLE_SRC_DEFS[k].col; b.style.fontWeight = '600'; }
+    else { b.style.background = 'none'; b.style.color = 'var(--muted)'; b.style.fontWeight = '400'; }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6018,12 +6071,20 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     _omFcastData={lbl:omLbl,sw1h:omSw1h,sw2h:omSw2h,wndH:omWndH,totH:omTotH,sw1t:omSw1t,sw1d:omSw1d,sw2d:omSw2d,sw2t:omSw2t,wSpd:omWSpd,wGst:omWGst,wDir:omWDir,pwr:omPwr,dates:omDates,vis:omVis,cld:omCld,rain:omRain,cldL:omCldL,cldM:omCldM,cldH:omCldH,tAir:omTAir,sst:omSst,code:omCode,
       sw2Native: !!omH.secondary_swell_wave_height};
   }
-  _currentHsSrc = useNC ? 'nc' : 'om';
+  // Respecte spot.hsSrc (⚙ Réglages spot) au lieu de toujours retomber sur
+  // "nc si dispo sinon om" — trouvé le 18/08/2026 : AVANT ce correctif, ces
+  // deux lignes écrasaient inconditionnellement tout choix venant du spot à
+  // CHAQUE chargement de prévision, rendant le sélecteur "Source houle par
+  // défaut" du dialogue cosmétique (il changeait les boutons un instant, puis
+  // était aussitôt annulé dès que loadForecast() résolvait). 'nc' garde son
+  // repli existant si meteo.nc est indisponible ce coup-ci (token expiré,
+  // etc.) — pas de régression sur les spots qui n'ont jamais touché ce réglage.
+  var _prefHsSrc = spot && spot.hsSrc ? _normHsSrc(spot.hsSrc) : null;
+  _currentHsSrc = !_prefHsSrc ? (useNC ? 'nc' : 'om')
+                : _prefHsSrc === 'nc' ? (useNC ? 'nc' : 'om')
+                : _prefHsSrc; // 'om' ou un des 6 modèles étendus (BOM/MF/ECMWF/AIFS/MARC/LOTUS)
   updateHsToggleUI();
-
-  // Badge modèle: initialiser le toggle sans redessiner (mkStackedHs vient après)
-  _currentHsSrc = useNC ? 'nc' : 'om';
-  setHsSrc(_currentHsSrc, true); // skipRedraw=true
+  setHsSrc(_currentHsSrc, true); // skipRedraw=true — le vrai rendu vient plus bas / du hook _renderSwellCompare
   // Désactiver le bouton NC si pas de données meteo.nc
   var btnNc=document.getElementById('btn-src-nc');
   if(btnNc) { btnNc.style.opacity=useNC?'1':'0.4'; btnNc.title=useNC?'Données officielles Météo-France Nouvelle-Calédonie (meteo.nc) — plus précises localement, nécessitent un token.':'Données meteo.nc non disponibles pour ce spot'; }
@@ -8396,6 +8457,14 @@ async function _renderSwellCompare() {
   try {
     if (typeof _tableSrc !== 'undefined' && _tableSrc !== 'nc' && _tableSrc !== 'om' && typeof switchTable === 'function') switchTable(_tableSrc);
   } catch(_){}
+  // Même chose pour la carte "conditions actuelles"/l'histogramme Hs empilé
+  // (18/08/2026) : si la source par défaut du spot (⚙ Réglages spot) est un
+  // des 6 modèles étendus, setHsSrc() a pu échouer au tout premier appel
+  // (avant que ce fetch, plus lent, réseau externe, n'ait résolu) — on
+  // rappelle ici pour ne pas rester bloqué sur nc/gfs sans que rien ne le dise.
+  try {
+    if (typeof _currentHsSrc !== 'undefined' && _currentHsSrc !== 'nc' && _currentHsSrc !== 'om' && typeof setHsSrc === 'function') setHsSrc(_currentHsSrc);
+  } catch(_){}
   // Archivage best-effort (table optionnelle, no-op si absente) — ne bloque
   // jamais le rendu, lancé après coup sans attendre.
   try {
@@ -9675,7 +9744,7 @@ async function bsfSelectSpot(spotIdx, startMs) {
   saveActiveSpot();
   loadScoreParams(SPOTS[spotIdx]);
   var sp = SPOTS[spotIdx];
-  if (sp && sp.hsSrc) { _currentHsSrc = sp.hsSrc; updateHsToggleUI(); }
+  if (sp && sp.hsSrc) { _currentHsSrc = _normHsSrc(sp.hsSrc); updateHsToggleUI(); }
   _recenterSpotMap(spotIdx);
   await loadForecast(spotIdx);
   // Curseur sur le créneau choisi (idx le plus proche de startMs dans les données actives) —
@@ -11183,7 +11252,14 @@ var TABLE_SRC_DEFS = {
   mf:    { btn:'tbl-btn-mf',    label:'MF global',       bg:_rgbaFromHex(MODEL_STYLE.mf.col,.2),    col:MODEL_STYLE.mf.col },
   ecmwf: { btn:'tbl-btn-ecmwf', label:'ECMWF',           bg:_rgbaFromHex(MODEL_STYLE.ecmwf.col,.2), col:MODEL_STYLE.ecmwf.col },
   aifs:  { btn:'tbl-btn-aifs',  label:'AIFS',            bg:_rgbaFromHex(MODEL_STYLE.aifs.col,.2),  col:MODEL_STYLE.aifs.col },
-  marc:  { btn:'tbl-btn-marc',  label:'MARC WW3',        bg:_rgbaFromHex(MODEL_STYLE.marc.col,.2),  col:MODEL_STYLE.marc.col }
+  marc:  { btn:'tbl-btn-marc',  label:'MARC WW3',        bg:_rgbaFromHex(MODEL_STYLE.marc.col,.2),  col:MODEL_STYLE.marc.col },
+  // Ajouté le 18/08/2026 — LOTUS est dans _swellCache depuis le 02/08 (branché
+  // pour le comparatif) mais avait été oublié ici. windKt/windDir/windGustKt
+  // sont déjà dans ses points (cf. _fetchLotusArchive), donc le chemin
+  // générique de _swellCacheToTableData (fallback `p.windKt`) marche déjà
+  // sans cas particulier comme ecmwf/aifs (qui, eux, n'ont pas de vent dans
+  // leur flux houle et doivent aller le chercher dans _aromeCmpCache).
+  lotus: { btn:'tbl-btn-lotus', label:'LOTUS',           bg:_rgbaFromHex(MODEL_STYLE.lotus.col,.2), col:MODEL_STYLE.lotus.col }
 };
 // Convertit _swellCache[key] (points {ms,h,t,dir,totH,windSeaH,windKt,windDir,
 // windGustKt,...} — cf. _fetchBomWw3/_fetchMeteoFranceWave/_fetchMarcWave) vers
@@ -11251,7 +11327,28 @@ function _swellCacheToTableData(key) {
   return { dates:dates,sw1h:sw1h,sw1t:sw1t,sw1d:sw1d,sw2h:sw2h,sw2d:sw2d,wSpd:wSpd,wGst:wGst,wDir:wDir,pwr:pwr,sst:sst,totH:totH,wndH:wndH };
 }
 
-var _tableSrc = 'nc'; // 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf' | 'aifs' | 'marc'
+// Étend _swellCacheToTableData() avec `.lbl` (libellés d'axe X "HHh"/"J/M HHh",
+// même format que celui construit en dur pour nc/gfs, cf. renderForecast) — le
+// seul champ qui manquait pour que mkStackedHs()/renderCurrent() puissent
+// traiter BOM/MF/ECMWF/AIFS/MARC/LOTUS exactement comme nc/gfs. Ajouté le
+// 18/08/2026 pour que ⚙ Réglages spot puisse proposer ces modèles en "source
+// houle par défaut" (avant : seuls meteo.nc/GFS existaient dans ce sélecteur,
+// alors que 6 autres tournent déjà dans le comparatif juste en dessous).
+function _swellCacheToFcastShape(key) {
+  var d = _swellCacheToTableData(key);
+  if (!d) return null;
+  var lbl = [];
+  d.dates.forEach(function(dt, i) {
+    var hNC = dt.getUTCHours(), s = String(hNC).padStart(2,'0') + 'h';
+    var prev = i > 0 ? d.dates[i-1] : null;
+    if (!prev || prev.getUTCDate() !== dt.getUTCDate()) s = dt.getUTCDate() + '/' + (dt.getUTCMonth()+1) + ' ' + s;
+    lbl.push(s);
+  });
+  d.lbl = lbl;
+  return d;
+}
+
+var _tableSrc = 'nc'; // 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf' | 'aifs' | 'marc' | 'lotus'
 function switchTable(src) {
   _tableSrc = src;
   Object.keys(TABLE_SRC_DEFS).forEach(function(k) {
@@ -17433,7 +17530,7 @@ function showSpotSettings(forceOpen) {
   var curTide = spot.tideId || '9881852';
   var curObs  = spot.obsId  || '9881836';
   var curMarine = spot.marineId || '';
-  var curHsSrc = spot.hsSrc || 'nc'; // 'nc' ou 'gfs'
+  var curHsSrc = _normHsSrc(spot.hsSrc); // clé canonique 'om' (jamais 'gfs', cf. _normHsSrc)
 
   var portOptions = PORTS_LIST.map(function(p) {
     return '<option value="'+p.id+'"'+(p.id===curTide?' selected':'')+'>'+escapeHtml(p.name)+'</option>';
@@ -17486,18 +17583,27 @@ function showSpotSettings(forceOpen) {
     +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:11px;box-sizing:border-box;">'
     +'<div style="font-size:11px;color:var(--faint);margin-top:3px;">Le nombre après « s= » dans l\'URL du spot windguru.cz. Vide = pas de carte AROME pour ce spot.</div>'
     +'</div>'
-    // Source houle
+    // Source houle — 8 modèles (18/08/2026, avant : seuls meteo.nc/GFS étaient
+    // proposés ici alors que 6 autres (BOM/MF/ECMWF/AIFS/MARC/LOTUS) tournent
+    // déjà dans le comparatif houle de previsions.html. Couleurs/libellés :
+    // TABLE_SRC_DEFS (hex, déjà la source unique du tableau/toggle Hs) ;
+    // description au survol : SWELL_MODELS.desc (SWELL_MODELS utilise la clé
+    // 'gfs' pour ce même modèle, TABLE_SRC_DEFS/le reste du site 'om' — cf.
+    // _normHsSrc). BOM/MF/ECMWF/AIFS/MARC/LOTUS dépendent du comparatif houle
+    // (_swellCache, réseau externe, plus lent) : absents/vides tant qu'il n'a
+    // pas fini de charger sur previsions.html, cf. setHsSrc().
     +'<div style="margin-bottom:16px;">'
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Source houle par défaut</div>'
-    +'<div style="display:flex;gap:6px;">'
-    +'<button id="ss-nc" class="ss-src-btn" data-src="nc" '
-    +'style="flex:1;padding:7px;border:1px solid rgba(61,186,138,.3);border-radius:6px;'
-    +'cursor:pointer;font-size:11px;background:'+(curHsSrc==='nc'?'rgba(61,186,138,.2)':'none')
-    +';color:'+(curHsSrc==='nc'?'#3dba8a':'var(--muted)')+';">meteo.nc</button>'
-    +'<button id="ss-gfs" class="ss-src-btn" data-src="gfs" '
-    +'style="flex:1;padding:7px;border:1px solid rgba(79,163,199,.3);border-radius:6px;'
-    +'cursor:pointer;font-size:11px;background:'+(curHsSrc==='gfs'?'rgba(79,163,199,.2)':'none')
-    +';color:'+(curHsSrc==='gfs'?'#4fa3c7':'var(--muted)')+';">GFS</button>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+    + Object.keys(TABLE_SRC_DEFS).map(function(k) {
+        var def = TABLE_SRC_DEFS[k];
+        var sm = SWELL_MODELS.filter(function(m){ return m.key === (k === 'om' ? 'gfs' : k); })[0];
+        var on = curHsSrc === k;
+        return '<button class="ss-src-btn" data-src="'+k+'" title="'+escapeHtml(sm ? sm.desc : def.label)+'" '
+          +'style="flex:1 1 auto;min-width:72px;padding:7px 8px;border:1px solid '+_rgbaFromHex(def.col,.3)+';border-radius:6px;'
+          +'cursor:pointer;font-size:11px;white-space:nowrap;background:'+(on?def.bg:'none')
+          +';color:'+(on?def.col:'var(--muted)')+';">'+escapeHtml(def.label)+'</button>';
+      }).join('')
     +'</div></div>'
 
     // ── SPOTS DE SURF ──
@@ -17611,16 +17717,22 @@ function showSpotSettings(forceOpen) {
   // Stats journal (async) — lie les vraies sessions aux réglages ci-dessous
   _fillJournalStatsBox(spot);
 
-  // Boutons source houle
+  // Boutons source houle — généralisé aux 8 modèles (18/08/2026). Couleur du
+  // bouton actif lue dans TABLE_SRC_DEFS[data-src] au lieu des 2 cas nc/gfs en
+  // dur d'avant. `data-active` marque le choix explicitement (au lieu de relire
+  // la couleur inline au moment d'enregistrer, cf. handler ss-save) : plus
+  // fiable, et lisible même si le CSS change un jour.
   div.querySelectorAll('.ss-src-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
       div.querySelectorAll('.ss-src-btn').forEach(function(b) {
         b.style.background = 'none';
         b.style.color = 'var(--muted)';
+        b.removeAttribute('data-active');
       });
       var src = this.getAttribute('data-src');
-      if (src === 'nc') { this.style.background='rgba(61,186,138,.2)'; this.style.color='#3dba8a'; }
-      else              { this.style.background='rgba(79,163,199,.2)'; this.style.color='#4fa3c7'; }
+      var def = TABLE_SRC_DEFS[src];
+      if (def) { this.style.background = def.bg; this.style.color = def.col; }
+      this.setAttribute('data-active', '1');
     });
   });
 
@@ -17654,9 +17766,11 @@ function showSpotSettings(forceOpen) {
       var newTide   = document.getElementById('ss-tide').value;
       var newObs    = document.getElementById('ss-obs').value;
       var newMarine = document.getElementById('ss-marine').value;
-      var ncBtn = document.getElementById('ss-nc');
-      var gfsBtn = document.getElementById('ss-gfs');
-      var newHsSrc = (ncBtn && ncBtn.style.color && ncBtn.style.color.includes('3dba8a')) ? 'nc' : 'gfs';
+      // data-active posé par le handler de clic ci-dessus ; si l'utilisateur n'a
+      // touché à rien, aucun bouton n'a ce marqueur → on garde curHsSrc (valeur
+      // initiale du dialogue), pas un 'gfs' en dur qui écraserait un autre choix.
+      var activeSrcBtn = div.querySelector('.ss-src-btn[data-active="1"]');
+      var newHsSrc = activeSrcBtn ? activeSrcBtn.getAttribute('data-src') : curHsSrc;
 
       // Trouver les noms correspondants
       var portObj   = PORTS_LIST.find ? PORTS_LIST.find(function(p){return p.id===newTide;})     : null;
