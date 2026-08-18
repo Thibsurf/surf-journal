@@ -3713,6 +3713,17 @@ var SPOTS = (function() {
         if (spot.name === 'Ilot Ténia' && spot.obsId === '9881836') {
           spot.obsId = '9880904'; spot.obsName = 'Bourake';
         }
+        // Migration ciblée : Ouano était livré avec tideId pointant sur NOUMÉA
+        // (9881852, incohérent avec le tideName affiché) — corrigé dans
+        // DEFAULT_SPOTS le 04/08/2026 (cf. commentaire au-dessus de la définition
+        // de ce spot plus haut), mais un appareil qui avait DÉJÀ un localStorage à
+        // cette date n'a jamais relu DEFAULT_SPOTS (retour utilisateur 18/08/2026 :
+        // Ouano affichait « Bourake » sur mobile, correctement « Bourail » sur un
+        // poste au localStorage plus récent/vidé). Comparaison par marineId, pas
+        // par tideName déjà erroné dans les deux sens selon la version héritée.
+        if (spot.marineId === '9880323' && spot.tideId !== '9880352') {
+          spot.tideId = '9880352'; spot.tideName = 'Bourail';
+        }
         // Snap automatique : si coords très proches d'un marine point ET pas déplacé manuellement
         if (spot.marineId && !spot._posUserDefined) {
           var ref = MARINE_SPOTS.find(function(m){ return m.id === spot.marineId; });
