@@ -58,6 +58,49 @@ function showScoreSettings() {
       +'</div>';
   }
 
+  // Selecteur SATELLITE du sens de deferlement (19/08/2026, demande utilisateur :
+  // « dans le parametre du spot il faudrait une vue sur le spot (satellite) et
+  // orienter un vecteur qui indique la direction de deferlement de la vague »).
+  // Remplace le compas « vent ideal », qui demandait de convertir de tete une
+  // normale de recif en direction de vent offshore — personne ne fait ca juste,
+  // et c'est precisement ce qui avait laisse le cap par defaut a 270 alors que
+  // les spots regardent au 225. Ici on voit le recif et on trace la fleche dans
+  // le sens ou la vague deroule : le reste s'en deduit.
+  //
+  // L'image vient de updateRoseSatBg() (previsions.html) : composite Esri World
+  // Imagery 3x3 tuiles au zoom 15, ~3,4 km de cote — assez pour voir une passe.
+  // Si les tuiles ne chargent pas (hors ligne), le disque sombre et la rose SVG
+  // restent utilisables : on retombe exactement sur l'ancien compas.
+  function satVectorWidget(initBreakDeg) {
+    return '<div style="margin-bottom:10px;">'
+      +'<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;">'
+      +'\ud83c\udfc4 Sens de d\u00e9ferlement de la vague</div>'
+      +'<div id="sc-sat-wrap" style="position:relative;width:100%;max-width:260px;aspect-ratio:1;'
+      +'margin:0 auto;border-radius:10px;overflow:hidden;border:1px solid var(--border);'
+      +'background:#0d1f3c;cursor:crosshair;touch-action:none;">'
+      +'<img id="sc-sat-img" alt="Vue satellite du spot" '
+      +'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">'
+      +'<svg id="sc-sat-svg" viewBox="0 0 240 240" '
+      +'style="position:absolute;inset:0;width:100%;height:100%;">'
+      // Fenetre de houle : d'ou la houle peut entrer (donc vers le large)
+      +'<path id="sc-sat-win" fill="#4fa3c7" fill-opacity=".22" stroke="#4fa3c7" '
+      +'stroke-opacity=".55" stroke-width="1.5"></path>'
+      +'<circle cx="120" cy="120" r="4" fill="#fff" fill-opacity=".9"/>'
+      // Fleche de deferlement : vers la terre
+      +'<line id="sc-sat-arr" x1="120" y1="120" stroke="#e8a057" stroke-width="4" stroke-linecap="round"/>'
+      +'<polygon id="sc-sat-head" fill="#e8a057"></polygon>'
+      +'<text id="sc-sat-n" x="120" y="14" text-anchor="middle" font-size="11" '
+      +'fill="#fff" fill-opacity=".75" font-family="DM Sans" '
+      +'style="paint-order:stroke;stroke:#000;stroke-width:3px;stroke-opacity:.5;">N</text>'
+      +'</svg></div>'
+      +'<div style="font-size:11px;color:var(--faint);margin:6px 0 2px;text-align:center;">'
+      +'Trace la fl\u00e8che dans le sens o\u00f9 la vague d\u00e9roule en cassant (vers la terre).</div>'
+      +'<div id="sc-sat-readout" style="font-size:11px;color:var(--muted);text-align:center;'
+      +'margin-bottom:8px;line-height:1.6;"></div>'
+      +'<input type="hidden" id="hid-wind" value="'+((initBreakDeg+180)%360)+'"/>'
+      +'</div>';
+  }
+
   function sliderRow(label, id, val, min, max, step, unit) {
     return '<div style="margin-bottom:10px;">'
       +'<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
@@ -81,13 +124,21 @@ function showScoreSettings() {
     +sliderRow('Hs mini pour surfer (m)','minHs',p.minHs,0.1,1.5,0.1,' m')
     +sliderRow('Période mini (s)','minPeriod',p.minPeriod||8,4,16,1,' s')
     +sliderRow('Puissance mini (W/m)','minPwr',(p.minPwr!=null?p.minPwr:1),0,10,0.5,' W/m')
+    +sliderRow('Mer de vent jusqu&#39;à (s)','windSeaT',(p.windSeaT!=null?p.windSeaT:10),6,14,1,' s')
+    +'<div style="font-size:11px;color:var(--faint);margin:-6px 0 10px;">À cette période et en dessous, la mer est levée sur place par l&#39;alizé : courte, sans mur. Score <b>plafonné à &laquo; Passable &raquo;</b> quelles que soient la taille et l&#39;absence de vent.</div>'
+    +sliderRow('Houle longue à partir de (s)','groundSwellT',(p.groundSwellT!=null?p.groundSwellT:13),9,20,1,' s')
+    +'<div style="font-size:11px;color:var(--faint);margin:-6px 0 12px;">Houle qui a voyagé et s&#39;est triée : plafond levé et bonus. Entre les deux seuils, le plafond monte progressivement (Bien, puis Très bien).</div>'
 
     // Direction idéale de la houle (compas)
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">'
-    +'Direction idéale de la houle <span style="color:var(--faint);font-size:11px;">(provenance - d&#39;ou vient la houle)</span>'
+    +'Centre de la fen&ecirc;tre de houle <span style="color:var(--faint);font-size:11px;">(provenance - d&#39;ou vient la houle)</span>'
     +'</div>'
     +compassWidget('swell','Houle - direction de provenance', p.swellDirIdeal||120, '#4fa3c7')
-    +'<div style="font-size:11px;color:var(--faint);margin-bottom:14px;">Le score monte si la houle vient de cette direction ±45°</div>'
+    +sliderRow('Ouverture de la fen&ecirc;tre (\u00b1\u00b0)','swellWindowHalf',(p.swellWindowHalf!=null?p.swellWindowHalf:45),15,90,5,'\u00b0')
+    +'<div style="font-size:11px;color:var(--faint);margin-bottom:6px;">La houle compte comme <b>dans la fen&ecirc;tre</b> \u00e0 l&#39;int&eacute;rieur de cet arc, puis p&eacute;nalis&eacute;e progressivement en dehors. Passe encaiss&eacute;e : \u00b120-30\u00b0. R&eacute;cif ouvert : \u00b145-60\u00b0.</div>'
+    +'<div style="text-align:center;margin-bottom:14px;"><button id="sc-align-reef" type="button" '
+    +'style="background:var(--glass);border:1px solid var(--border);color:var(--muted);'
+    +'border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;">\u21bb Centrer la fen&ecirc;tre sur le r&eacute;cif</button></div>'
 
     // ── SECTION VENT ──
     +'<div style="font-size:11px;font-weight:700;color:#e8a057;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">💨 Vent</div>'
@@ -96,12 +147,12 @@ function showScoreSettings() {
     +sliderRow('Vent max avant malus (nds)','windMalusKt',p.windMalusKt,5,30,1,' nds')
     +sliderRow('Rafales max (nds)','gustMalusKt',p.gustMalusKt,10,40,1,' nds')
 
-    // Direction idéale du vent (compas) — on veut du vent OFFSHORE
-    +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">'
-    +'Direction idéale du vent <span style="color:var(--faint);font-size:11px;">(vers o&#249; souffle le vent)</span>'
-    +'</div>'
-    +compassWidget('wind','Vent - direction vers laquelle il souffle', p.windDirIdeal||270, '#e8a057')
-    +'<div style="font-size:11px;color:var(--faint);margin-bottom:14px;">Le score monte si le vent est dans cette direction ±60° (offshore idéal = vent dos à la mer)</div>'
+    // Sens de déferlement tracé sur le satellite — remplace le compas « vent
+    // idéal ». La valeur stockée reste `windDirIdeal` (le cap du large, opposé à
+    // la flèche) : tous les autres consommateurs de ce champ sont inchangés.
+    +satVectorWidget(((p.windDirIdeal==null?225:p.windDirIdeal)+180)%360)
+    +'<div style="font-size:11px;color:var(--faint);margin-bottom:8px;">La fl&egrave;che donne la <b>normale au r&eacute;cif</b>, et c&#39;est elle qui classe le vent : offshore (&plusmn;45&deg; du large, il peigne la vague) &gt; sideshore &gt; onshore (au-del&agrave; de 135&deg;, il la d&eacute;sordonne). La zone bleue est la <b>fen&ecirc;tre de houle</b> : les directions d&#39;o&ugrave; la houle entre.</div>'
+    +'<div id="sc-dir-warn" style="font-size:11px;line-height:1.5;border-radius:6px;padding:0;margin-bottom:14px;"></div>'
 
     // ── SECTION MARÉE ──
     // Ce réglage n'existait nulle part : `_tideAdj()` lisait une préférence que
@@ -130,8 +181,9 @@ function showScoreSettings() {
     // Légende
     +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:14px;font-size:11px;color:var(--muted);line-height:1.8;">'
     +'<b style="color:var(--text);">Guide :</b><br>'
-    +'Houle ENE/E/SE (vient de 90-135°) = bon pour côte ouest NC<br>'
-    +'Vent Alizé offshore: souffle vers O (270°) = offshore parfait côte ouest<br>'
+    +'La <b>période</b> décide de la nature de la vague : &le; 10 s = mer de vent (plafonné), &ge; 13 s = houle longue.<br>'
+    +'Le <b>cap du large</b> classe le vent : offshore (peigne la vague) &gt; sideshore &gt; onshore (la désordonne).<br>'
+    +'Les deux compas doivent pointer à peu près dans la <b>même direction</b> : la houle arrive du large, le vent offshore y souffle.<br>'
     +'Le vecteur → montre la <b>direction vers laquelle</b> le vent/la houle va'
     +'</div>'
 
@@ -151,6 +203,7 @@ function showScoreSettings() {
   });
 
   // ── Compas interactif ──
+  var _scUpdateSwellCompass = null;
   function initCompass(idPrefix) {
     var svg=document.getElementById('cmp-'+idPrefix);
     if(!svg) return;
@@ -185,7 +238,12 @@ function showScoreSettings() {
       if(valEl) valEl.textContent=deg+'°';
       if(dirEl) dirEl.textContent=degToCompass(deg);
       if(hidEl) hidEl.value=deg;
+      refreshDirCoherence();
+      // Le compas houle porte le centre de la fenetre : le satellite la redessine.
+      if (idPrefix === 'swell' && typeof drawSatVector === 'function') drawSatVector();
     }
+    // Expose pour le bouton « centrer la fenetre sur le recif ».
+    if (idPrefix === 'swell') _scUpdateSwellCompass = updateCompass;
     svg.addEventListener('mousedown',function(e){dragging=true;updateCompass(getAngle(e));e.preventDefault();});
     svg.addEventListener('mousemove',function(e){if(dragging){updateCompass(getAngle(e));e.preventDefault();}});
     svg.addEventListener('mouseup',function(){dragging=false;});
@@ -197,13 +255,107 @@ function showScoreSettings() {
     var hidEl=document.getElementById('hid-'+idPrefix);
     if(hidEl) updateCompass(parseInt(hidEl.value)||0);
   }
+  function refreshDirCoherence(){
+    var el=document.getElementById('sc-dir-warn'); if(!el) return;
+    var sw=document.getElementById('hid-swell'), wd=document.getElementById('hid-wind');
+    if(!sw||!wd) return;
+    var d=Math.abs(((+sw.value - +wd.value + 180 + 360) % 360) - 180);
+    if(d<=90){ el.style.cssText='font-size:11px;line-height:1.5;border-radius:6px;padding:0;margin-bottom:14px;'; el.innerHTML=''; return; }
+    el.style.cssText='font-size:11px;line-height:1.5;border-radius:6px;padding:8px 10px;margin-bottom:14px;'
+      +'background:rgba(193,101,74,.12);border:1px solid rgba(193,101,74,.45);color:var(--text);';
+    el.innerHTML='⚠ Ces deux caps sont à <b>'+Math.round(d)+'°</b> l&#39;un de l&#39;autre. '
+      +'Une houle vient du large, et le vent offshore souffle vers le large : ils devraient pointer du même côté (&lt; 90°). '
+      +'Tant qu&#39;ils se contredisent, le classement onshore / offshore du score est faux pour ce spot.';
+  }
+  // ── Widget satellite : dessin + interaction ───────────────────────────────
+  // Conventions de cap : 0 = N, 90 = E. Ecran : x = cx + r.sin(b), y = cy - r.cos(b).
+  function _satPt(bearing, r) {
+    var a = bearing * Math.PI / 180;
+    return [120 + r * Math.sin(a), 120 - r * Math.cos(a)];
+  }
+  function drawSatVector() {
+    var hid = document.getElementById('hid-wind');
+    if (!hid) return;
+    var reef = +hid.value;                 // cap du large (normale au recif)
+    var brk  = (reef + 180) % 360;         // sens de deferlement (vers la terre)
+    var arr = document.getElementById('sc-sat-arr');
+    var head = document.getElementById('sc-sat-head');
+    var win = document.getElementById('sc-sat-win');
+    var ro = document.getElementById('sc-sat-readout');
+    if (arr) { var e = _satPt(brk, 78); arr.setAttribute('x2', e[0].toFixed(1)); arr.setAttribute('y2', e[1].toFixed(1)); }
+    if (head) {
+      var h = _satPt(brk, 96), l = _satPt(brk - 12, 74), r2 = _satPt(brk + 12, 74);
+      head.setAttribute('points', h[0].toFixed(1)+','+h[1].toFixed(1)+' '+l[0].toFixed(1)+','+l[1].toFixed(1)+' '+r2[0].toFixed(1)+','+r2[1].toFixed(1));
+    }
+    // Fenetre de houle : centree sur swellDirIdeal (le compas juste au-dessus),
+    // pas sur le recif — les deux coincident par defaut mais restent separables.
+    var swEl = document.getElementById('hid-swell');
+    var halfEl = document.getElementById('sc-swellWindowHalf');
+    var ctr = swEl ? +swEl.value : reef;
+    var half = halfEl ? +halfEl.value : 45;
+    if (win) {
+      var a1 = _satPt(ctr - half, 112), a2 = _satPt(ctr + half, 112);
+      var largeArc = (half * 2) > 180 ? 1 : 0;
+      win.setAttribute('d', 'M120,120 L'+a1[0].toFixed(1)+','+a1[1].toFixed(1)
+        +' A112,112 0 '+largeArc+' 1 '+a2[0].toFixed(1)+','+a2[1].toFixed(1)+' Z');
+    }
+    if (ro) {
+      var lo = Math.round((ctr - half + 360) % 360), hi = Math.round((ctr + half) % 360);
+      ro.innerHTML = 'D\u00e9ferle vers <b style="color:#e8a057;">'+degToCompass(brk)+'</b> ('+Math.round(brk)+'\u00b0)'
+        + ' \u00b7 large au <b>'+degToCompass(reef)+'</b>'
+        + '<br><span style="color:#4fa3c7;">Fen\u00eatre de houle '+lo+'\u00b0 \u2192 '+hi+'\u00b0</span>';
+    }
+    refreshDirCoherence();
+  }
+  (function initSatVector() {
+    var wrap = document.getElementById('sc-sat-wrap');
+    if (!wrap) return;
+    // L'image satellite est construite par previsions.html (composite de tuiles
+    // Esri). Absente = pas bloquant : le disque sombre fait office de rose.
+    try {
+      var sp = SPOTS[currentSpot];
+      if (sp && typeof updateRoseSatBg === 'function') updateRoseSatBg(sp.lat, sp.lon, 'sc-sat-img');
+    } catch (e) {}
+    var dragging = false;
+    function bearingAt(ev) {
+      var r = wrap.getBoundingClientRect();
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      var x = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      var y = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      return Math.round(((Math.atan2(x - cx, cy - y) * 180 / Math.PI) % 360 + 360) % 360);
+    }
+    function setFromEvent(ev) {
+      // L'utilisateur trace le DEFERLEMENT ; on stocke le cap du large, opposé.
+      var hid = document.getElementById('hid-wind');
+      if (hid) { hid.value = (bearingAt(ev) + 180) % 360; drawSatVector(); }
+    }
+    wrap.addEventListener('mousedown', function(e){ dragging = true; setFromEvent(e); e.preventDefault(); });
+    wrap.addEventListener('mousemove', function(e){ if (dragging) { setFromEvent(e); e.preventDefault(); } });
+    window.addEventListener('mouseup', function(){ dragging = false; });
+    wrap.addEventListener('touchstart', function(e){ dragging = true; setFromEvent(e); e.preventDefault(); }, {passive:false});
+    wrap.addEventListener('touchmove', function(e){ if (dragging) { setFromEvent(e); e.preventDefault(); } }, {passive:false});
+    wrap.addEventListener('touchend', function(){ dragging = false; });
+  })();
+
   initCompass('swell');
-  initCompass('wind');
+  drawSatVector();
+  var _alignBtn = document.getElementById('sc-align-reef');
+  if (_alignBtn) _alignBtn.onclick = function() {
+    // Aligne le centre de la fenetre de houle sur la normale au recif : le cas
+    // normal (le recif regarde le large d'ou vient la houle). Sert de rattrapage
+    // quand la calibration journal a pose un centre issu de peu de sessions.
+    var hid = document.getElementById('hid-wind'), sw = document.getElementById('hid-swell');
+    if (!hid || !sw) return;
+    sw.value = hid.value;
+    if (typeof _scUpdateSwellCompass === 'function') _scUpdateSwellCompass(+hid.value);
+    drawSatVector();
+  };
+  var _halfEl = document.getElementById('sc-swellWindowHalf');
+  if (_halfEl) _halfEl.addEventListener('input', drawSatVector);
+  refreshDirCoherence();
 
   document.getElementById('sc-close-btn').onclick=function(){div.remove();};
   document.getElementById('sc-reset').onclick=function(){
-    SCORE_PARAMS={minHs:0.4,maxHs:4.0,minPeriod:8,swellDirIdeal:120,windDirIdeal:270,
-      onshoreLimit:45,offshoreMin:135,windMalusKt:18,gustMalusKt:25};
     var sp=SPOTS[currentSpot]; if(sp){delete sp.scoreParams;saveSpots();}
     try{localStorage.removeItem('surf-score-params');}catch(e){}
     SCORE_PARAMS=Object.assign({},_DEFAULT_SCORE);
@@ -214,6 +366,9 @@ function showScoreSettings() {
     SCORE_PARAMS.minHs=+document.getElementById('sc-minHs').value;
     SCORE_PARAMS.minPeriod=+document.getElementById('sc-minPeriod').value;
     SCORE_PARAMS.minPwr=+document.getElementById('sc-minPwr').value;
+    SCORE_PARAMS.windSeaT=+document.getElementById('sc-windSeaT').value;
+    SCORE_PARAMS.groundSwellT=+document.getElementById('sc-groundSwellT').value;
+    SCORE_PARAMS.swellWindowHalf=+document.getElementById('sc-swellWindowHalf').value;
     SCORE_PARAMS.windCalmKt=+document.getElementById('sc-windCalmKt').value;
     SCORE_PARAMS.windMalusKt=+document.getElementById('sc-windMalusKt').value;
     SCORE_PARAMS.gustMalusKt=+document.getElementById('sc-gustMalusKt').value;

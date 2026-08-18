@@ -3726,6 +3726,21 @@ var SPOTS = (function() {
         if (spot.name === 'Ilot Ténia' && spot.obsId === '9881836') {
           spot.obsId = '9880904'; spot.obsName = 'Bourake';
         }
+        // Migration 19/08/2026 : les deux caps de score livrés jusque-là (houle
+        // 120°, vent 270°) décrivaient un récif face ESE ET un récif face O en
+        // même temps — 150° d'écart, physiquement impossible : une houle vient du
+        // large, et le vent offshore y souffle. Le classement onshore/offshore se
+        // mesure désormais sur le cap du large SEUL, donc le laisser faux fausse
+        // tout l'effet du vent. On ne corrige QUE le couple exact hérité, jamais
+        // un réglage utilisateur même partiel — recalé sur 225°, l'orientation de
+        // la barrière sud-ouest où sont les 8 spots par défaut (l'utilisateur :
+        // « la barrière et ses passes, côté sud-ouest, captent la houle surtout
+        // entre 180 et 270° »).
+        if (spot.scoreParams && spot.scoreParams.swellDirIdeal === 120
+            && spot.scoreParams.windDirIdeal === 270) {
+          spot.scoreParams.swellDirIdeal = 225;
+          spot.scoreParams.windDirIdeal  = 225;
+        }
         // Migration ciblée : Ouano était livré avec tideId pointant sur NOUMÉA
         // (9881852, incohérent avec le tideName affiché) — corrigé dans
         // DEFAULT_SPOTS le 04/08/2026 (cf. commentaire au-dessus de la définition
@@ -9580,6 +9595,7 @@ function _describeSession(s) {
   var limite = 'conditions stables';
   if (p.ws > (SCORE_PARAMS.windMalusKt || 18)) limite = 'vent fort (' + Math.round(p.ws) + 'nds)';
   else if (p.wg > (SCORE_PARAMS.gustMalusKt || 25)) limite = 'rafales';
+  else if (p.T && typeof periodClass === 'function' && periodClass(p.T).cap < 5) limite = periodClass(p.T).label;
   else if (p.T && p.T < (SCORE_PARAMS.minPeriod || 8)) limite = 'période courte (' + p.T + 's)';
   else if (p.tide && (p.tide.level01 < 0.2 || p.tide.level01 > 0.85)) limite = 'marée extrême';
   var spotObj = SPOTS[s.spotIdx];
@@ -10444,7 +10460,10 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p,tideAdj){
     hs:hs, T:T, dir:dir, hs2:hs2, tot:tot, ws:ws, wg:wg, wd:wd, p:p,
     score: surf.score, scoreLabel: surf.label,
     onshoreLimit: (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.onshoreLimit : 45),
-    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135)
+    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135),
+    // Cap du large du spot : même référence que calcSurfScore pour que la
+    // carte partagée ne contredise jamais le score qu'elle affiche.
+    reefDir:      (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.windDirIdeal : 225)
   };
 }
 
@@ -10488,7 +10507,10 @@ function _buildShareDayPayload() {
     ws: wsV, wg: wgV, wd: wdV, p: pV,
     score: surf ? surf.score : null, scoreLabel: surf ? surf.label : '',
     onshoreLimit: (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.onshoreLimit : 45),
-    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135)
+    offshoreMin:  (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.offshoreMin  : 135),
+    // Cap du large du spot : même référence que calcSurfScore pour que la
+    // carte partagée ne contredise jamais le score qu'elle affiche.
+    reefDir:      (typeof SCORE_PARAMS!=='undefined' ? SCORE_PARAMS.windDirIdeal : 225)
   };
 }
 
@@ -17628,11 +17650,16 @@ function showSpotSettings(forceOpen) {
     +'letter-spacing:.5px;margin-bottom:10px;">🏄 Score surf — paramètres pour ce spot '
     +'<span style="cursor:help;text-transform:none;font-weight:400;letter-spacing:normal;" '
     +'title="Le score (0-5) part de la puissance de la houle (hauteur² × période). '
-    +'Ajustements ensuite : houle longue période ou direction idéale (+1), vent calme '
-    +'ou offshore léger (+1), vent fort ou onshore (−1 à −2), rafales fortes (−1), '
-    +'marée dans ta préférence ci-dessous si réglée (±0,3 à ±0,5), Hs au-delà de ta '
-    +'limite perso (−2, sans écraser le reste). Même calcul partout sur le site — '
-    +'carte conditions actuelles, tableau horaire, étoiles du jour.">ⓘ</span></div>'
+    +'Ajustements : houle dans la fenêtre du spot (+1) ou hors fenêtre (−1 à −2), '
+    +'longue période (+1), vent selon son secteur ET sa force — offshore de +1 à −3, '
+    +'sideshore de 0 à −3, onshore de −2 à −4, et mer d&#39;huile +1 quelle que soit '
+    +'la direction ; rafales fortes (−1), marée si réglée (±0,3 à ±0,5), Hs au-delà '
+    +'de ta limite perso (−2, sans écraser le reste). ENFIN un PLAFOND selon la '
+    +'période, appliqué après tout le reste : mer de vent ≤ 10 s = « Passable » au '
+    +'mieux, quels que soient la taille et le vent (1,20 m à 8 s n&#39;est pas un bon '
+    +'jour). Le secteur du vent se mesure sur la normale au récif, que tu traces sur '
+    +'la vue satellite dans ⚙ Score. Même calcul partout sur le site — carte '
+    +'conditions actuelles, tableau horaire, étoiles du jour.">ⓘ</span></div>'
 
     // Stats du journal pour CE spot — rempli en asynchrone, sert à affiner les
     // paramètres ci-dessous avec les vraies sessions (étoiles comprises)
@@ -17825,6 +17852,15 @@ function showSpotSettings(forceOpen) {
         maxHs: p.maxHs || 4.0,
         onshoreLimit: p.onshoreLimit || 45,
         offshoreMin: p.offshoreMin || 135,
+        // Champs SANS widget dans cette boîte : ils vivent dans le dialogue
+        // showScoreSettings() (sc-*). Ce littéral écrase scoreParams en entier,
+        // donc sans cette recopie ils repartaient au défaut à chaque
+        // enregistrement d'un réglage de spot — tidePref le faisait déjà depuis
+        // toujours (préférence de marée perdue en silence), constaté le
+        // 18/08/2026 en ajoutant windSeaT/groundSwellT.
+        windSeaT:     p.windSeaT     != null ? p.windSeaT     : _DEFAULT_SCORE.windSeaT,
+        groundSwellT: p.groundSwellT != null ? p.groundSwellT : _DEFAULT_SCORE.groundSwellT,
+        tidePref:     p.tidePref || _DEFAULT_SCORE.tidePref,
       };
       // Traçabilité calibration auto : un champ modifié À LA MAIN ici sort de la
       // liste _auto.fields → la calibration journal ne l'écrasera plus jamais.

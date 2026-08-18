@@ -7820,3 +7820,142 @@ limites documentées plus haut dans ce fichier). L'icône déjà installée sur 
 de l'utilisateur ne se mettra pas à jour automatiquement (limitation PWA connue, pas un bug de
 ce correctif) : il faudra retirer/ré-ajouter l'app à l'écran d'accueil après déploiement pour
 voir la nouvelle icône.
+
+---
+
+## 2026-08-19 — Score : la période plafonne, et le vent se juge sur le récif
+
+Signalements : « 1m20 8sec ça n'est pas excellent, c'est de la mer de vent (≤10s) ;
+prends-tu en compte onshore/offshore/sideshore ? », puis « la barrière et ses passes,
+côté sud-ouest, captent la houle surtout entre 180 et 270° ».
+
+### ⚠ Collision avec `dd7a8c9` — lire ceci avant de toucher au vent
+
+Ce chantier a d'abord été écrit sur une base **périmée de 10 commits**, dont
+`dd7a8c9 fix(score)` du 18/08 qui traite le MÊME sujet. Découvert par un `git fetch`
+avant push, à un commit près de l'écrasement. Le travail a été refait sur `origin/main`.
+Ce qui est repris de `dd7a8c9` **sans changement** : le 9ᵉ argument `tideAdj`, et
+`maxHs` devenu malus −2 au lieu d'un court-circuit à 1/5.
+
+Ce qui est **revenu en arrière**, et pourquoi. `dd7a8c9` avait résolu la double
+définition du vent en neutralisant `windDirIdeal` (rendu informatif) au profit de la
+règle relative à la houle du jour, jugée « la seule physiquement correcte ». C'est
+l'inverse : par réfraction, une houle de 180° et une de 250° arrivant sur le même récif
+orienté SO déferlent avec une face orientée pareil — la bathymétrie les redresse vers la
+normale. Le cas qui tranche, alizé de terre du matin (de NE, vers 225°) sur récif 225° :
+
+| | houle 225° | houle 170° |
+|---|---|---|
+| référence récif | offshore | offshore |
+| référence houle | offshore | **sideshore** |
+
+Le vent n'a pas bougé d'un degré. Seule la référence récif reste stable.
+
+`dd7a8c9` avait néanmoins **une vraie raison** de se méfier du cap : il ne valait rien en
+pratique. Défaut 270° contre défaut de houle 120° — 150° d'écart, soit un récif face ESE
+et un récif face O décrits en même temps — et la calibration journal exige 3 sessions
+★≥4 pour le poser (il n'y en a que 2 sur Dumbéa, `_auto.nGood: 2`). Ce n'était pas un
+défaut du référentiel mais de la valeur. C'est ce que ce chantier corrige.
+
+**Prospection** (aucun service ne juge le vent contre la houle du jour) :
+[BreakFinder](https://breakfinder.surf/en/blog/personalized-surf-forecast-scores) note le
+vent « relative to the beach's coastal orientation » ;
+[tide-raider](https://github.com/taunhealy/tide-raider) (code lu) contre une liste
+`optimalWindDirections` propre au spot, et modélise tout en **fenêtres** —
+`optimalSwellDirections {min,max}`, `idealSwellPeriod {min,max}`, `swellSize {min,max}` —
+avec un score qui **part de 10 et descend** ; [Surfline](https://support.surfline.com/hc/en-us/articles/360057051912-Understanding-LOLA-Spot-Forecasts)
+expose des fenêtres optimales par spot + `optimalWind`. Personne ne décrit un spot par une
+direction unique.
+
+### 1. ✗ Le malus de période était noyé
+
+`calcSurfScore` empilait des ±1 puis saturait à 5 : sur 2,5 m / 6 s le détail affichait
+« Période courte 6s », son −1 s'appliquait, et le score sortait quand même à **5/5**
+rattrapé par « houle idéale » et « vent très faible ». Aggravé par ½·Hs²·T qui récompense
+Hs **au carré** : 2,5 m / 6 s affiche 18,8 kW/m contre 10,1 pour 1,2 m / 14 s.
+
+→ La période devient un **plafond dur** (`periodClass()`) appliqué en **tout dernier**,
+après les bonus *et* après `tideAdj` — une marée favorable ne transforme pas une mer de
+vent en houle. Cinq classes autour de deux seuils réglables (`windSeaT` 10 s,
+`groundSwellT` 13 s) : clapot ≤7 s → Médiocre · mer de vent ≤9 s → Passable · houle courte
+≤10 s → Bien · houle correcte <13 s → Très bien · houle longue ≥13 s → plafond levé.
+**Non calibrés depuis le journal, volontairement** : c'est de l'océanographie, pas une
+préférence de spot.
+
+| cas (spot aux caps cohérents) | avant | après |
+|---|---|---|
+| 1,2 m / 8 s, 2 nds offshore | 5/5 **Excellent** | 2/5 Passable |
+| 2,5 m / 6 s, 2 nds offshore | 5/5 **Excellent** | 1/5 Médiocre |
+| 1,0 m / 12 s, 2 nds offshore | 5/5 Excellent | 4/5 Très bien |
+| 1,2 m / 14 s, 2 nds offshore | 5/5 Excellent | 5/5 (inchangé) |
+
+### 2. ✗ Secteurs de vent non monotones
+
+Quatre malus s'empilaient (moutons universel, vent fort, directionnel, bonus offshore)
+sans qu'on puisse dire ce que valait un onshore de 10 nds — et sideshore pouvait passer
+**devant** offshore. Remplacés par une table unique secteur × force (`_WIND_EFFECT`), les
+trois tranches reprenant les seuils calibrés le 03/08 (8 / 12 nds) : le comportement par
+vent fort est conservé, mais `offshore ≥ sideshore ≥ onshore` à force égale est désormais
+asserté sur 28 combinaisons.
+
+### 3. La géométrie du spot se règle sur une vue satellite
+
+Demande utilisateur : « dans le paramètre du spot il faudrait une vue sur le spot
+(satellite) et orienter un vecteur qui indique la direction de déferlement de la vague ».
+
+Le compas « vent idéal » de ⚙ Score est remplacé par un **sélecteur satellite** : image
+Esri World Imagery (réutilise `updateRoseSatBg()`, composite 3×3 tuiles au zoom 15,
+~3,4 km), flèche orange qu'on trace dans le sens où la vague déroule en cassant, et
+fenêtre de houle dessinée en bleu par-dessus. Demander une normale de récif sous forme de
+« direction vers laquelle souffle le vent offshore » était précisément ce qui avait laissé
+le cap à 270° alors que les spots regardent au 225 : personne ne fait cette conversion de
+tête. La valeur **stockée reste `windDirIdeal`** (le cap du large, opposé à la flèche) —
+aucun autre consommateur de ce champ ne change. Repli sans réseau : le disque sombre et le
+SVG restent utilisables, on retombe sur l'ancien compas.
+
+Vérifié en capture réelle : sur Dumbéa la flèche pointe NE vers le lagon et la fenêtre
+bleue s'ouvre au SW sur le large — la géométrie tombe juste sur l'imagerie.
+
+La direction de houle devient une **fenêtre** : `swellDirIdeal` ± `swellWindowHalf`
+(défaut ±45°, curseur 15-90°), graduée en dehors (0 / −1 / −2) au lieu du ±1 binaire.
+Bouton « centrer la fenêtre sur le récif » pour rattraper un centre issu de peu de sessions.
+
+### 4. Défauts recalés + migration
+
+`swellDirIdeal` et `windDirIdeal` passent tous deux à **225°** (barrière sud-ouest, où sont
+les 8 spots par défaut). Migration ciblée dans `SPOTS` : **seul le couple exact hérité
+(120 / 270) est recalé**, jamais un réglage utilisateur même partiel — un défaut modifié ne
+suffit pas à corriger les spots déjà persistés, `loadScoreParams` fusionnant les valeurs
+stockées par-dessus.
+
+### Autres corrections trouvées en chemin
+
+- ✗ `assets/share-card.js` classait le vent contre la **houle**, comme l'ancien moteur : la
+  carte PNG aurait écrit « vent onshore » à côté d'un score ayant compté un offshore. La
+  contradiction serait partie sur WhatsApp. Même référence partout (`reefDir` ajouté au
+  contexte de partage, aux 2 producteurs).
+- ✗ `showSpotSettings()` reconstruit `scoreParams` par un littéral complet : tout champ
+  sans widget y était **perdu à l'enregistrement**. `tidePref` le subissait depuis toujours
+  — enregistrer un réglage de spot réinitialisait en silence la préférence de marée, et
+  avec elle la bande « fenêtre favorable » des panneaux. Préservé, avec les nouveaux seuils.
+- Le bouton Reset de ⚙ recopiait un littéral **mort** (écrasé deux lignes plus bas par
+  `_DEFAULT_SCORE`) portant `windMalusKt:18` quand le défaut vaut 12. Supprimé.
+- BSF, « ce qui limite le créneau » : cite la classe de houle, qui mord bien plus souvent
+  que le seul seuil `minPeriod`.
+- Bulle ⓘ du score (ajoutée par `946b443`) réécrite en miroir des nouvelles règles.
+
+### Vérification
+
+`test_score.js` (Node, sans réseau ni DOM, chargement `vm` comme `build-week.mjs`) :
+**38/38**. Invariants plutôt que cas d'école — plafond jamais franchi sur 136 combinaisons
+Hs×T en conditions par ailleurs maximales, **ni par aucun ajustement de marée**, monotonie
+en période, ordre des secteurs sur 28 combinaisons, non-cumul du bonus vent nul et du bonus
+offshore, `maxHs` qui dégrade sans écraser, 140 entrées dégénérées sans NaN ni score hors
+0-5, fenêtre par défaut couvrant bien 180-270°.
+
+Headless Edge sur la vraie page : **0 erreur JS**, image satellite chargée (768 px),
+glisser → cap du large correct (déferlement 90° → cap 270°), bouton d'alignement, aller-retour
+de sauvegarde complet (`windSeaT`/`groundSwellT`/`swellWindowHalf`/`tidePref` préservés),
+readout « Fenêtre de houle 180° → 270° ».
+
+`sw.js` : `CACHE_NAME` v89 → **v90**.

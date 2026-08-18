@@ -22,8 +22,44 @@
 // Paramètres de score (modifiables via menu)
 var _DEFAULT_SCORE = {
   minHs: 0.4, maxHs: 4.0, minPeriod: 8, minPwr: 1,
-  swellDirIdeal: 120, windDirIdeal: 270,
+  // ── Géométrie du spot ──────────────────────────────────────────────────────
+  // `windDirIdeal` = LE CAP DU LARGE : la direction VERS laquelle souffle le
+  // vent quand il est offshore, donc aussi la direction d'où arrive la houle qui
+  // entre droit. C'est la normale au RÉCIF où la vague déferle — pas celle de la
+  // côte, qui est 15-25 km derrière la barrière sur ces spots, et pas l'axe de la
+  // passe. Depuis le 19/08/2026 il se règle en traçant le sens de déferlement de
+  // la vague sur une vue satellite du spot (⚙ Réglages spot), ce qui évite d'avoir
+  // à le convertir de tête : la flèche dessinée pointe vers la terre, ce champ
+  // stocke l'opposé.
+  //
+  // `swellDirIdeal` = centre de la FENÊTRE de houle, `swellWindowHalf` sa
+  // demi-ouverture : le spot marche pour toute houle arrivant dans
+  // swellDirIdeal ± swellWindowHalf. Retour utilisateur du 19/08/2026 : « la
+  // barrière et ses passes, côté sud-ouest, captent la houle surtout entre 180
+  // et 270° » — soit 225 ± 45, ce que les défauts ci-dessous encodent. C'est
+  // aussi ce que font les services de référence (Surfline, tide-raider,
+  // BreakFinder) : une fenêtre par spot, jamais une direction unique.
+  //
+  // Les deux valeurs livrées jusqu'au 19/08/2026 (houle 120°, cap 270°) étaient
+  // à 150° l'une de l'autre, donc physiquement impossibles : une houle vient du
+  // large, et le vent offshore souffle vers le large. Elles décrivaient un récif
+  // face ESE et un récif face O en même temps. Recalées sur 225 toutes les deux,
+  // ce qui correspond aux 8 spots par défaut (tous sur la barrière sud-ouest).
+  swellDirIdeal: 225, windDirIdeal: 225, swellWindowHalf: 45,
+  // Secteurs de vent, mesurés autour du cap du large (cf. windSector()).
+  //   onshoreLimit : demi-ouverture du cône OFFSHORE
+  //   offshoreMin  : au-delà de cet écart au cap, le vent est ONSHORE
   onshoreLimit: 45, offshoreMin: 135,
+  // Frontières de la NATURE de la houle (18/08/2026, retour utilisateur :
+  // « 1m20 8sec ça n'est pas excellent, c'est de la mer de vent (≤10s) »).
+  // Ce ne sont PAS des préférences de spot mais de l'océanographie : sous
+  // ~10 s la mer est levée sur place par l'alizé (courte, sans mur, désordonnée),
+  // au-delà de ~13 s c'est une houle qui a voyagé et qui s'est triée. C'est
+  // pourquoi la calibration automatique depuis le journal n'y touche PAS
+  // (_calibSpotFromSessions ne les suggère pas) : elles restent réglables à la
+  // main dans ⚙ pour un spot au régime particulier, rien de plus.
+  windSeaT: 10,      // ≤ ce seuil : mer de vent → score plafonné
+  groundSwellT: 13,  // ≥ ce seuil : houle longue → plafond levé + bonus
   // Spots à accès bateau : peu de vent est un critère en soi (navigation,
   // moutons dans le lagon, clapot sur le plan d'eau), quelle que soit la
   // direction. Seuils RECALIBRÉS sur données réelles le 03/08/2026 (73 sessions
@@ -54,6 +90,136 @@ var _SC_COMP = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','
 function compass(d) {
   return (d === null || d === undefined) ? '—' : _SC_COMP[Math.round(d / 22.5) % 16];
 }
+
+var _SC_LABELS = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
+var _SC_COLS   = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
+
+// Écart angulaire absolu entre deux caps, 0-180°.
+function _angDiff(a, b) {
+  return Math.abs(((a - b + 180 + 360) % 360) - 180);
+}
+function _fmtT(T) { return (Math.round(T * 10) / 10) + 's'; }
+
+// Sens de DÉFERLEMENT de la vague : là où elle avance en cassant, donc vers la
+// terre. C'est la flèche que l'utilisateur trace sur la vue satellite ; le cap
+// du large stocké est son opposé. Exposé pour que l'UI n'ait pas à refaire
+// l'inversion de son côté (et à se tromper de sens une fois sur deux).
+function breakBearing() {
+  var ref = SCORE_PARAMS.windDirIdeal;
+  return (ref === null || ref === undefined) ? null : (ref + 180) % 360;
+}
+
+// ─── PÉRIODE : nature de la houle et PLAFOND de score ────────────────────────
+// Ajouté le 18/08/2026. Mesuré AVANT correction, avec les seuils par défaut :
+// 1,2 m / 8 s par vent nul sortait à 5/5 « Excellent », et 2,5 m / 6 s aussi —
+// le détail affichait pourtant « Période courte 6s », mais son −1 était noyé
+// sous les +1 (houle idéale, vent très faible) et le score saturait quand même.
+//
+// La période n'est pas un bonus parmi d'autres : c'est elle qui décide de la
+// NATURE de la vague. Une mer de vent de 8 s ne devient pas bonne parce que le
+// vent tombe — elle reste courte, molle et sans mur. Aucun cumul de bonus ne
+// doit donc pouvoir la faire passer devant une vraie houle : d'où un PLAFOND
+// dur, appliqué en tout dernier dans calcSurfScore (marée comprise : une marée
+// favorable ne transforme pas une mer de vent en houle).
+//
+// Les bandes sont construites autour des deux seuils réglables plutôt qu'en
+// dur, pour qu'un spot au régime différent reste cohérent : la largeur des
+// paliers suit windSeaT, elle n'est pas figée à 7/9/10.
+function periodClass(T) {
+  if (T === null || T === undefined || !isFinite(T) || T <= 0) {
+    return { key: 'unknown', cap: 5, label: 'Période inconnue' };
+  }
+  var sea  = SCORE_PARAMS.windSeaT != null ? SCORE_PARAMS.windSeaT : 10;
+  // Garde-fou : un groundSwellT mal réglé (≤ windSeaT) viderait la bande
+  // intermédiaire et ferait sauter le score de 3 à 5 sans transition.
+  var grnd = Math.max(SCORE_PARAMS.groundSwellT != null ? SCORE_PARAMS.groundSwellT : 13, sea + 1);
+  if (T <= sea - 3) return { key:'chop',    cap:1, label:'Clapot ' + _fmtT(T) + ' — pas de houle' };
+  if (T <= sea - 1) return { key:'windsea', cap:2, label:'Mer de vent ' + _fmtT(T) };
+  if (T <= sea)     return { key:'short',   cap:3, label:'Houle courte ' + _fmtT(T) };
+  if (T <  grnd)    return { key:'swell',   cap:4, label:'Houle correcte ' + _fmtT(T) };
+  return            { key:'ground',  cap:5, label:'Houle longue ' + _fmtT(T) };
+}
+
+// ─── HOULE : fenêtre du spot ────────────────────────────────────────────────
+// Une houle n'est pas « idéale à ±45° puis mauvaise » : le spot a une fenêtre
+// (swellDirIdeal ± swellWindowHalf) dans laquelle elle entre, et au-delà elle
+// rentre de plus en plus mal jusqu'à ne plus rentrer du tout. Gradué depuis le
+// 18/08/2026 (c'était ±1 en tout et pour tout), fenêtre réglable depuis le
+// 19/08 — même modèle que `optimalSwellDirections {min,max}` de tide-raider et
+// que les fenêtres par spot de Surfline.
+function swellFit(swDir) {
+  if (swDir === null || swDir === undefined) return null;
+  var half = SCORE_PARAMS.swellWindowHalf != null ? SCORE_PARAMS.swellWindowHalf : 45;
+  var ideal = SCORE_PARAMS.swellDirIdeal != null ? SCORE_PARAMS.swellDirIdeal : 225;
+  var diff = _angDiff(swDir, ideal);
+  var out  = Math.max(0, diff - half);          // de combien on sort de la fenêtre
+  if (out === 0)      return { key:'in',      adj:+1, deg:diff, out:0 };
+  if (out <= 45)      return { key:'edge',    adj: 0, deg:diff, out:out };
+  if (out <= 90)      return { key:'oblique', adj:-1, deg:diff, out:out };
+  return                     { key:'closed',  adj:-2, deg:diff, out:out };
+}
+
+// ─── VENT : un SEUL référentiel onshore / sideshore / offshore ───────────────
+// Avant le 18/08/2026 le vent était jugé DEUX fois, avec deux définitions qui
+// se contredisaient : une par rapport au cap du spot (« Vent favorable/défav. »),
+// une par rapport à la direction de la HOULE du jour. Le correctif dd7a8c9 a
+// tranché en gardant la houle et en rendant le cap purement informatif. Ce
+// choix est REVENU ici le 19/08/2026, après vérification — voici pourquoi.
+//
+// Le référentiel physique de « onshore », c'est le RÉCIF, pas la houle. Par
+// réfraction, une houle de 180° et une de 250° qui arrivent sur le même récif
+// orienté SO déferlent avec une face orientée pareil : la bathymétrie les
+// redresse vers la normale (« the longer the period of the swell the more it
+// tends to wrap into a spot »). C'est donc le récif qui décide de ce qui peigne
+// la vague, pas le cap de la houle au large.
+//
+// Le cas qui tranche, avec l'alizé de terre du matin (de NE, soufflant vers
+// 225°) sur un récif de normale 225° :
+//     houle 225° → référence récif : offshore | référence houle : offshore
+//     houle 170° → référence récif : offshore | référence houle : SIDESHORE
+// Le vent n'a pas bougé d'un degré, mais la référence houle change son verdict.
+//
+// dd7a8c9 avait une vraie raison de se méfier du cap : il ne valait rien en
+// pratique (défaut 270° incohérent avec le défaut de houle 120°, et la
+// calibration journal exige 3 sessions ★≥4 — il n'y en a que 2 sur Dumbéa). Ce
+// n'était pas un défaut du référentiel mais de la valeur. C'est réglé : les
+// défauts sont désormais cohérents (225/225) et le cap se trace à la main sur
+// une vue satellite du spot. La houle ne sert plus que de repli s'il manque.
+// Confirmé par les implémentations de référence : BreakFinder note le vent
+// « relative to the beach's coastal orientation », tide-raider contre une liste
+// `optimalWindDirections` propre au spot — aucun ne le note contre la houle du jour.
+function windSector(wDir, swDir) {
+  if (wDir === null || wDir === undefined) return null;
+  var ref = SCORE_PARAMS.windDirIdeal;
+  if (ref === null || ref === undefined) ref = (swDir === null || swDir === undefined) ? null : swDir;
+  if (ref === null) return null;
+  var to  = (wDir + 180) % 360;            // vers où souffle le vent
+  var off = _angDiff(to, ref);             // écart au cap du large
+  var onLim  = SCORE_PARAMS.onshoreLimit != null ? SCORE_PARAMS.onshoreLimit : 45;
+  var offMin = SCORE_PARAMS.offshoreMin  != null ? SCORE_PARAMS.offshoreMin  : 135;
+  if (off <= onLim)  return { key:'offshore', deg:off, lbl:'Offshore' };
+  if (off >= offMin) return { key:'onshore',  deg:off, lbl:'Onshore'  };
+  return             { key:'side',     deg:off, lbl:'Sideshore' };
+}
+
+// Effet du vent = secteur × force, en UNE seule table au lieu de quatre malus
+// qui s'empilaient (malus universel « moutons », malus « vent fort », malus
+// directionnel, bonus offshore) sans qu'on puisse dire ce que valait vraiment
+// un onshore de 10 nds. Les trois tranches de force reprennent les seuils
+// calibrés sur le journal (windCalmKt = 8 nds, windMalusKt = 12 nds), donc le
+// comportement par vent fort reste celui mesuré le 03/08/2026 ; ce qui change,
+// c'est que l'écart entre les trois secteurs devient monotone (offshore ≥
+// sideshore ≥ onshore à force égale), ce qu'il n'était pas.
+//   colonne 0 : force modérée   ]glassy, windCalmKt[
+//   colonne 1 : moutons/clapot  [windCalmKt, windMalusKt[
+//   colonne 2 : vent fort       [windMalusKt, ∞[  (nav difficile en plus)
+var _WIND_EFFECT = {
+  offshore: [ +1, -1, -3 ],
+  side:     [  0, -2, -3 ],
+  onshore:  [ -2, -3, -4 ]
+};
+// Sous ce seuil, la direction ne veut plus rien dire : le plan d'eau est lisse.
+var _GLASSY_KT = 5;
 
 // tideAdj (optionnel, 9e argument) : delta numérique déjà calculé par l'appelant
 // (cf. previsions.html `_tideAdj()`/`_tideAdjAt()`) — calcSurfScore reste sans
@@ -89,115 +255,57 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   else if(pwr < 25) { score = 4; }
   else              { score = 3; details.push('Très puissant'); } // trop gros = moins bien
 
-  // Période: malus si trop courte, bonus si longue
+  // Période. Le malus `minPeriod` reste (seuil calibré par spot, il départage
+  // DANS une bande), mais l'essentiel se joue au plafond appliqué plus bas :
+  // ½·Hs²·T récompense Hs au CARRÉ, donc un gros clapot court affiche une
+  // « puissance » élevée sans qu'aucune vague surfable existe.
+  var pc = periodClass(T);
   if(T) {
     if(T < SCORE_PARAMS.minPeriod) {
       score = Math.max(0, score - 1);
-      details.push('Période courte '+T+'s (&lt;'+SCORE_PARAMS.minPeriod+'s)');
-    } else if(T >= 12) {
+      details.push('Période courte '+_fmtT(T)+' (&lt;'+SCORE_PARAMS.minPeriod+'s)');
+    } else if(pc.key === 'ground') {
       score = Math.min(5, score + 1);
-      details.push('Longue période '+T+'s');
-    }
-  }
-  // Direction houle: bonus/malus selon proximité avec la direction idéale
-  if(swDir !== null && swDir !== undefined) {
-    var idealSwell = SCORE_PARAMS.swellDirIdeal || 120;
-    var diffSwell = Math.abs(((swDir - idealSwell + 180 + 360) % 360) - 180);
-    if(diffSwell <= 45) { score = Math.min(5, score + 1); details.push('Houle idéale '+compass(swDir)); }
-    else if(diffSwell > 120) { score = Math.max(0, score - 1); details.push('Houle défav. '+compass(swDir)); }
-  }
-  // Direction vent vs windDirIdeal (cap offshore réglé à la main pour ce spot) :
-  // INFORMATIF SEULEMENT depuis le 18/08/2026, ne touche plus au score. Avant,
-  // ce bloc ET le bloc "Effet du vent (onshore/offshore relatif à la houle)"
-  // plus bas pouvaient se contredire — windDirIdeal est un cap FIXE réglé une
-  // fois pour le spot, tandis que l'autre bloc compare le vent à la houle
-  // RÉELLE du jour ; dès que la houle du jour s'écartait de swellDirIdeal, les
-  // deux pouvaient afficher des verdicts opposés dans les mêmes `details`
-  // ("Vent défav." ET "Offshore idéal" en même temps) et s'annuler en partie
-  // sans que rien à l'écran n'explique pourquoi. Le bloc onshore/offshore
-  // ci-dessous est le seul physiquement correct un jour donné (il regarde la
-  // houle réelle, pas une direction idéale figée) — il reste donc seul à noter.
-  // windDirIdeal continue de servir de texte informatif dans le détail.
-  if(wDir != null) {
-    var idealWind = SCORE_PARAMS.windDirIdeal || 270;
-    var wDirTo = (wDir + 180) % 360;
-    var diffWind = Math.abs(((wDirTo - idealWind + 180 + 360) % 360) - 180);
-    if(diffWind <= 60) { details.push('Vent favorable '+compass(wDir)); }
-  }
-
-  // Malus vent PLAT (indépendant de la direction) : sur ces spots à accès
-  // bateau, le vent dégrade tout — navigation, moutons dans le lagon, clapot
-  // sur la vague. Deux paliers : moutons (windCalmKt, ~13kt) puis vent fort
-  // (windMalusKt). S'additionne aux effets directionnels ci-dessous.
-  // >= au lieu de > (03/08/2026, retour utilisateur "16nds trop de vent") :
-  // à vent PILE au seuil, le malus ne se déclenchait pas (16 > 16 = faux) —
-  // un écart d'1nds suffisait à afficher "Très bien" un jour trop venté.
-  var _calmKt = SCORE_PARAMS.windCalmKt || 8;
-  if(ws && ws > _calmKt) {
-    score = Math.max(0, score - 1);
-    details.push('Moutons/clapot ('+Math.round(ws)+'nds &gt; '+_calmKt+'nds)');
-    if(ws >= SCORE_PARAMS.windMalusKt) {
-      score = Math.max(0, score - 1);
-      details.push('Vent fort — nav difficile');
+      details.push('Longue période '+_fmtT(T));
     }
   }
 
-  // Bonus VENT NUL / très faible, indépendant de la direction (03/08/2026,
-  // "moins y'a de vent, mieux c'est"). Le seul bonus vent existant exigeait
-  // `ws >= 5` ET une direction offshore : une matinée glassy à 2 nds n'était
-  // donc JAMAIS récompensée, alors que c'est la meilleure condition possible
-  // sur ces passes (mesuré : qualité moyenne 3,11 sous 8 nds, la tranche la
-  // plus élevée du journal). Posé ici pour s'appliquer quelle que soit
-  // l'orientation, avant les effets directionnels ci-dessous.
-  if(ws != null && ws <= 5) {
-    score = Math.min(5, score + 1);
-    details.push(ws < 2 ? 'Glassy (vent nul)' : 'Vent très faible ('+Math.round(ws)+'nds)');
+  // Houle : entre-t-elle dans la fenêtre du spot ? (cf. swellFit)
+  var fit = swellFit(swDir);
+  if(fit) {
+    if(fit.adj > 0)      { score = Math.min(5, score + fit.adj); details.push('Houle dans la fenêtre '+compass(swDir)); }
+    else if(fit.adj < 0) { score = Math.max(0, score + fit.adj);
+      details.push((fit.key === 'closed' ? 'Houle hors fenêtre ' : 'Houle oblique ')
+        + compass(swDir) + ' (' + Math.round(fit.out) + '° hors fenêtre)'); }
   }
 
-  // Effet du vent (onshore/offshore relatif à la houle)
-  if(ws && wDir != null && swDir != null) {
-    // Angle entre vent et direction de propagation de la houle
-    // swDir = D'OÙ vient la houle, wDir = D'OÙ vient le vent
-    // Vent onshore = vent va VERS la côte = dans le MÊME sens que la houle
-    var angleDiff = Math.abs(((wDir - swDir) + 360) % 360);
-    if(angleDiff > 180) angleDiff = 360 - angleDiff;
-    // angleDiff = 0° → vent et houle dans le même sens → plein onshore (mauvais)
-    // angleDiff = 180° → vent dans le sens opposé → offshore (bon léger)
-
-    if(angleDiff < SCORE_PARAMS.onshoreLimit) {
-      // Onshore: malus selon force
-      if(ws >= SCORE_PARAMS.windMalusKt) {
-        score = Math.max(0, score - 2);
-        details.push('Onshore fort ('+Math.round(ws)+'nds, '+Math.round(angleDiff)+'°)');
-      } else if(ws > 8) {
-        score = Math.max(0, score - 1);
-        details.push('Onshore modéré ('+Math.round(ws)+'nds)');
-      }
-    } else if(angleDiff > SCORE_PARAMS.offshoreMin) {
-      // Offshore: bonus seulement si le plan d'eau reste propre (≤ seuil
-      // moutons) — offshore fort = vague peignée mais lagon/navigation dégradés.
-      // Seuil aligné sur windMalusKt du spot (03/08/2026) — était fixé en dur à
-      // 20nds, indépendant du réglage par spot : un vent offshore fort restait
-      // sans malus directionnel jusqu'à 20nds même sur un spot réglé à 14-16nds.
-      // `> 5` (et non `>= 5`) : à 5 nds pile le bonus "vent très faible"
-      // ci-dessus s'applique déjà, inutile de compter deux fois le même point.
-      if(ws > 5 && ws <= _calmKt) {
-        score = Math.min(5, score + 1);
-        details.push('Offshore idéal ('+Math.round(ws)+'nds)');
-      } else if(ws >= SCORE_PARAMS.windMalusKt) {
-        score = Math.max(0, score - 1);
-        details.push('Offshore trop fort ('+Math.round(ws)+'nds)');
-      }
-    } else {
-      // Sideshore (entre 45 et 135°, 03/08/2026 — retour utilisateur) : jusqu'ici
-      // totalement neutre quelle que soit la force, seul le malus universel
-      // moutons/vent fort ci-dessus s'appliquait (-2 max) — un vent fort
-      // sideshore restait sous-pénalisé par rapport à onshore (-4) et offshore
-      // (-3 depuis la ligne au-dessus). Même seuil que offshore pour cohérence.
-      if(ws >= SCORE_PARAMS.windMalusKt) {
-        score = Math.max(0, score - 1);
-        details.push('Sideshore fort ('+Math.round(ws)+'nds)');
-      }
+  // Vent : secteur × force, évalué UNE seule fois (cf. windSector, _WIND_EFFECT)
+  var sect = windSector(wDir, swDir);
+  if(ws !== null && ws !== undefined) {
+    var kt = Math.round(ws);
+    var _calmKt   = SCORE_PARAMS.windCalmKt  || 8;
+    var _strongKt = SCORE_PARAMS.windMalusKt || 12;
+    if(ws <= _GLASSY_KT) {
+      // Bonus vent nul/très faible, indépendant de la direction (03/08/2026,
+      // « moins y'a de vent, mieux c'est » — qualité moyenne 3,11 sous 8 nds,
+      // la tranche la plus élevée du journal). Le secteur est quand même
+      // affiché : il informe sans peser.
+      score = Math.min(5, score + 1);
+      details.push((ws < 2 ? 'Glassy (vent nul' : 'Vent très faible ('+kt+'nds')
+        + (sect ? ', '+sect.lbl.toLowerCase() : '') + ')');
+    } else if(sect) {
+      var band = (ws < _calmKt) ? 0 : (ws < _strongKt ? 1 : 2);
+      var eff  = _WIND_EFFECT[sect.key][band];
+      var suffix = ['', ' — moutons/clapot', ' — nav difficile'][band];
+      if(sect.key === 'onshore' && band >= 1) suffix = (band === 1 ? ' — vague désordonnée' : ' — clapoteux, nav difficile');
+      if(sect.key === 'offshore' && band === 0) suffix = ' — vague peignée';
+      if(eff > 0)      { score = Math.min(5, score + eff); }
+      else if(eff < 0) { score = Math.max(0, score + eff); }
+      if(eff !== 0 || band > 0) details.push(sect.lbl+' '+kt+'nds'+suffix);
+    } else if(ws >= (SCORE_PARAMS.windMalusKt || 12)) {
+      // Direction de vent inconnue : on ne peut que constater la force.
+      score = Math.max(0, score - 2);
+      details.push('Vent fort '+kt+'nds (direction inconnue)');
     }
   }
 
@@ -221,9 +329,23 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   // "de base" et un score "effectif" pouvaient diverger silencieusement).
   if(tideAdj) details.push(tideAdj > 0 ? 'Marée favorable' : 'Marée défavorable');
   score = Math.max(0, Math.min(5, Math.round(score + (tideAdj || 0))));
-  var labels = ['Nul','Médiocre','Passable','Bien','Très bien','Excellent'];
-  var cols = ['#5c4a52','#c1654a','#e8a057','#e8c44a','#3dba8a','#7b6cf6'];
-  return { score:score, label:labels[score], col:cols[score], details:details };
+
+  // PLAFOND PÉRIODE — appliqué en DERNIER, après tous les bonus ET la marée,
+  // sinon il ne sert à rien : c'est exactement ce qui faisait sortir 1,2 m / 8 s
+  // en « Excellent » (base 3 + houle idéale + vent nul = 5, malgré la mer de
+  // vent). Une marée favorable ne transforme pas davantage une mer de vent en
+  // houle, d'où sa place après l'ajustement de marée.
+  if(pc.cap < score) {
+    details.push(pc.label + ' → plafonné « ' + _SC_LABELS[pc.cap] + ' »');
+    score = pc.cap;
+  } else if(pc.key === 'unknown' && score >= 4) {
+    // Ne pas taire l'incertitude : un modèle sans période peut afficher 5/5 sur
+    // une mer de vent sans qu'on ait de quoi le contredire.
+    details.push('Période inconnue — note non plafonnée');
+  }
+
+  return { score:score, label:_SC_LABELS[score], col:_SC_COLS[score], details:details,
+           periodClass:pc.key, windSector:sect ? sect.key : null, swellFit:fit ? fit.key : null };
 }
 
 // Puissance de la houle en kW/m — ½·Hs²·T, formule Windguru, la même que celle
@@ -251,6 +373,10 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DEFAULT_SCORE: _DEFAULT_SCORE,
     calcSurfScore: calcSurfScore,
+    periodClass: periodClass,
+    windSector: windSector,
+    swellFit: swellFit,
+    breakBearing: breakBearing,
     surfPower: surfPower,
     powerBand: powerBand,
     compass: compass,

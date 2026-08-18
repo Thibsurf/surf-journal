@@ -10,7 +10,7 @@
 
    data attendu par buildSummary() :
    { spotName, ts|dayLabel, hs, T, dir, tot, ws, wd, score,
-     tide:{stateLabel?}, bms:{active,niveau}|null, onshoreLimit, offshoreMin }
+     tide:{stateLabel?}, bms:{active,niveau}|null, onshoreLimit, offshoreMin, reefDir }
 */
 (function () {
   'use strict';
@@ -22,13 +22,24 @@
 
   function compass(d) { return (d == null) ? '—' : COMPASS[Math.round(d / 22.5) % 16]; }
 
-  // Vent relatif à la houle : offshore (favorable) / onshore (défavorable) / cross-shore.
-  function windRel(wd, dir, ws, onshoreLimit, offshoreMin) {
+  // Vent relatif au CAP DU LARGE du spot (normale au récif) : offshore
+  // (favorable) / onshore (défavorable) / cross-shore.
+  //
+  // Se mesurait contre la direction de la HOULE jusqu'au 19/08/2026, comme le
+  // faisait alors calcSurfScore. Le moteur est passé au cap du large (cf.
+  // windSector, assets/score-core.js) : garder l'ancienne référence ici aurait
+  // fait écrire « vent onshore » sur la carte PNG à côté d'un score qui, lui,
+  // avait compté un offshore — la contradiction serait partie sur WhatsApp.
+  // `reefDir` = cap du large (SCORE_PARAMS.windDirIdeal) ; repli sur la houle
+  // s'il manque, une houle venant forcément du large.
+  function windRel(wd, dir, ws, onshoreLimit, offshoreMin, reefDir) {
     onshoreLimit = onshoreLimit || 45; offshoreMin = offshoreMin || 135;
-    if (wd == null || dir == null) return { label:'?', txt:'', col:C.muted };
-    var a = Math.abs(((wd - dir) + 360) % 360); if (a > 180) a = 360 - a;
-    if (a < onshoreLimit)  return { label:'onshore',     txt:'onshore',     col:C.bad };
-    if (a > offshoreMin)   return { label:'offshore',    txt:'offshore',    col:C.ok };
+    var ref = (reefDir == null) ? dir : reefDir;
+    if (wd == null || ref == null) return { label:'?', txt:'', col:C.muted };
+    var to = (wd + 180) % 360;                       // vers où souffle le vent
+    var a = Math.abs(((to - ref + 180 + 360) % 360) - 180);   // écart au cap du large
+    if (a <= onshoreLimit) return { label:'offshore',    txt:'offshore',    col:C.ok };
+    if (a >= offshoreMin)  return { label:'onshore',     txt:'onshore',     col:C.bad };
     return                        { label:'cross-shore', txt:'cross-shore', col:C.warm };
   }
 
@@ -103,7 +114,7 @@
       dStr = String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0')
            + ' ' + String(dt.getHours()).padStart(2, '0') + 'h';
     }
-    var wr = windRel(d.wd, d.dir, d.ws, d.onshoreLimit, d.offshoreMin);
+    var wr = windRel(d.wd, d.dir, d.ws, d.onshoreLimit, d.offshoreMin, d.reefDir);
     var parts = [];
     if (d.tot != null) parts.push((+d.tot).toFixed(1) + 'm' + (d.T ? ' @' + Math.round(d.T) + 's' : '') + (d.dir != null ? ' ' + compass(d.dir) : ''));
     if (d.ws != null) parts.push('vent ' + Math.round(d.ws) + 'nds' + (wr.txt ? ' ' + wr.txt : ''));
