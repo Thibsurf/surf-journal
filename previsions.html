@@ -940,15 +940,17 @@ function _hbCondNum(v, dec){
   return v.toFixed(dec).replace('.', ',');
 }
 
-// Triangle plein tourné (provenance → +180° = où ça part, même convention que
-// svgArrow()/sbArrowSvg() ailleurs sur le site) — PAS svgArrow() ici : son trait
-// fin + petite pointe se lit comme un slash à 11-13px (retour utilisateur), il
-// faut une forme pleine, lisible même minuscule.
+// Fléchette (dos concave) tournée (provenance → +180° = où ça part, même
+// convention que svgArrow()/sbArrowSvg() ailleurs sur le site) — PAS un
+// triangle plein : un triangle isocèle a 3 sommets de poids visuel comparable,
+// on ne voit pas lequel "pointe" (retour utilisateur). L'encoche au dos coupe
+// l'ambiguïté : pointe fine d'un côté, "plumes" ouvertes de l'autre, aucun
+// triangle plein ne se lit comme ça — même logique qu'une aiguille de boussole.
 function _hbCondArrow(deg, col, size){
   if (deg == null) return '';
   var rot = (deg + 180) % 360;
   return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 20 20" style="transform:rotate('+rot+'deg);flex-shrink:0;vertical-align:middle;">'
-    + '<path d="M10 2 L18 17 L2 17 Z" fill="'+col+'"/></svg>';
+    + '<path d="M10 1 L14.5 19 L10 15 L5.5 19 Z" fill="'+col+'"/></svg>';
 }
 
 function _hbCondSetHeaderLabel(spot){
