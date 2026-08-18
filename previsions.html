@@ -230,28 +230,27 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* (le masquage en mode widget est groupé avec les autres, plus bas) */
 
 /* ─── ENCART CONDITIONS (houle MARC + vent observé + marée), ancré bas-droite
-   dans la photo — ajouté le 18/08/2026, refondu le 18/08/2026 (retour utilisateur
-   avec devtools ouverts : le panneau à hauteur "auto" débordait de .hb-photo côté
-   haut, coupé net par son overflow:hidden — la marée, dernière section, tombait
-   dans la zone rognée). Correctif : ancré HAUT ET BAS (top+bottom, plus jamais
-   "auto") — sa hauteur est donc CONTRAINTE par le conteneur, jamais l'inverse.
-   Règle explicite de l'utilisateur : interdiction de masquer une donnée pour
-   gagner de la place — donc pas de variante "condensée" qui retire des lignes
-   (l'ancien @media(max-width:960px) qui coupait houle secondaire/marée a été
-   retiré). À la place, les valeurs (jamais les libellés, fixes) rétrécissent en
-   continu via cqh — cf. container-type:size sur .hb-photo plus haut — jusqu'à un
-   plancher de 11px. .hb-cond-tight est un filet de sécurité posé en JS
-   (_hbCondFit()) si scrollHeight dépasse quand même clientHeight. */
-.site-banner .hb-cond{position:absolute;right:1.5rem;top:14px;bottom:14px;width:230px;
+   dans la photo — ajouté le 18/08/2026, refondu deux fois le 18/08/2026.
+   1er retour (devtools) : hauteur "auto" débordait de .hb-photo côté haut,
+   coupé par overflow:hidden. 2e retour : le correctif top+bottom+space-between
+   étirait le contenu pour remplir toute la hauteur dispo — moche et vide dès
+   que la bannière est un peu haute (l'utilisateur : "rend mieux si fenêtre
+   divisée par 2"). Design final : ancré seulement en BAS (comme le titre
+   hb-h1/hb-tag juste à côté), hauteur pilotée par le CONTENU (compact, dense,
+   jamais étiré) — max-height en garde-fou pur pour rejouer le 1er bug si la
+   bannière est vraiment courte, cqh + _hbCondFit() gèrent ce cas en rétrécissant
+   le texte plutôt qu'en coupant une ligne. */
+.site-banner .hb-cond{position:absolute;right:1.5rem;bottom:14px;width:244px;
+  max-height:calc(100% - 28px);
   background:rgba(8,19,30,.66);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
   border:1px solid rgba(160,200,225,.18);border-radius:14px;box-shadow:0 18px 40px rgba(3,10,18,.45);
-  padding:11px 16px;display:flex;flex-direction:column;gap:5px;justify-content:space-between;
+  padding:11px 16px;display:flex;flex-direction:column;gap:5px;
   overflow:hidden;} /* overflow:hidden ici = coins arrondis propres, PAS un masquage de contenu :
                         le contenu est dimensionné pour tenir (cqh + secours JS), jamais coupé. */
 .site-banner .hb-cond-hide{display:none!important;}
 .site-banner .hb-cond-hd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-shrink:0;}
 .site-banner .hb-cond-hd-label{font:700 10px/1.2 var(--font-b);color:#c2d6e2;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;}
+  overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .site-banner .hb-cond-live{display:flex;align-items:center;gap:5px;font:700 10px/1 var(--font-b);
   letter-spacing:.1em;text-transform:uppercase;color:#4fd6a0;flex-shrink:0;}
 .site-banner .hb-cond-live i{display:inline-block;width:5px;height:5px;border-radius:50%;
@@ -259,7 +258,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .site-banner .hb-cond-sec{flex-shrink:1;min-height:0;}
 .site-banner .hb-cond-sec+.hb-cond-sec{border-top:1px solid rgba(160,200,225,.22);padding-top:5px;}
 .site-banner .hb-cond-lbl{font:700 9px/1.3 var(--font-b);letter-spacing:.18em;text-transform:uppercase;
-  color:#7e9aad;margin-bottom:3px;}
+  color:#7e9aad;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.site-banner .hb-cond-lbl .src{font-weight:600;letter-spacing:0;text-transform:none;color:#5c7686;}
 .site-banner .hc-main{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
 .site-banner .hc-val{display:inline-flex;align-items:baseline;gap:5px;min-width:0;}
 .site-banner .hc-val svg{width:13px;height:13px;flex-shrink:0;position:relative;top:1px;}
@@ -283,10 +283,15 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .site-banner .hc-badge{background:rgba(240,160,75,.16);border:1px solid rgba(240,160,75,.4);color:#f4b877;
   font-weight:700;border-radius:5px;padding:2px 7px;letter-spacing:.02em;white-space:nowrap;flex-shrink:0;
   font-variant-numeric:tabular-nums;font-size:11px;}
+/* BUG corrigé (retour utilisateur : heure de marée invisible) : var(--text)
+   n'est PAS dans la portée de .hb-photo — les redéfinitions sombres vivent sur
+   .hb-toolbar, un SIBLING de .hb-photo, pas un ancêtre. Ce sous-arbre hérite du
+   --text de la page, qui vaut noir en thème clair → texte quasi invisible sur
+   la photo sombre. Couleur figée en dur comme le reste de l'encart. */
 .site-banner .hc-tide{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
-  color:var(--text);font-variant-numeric:tabular-nums;}
+  font-variant-numeric:tabular-nums;}
 .site-banner .hc-tide span{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap;min-width:0;}
-.site-banner .hc-tide b{font-weight:700;white-space:nowrap;font-size:clamp(11px,7cqh,14px);}
+.site-banner .hc-tide b{color:#fff;font-weight:700;white-space:nowrap;font-size:clamp(11px,7cqh,14px);}
 .site-banner .hc-tide i{font-style:normal;color:#a7bece;font-weight:400;white-space:nowrap;font-size:11px;}
 .site-banner .hc-tide .tri{font-size:11px;line-height:1;flex-shrink:0;}
 /* Filet de sécurité JS (_hbCondFit) : scrollHeight > clientHeight malgré le cqh
@@ -302,7 +307,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .site-banner .hb-cond-tight .hb-cond-sec+.hb-cond-sec{padding-top:2px!important;}
 .site-banner .hb-cond-tight .hb-cond-lbl{margin-bottom:1px!important;}
 @media(max-width:680px){
-  .site-banner .hb-cond{right:.9rem;top:11px;bottom:11px;width:200px;padding:9px 13px;}
+  .site-banner .hb-cond{right:.9rem;bottom:11px;max-height:calc(100% - 22px);width:212px;padding:9px 13px;}
 }
 
 /* NAV — l'ancien bandeau clair <nav> (logo « Surf NC », outils, ☰) a été FUSIONNÉ
@@ -889,11 +894,11 @@ html.widget-mode #gw-widget { margin-bottom:0; }
         <div id="hb-cond-houle"></div>
       </div>
       <div class="hb-cond-sec hb-cond-hide" id="hb-cond-wind-sec">
-        <div class="hb-cond-lbl">Vent</div>
+        <div class="hb-cond-lbl">Vent <span class="src" id="hb-cond-wind-src"></span></div>
         <div id="hb-cond-wind"></div>
       </div>
       <div class="hb-cond-sec hb-cond-hide" id="hb-cond-tide-sec">
-        <div class="hb-cond-lbl">Marée</div>
+        <div class="hb-cond-lbl">Marée <span class="src" id="hb-cond-tide-src"></span></div>
         <div id="hb-cond-tide"></div>
       </div>
     </div>
@@ -1011,8 +1016,11 @@ function _hbCondRenderHoule(spot){
 function _hbCondRenderWind(wsKt, wd, spot, used){
   var sec = document.getElementById('hb-cond-wind-sec');
   var body = document.getElementById('hb-cond-wind');
+  var srcEl = document.getElementById('hb-cond-wind-src');
   if (!sec || !body) return;
   _hbCondSetHeaderLabel(spot);
+  var stationName = (used && used.station && used.station.name) || (spot && spot.obsName) || '';
+  if (srcEl) srcEl.textContent = stationName ? '· ' + stationName + ((used && used.fallback) ? ' ≈' : '') : '';
   if (wsKt == null || wd == null) { sec.classList.add('hb-cond-hide'); _hbCondReveal(); return; }
   var wsNum = _hbCondNum(parseFloat(wsKt), 1);
   body.innerHTML = '<div class="hc-main hc-main-vent"><div class="hc-val">' + _hbCondArrow(wd, '#f0a04b', 13)
@@ -1029,8 +1037,10 @@ function _hbCondRenderWind(wsKt, wd, spot, used){
 function _hbCondRenderTide(pm, bm, spot){
   var sec = document.getElementById('hb-cond-tide-sec');
   var body = document.getElementById('hb-cond-tide');
+  var srcEl = document.getElementById('hb-cond-tide-src');
   if (!sec || !body) return;
   _hbCondSetHeaderLabel(spot);
+  if (srcEl) srcEl.textContent = '· ' + ((spot && spot.tideName) || 'Nouméa');
   if (!pm && !bm) { sec.classList.add('hb-cond-hide'); _hbCondReveal(); return; }
   function fmtEv(e, ico, col){
     if (!e) return '<span></span>';
