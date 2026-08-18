@@ -178,7 +178,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
    est à ~5:1 (mesuré sur les deux captures) — trois fois plus fin, d'où « vague
    et surfeur coupés ». À 20vw le ratio vaut 5:1 de 900 à 2300 px, donc la fenêtre
    visible couvre y 48-78 % : tube (52-72 %) ET surfeur (68-74 %) entiers. */
-.site-banner .hb-photo{position:relative;width:100%;height:clamp(180px,20vw,460px);overflow:hidden;}
+/* container-type:size (largeur ET hauteur déjà explicites ci-dessus) : permet à
+   .hb-cond plus bas d'utiliser des unités cqh — les tailles de texte suivent la
+   VRAIE hauteur rendue de la photo, quelle que soit la formule clamp() qui l'a
+   produite (20vw ici, 34vw en mobile plus bas) — un calcul en vw séparé aurait
+   fatalement dérivé de la vraie courbe à chaque changement de seuil. */
+.site-banner .hb-photo{position:relative;width:100%;height:clamp(180px,20vw,460px);overflow:hidden;
+  container-type:size;container-name:hbphoto;}
 /* 67 % et non 63 % : retour utilisateur 18/08/2026 — encore un peu trop de ciel
    au-dessus du tube, pas assez d'eau bleu marine sous le surfeur. Repères mesurés
    sur la photo (grille de pourcentages) : tube y 52-72 %, surfeur y 68-74 %,
@@ -224,51 +230,79 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* (le masquage en mode widget est groupé avec les autres, plus bas) */
 
 /* ─── ENCART CONDITIONS (houle MARC + vent observé + marée), ancré bas-droite
-   dans la photo — ajouté le 18/08/2026. Verrouillé sombre comme le reste de la
-   bannière : hérite --text/--muted/--faint/--accent/--warm déjà redéfinis par
-   .hb-toolbar plus haut sur .site-banner. */
-.site-banner .hb-cond{position:absolute;right:1.5rem;bottom:14px;width:212px;
-  background:rgba(9,19,33,.86);border:1px solid rgba(255,255,255,.12);border-radius:12px;
-  padding:10px 13px 11px;box-shadow:0 8px 24px rgba(0,0,0,.35);}
+   dans la photo — ajouté le 18/08/2026, refondu le 18/08/2026 (retour utilisateur
+   avec devtools ouverts : le panneau à hauteur "auto" débordait de .hb-photo côté
+   haut, coupé net par son overflow:hidden — la marée, dernière section, tombait
+   dans la zone rognée). Correctif : ancré HAUT ET BAS (top+bottom, plus jamais
+   "auto") — sa hauteur est donc CONTRAINTE par le conteneur, jamais l'inverse.
+   Règle explicite de l'utilisateur : interdiction de masquer une donnée pour
+   gagner de la place — donc pas de variante "condensée" qui retire des lignes
+   (l'ancien @media(max-width:960px) qui coupait houle secondaire/marée a été
+   retiré). À la place, les valeurs (jamais les libellés, fixes) rétrécissent en
+   continu via cqh — cf. container-type:size sur .hb-photo plus haut — jusqu'à un
+   plancher de 11px. .hb-cond-tight est un filet de sécurité posé en JS
+   (_hbCondFit()) si scrollHeight dépasse quand même clientHeight. */
+.site-banner .hb-cond{position:absolute;right:1.5rem;top:14px;bottom:14px;width:230px;
+  background:rgba(8,19,30,.66);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+  border:1px solid rgba(160,200,225,.18);border-radius:14px;box-shadow:0 18px 40px rgba(3,10,18,.45);
+  padding:11px 16px;display:flex;flex-direction:column;gap:5px;justify-content:space-between;
+  overflow:hidden;} /* overflow:hidden ici = coins arrondis propres, PAS un masquage de contenu :
+                        le contenu est dimensionné pour tenir (cqh + secours JS), jamais coupé. */
 .site-banner .hb-cond-hide{display:none!important;}
-.site-banner .hb-cond-hd{display:flex;justify-content:flex-end;margin-bottom:8px;}
-.site-banner .hb-cond-live{display:flex;align-items:center;gap:5px;font:600 8.5px/1 var(--font-b);
-  letter-spacing:.14em;text-transform:uppercase;color:#5ecf8f;}
+.site-banner .hb-cond-hd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-shrink:0;}
+.site-banner .hb-cond-hd-label{font:700 10px/1.2 var(--font-b);color:#c2d6e2;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;}
+.site-banner .hb-cond-live{display:flex;align-items:center;gap:5px;font:700 10px/1 var(--font-b);
+  letter-spacing:.1em;text-transform:uppercase;color:#4fd6a0;flex-shrink:0;}
 .site-banner .hb-cond-live i{display:inline-block;width:5px;height:5px;border-radius:50%;
-  background:#5ecf8f;box-shadow:0 0 0 2.5px rgba(94,207,143,.22);}
-.site-banner .hb-cond-sec+.hb-cond-sec{margin-top:9px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);}
-.site-banner .hb-cond-lbl{display:flex;align-items:baseline;gap:5px;margin-bottom:4px;}
-.site-banner .hb-cond-lbl b{font:700 9.5px/1 var(--font-b);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);}
-.site-banner .hb-cond-lbl span{font-size:10px;color:rgba(139,166,186,.6);}
+  background:#4fd6a0;box-shadow:0 0 0 2.5px rgba(79,214,160,.22);}
+.site-banner .hb-cond-sec{flex-shrink:1;min-height:0;}
+.site-banner .hb-cond-sec+.hb-cond-sec{border-top:1px solid rgba(160,200,225,.22);padding-top:5px;}
+.site-banner .hb-cond-lbl{font:700 9px/1.3 var(--font-b);letter-spacing:.18em;text-transform:uppercase;
+  color:#7e9aad;margin-bottom:3px;}
 .site-banner .hc-main{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
-.site-banner .hc-val{display:inline-flex;align-items:baseline;gap:5px;}
-.site-banner .hc-val svg{width:12px;height:12px;flex-shrink:0;position:relative;top:1px;}
-.site-banner .hc-main b{color:#fff;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
-.site-banner .hc-per{color:var(--faint);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;}
-.site-banner .hc-sub{display:flex;align-items:center;gap:11px;margin-top:5px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
-.site-banner .hc-sub span{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;}
-.site-banner .hc-sub svg{width:8px;height:8px;flex-shrink:0;}
-.site-banner .hc-badge{background:rgba(232,160,87,.16);border:1px solid rgba(232,160,87,.4);color:var(--warm);
-  font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px;letter-spacing:.02em;white-space:nowrap;flex-shrink:0;}
-.site-banner .hc-tide{display:flex;align-items:center;gap:14px;font-size:11.5px;color:var(--text);font-variant-numeric:tabular-nums;}
-.site-banner .hc-tide span{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap;}
-.site-banner .hc-tide i{font-style:normal;color:var(--faint);font-size:10px;}
+.site-banner .hc-val{display:inline-flex;align-items:baseline;gap:5px;min-width:0;}
+.site-banner .hc-val svg{width:13px;height:13px;flex-shrink:0;position:relative;top:1px;}
+.site-banner .hc-main b{color:#fff;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;
+  letter-spacing:-.01em;font-size:clamp(11px,11cqh,22px);}
+/* Vent plafonne à 19px, pas 22 (houle) — spec distincte malgré le même gabarit
+   de ligne (flèche + valeur + à-côté poussé à droite). */
+.site-banner .hc-main-vent b{font-size:clamp(11px,9.5cqh,19px);}
+.site-banner .hc-unit{color:#c2d6e2;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;
+  font-size:clamp(11px,6cqh,12px);}
+.site-banner .hc-per{color:#9fb8c8;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;
+  flex-shrink:0;margin-left:auto;font-size:clamp(11px,6cqh,12px);}
+/* white-space:normal + span nowrap : lit comme UNE ligne tant que ça tient
+   (cas courant, 2-3 houles secondaires) mais REPLIE plutôt que de tronquer si
+   MARC expose vraiment beaucoup de trains — jamais d'ellipsis qui couperait une
+   donnée (règle explicite : rien ne se masque pour gagner de la place). */
+.site-banner .hc-sub{color:#a7bece;font-variant-numeric:tabular-nums;
+  margin-top:2px;font-size:clamp(11px,6cqh,12px);line-height:1.5;}
+.site-banner .hc-sub svg{width:9px;height:9px;flex-shrink:0;vertical-align:-1px;}
+.site-banner .hc-sub span{white-space:nowrap;margin-right:9px;display:inline-block;}
+.site-banner .hc-badge{background:rgba(240,160,75,.16);border:1px solid rgba(240,160,75,.4);color:#f4b877;
+  font-weight:700;border-radius:5px;padding:2px 7px;letter-spacing:.02em;white-space:nowrap;flex-shrink:0;
+  font-variant-numeric:tabular-nums;font-size:11px;}
+.site-banner .hc-tide{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  color:var(--text);font-variant-numeric:tabular-nums;}
+.site-banner .hc-tide span{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap;min-width:0;}
+.site-banner .hc-tide b{font-weight:700;white-space:nowrap;font-size:clamp(11px,7cqh,14px);}
+.site-banner .hc-tide i{font-style:normal;color:#a7bece;font-weight:400;white-space:nowrap;font-size:11px;}
+.site-banner .hc-tide .tri{font-size:11px;line-height:1;flex-shrink:0;}
+/* Filet de sécurité JS (_hbCondFit) : scrollHeight > clientHeight malgré le cqh
+   ci-dessus (compass long, police du navigateur inhabituelle…) → tout au
+   plancher 11px et chrome resserré, jamais de ligne retirée. */
+.site-banner .hb-cond-tight .hc-main b,
+.site-banner .hb-cond-tight .hc-unit,
+.site-banner .hb-cond-tight .hc-per,
+.site-banner .hb-cond-tight .hc-sub,
+.site-banner .hb-cond-tight .hc-tide b,
+.site-banner .hb-cond-tight .hc-tide i{font-size:11px!important;}
+.site-banner .hb-cond-tight{gap:2px!important;padding:7px 12px!important;}
+.site-banner .hb-cond-tight .hb-cond-sec+.hb-cond-sec{padding-top:2px!important;}
+.site-banner .hb-cond-tight .hb-cond-lbl{margin-bottom:1px!important;}
 @media(max-width:680px){
-  .site-banner .hb-cond{right:.9rem;bottom:11px;}
-}
-/* La photo touche son plancher de hauteur (180px, clamp(180px,20vw,460px) plus
-   haut) de 0 à 900px de large, pas seulement en mobile — 960px pris ici avec une
-   petite marge de sécurité. En dessous, l'encart complet (3 sections + houles
-   secondaires) ne tient pas confortablement : repli sur houle 1 + vent seuls,
-   sans libellés, sur 2 lignes compactes. */
-@media(max-width:960px){
-  .site-banner .hb-cond{width:auto;padding:7px 10px 8px;}
-  .site-banner .hb-cond-hd,
-  .site-banner .hc-sub,
-  .site-banner #hb-cond-tide-sec,
-  .site-banner .hb-cond-lbl{display:none!important;}
-  .site-banner .hb-cond-sec+.hb-cond-sec{margin-top:5px;padding-top:0;border-top:0;}
-  .site-banner .hc-main b{font-size:14px;}
+  .site-banner .hb-cond{right:.9rem;top:11px;bottom:11px;width:200px;padding:9px 13px;}
 }
 
 /* NAV — l'ancien bandeau clair <nav> (logo « Surf NC », outils, ☰) a été FUSIONNÉ
@@ -846,17 +880,20 @@ html.widget-mode #gw-widget { margin-bottom:0; }
          Démarre masqué (hb-cond-hide) pour ne jamais montrer une coquille vide
          sur la photo si tout échoue (spot hors zone MARC, réseau down…). -->
     <div class="hb-cond hb-cond-hide" id="hb-cond">
-      <div class="hb-cond-hd"><span class="hb-cond-live"><i></i>Maintenant</span></div>
+      <div class="hb-cond-hd">
+        <span class="hb-cond-hd-label" id="hb-cond-hd-label"></span>
+        <span class="hb-cond-live"><i></i>Maintenant</span>
+      </div>
       <div class="hb-cond-sec hb-cond-hide" id="hb-cond-houle-sec">
-        <div class="hb-cond-lbl"><b>Houle</b><span id="hb-cond-houle-src"></span></div>
+        <div class="hb-cond-lbl">Houle</div>
         <div id="hb-cond-houle"></div>
       </div>
       <div class="hb-cond-sec hb-cond-hide" id="hb-cond-wind-sec">
-        <div class="hb-cond-lbl"><b>Vent</b><span id="hb-cond-wind-src"></span></div>
+        <div class="hb-cond-lbl">Vent</div>
         <div id="hb-cond-wind"></div>
       </div>
       <div class="hb-cond-sec hb-cond-hide" id="hb-cond-tide-sec">
-        <div class="hb-cond-lbl"><b>Marée</b><span id="hb-cond-tide-src"></span></div>
+        <div class="hb-cond-lbl">Marée</div>
         <div id="hb-cond-tide"></div>
       </div>
     </div>
@@ -883,9 +920,50 @@ function _hbSyncNav(name){
 //   - _hbCondRenderTide(pm,bm,spot) ← appelé depuis renderTideEncart(), qui a
 //     déjà la liste triée des prochains événements marée.
 // Chaque fonction montre/masque SA SEULE section (classe .hb-cond-hide) selon
-// que sa donnée existe ou non ; _hbCondReveal() montre/masque l'encart entier
-// selon qu'au moins une section est visible — jamais de coquille vide sur la
-// photo si tout échoue (spot hors zone MARC, réseau bas, etc).
+// que sa donnée existe ou non — jamais pour gagner de la place, seulement quand
+// la donnée est réellement absente (spot hors zone MARC, réseau bas, etc).
+// _hbCondReveal() montre/masque l'encart entier selon qu'au moins une section
+// est visible, puis vérifie via _hbCondFit() que tout tient réellement dans le
+// panneau (scrollHeight vs clientHeight) — retour utilisateur du 18/08/2026
+// après un débordement réel constaté aux devtools.
+
+// Nombre → virgule française (retour utilisateur explicite : "1,4 m" pas "1.4").
+// Isolé de fmt()/toFixed() du reste du fichier, qui eux gardent le point —
+// demande spécifique à CET encart, pas un changement de convention du site.
+function _hbCondNum(v, dec){
+  if (v == null || isNaN(v)) return null;
+  return v.toFixed(dec).replace('.', ',');
+}
+
+// Triangle plein tourné (provenance → +180° = où ça part, même convention que
+// svgArrow()/sbArrowSvg() ailleurs sur le site) — PAS svgArrow() ici : son trait
+// fin + petite pointe se lit comme un slash à 11-13px (retour utilisateur), il
+// faut une forme pleine, lisible même minuscule.
+function _hbCondArrow(deg, col, size){
+  if (deg == null) return '';
+  var rot = (deg + 180) % 360;
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 20 20" style="transform:rotate('+rot+'deg);flex-shrink:0;vertical-align:middle;">'
+    + '<path d="M10 2 L18 17 L2 17 Z" fill="'+col+'"/></svg>';
+}
+
+function _hbCondSetHeaderLabel(spot){
+  var el = document.getElementById('hb-cond-hd-label');
+  if (el && spot) el.textContent = 'MARC · ' + (spot.marineName || spot.name || '');
+}
+
+// Filet de sécurité : si le contenu déborde quand même du panneau à hauteur
+// contrainte (police système inhabituelle, nom de spot très long...), on bascule
+// TOUT au plancher 11px + chrome resserré (.hb-cond-tight) — jamais en coupant
+// une ligne. rAF : on mesure après que le layout ait fini de se poser.
+function _hbCondFit(){
+  var card = document.getElementById('hb-cond');
+  if (!card || card.classList.contains('hb-cond-hide')) return;
+  requestAnimationFrame(function(){
+    card.classList.remove('hb-cond-tight');
+    if (card.scrollHeight > card.clientHeight + 1) card.classList.add('hb-cond-tight');
+  });
+}
+
 function _hbCondReveal(){
   var card = document.getElementById('hb-cond');
   if (!card) return;
@@ -894,6 +972,7 @@ function _hbCondReveal(){
     return el && !el.classList.contains('hb-cond-hide');
   });
   card.classList.toggle('hb-cond-hide', !any);
+  if (any) _hbCondFit();
 }
 
 // Houle MARC "maintenant" — même lecture que _drawSpectrumRose('marc', atMs)
@@ -901,12 +980,14 @@ function _hbCondReveal(){
 // vivant dans l'accordéon comparatif) : copie volontairement locale du nearest()
 // et du filtre idx>=1 (convention MARC : partition 0 = mer du vent, jamais
 // numérotée "Houle N", cf. hasWindSeaSlot dans _drawSpectrumRose) plutôt qu'un
-// couplage entre deux composants indépendants.
+// couplage entre deux composants indépendants. Aucune limite posée sur le
+// nombre de houles secondaires affichées (règle : jamais masquer une donnée) —
+// .hc-sub replie sur 2 lignes plutôt que tronquer si MARC en expose beaucoup.
 function _hbCondRenderHoule(spot){
   var sec = document.getElementById('hb-cond-houle-sec');
   var body = document.getElementById('hb-cond-houle');
-  var srcEl = document.getElementById('hb-cond-houle-src');
   if (!sec || !body) return;
+  _hbCondSetHeaderLabel(spot);
   var pts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
   var best = null, bd = 4 * 3600000;
   if (pts) pts.forEach(function(p){ var df = Math.abs(p.ms - Date.now()); if (df < bd) { bd = df; best = p; } });
@@ -915,15 +996,14 @@ function _hbCondRenderHoule(spot){
     .filter(function(x){ return x && x.h != null && x.dir != null && x.idx >= 1; }) : [];
   if (!parts.length) { sec.classList.add('hb-cond-hide'); _hbCondReveal(); return; }
   parts.sort(function(a,b){ return b.h - a.h; });
-  var main = parts[0], rest = parts.slice(1, 4);
-  body.innerHTML = '<div class="hc-main"><div class="hc-val">' + svgArrow(main.dir, '#4fa3c7')
-    + '<b>' + main.h.toFixed(1) + 'm</b></div>'
-    + '<span class="hc-per">' + (main.t != null ? Math.round(main.t) + 's' : '') + '</span></div>'
+  var main = parts[0], rest = parts.slice(1);
+  body.innerHTML = '<div class="hc-main"><div class="hc-val">' + _hbCondArrow(main.dir, '#4fa3c7', 13)
+    + '<b>' + _hbCondNum(main.h, 1) + '</b><span class="hc-unit">m</span></div>'
+    + '<span class="hc-per">' + (main.t != null ? Math.round(main.t) + ' s' : '') + '</span></div>'
     + (rest.length ? '<div class="hc-sub">' + rest.map(function(r){
-        return '<span>' + svgArrow(r.dir, 'rgba(79,163,199,.6)') + (r.h != null ? r.h.toFixed(1) : '—') + 'm'
-          + (r.t != null ? ' ' + Math.round(r.t) + 's' : '') + '</span>';
+        return '<span>' + _hbCondArrow(r.dir, '#6a94ac', 9) + (r.h != null ? _hbCondNum(r.h, 1) : '—') + ' m'
+          + (r.t != null ? ' ' + Math.round(r.t) + ' s' : '') + '</span>';
       }).join('') + '</div>' : '');
-  if (srcEl) srcEl.textContent = '· MARC, ' + (spot.marineName || spot.name || '');
   sec.classList.remove('hb-cond-hide');
   _hbCondReveal();
 }
@@ -931,33 +1011,35 @@ function _hbCondRenderHoule(spot){
 function _hbCondRenderWind(wsKt, wd, spot, used){
   var sec = document.getElementById('hb-cond-wind-sec');
   var body = document.getElementById('hb-cond-wind');
-  var srcEl = document.getElementById('hb-cond-wind-src');
   if (!sec || !body) return;
+  _hbCondSetHeaderLabel(spot);
   if (wsKt == null || wd == null) { sec.classList.add('hb-cond-hide'); _hbCondReveal(); return; }
-  body.innerHTML = '<div class="hc-main"><div class="hc-val">' + svgArrow(wd, '#e8a057')
-    + '<b>' + wsKt + ' nds</b></div><span class="hc-badge">' + compass(wd) + '</span></div>';
-  var stationName = (used && used.station && used.station.name) || (spot && spot.obsName) || '';
-  if (srcEl) srcEl.textContent = stationName ? '· ' + stationName + ((used && used.fallback) ? ' ≈' : '') : '';
+  var wsNum = _hbCondNum(parseFloat(wsKt), 1);
+  body.innerHTML = '<div class="hc-main hc-main-vent"><div class="hc-val">' + _hbCondArrow(wd, '#f0a04b', 13)
+    + '<b>' + wsNum + '</b><span class="hc-unit">nds</span></div>'
+    + '<span class="hc-badge">' + compass(wd) + '</span></div>';
   sec.classList.remove('hb-cond-hide');
   _hbCondReveal();
 }
 
 // pm/bm : prochain événement {type,ms,h,coeff} de chaque sorte (déjà triés et
 // filtrés au futur par renderTideEncart), ou null si aucun des deux à venir.
+// Les DEUX sur une seule ligne (space-between : PM à gauche, BM à droite) —
+// pas de "flèche tournée" ici, ▲/▼ ne portent pas de cap comme houle/vent.
 function _hbCondRenderTide(pm, bm, spot){
   var sec = document.getElementById('hb-cond-tide-sec');
   var body = document.getElementById('hb-cond-tide');
-  var srcEl = document.getElementById('hb-cond-tide-src');
   if (!sec || !body) return;
+  _hbCondSetHeaderLabel(spot);
   if (!pm && !bm) { sec.classList.add('hb-cond-hide'); _hbCondReveal(); return; }
   function fmtEv(e, ico, col){
-    if (!e) return '';
+    if (!e) return '<span></span>';
     var dt = new Date(e.ms + 11*3600000); // même conversion NC (UTC+11) que renderTideEncart
     var hStr = String(dt.getUTCHours()).padStart(2,'0')+'h'+String(dt.getUTCMinutes()).padStart(2,'0');
-    return '<span><span style="color:'+col+';">'+ico+'</span>'+hStr+(e.h!=null?'<i>'+e.h.toFixed(2)+'m</i>':'')+'</span>';
+    return '<span><span class="tri" style="color:'+col+';">'+ico+'</span><b>'+hStr+'</b>'
+      + (e.h!=null?'<i>'+_hbCondNum(e.h,2)+' m</i>':'')+'</span>';
   }
-  body.innerHTML = '<div class="hc-tide">' + fmtEv(pm,'▲','var(--accent2)') + fmtEv(bm,'▼','var(--muted)') + '</div>';
-  if (srcEl) srcEl.textContent = '· ' + ((spot && spot.tideName) || 'Nouméa');
+  body.innerHTML = '<div class="hc-tide">' + fmtEv(pm,'▲','#7cc6e4') + fmtEv(bm,'▼','#8ba6ba') + '</div>';
   sec.classList.remove('hb-cond-hide');
   _hbCondReveal();
 }
