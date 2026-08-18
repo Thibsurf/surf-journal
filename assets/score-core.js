@@ -221,6 +221,62 @@ var _WIND_EFFECT = {
 // Sous ce seuil, la direction ne veut plus rien dire : le plan d'eau est lisse.
 var _GLASSY_KT = 5;
 
+// ─── VENT : PLAFOND de score ────────────────────────────────────────────────
+// Ajoute le 19/08/2026 (retour utilisateur : « si il y a trop de vent, exemple
+// 21 noeuds : enorme, ca ne peut pas etre bien ; le meilleur c'est pas de vent
+// du tout, glassy »).
+//
+// Mesure du defaut, houle 1,5 m / 14 s pile dans la fenetre, seuils calibres du
+// spot (calm 7, fort 12), SANS donnee de rafales :
+//     14 nds offshore -> 2/5    18 nds -> 2/5    21 nds -> 2/5    30 nds -> 2/5
+// La table secteur x force (_WIND_EFFECT) a une derniere colonne PLATE, ouverte
+// sur [windMalusKt, +inf[ : passe ce seuil le malus cesse de croitre et 30 noeuds
+// notent comme 14. Le malus de rafales masquait le probleme quand la donnee de
+// rafales existait (elle manque sur plusieurs modeles), d'ou un score qui
+// paraissait correct la moitie du temps.
+//
+// Meme remede que pour la periode : un PLAFOND, applique tout a la fin, qui
+// continue de mordre aussi fort que le vent monte. Cale sur les seuils du spot
+// (windCalmKt / windMalusKt) pour suivre la calibration journal plutot que des
+// valeurs en dur.
+//
+// Le principe du plafond n'est pas une invention maison : Surfline documente
+// explicitement des facteurs limitants (« you would never see 3-4 foot surf with
+// offshore winds rated as epic — this indicates that the size of the surf is the
+// limiting factor », support.surfline.com), et surf-forecast.com note 0 étoile
+// pour « flat + blown out OR strong winds in any direction » — y compris,
+// justement, quelle que soit la direction.
+//
+// SEUILS PUBLIES (revue 19/08/2026, windup.live / neptune.coach / surfcaptain) :
+//   onshore  : ~8 nds = bascule, 8-15 dégradé, 12-15 injouable pour la plupart
+//   offshore : 0-3 glassy, 5-15 « sweet spot », 15-20+ pénible (rame, spray)
+//   Beaufort : 17-21 nds = « fresh breeze, choppy », 22+ inexploitable
+//
+// ECART ASSUME : ce plafond-ci ne distingue PAS la direction, alors que la
+// litterature tolère l'offshore bien plus haut (jusqu'à 15 nds). C'est
+// délibéré et propre à ces spots : ce sont des passes à ACCES BATEAU, où le vent
+// dégrade la navigation, le clapot du lagon et le mouillage quelle que soit son
+// orientation — mesuré sur 73 sessions le 03/08/2026 (qualité moyenne 3,11 sous
+// 8 nds, 2,33 à 10-12 ; p75 des sessions réussies = 8 nds), et confirmé par
+// l'utilisateur le 19/08 (« 21 noeuds : énorme, ça ne peut pas être bien ; le
+// meilleur c'est pas de vent du tout, glassy »). L'asymétrie onshore/offshore
+// de la littérature est bien présente, mais portée par _WIND_EFFECT (onshore
+// −2 dès la tranche basse, offshore +1) plutôt que par le plafond.
+// Un spot plus tolérant au vent suit automatiquement : le plafond se calcule sur
+// SES windCalmKt / windMalusKt, pas sur des constantes.
+function windCeiling(ws) {
+  if (ws === null || ws === undefined || !isFinite(ws)) return { cap: 5, label: null };
+  var calm   = SCORE_PARAMS.windCalmKt  || 8;
+  var strong = SCORE_PARAMS.windMalusKt || 12;
+  var kt = Math.round(ws);
+  if (ws < calm)          return { cap: 5, label: null };
+  if (ws < strong)        return { cap: 4, label: 'Vent ' + kt + 'nds' };
+  if (ws < strong + 4)    return { cap: 3, label: 'Vent fort ' + kt + 'nds' };
+  if (ws < strong + 8)    return { cap: 2, label: 'Vent tr\u00e8s fort ' + kt + 'nds' };
+  if (ws < strong + 14)   return { cap: 1, label: 'Vent \u00e9norme ' + kt + 'nds' };
+  return                         { cap: 0, label: 'Vent ' + kt + 'nds \u2014 impraticable' };
+}
+
 // tideAdj (optionnel, 9e argument) : delta numérique déjà calculé par l'appelant
 // (cf. previsions.html `_tideAdj()`/`_tideAdjAt()`) — calcSurfScore reste sans
 // dépendance (pas de spot/marée ici), mais c'est le SEUL point où la marée entre
@@ -330,14 +386,24 @@ function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   if(tideAdj) details.push(tideAdj > 0 ? 'Marée favorable' : 'Marée défavorable');
   score = Math.max(0, Math.min(5, Math.round(score + (tideAdj || 0))));
 
-  // PLAFOND PÉRIODE — appliqué en DERNIER, après tous les bonus ET la marée,
-  // sinon il ne sert à rien : c'est exactement ce qui faisait sortir 1,2 m / 8 s
-  // en « Excellent » (base 3 + houle idéale + vent nul = 5, malgré la mer de
-  // vent). Une marée favorable ne transforme pas davantage une mer de vent en
-  // houle, d'où sa place après l'ajustement de marée.
-  if(pc.cap < score) {
-    details.push(pc.label + ' → plafonné « ' + _SC_LABELS[pc.cap] + ' »');
-    score = pc.cap;
+  // PLAFONDS — appliqués en DERNIER, après tous les bonus ET la marée, sinon ils
+  // ne servent à rien : c'est exactement ce qui faisait sortir 1,2 m / 8 s en
+  // « Excellent » (base 3 + houle idéale + vent nul = 5, malgré la mer de vent).
+  // Une marée favorable ne transforme pas davantage une mer de vent en houle, ni
+  // ne calme 25 nœuds — d'où leur place après l'ajustement de marée.
+  //
+  // Deux plafonds indépendants, on garde le plus bas : la période dit ce que la
+  // vague EST, le vent dit si elle est surfable. Aucun des deux ne se rattrape
+  // par l'autre (une houle de 16 s par 25 nœuds reste injouable).
+  var wc = windCeiling(ws);
+  var cap = Math.min(pc.cap, wc.cap);
+  if(cap < score) {
+    // Nommer celui qui mord vraiment, pas les deux : le détail sert à comprendre
+    // en un coup d'œil ce qui gâche le créneau.
+    var why = (wc.cap < pc.cap) ? wc.label : pc.label;
+    if(wc.cap === pc.cap && wc.label) why = pc.label + ' + ' + wc.label;
+    details.push(why + ' → plafonné « ' + _SC_LABELS[cap] + ' »');
+    score = cap;
   } else if(pc.key === 'unknown' && score >= 4) {
     // Ne pas taire l'incertitude : un modèle sans période peut afficher 5/5 sur
     // une mer de vent sans qu'on ait de quoi le contredire.
@@ -375,6 +441,7 @@ if (typeof module !== 'undefined' && module.exports) {
     calcSurfScore: calcSurfScore,
     periodClass: periodClass,
     windSector: windSector,
+    windCeiling: windCeiling,
     swellFit: swellFit,
     breakBearing: breakBearing,
     surfPower: surfPower,

@@ -17667,46 +17667,25 @@ function showSpotSettings(forceOpen) {
     +'border-radius:8px;padding:9px 10px;margin-bottom:12px;font-size:11px;color:var(--muted);'
     +'line-height:1.7;">📊 Journal : chargement des sessions… ⏳</div>'
 
-    // Hs
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'
-    +'<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px;">Hs min (m)</div>'
-    +'<input type="number" id="ss-minHs" value="'+p.minHs+'" min="0.1" max="2" step="0.1" '
-    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
-    +'padding:6px;color:var(--text);font-size:11px;"></div>'
-    +'<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px;">Période min (s)</div>'
-    +'<input type="number" id="ss-minPeriod" value="'+p.minPeriod+'" min="4" max="20" step="1" '
-    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
-    +'padding:6px;color:var(--text);font-size:11px;"></div></div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">'
-    +'<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px;" title="Au-dessus : malus moutons/clapot/navigation, quelle que soit la direction">Seuil moutons (nds)</div>'
-    +'<input type="number" id="ss-calm" value="'+(p.windCalmKt||13)+'" min="5" max="25" step="1" '
-    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
-    +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div>'
-    +'<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px;">Vent fort (nds)</div>'
-    +'<input type="number" id="ss-wind" value="'+p.windMalusKt+'" min="5" max="40" step="1" '
-    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
-    +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div>'
-    +'<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px;">Rafales (nds)</div>'
-    +'<input type="number" id="ss-gust" value="'+p.gustMalusKt+'" min="5" max="50" step="1" '
-    +'style="width:100%;background:var(--mid);border:1px solid var(--border);border-radius:6px;'
-    +'padding:6px;color:var(--text);font-size:11px;box-sizing:border-box;"></div></div>'
-
-    // Directions compas — version mini inline
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
-    +'<div style="text-align:center;">'
-    +'<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">🌊 Houle idéale (vient de)</div>'
-    +'<input type="number" id="ss-swell" value="'+(p.swellDirIdeal||120)+'" min="0" max="359" step="5" '
-    +'style="width:70px;background:var(--mid);border:1px solid rgba(79,163,199,.4);border-radius:6px;'
-    +'padding:6px;color:#4fa3c7;font-size:14px;font-weight:700;text-align:center;">'
-    +'<div style="font-size:11px;color:var(--faint);margin-top:2px;" id="ss-swell-dir">'+degToCompass(p.swellDirIdeal||120)+'</div>'
+    // Les reglages de score NE sont plus editables ici (19/08/2026) : ils
+    // vivaient en double, dans cette boite ET dans showScoreSettings(), deux
+    // jeux de champs ecrivant les memes scoreParams. C'est ce qui rendait le
+    // selecteur satellite introuvable (il n'existe que dans l'autre boite,
+    // derriere un minuscule ⚙) et ce qui faisait perdre tidePref a chaque
+    // enregistrement. Ici : un resume en lecture seule + un bouton.
+    +'<div style="background:var(--glass);border:1px solid var(--border);border-radius:8px;'
+    +'padding:10px;margin-bottom:10px;font-size:11px;color:var(--muted);line-height:1.9;">'
+    +'Houle : Hs \u2265 '+p.minHs+' m \u00b7 p\u00e9riode \u2265 '+p.minPeriod+' s \u00b7 puissance \u2265 '+(p.minPwr!=null?p.minPwr:1)+' kW/m<br>'
+    +'Mer de vent \u2264 '+(p.windSeaT!=null?p.windSeaT:10)+' s \u00b7 houle longue \u2265 '+(p.groundSwellT!=null?p.groundSwellT:13)+' s<br>'
+    +'Vent : moutons '+(p.windCalmKt!=null?p.windCalmKt:8)+' \u00b7 fort '+p.windMalusKt+' \u00b7 rafales '+p.gustMalusKt+' nds<br>'
+    +'R\u00e9cif : large au <b>'+degToCompass(p.windDirIdeal==null?225:p.windDirIdeal)+'</b> \u00b7 fen\u00eatre de houle '
+    +Math.round(((p.swellDirIdeal==null?225:p.swellDirIdeal)-(p.swellWindowHalf!=null?p.swellWindowHalf:45)+360)%360)+'\u00b0\u2013'
+    +Math.round(((p.swellDirIdeal==null?225:p.swellDirIdeal)+(p.swellWindowHalf!=null?p.swellWindowHalf:45))%360)+'\u00b0'
     +'</div>'
-    +'<div style="text-align:center;">'
-    +'<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">💨 Vent idéal (vers)</div>'
-    +'<input type="number" id="ss-wind-dir" value="'+(p.windDirIdeal||270)+'" min="0" max="359" step="5" '
-    +'style="width:70px;background:var(--mid);border:1px solid rgba(232,160,87,.4);border-radius:6px;'
-    +'padding:6px;color:#e8a057;font-size:14px;font-weight:700;text-align:center;">'
-    +'<div style="font-size:11px;color:var(--faint);margin-top:2px;" id="ss-wind-dir-txt">'+degToCompass(p.windDirIdeal||270)+'</div>'
-    +'</div></div>'
+    +'<button type="button" id="ss-open-score" style="width:100%;background:var(--accent);color:#fff;'
+    +'border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:12px;">'
+    +'\ud83c\udfc4 R\u00e9glages du score \u2014 vue satellite &amp; bar\u00e8me</button>'
+    +'<div style="font-size:11px;color:var(--faint);margin-top:4px;">Seuils, fen\u00eatre de houle, et le <b>sens de d\u00e9ferlement</b> \u00e0 tracer sur la vue satellite du spot.</div>'
     +'</div>'
 
 
@@ -17776,15 +17755,15 @@ function showSpotSettings(forceOpen) {
     });
   });
 
-  // Live preview compass labels
-  document.getElementById('ss-swell').addEventListener('input', function() {
-    var el = document.getElementById('ss-swell-dir');
-    if (el) el.textContent = degToCompass(+this.value||0);
-  });
-  document.getElementById('ss-wind-dir').addEventListener('input', function() {
-    var el = document.getElementById('ss-wind-dir-txt');
-    if (el) el.textContent = degToCompass(+this.value||0);
-  });
+  // Ouvre LA boite du score (satellite + bareme) en refermant celle-ci : deux
+  // dialogues modaux superposes ecrivant les memes parametres, c'est justement
+  // ce qu'on vient de supprimer. Les listeners d'apercu des ex-champs
+  // ss-swell / ss-wind-dir sont partis avec eux.
+  var _openScore = document.getElementById('ss-open-score');
+  if (_openScore) _openScore.onclick = function() {
+    div.remove();
+    if (typeof showScoreSettings === 'function') showScoreSettings();
+  };
 
   document.getElementById('ss-close').onclick = function() { div.remove(); };
 
@@ -17840,36 +17819,12 @@ function showSpotSettings(forceOpen) {
       // CETTE boîte de dialogue (il vit dans showScoreSettings()/sc-minPwr) : on
       // préserve la valeur existante au lieu de lire un id inexistant (ss-minPwr
       // n'a jamais existé → plantait ici et annulait tout le reste de la sauvegarde).
-      var newScore = {
-        minHs:     +document.getElementById('ss-minHs').value     || 0.4,
-        minPeriod: +document.getElementById('ss-minPeriod').value || 8,
-        minPwr:    p.minPwr != null ? p.minPwr : _DEFAULT_SCORE.minPwr,
-        windCalmKt:  +document.getElementById('ss-calm').value    || 13,
-        windMalusKt: +document.getElementById('ss-wind').value    || 18,
-        gustMalusKt: +document.getElementById('ss-gust').value    || 25,
-        swellDirIdeal: +document.getElementById('ss-swell').value    || 120,
-        windDirIdeal:  +document.getElementById('ss-wind-dir').value || 270,
-        maxHs: p.maxHs || 4.0,
-        onshoreLimit: p.onshoreLimit || 45,
-        offshoreMin: p.offshoreMin || 135,
-        // Champs SANS widget dans cette boîte : ils vivent dans le dialogue
-        // showScoreSettings() (sc-*). Ce littéral écrase scoreParams en entier,
-        // donc sans cette recopie ils repartaient au défaut à chaque
-        // enregistrement d'un réglage de spot — tidePref le faisait déjà depuis
-        // toujours (préférence de marée perdue en silence), constaté le
-        // 18/08/2026 en ajoutant windSeaT/groundSwellT.
-        windSeaT:     p.windSeaT     != null ? p.windSeaT     : _DEFAULT_SCORE.windSeaT,
-        groundSwellT: p.groundSwellT != null ? p.groundSwellT : _DEFAULT_SCORE.groundSwellT,
-        tidePref:     p.tidePref || _DEFAULT_SCORE.tidePref,
-      };
-      // Traçabilité calibration auto : un champ modifié À LA MAIN ici sort de la
-      // liste _auto.fields → la calibration journal ne l'écrasera plus jamais.
-      if (p._auto && p._auto.fields) {
-        newScore._auto = Object.assign({}, p._auto, {
-          fields: p._auto.fields.filter(function(f) { return newScore[f] === p[f]; })
-        });
-      }
-      saveScoreParams(newScore);
+      // Cette boite n'edite plus AUCUN parametre de score (ils sont tous dans
+      // showScoreSettings) : elle n'a donc plus rien a en sauvegarder. Elle
+      // reconstruisait auparavant scoreParams par un litteral complet, ce qui
+      // effacait en silence tout champ sans widget ici — tidePref l'a subi
+      // depuis toujours, et windSeaT/groundSwellT/swellWindowHalf l'auraient
+      // subi. Ne rien ecrire est la seule version qui ne peut rien perdre.
       await saveSpots();
       div.remove();
       loadForecast(currentSpot);

@@ -7959,3 +7959,106 @@ de sauvegarde complet (`windSeaT`/`groundSwellT`/`swellWindowHalf`/`tidePref` pr
 readout « Fenêtre de houle 180° → 270° ».
 
 `sw.js` : `CACHE_NAME` v89 → **v90**.
+
+---
+
+## 2026-08-19 (suite) — Plafond vent, et UNE seule boîte pour le score
+
+Trois signalements, dont deux qui auraient dû être vus au chantier précédent :
+« je ne vois pas l'option vue satellite avec le vecteur », « il y a un mélange
+réglages carte des spots et meilleurs créneaux », « si il y a trop de vent,
+exemple 21 nœuds : énorme, ça ne peut pas être bien ; le meilleur c'est pas de
+vent du tout, glassy ».
+
+### 1. ✗ L'effet du vent saturait à 14 nœuds
+
+`_WIND_EFFECT` a une dernière colonne **plate**, ouverte sur `[windMalusKt, +∞[` :
+passé le seuil, le malus cesse de croître. Mesuré sur 1,5 m / 14 s pile dans la
+fenêtre, seuils calibrés du spot (calm 7, fort 12), **sans donnée de rafales** :
+
+| vent | avant | après |
+|---|---|---|
+| 14 nds offshore | 2/5 Passable | 2/5 Passable |
+| 18 nds offshore | 2/5 Passable | 2/5 Passable |
+| 21 nds offshore | **2/5 Passable** | 1/5 Médiocre |
+| 30 nds offshore | **2/5 Passable** | 0/5 Nul |
+
+Le malus de rafales masquait le défaut **quand la donnée de rafales existait** —
+elle manque sur plusieurs modèles, d'où un score qui paraissait correct une fois
+sur deux. C'est exactement le trou qu'a trouvé l'utilisateur, et que le harnais
+ne testait pas : toutes ses assertions de vent passaient `wg = ws × 1,3`.
+
+→ `windCeiling()`, même remède que pour la période : un plafond appliqué à la
+toute fin, qui continue de mordre aussi fort que le vent monte. Calé sur les
+seuils du spot (`windCalmKt` / `windMalusKt`), donc un spot plus tolérant suit
+automatiquement. Les deux plafonds sont indépendants et on garde le plus bas —
+une houle de 16 s par 25 nœuds reste injouable.
+
+Le harnais asserte désormais la **monotonie stricte de 0 à 40 nds, dans les trois
+secteurs, avec ET sans rafales** — c'est la version manquante de l'assertion.
+
+### Revue documentaire
+
+Seuils publiés (windup.live, neptune.coach, surfcaptain) : onshore ~8 nds =
+bascule, 8-15 dégradé, 12-15 injouable pour la plupart ; offshore 0-3 glassy,
+**5-15 « sweet spot »**, 15-20+ pénible ; Beaufort 17-21 = *fresh breeze, choppy*,
+22+ inexploitable.
+
+Deux confirmations importantes :
+- **Le principe du plafond n'est pas une invention maison.** Surfline documente
+  des facteurs limitants — « you would never see 3-4 foot surf with offshore winds
+  rated as epic — this indicates that the size of the surf is the limiting
+  factor » — et surf-forecast.com note 0 étoile pour « flat + blown out **OR
+  strong winds in any direction** ».
+- **Le vent se juge sur l'orientation du spot, pas sur la houle du jour.**
+  Confirmation indépendante de la décision du chantier précédent (qui annulait
+  `dd7a8c9`).
+
+**Écart assumé et documenté dans le code** : le plafond vent ne distingue pas la
+direction, alors que la littérature tolère l'offshore jusqu'à 15 nds. Délibéré :
+ce sont des passes à **accès bateau**, où le vent dégrade navigation, clapot de
+lagon et mouillage quelle que soit son orientation — mesuré sur 73 sessions le
+03/08 et réaffirmé par l'utilisateur. L'asymétrie onshore/offshore de la
+littérature existe bien, mais elle est portée par `_WIND_EFFECT`, pas par le plafond.
+
+### 2. ✗ Deux boîtes réglaient les mêmes `scoreParams`
+
+C'est la cause des deux premiers signalements, et elle est plus bête que prévu :
+
+- `showSpotSettings()` — **le bouton visible** (données, carte, station, heure) —
+  contenait aussi une **copie** des réglages de score, restée sur l'ancien modèle
+  (« Houle idéale » / « Vent idéal » en champs numériques, défauts 120/270).
+- `showScoreSettings()` — accessible **uniquement** par un minuscule ⚙ à
+  l'intérieur de la tuile « Score » de la carte conditions. C'est là qu'avait
+  atterri le sélecteur satellite. Introuvable en pratique.
+
+Deux jeux de champs écrivant les mêmes paramètres, c'est aussi ce qui faisait
+perdre `tidePref` à l'enregistrement (le littéral complet de `ss-save`).
+
+→ Les champs de score sortent de « Réglages spot », remplacés par un **résumé en
+lecture seule** (seuils, cap du récif, fenêtre de houle) et un **bouton pleine
+largeur** « 🏄 Réglages du score — vue satellite & barème ». `ss-save` n'écrit
+plus **aucun** `scoreParams` : ne rien écrire est la seule version qui ne peut
+rien perdre.
+
+**Leçon de méthode** : au chantier précédent, j'avais vérifié que le widget
+*existait* (`getElementById` non nul) sans vérifier qu'un utilisateur pouvait
+l'*atteindre*. La sonde headless part désormais du **bouton visible de la page**
+et suit le parcours complet jusqu'au sélecteur.
+
+### Vérification
+
+`test_score.js` : **43/43** (+5). Nouveaux invariants : 30 nds ne note plus comme
+14, 21 nds ne peut pas être « Bien » même offshore, monotonie stricte du vent sur
+0-40 nds × 3 secteurs × avec/sans rafales, plafond vent infranchissable même par
+la meilleure houle et une marée favorable, glassy en haut du barème.
+
+Headless Edge, **parcours réel** : bouton visible → Réglages spot (0 ancien champ
+de score restant) → bouton → boîte score → sélecteur satellite avec image chargée
+(768 px) et readout « Fenêtre de houle 180° → 270° ». 0 erreur JS.
+
+Contrôles croisés : aucun double comptage de marée (`_tideAdj` n'est plus ajouté
+après coup nulle part), toutes les fenêtres d'appel de `calcSurfScore` passent le
+9ᵉ argument, aucune référence résiduelle aux champs supprimés.
+
+`sw.js` : `CACHE_NAME` v90 → **v91**.

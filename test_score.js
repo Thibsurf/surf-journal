@@ -202,6 +202,54 @@ section('Cohérence des caps — ce que le dialogue ⚙ doit signaler');
   S.setScoreParams(SPOT);
 }
 
+// ── 7bis. Plafond vent ──────────────────────────────────────────────────
+section('Plafond vent : trop de vent ne peut pas \u00eatre bien, quoi qu\'il arrive');
+{
+  // Le d\u00e9faut d'origine : _WIND_EFFECT a une derni\u00e8re colonne PLATE ouverte sur
+  // [windMalusKt, +inf[, donc au-del\u00e0 du seuil le malus cessait de cro\u00eetre. Mesur\u00e9
+  // sur 1,5 m / 14 s SANS donn\u00e9e de rafales (elle manque sur plusieurs mod\u00e8les,
+  // et c'est elle qui masquait le probl\u00e8me) : 14, 18, 21 et 30 nds sortaient TOUS
+  // \u00e0 2/5 « Passable ». Signal\u00e9 : « 21 noeuds : \u00e9norme, \u00e7a ne peut pas \u00eatre bien ».
+  const sansRafales = (ws, wd) => sc(1.5, 14, 200, ws, null, wd, null, 0).score;
+  ok(sansRafales(30, OFFSHORE) < sansRafales(14, OFFSHORE),
+     '30 nds ne note plus comme 14 nds', sansRafales(30, OFFSHORE) + ' vs ' + sansRafales(14, OFFSHORE));
+  ok(sansRafales(21, OFFSHORE) < 3, '21 nds ne peut pas \u00eatre « Bien » m\u00eame offshore',
+     sansRafales(21, OFFSHORE) + '/5');
+
+  // Monotonie strictement d\u00e9croissante sur tout le domaine, dans les trois
+  // secteurs, avec ET sans rafales : c'est l'invariant qui interdit tout futur
+  // palier plat.
+  let breaks = 0;
+  for (const wd of [OFFSHORE, SIDE, ONSHORE]) {
+    for (const gust of [true, false]) {
+      let prev = 99;
+      for (let ws = 0; ws <= 40; ws += 1) {
+        const v = sc(1.5, 14, 200, ws, gust ? ws * 1.35 : null, wd, null, 0).score;
+        if (v > prev) { breaks++; failures.push(`vent non monotone \u00e0 ${ws}nds (rafales=${gust}) : ${v} apr\u00e8s ${prev}`); }
+        prev = v;
+      }
+    }
+  }
+  ok(breaks === 0, 'le score ne remonte jamais quand le vent forcit', breaks + ' ruptures');
+
+  // Le plafond doit tenir m\u00eame avec la meilleure houle possible et une mar\u00e9e
+  // favorable : rien ne rachète 25 noeuds.
+  let viol = 0;
+  for (const ws of [13, 17, 22, 28, 35]) for (const T of [14, 16, 18]) for (const adj of [0, 0.5, 1]) {
+    const r = sc(2.0, T, 200, ws, null, OFFSHORE, null, adj);
+    if (r.score > S.windCeiling(ws).cap) {
+      viol++; failures.push('plafond vent franchi : ' + ws + 'nds T=' + T + ' adj=' + adj + ' \u2192 ' + r.score);
+    }
+  }
+  ok(viol === 0, 'ni la houle ni la mar\u00e9e ne franchissent le plafond vent', viol + ' violations');
+
+  // Et la mer d'huile reste le haut du bar\u00e8me (« le meilleur c'est pas de vent du tout »).
+  ok(sansRafales(1, ONSHORE) >= sansRafales(1, OFFSHORE) &&
+     sansRafales(1, OFFSHORE) > sansRafales(9, OFFSHORE),
+     'glassy prime, quelle que soit la direction',
+     'glassy=' + sansRafales(1, OFFSHORE) + ' 9nds=' + sansRafales(9, OFFSHORE));
+}
+
 // ── 8bis. Marée ─────────────────────────────────────────────────────
 section('Marée (9e argument, dd7a8c9) : elle pèse, mais pas sur la nature de la houle');
 {

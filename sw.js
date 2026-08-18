@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v90';
+const CACHE_NAME = 'surf-nc-v91';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
