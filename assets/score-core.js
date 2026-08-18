@@ -152,11 +152,15 @@ function swellFit(swDir) {
   var half = SCORE_PARAMS.swellWindowHalf != null ? SCORE_PARAMS.swellWindowHalf : 45;
   var ideal = SCORE_PARAMS.swellDirIdeal != null ? SCORE_PARAMS.swellDirIdeal : 225;
   var diff = _angDiff(swDir, ideal);
-  var out  = Math.max(0, diff - half);          // de combien on sort de la fenêtre
-  if (out === 0)      return { key:'in',      adj:+1, deg:diff, out:0 };
-  if (out <= 45)      return { key:'edge',    adj: 0, deg:diff, out:out };
-  if (out <= 90)      return { key:'oblique', adj:-1, deg:diff, out:out };
-  return                     { key:'closed',  adj:-2, deg:diff, out:out };
+  // `out` = de combien la houle sort de la fenêtre. C'est LA grandeur que
+  // calcSurfScore pénalise (barème tide-raider : −2/−4/−6/−8 selon 10/20/30°).
+  // Pas de champ `adj` ici : il a existé tant que le barème montait par ±1, et
+  // le garder avec des valeurs qui ne servent plus tromperait la prochaine lecture.
+  var out  = Math.max(0, diff - half);
+  if (out === 0) return { key:'in',      deg:diff, out:0 };
+  if (out <= 20) return { key:'edge',    deg:diff, out:out };
+  if (out <= 45) return { key:'oblique', deg:diff, out:out };
+  return                { key:'closed',  deg:diff, out:out };
 }
 
 // ─── VENT : un SEUL référentiel onshore / sideshore / offshore ───────────────
@@ -277,6 +281,30 @@ function windCeiling(ws) {
   return                         { cap: 0, label: 'Vent ' + kt + 'nds \u2014 impraticable' };
 }
 
+// Bonus de période GRADUÉ — formule reprise telle quelle de tide-raider
+// (`next/app/lib/surfUtils.ts`, code lu le 19/08/2026), seule implémentation
+// open source trouvée qui gradue ce critère :
+//     midPoint = (min + max) / 2
+//     bonus    = clamp((T - midPoint) / (max - midPoint) * 2, 0, 2)
+// Chez eux la fenêtre idéale est `idealSwellPeriod {min,max}` du spot ; ici elle
+// est portée par les deux seuils déjà réglables, [minPeriod, groundSwellT + 5],
+// dont le milieu tombe naturellement au voisinage de groundSwellT.
+//
+// Ce que ça corrige : une houle de 13 s et une de 18 s valaient exactement pareil
+// (+1 binaire dès groundSwellT), alors que ce sont deux jours très différents.
+// Le seul autre signal qui les séparait, ½·Hs²·T, est linéaire en T et écrasé
+// par le carré de Hs.
+function periodBonus(T) {
+  if (T === null || T === undefined || !isFinite(T)) return 0;
+  var sea  = SCORE_PARAMS.windSeaT != null ? SCORE_PARAMS.windSeaT : 10;
+  var grnd = Math.max(SCORE_PARAMS.groundSwellT != null ? SCORE_PARAMS.groundSwellT : 13, sea + 1);
+  var min  = SCORE_PARAMS.minPeriod != null ? SCORE_PARAMS.minPeriod : 8;
+  var max  = grnd + 5;
+  var mid  = (Math.min(min, grnd) + max) / 2;
+  if (T <= mid || max <= mid) return 0;
+  return Math.min(2, Math.max(0, (T - mid) / (max - mid) * 2));
+}
+
 // tideAdj (optionnel, 9e argument) : delta numérique déjà calculé par l'appelant
 // (cf. previsions.html `_tideAdj()`/`_tideAdjAt()`) — calcSurfScore reste sans
 // dépendance (pas de spot/marée ici), mais c'est le SEUL point où la marée entre
@@ -287,114 +315,139 @@ function windCeiling(ws) {
 // qui ignorait complètement la préférence de marée réglée dans ⚙ Score, malgré
 // le texte du dialogue qui laisse croire le contraire (trouvé le 18/08/2026,
 // signalé par l'utilisateur comme "les scores ne sont pas très logiques").
+//
+// ═══ ARCHITECTURE DU BARÈME (refonte du 19/08/2026) ═══════════════════════
+// « Reste proche des stratégies auditées sur le net plutôt que d'inventer. »
+//
+// Le barème précédent partait d'une base tirée de la puissance (½·Hs²·T) puis
+// empilait des ±1, chacun clampé dans [0,5] au passage. Cette forme-là était
+// maison, et elle a produit DEUX fois le même bug de saturation :
+//   • 18/08 : 1,2 m / 8 s notait 5/5 — les +1 noyaient le malus de période ;
+//   • 19/08 : 14, 21 et 30 nds notaient tous pareil — le malus de vent plafonnait.
+// Elle en cachait un troisième : le bonus de période gradué, mesuré, ne changeait
+// STRICTEMENT AUCUNE note (running total déjà à 5 quand il s'appliquait).
+//
+// On adopte donc la forme de tide-raider (surfUtils.ts, code lu — seule
+// implémentation open source trouvée avec un barème entier et lisible, ~50 spots
+// en production) : **partir de 10 et soustraire des pénalités graduées**, une par
+// critère, puis normaliser sur 0-5. Cette forme est structurellement immunisée
+// contre la saturation, puisqu'il n'y a plus rien à saturer vers le haut.
+//
+// Ce qu'on garde de chez nous, et pourquoi :
+//   • les SEUILS (minHs/maxHs, minPeriod, windCalmKt/windMalusKt, gustMalusKt)
+//     sont calibrés sur 73 sessions du journal — mesurés, pas inventés, et
+//     nettement plus stricts sur le vent que ceux de tide-raider (15/25/35 nds)
+//     parce que nos spots sont des passes à ACCÈS BATEAU ;
+//   • les PLAFONDS (periodClass, windCeiling), qui ne sont pas une invention non
+//     plus : Surfline documente des facteurs limitants (« you would never see
+//     3-4 foot surf with offshore winds rated as epic — the size of the surf is
+//     the limiting factor ») et surf-forecast.com note 0 étoile pour « flat +
+//     blown out OR strong winds in any direction ». Ils s'appliquent APRÈS la
+//     normalisation et ne se négocient pas.
+//   • `minPwr` reste le garde-fou « c'est plat », en sortie anticipée.
+//
+// Comme chez eux, l'accumulateur n'est PAS borné vers le haut en cours de route
+// (seul `Math.max(0, …)` final existe) : c'est ce qui permet au bonus de période
+// de peser réellement. Le risque qu'une houle exceptionnelle se constitue une
+// réserve absorbant 25 nœuds est couvert par les plafonds, appliqués ensuite.
 function calcSurfScore(hs, T, swDir, ws, wg, wDir, pwr, tideAdj) {
   if(!hs || hs < SCORE_PARAMS.minHs) return {score:0, label:'Trop petit', col:'#3d5468', details:['Hs < '+SCORE_PARAMS.minHs+'m']};
   if(!pwr || pwr < SCORE_PARAMS.minPwr) return {score:0, label:'Plat', col:'#3d5468', details:['Puissance insuffisante']};
 
   var details = [];
-  var score = 0;
-  // maxHs n'est plus un plafond qui écrase tout à 1/5 dès qu'il est dépassé
-  // (trouvé le 18/08/2026 : un gros swell propre, longue période, offshore,
-  // tombait quand même à "Médiocre" — aucun service de référence regardé pour
-  // ce chantier (Surfline notamment, cf. leur doc "Rating of Surf Heights and
-  // Quality") ne plafonne uniquement sur la taille : le vent et la période
-  // pèsent davantage que la hauteur brute dans leurs propres barèmes publics.
-  // maxHs reste un vrai réglage personnel ("au-delà, ça ne m'intéresse plus"),
-  // appliqué comme un malus après le calcul normal, cf. plus bas — pas comme
-  // un court-circuit qui efface le reste des conditions.
-  var tooBig = hs > SCORE_PARAMS.maxHs;
+  var score = 10;   // échelle interne 0-10, comme tide-raider ; normalisée plus bas
 
-  // Score de base sur la puissance (0-4 pts)
-  if(pwr < 2)  { score = 1; }
-  else if(pwr < 5)  { score = 2; }
-  else if(pwr < 12) { score = 3; }
-  else if(pwr < 25) { score = 4; }
-  else              { score = 3; details.push('Très puissant'); } // trop gros = moins bien
-
-  // Période. Le malus `minPeriod` reste (seuil calibré par spot, il départage
-  // DANS une bande), mais l'essentiel se joue au plafond appliqué plus bas :
-  // ½·Hs²·T récompense Hs au CARRÉ, donc un gros clapot court affiche une
-  // « puissance » élevée sans qu'aucune vague surfable existe.
-  var pc = periodClass(T);
-  if(T) {
-    if(T < SCORE_PARAMS.minPeriod) {
-      score = Math.max(0, score - 1);
-      details.push('Période courte '+_fmtT(T)+' (&lt;'+SCORE_PARAMS.minPeriod+'s)');
-    } else if(pc.key === 'ground') {
-      score = Math.min(5, score + 1);
-      details.push('Longue période '+_fmtT(T));
-    }
-  }
-
-  // Houle : entre-t-elle dans la fenêtre du spot ? (cf. swellFit)
-  var fit = swellFit(swDir);
-  if(fit) {
-    if(fit.adj > 0)      { score = Math.min(5, score + fit.adj); details.push('Houle dans la fenêtre '+compass(swDir)); }
-    else if(fit.adj < 0) { score = Math.max(0, score + fit.adj);
-      details.push((fit.key === 'closed' ? 'Houle hors fenêtre ' : 'Houle oblique ')
-        + compass(swDir) + ' (' + Math.round(fit.out) + '° hors fenêtre)'); }
-  }
-
-  // Vent : secteur × force, évalué UNE seule fois (cf. windSector, _WIND_EFFECT)
-  var sect = windSector(wDir, swDir);
-  if(ws !== null && ws !== undefined) {
-    var kt = Math.round(ws);
-    var _calmKt   = SCORE_PARAMS.windCalmKt  || 8;
-    var _strongKt = SCORE_PARAMS.windMalusKt || 12;
-    if(ws <= _GLASSY_KT) {
-      // Bonus vent nul/très faible, indépendant de la direction (03/08/2026,
-      // « moins y'a de vent, mieux c'est » — qualité moyenne 3,11 sous 8 nds,
-      // la tranche la plus élevée du journal). Le secteur est quand même
-      // affiché : il informe sans peser.
-      score = Math.min(5, score + 1);
-      details.push((ws < 2 ? 'Glassy (vent nul' : 'Vent très faible ('+kt+'nds')
-        + (sect ? ', '+sect.lbl.toLowerCase() : '') + ')');
-    } else if(sect) {
-      var band = (ws < _calmKt) ? 0 : (ws < _strongKt ? 1 : 2);
-      var eff  = _WIND_EFFECT[sect.key][band];
-      var suffix = ['', ' — moutons/clapot', ' — nav difficile'][band];
-      if(sect.key === 'onshore' && band >= 1) suffix = (band === 1 ? ' — vague désordonnée' : ' — clapoteux, nav difficile');
-      if(sect.key === 'offshore' && band === 0) suffix = ' — vague peignée';
-      if(eff > 0)      { score = Math.min(5, score + eff); }
-      else if(eff < 0) { score = Math.max(0, score + eff); }
-      if(eff !== 0 || band > 0) details.push(sect.lbl+' '+kt+'nds'+suffix);
-    } else if(ws >= (SCORE_PARAMS.windMalusKt || 12)) {
-      // Direction de vent inconnue : on ne peut que constater la force.
-      score = Math.max(0, score - 2);
-      details.push('Vent fort '+kt+'nds (direction inconnue)');
-    }
-  }
-
-  // Rafales excessives
-  if(wg && wg > SCORE_PARAMS.gustMalusKt) {
-    score = Math.max(0, score - 1);
-    details.push('Rafales '+Math.round(wg)+'nds');
-  }
-
-  // maxHs dépassé : malus plutôt que le plafond dur d'avant (cf. commentaire en
-  // tête de fonction) — un gros swell propre garde une chance de rester "Bien"
-  // au lieu de tomber systématiquement à "Médiocre".
-  if(tooBig) {
-    score = Math.max(0, score - 2);
+  // ── 1. Hauteur hors de la fenêtre du spot ────────────────────────────────
+  // tide-raider : −4 / −6 / −8 selon l'écart (0,5 m / 1 m / au-delà). Adouci ici
+  // en −2 / −4 / −6 : notre fenêtre par défaut [0,4 ; 4,0 m] est bien plus large
+  // que leurs [1,4 ; 4,0], donc en sortir est un signal moins fort. maxHs reste
+  // un réglage personnel (« au-delà, ça ne m'intéresse plus »), pas une limite
+  // physique — d'où un malus et non le court-circuit à 1/5 d'avant dd7a8c9.
+  if(hs > SCORE_PARAMS.maxHs) {
+    var over = hs - SCORE_PARAMS.maxHs;
+    var pen  = over <= 0.5 ? 2 : (over <= 1 ? 4 : 6);
+    score -= pen;
     details.push('Hs '+hs+'m &gt; '+SCORE_PARAMS.maxHs+'m (dépasse ta limite)');
   }
 
-  // Marée (cf. commentaire du paramètre tideAdj en tête de fonction) — seul
-  // point d'application, pour que label/couleur reflètent TOUJOURS le même
-  // nombre que celui utilisé pour trier/filtrer ailleurs (avant, un score
-  // "de base" et un score "effectif" pouvaient diverger silencieusement).
-  if(tideAdj) details.push(tideAdj > 0 ? 'Marée favorable' : 'Marée défavorable');
-  score = Math.max(0, Math.min(5, Math.round(score + (tideAdj || 0))));
+  // ── 2. Période ───────────────────────────────────────────────────────────
+  // tide-raider : hors fenêtre −2 (≤2 s) / −4 (≤4 s) / −6 ; dans la moitié haute,
+  // bonus gradué. Même forme, sur nos seuils.
+  var pc = periodClass(T);
+  if(T) {
+    if(T < SCORE_PARAMS.minPeriod) {
+      var dT = SCORE_PARAMS.minPeriod - T;
+      score -= (dT <= 2 ? 2 : (dT <= 4 ? 4 : 6));
+      details.push('Période courte '+_fmtT(T)+' (&lt;'+SCORE_PARAMS.minPeriod+'s)');
+    }
+    var pb = periodBonus(T);
+    if(pb > 0) {
+      score += pb;
+      details.push('Longue période '+_fmtT(T)+' (+'+(Math.round(pb*10)/10).toString().replace('.', ',')+')');
+    }
+  }
 
-  // PLAFONDS — appliqués en DERNIER, après tous les bonus ET la marée, sinon ils
-  // ne servent à rien : c'est exactement ce qui faisait sortir 1,2 m / 8 s en
-  // « Excellent » (base 3 + houle idéale + vent nul = 5, malgré la mer de vent).
-  // Une marée favorable ne transforme pas davantage une mer de vent en houle, ni
-  // ne calme 25 nœuds — d'où leur place après l'ajustement de marée.
-  //
-  // Deux plafonds indépendants, on garde le plus bas : la période dit ce que la
-  // vague EST, le vent dit si elle est surfable. Aucun des deux ne se rattrape
-  // par l'autre (une houle de 16 s par 25 nœuds reste injouable).
+  // ── 3. Direction de la houle ─────────────────────────────────────────────
+  // tide-raider : −2 (≤10° hors fenêtre) / −4 (≤20°) / −6 (≤30°) / −8 au-delà.
+  // Formule reprise telle quelle, l'écart étant mesuré depuis le bord de la
+  // fenêtre du spot (swellDirIdeal ± swellWindowHalf), comme chez eux.
+  var fit = swellFit(swDir);
+  if(fit && fit.out > 0) {
+    score -= (fit.out <= 10 ? 2 : (fit.out <= 20 ? 4 : (fit.out <= 30 ? 6 : 8)));
+    details.push((fit.out > 30 ? 'Houle hors fenêtre ' : 'Houle oblique ')
+      + compass(swDir) + ' (' + Math.round(fit.out) + '° hors fenêtre)');
+  } else if(fit) {
+    details.push('Houle dans la fenêtre '+compass(swDir));
+  }
+
+  // ── 4. Direction du vent ─────────────────────────────────────────────────
+  // tide-raider : 0 si le vent est dans les directions optimales du spot, −2 si
+  // ≤45° à côté, −4 au-delà. Nos trois secteurs (calculés sur le cap du large,
+  // cf. windSector) en sont l'équivalent continu : offshore = dans la liste,
+  // sideshore = voisin, onshore = au-delà.
+  var sect = windSector(wDir, swDir);
+  var _calmKt   = SCORE_PARAMS.windCalmKt  || 8;
+  var _strongKt = SCORE_PARAMS.windMalusKt || 12;
+  if(sect && ws != null && ws > _GLASSY_KT) {
+    var dirPen = { offshore: 0, side: 2, onshore: 4 }[sect.key];
+    if(dirPen) { score -= dirPen; details.push(sect.lbl+' '+Math.round(ws)+'nds'); }
+    else details.push('Offshore '+Math.round(ws)+'nds — vague peignée');
+  }
+
+  // ── 5. Force du vent ─────────────────────────────────────────────────────
+  // tide-raider : >15 −2, >25 −3, >35 −4 (ignoré si le spot est `sheltered`).
+  // Même forme à trois paliers, mais sur NOS seuils calibrés — leurs 15/25/35
+  // valent pour des beach breaks accessibles à pied, quand nos passes se
+  // rejoignent en bateau (mesuré le 03/08 : qualité 3,11 sous 8 nds, 2,33 à
+  // 10-12 nds, p75 des sessions réussies = 8 nds).
+  if(ws != null) {
+    if(ws >= _strongKt + 8)   { score -= 6; details.push('Vent très fort '+Math.round(ws)+'nds'); }
+    else if(ws >= _strongKt)  { score -= 4; details.push('Vent fort '+Math.round(ws)+'nds — nav difficile'); }
+    else if(ws >= _calmKt)    { score -= 2; details.push('Moutons/clapot '+Math.round(ws)+'nds'); }
+    else if(ws <= _GLASSY_KT) { details.push(ws < 2 ? 'Glassy (vent nul)' : 'Vent très faible ('+Math.round(ws)+'nds)'); }
+  }
+
+  // ── 6. Rafales ───────────────────────────────────────────────────────────
+  if(wg && wg > SCORE_PARAMS.gustMalusKt) {
+    score -= 2;
+    details.push('Rafales '+Math.round(wg)+'nds');
+  }
+
+  // ── 7. Marée ─────────────────────────────────────────────────────────────
+  // tideAdj est exprimé sur l'échelle 0-5 par l'appelant (±0,3 à ±0,5) : ×2 pour
+  // le porter sur l'échelle interne 0-10.
+  if(tideAdj) {
+    score += tideAdj * 2;
+    details.push(tideAdj > 0 ? 'Marée favorable' : 'Marée défavorable');
+  }
+
+  // ── Normalisation 0-10 → 0-5 (tide-raider : Math.min(5, round(score/10*5))) ──
+  score = Math.min(5, Math.round(Math.max(0, score) / 10 * 5));
+
+  // ── PLAFONDS : les facteurs limitants ────────────────────────────────────
+  // Appliqués APRÈS la normalisation et après la marée : une marée favorable ne
+  // transforme pas une mer de vent en houle, ni ne calme 25 nœuds. Les deux sont
+  // indépendants, on garde le plus bas.
   var wc = windCeiling(ws);
   var cap = Math.min(pc.cap, wc.cap);
   if(cap < score) {
@@ -440,6 +493,7 @@ if (typeof module !== 'undefined' && module.exports) {
     DEFAULT_SCORE: _DEFAULT_SCORE,
     calcSurfScore: calcSurfScore,
     periodClass: periodClass,
+    periodBonus: periodBonus,
     windSector: windSector,
     windCeiling: windCeiling,
     swellFit: swellFit,

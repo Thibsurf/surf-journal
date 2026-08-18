@@ -8098,3 +8098,96 @@ Trois enseignements :
 Piste non retenue pour l'instant : leur **bonus de période gradué** (proportionnel
 à la position dans la moitié haute de la fenêtre) est plus fin que notre +1 binaire
 au-delà de `groundSwellT`. À considérer si le barème est retouché.
+
+---
+
+## 2026-08-19 (suite 2) — Le barème adopte la forme auditée de tide-raider
+
+Demande : « bonus période important oui », puis « reste proche des stratégies
+auditées sur le net plutôt que d'inventer ».
+
+### Le bonus gradué ne servait à rien — et ça a révélé le vrai défaut
+
+Bonus de période gradué implémenté d'après tide-raider (rampe vers +2 au lieu du
++1 binaire), puis **mesuré** : il ne changeait **strictement aucune note**. Sur
+cinq jeux de conditions × T de 13 à 20 s, toutes les notes identiques.
+
+Cause : chaque ajustement clampait dans `[0,5]` au passage (`Math.min(5, score+x)`).
+Le running total étant déjà à 5 quand le bonus s'appliquait, la fraction partait
+avant d'être lue. Plus généralement, **clamper en cours de route rend le barème
+insensible à tout ce qui dépasse** : 1,1 m / 13 s et 2 m / 18 s recevaient la même
+note dès qu'un peu de vent les ramenait sous 5.
+
+Premier réflexe : enlever les clampages intermédiaires. C'était de l'invention —
+signalée comme telle. Deuxième version, retenue : **adopter la forme du seul
+barème open source complet et audité**.
+
+### Forme adoptée : partir de 10 et soustraire (tide-raider, `surfUtils.ts`)
+
+Notre barème partait d'une base tirée de ½·Hs²·T puis empilait des ±1 clampés.
+Cette forme-là était maison, et elle a produit **trois fois** le même défaut :
+
+1. 18/08 — 1,2 m / 8 s notait 5/5 (les +1 noyaient le malus de période) ;
+2. 19/08 — 14, 21 et 30 nds notaient tous pareil (le malus de vent plafonnait) ;
+3. 19/08 — le bonus de période gradué ne changeait rien (clampage intermédiaire).
+
+Trois symptômes, une seule cause : **un barème qui monte peut saturer**. On passe
+donc à celui qui descend, structurellement immunisé — il n'y a plus rien à saturer.
+
+| critère | pénalité (échelle 0-10) | source |
+|---|---|---|
+| Hs hors [minHs, maxHs] | −2 (≤0,5 m) · −4 (≤1 m) · −6 | tide-raider, adouci (notre fenêtre est bien plus large) |
+| période < minPeriod | −2 (≤2 s) · −4 (≤4 s) · −6 | tide-raider tel quel |
+| période longue | **bonus gradué +0 à +2** | tide-raider, formule reprise telle quelle |
+| houle hors fenêtre | −2 (≤10°) · −4 (≤20°) · −6 (≤30°) · −8 | tide-raider tel quel |
+| direction vent | offshore 0 · sideshore −2 · onshore −4 | tide-raider (dans la liste / voisin ≤45° / au-delà) |
+| force vent | −2 (≥ windCalmKt) · −4 (≥ windMalusKt) · −6 (≥ +8) | forme tide-raider, **nos seuils calibrés** |
+| rafales | −2 | — |
+| marée | `tideAdj × 2` | notre `_tideAdj` (échelle 0-5 → 0-10) |
+
+Normalisation finale `Math.min(5, round(score/10 × 5))`, comme chez eux.
+
+**Ce qu'on garde de chez nous, et pourquoi.** Les *seuils* (`minHs`/`maxHs`,
+`minPeriod`, `windCalmKt`/`windMalusKt`, `gustMalusKt`) sont calibrés sur 73
+sessions du journal — mesurés, pas inventés, et nettement plus stricts sur le vent
+que ceux de tide-raider (15/25/35 nds), parce que nos spots sont des passes à
+**accès bateau**. Leur flag `sheltered` joue le rôle que jouent ici ces seuils par
+spot. `minPwr` reste le garde-fou « c'est plat », en sortie anticipée.
+
+Les **plafonds** (`periodClass`, `windCeiling`) restent, et ne sont pas une
+invention non plus : Surfline documente des facteurs limitants (« you would never
+see 3-4 foot surf with offshore winds rated as epic — the size of the surf is the
+limiting factor ») et surf-forecast.com note 0 étoile pour « flat + blown out OR
+strong winds in any direction ». Ils s'appliquent après la normalisation.
+
+Comme chez tide-raider, l'accumulateur n'est **pas** borné vers le haut en cours de
+route (seul `Math.max(0, …)` final existe) — c'est ce qui permet au bonus de période
+de peser. Le risque qu'une houle exceptionnelle absorbe 25 nœuds est couvert par les
+plafonds, appliqués ensuite : vérifié, 3 m / 20 s / 25 nds + marée favorable = 1/5.
+
+### Effet mesuré du bonus de période
+
+| T | 1,1 m 9 nds side | 1,5 m 9 nds side | 2,0 m 10 nds on |
+|---|---|---|---|
+| 12 s | 3/5 | 3/5 | 2/5 |
+| 13-16 s | 3/5 | 3/5 | 2/5 |
+| 18-20 s | **4/5** | **4/5** | **3/5** |
+
+La résolution reste grossière (échelle 0-5 entière), mais la période sépare
+désormais deux jours que le barème précédent confondait.
+
+Nettoyage : `swellFit` perd son champ `adj` (+1/0/−1/−2), qui n'avait de sens que
+pour le barème qui montait — le garder exporté avec des valeurs mortes aurait
+trompé la prochaine lecture. `swellFit` expose `out`, la grandeur réellement pénalisée.
+
+### Vérification
+
+`test_score.js` **43/43** — inchangé, et c'est le point important : les invariants
+étaient écrits contre le **comportement**, pas contre l'implémentation, donc ils
+ont validé une réécriture complète du moteur sans être retouchés.
+
+Cas signalés, tous conformes : 1,2 m / 8 s → 2/5 · 2,5 m / 6 s → 1/5 · 21 nds →
+1/5 · 30 nds → 0/5 · glassy 14 s → 5/5. Headless Edge : parcours complet du bouton
+visible au sélecteur satellite, image chargée, 0 erreur JS.
+
+`sw.js` : `CACHE_NAME` v91 → **v92**.

@@ -196,7 +196,7 @@ section('Cohérence des caps — ce que le dialogue ⚙ doit signaler');
   ok(S.swellFit(180).key === 'in' && S.swellFit(270).key === 'in' && S.swellFit(225).key === 'in',
      'la fenêtre par défaut couvre bien 180-270°',
      [180,225,270].map(x => x + ':' + S.swellFit(x).key).join(' '));
-  ok(S.swellFit(90).adj < 0, 'et une houle d\'est (90°) en est exclue', S.swellFit(90).key);
+  ok(S.swellFit(90).out > 0 && S.swellFit(90).key === "closed", "et une houle d'est (90°) en est exclue", S.swellFit(90).key + " (" + S.swellFit(90).out + "° hors fenêtre)");
   // Le sens de déferlement exposé à l'UI est bien l'opposé du cap du large.
   eq(S.breakBearing(), 45, 'le sens de déferlement est l\'opposé du cap du large');
   S.setScoreParams(SPOT);
