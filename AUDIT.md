@@ -8062,3 +8062,39 @@ après coup nulle part), toutes les fenêtres d'appel de `calcSurfScore` passent
 9ᵉ argument, aucune référence résiduelle aux champs supprimés.
 
 `sw.js` : `CACHE_NAME` v90 → **v91**.
+
+#### Référence : la formule complète de tide-raider (code lu, 19/08/2026)
+
+Seule implémentation open source trouvée avec un barème entier et lisible
+(`next/app/lib/surfUtils.ts`, ~50 spots réels d'Afrique du Sud). Utile comme
+point de comparaison chiffré — à ne pas recopier tel quel, le contexte diffère.
+
+Modèle de spot : `optimalWindDirections[]` (cardinaux), `optimalSwellDirections
+{min,max}`, `swellSize {min,max}`, `idealSwellPeriod {min,max}`, `sheltered`.
+
+Barème : **part de 10 et descend**, puis normalise `(score/10)×5`.
+
+| critère | pénalités |
+|---|---|
+| direction vent | 0 si dans la liste · −2 si ≤45° à côté · −4 sinon |
+| force vent | >15 nds −2 · >25 −3 · >35 −4 (ignoré si `sheltered`) |
+| hauteur | hors gamme : −4 (≤0,5 m) · −6 (≤1 m) · −8 (au-delà) |
+| direction houle | hors fenêtre : −2 (≤10°) · −4 (≤20°) · −6 (≤30°) · −8 |
+| période | hors gamme : −2 (≤2 s) · −4 (≤4 s) · −6 ; **bonus +0 à +2** proportionnel dans la moitié haute de la fenêtre |
+
+Trois enseignements :
+
+1. **Troisième confirmation indépendante** que le vent se juge sur la géométrie
+   du spot (ici une liste de cardinaux propre à la plage), jamais sur la houle
+   du jour.
+2. **Partir du maximum et descendre** rend la saturation structurellement
+   impossible — c'est le défaut qu'on vient de corriger par des plafonds sur un
+   barème qui, lui, monte. À garder en tête si le moteur est un jour réécrit.
+3. Leurs seuils de vent (15/25/35 nds) sont **bien plus tolérants** que les
+   nôtres (7/12). Ce n'est pas une erreur de part et d'autre : ce sont des beach
+   breaks accessibles à pied, là où nos spots sont des passes à accès bateau. Leur
+   flag `sheltered` joue le rôle que jouent ici `windCalmKt`/`windMalusKt` par spot.
+
+Piste non retenue pour l'instant : leur **bonus de période gradué** (proportionnel
+à la position dans la moitié haute de la fenêtre) est plus fin que notre +1 binaire
+au-delà de `groundSwellT`. À considérer si le barème est retouché.
