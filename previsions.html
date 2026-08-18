@@ -17617,9 +17617,22 @@ function showSpotSettings(forceOpen) {
     +'</div>'
 
     // ── SECTION SCORE ──
+    // ⓘ tactile (18/08/2026, demande utilisateur) : même mécanisme que les ⓘ
+    // de la légende Houle 1/Houle 2/Mer vent/Hs tot. (cursor:help + title=) —
+    // le listener global en fin de fichier transforme ce couple en popup au
+    // tap sur mobile (title= natif ne se déclenche qu'au survol souris).
+    // Texte tenu à jour manuellement en miroir de assets/score-core.js —
+    // pas de source unique possible ici (le calcul vit en JS, l'infobulle en HTML).
     +'<div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:12px;">'
     +'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;'
-    +'letter-spacing:.5px;margin-bottom:10px;">🏄 Score surf — paramètres pour ce spot</div>'
+    +'letter-spacing:.5px;margin-bottom:10px;">🏄 Score surf — paramètres pour ce spot '
+    +'<span style="cursor:help;text-transform:none;font-weight:400;letter-spacing:normal;" '
+    +'title="Le score (0-5) part de la puissance de la houle (hauteur² × période). '
+    +'Ajustements ensuite : houle longue période ou direction idéale (+1), vent calme '
+    +'ou offshore léger (+1), vent fort ou onshore (−1 à −2), rafales fortes (−1), '
+    +'marée dans ta préférence ci-dessous si réglée (±0,3 à ±0,5), Hs au-delà de ta '
+    +'limite perso (−2, sans écraser le reste). Même calcul partout sur le site — '
+    +'carte conditions actuelles, tableau horaire, étoiles du jour.">ⓘ</span></div>'
 
     // Stats du journal pour CE spot — rempli en asynchrone, sert à affiner les
     // paramètres ci-dessous avec les vraies sessions (étoiles comprises)
