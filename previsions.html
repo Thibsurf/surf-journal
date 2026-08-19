@@ -11748,7 +11748,24 @@ function _swellCacheToTableData(key) {
   var c = _swellCache && _swellCache[key];
   if (!c || !c.primary || !c.primary.length) return null;
   var primary = c.primary.slice().sort(function(a,b){ return a.ms - b.ms; });
-  var secondary = (c.secondary || []).slice().sort(function(a,b){ return a.ms - b.ms; });
+  // Houle 2 : `c.secondary` n'existe que pour nc/gfs (tableau séparé Open-Meteo).
+  // MARC, MFWAM et LOTUS la portent dans `partitions[]`, et ce tableau ne la
+  // lisait pas — colonne « Houle 2 » VIDE alors que le widget et le comparatif
+  // l'affichent (mesuré le 20/08 : MARC 37 créneaux renseignés dans le widget
+  // contre 0 ici, LOTUS 62 contre 0). On reprend le train de rang 2 de
+  // `_swellTrains`, la fonction qui fait déjà ce classement pour le tableau
+  // comparatif — un seul endroit décide de ce qu'est « la houle 2 » d'un modèle.
+  var secondary = (c.secondary || []).slice();
+  if (!secondary.length && typeof _swellTrains === 'function') {
+    var _tr2 = _swellTrains(key).filter(function(t) { return t.rank === 2 && !t.sea; })[0];
+    // `h > 0` : MFWAM publie une partition SW2 de hauteur nulle quand il n'y a
+    // pas de deuxième train. Affichée telle quelle, la colonne annonçait « 0m »
+    // — une houle de zéro mètre n'existe pas, c'est une absence. Rien n'est
+    // inventé ici, seulement écarté (même raisonnement que les rafales
+    // meteo.nc à 0, cf. _ncGustKt).
+    if (_tr2 && _tr2.pts && _tr2.pts.length) secondary = _tr2.pts.filter(function(q) { return q && q.h > 0; });
+  }
+  secondary.sort(function(a,b){ return a.ms - b.ms; });
   function nearestSec(ms) {
     var best = null, bd = 2 * 3600000;
     secondary.forEach(function(p) { var df = Math.abs(p.ms - ms); if (df < bd) { bd = df; best = p; } });

@@ -8968,10 +8968,16 @@ window.onerror + unhandledrejection : 0
   là où le tracé a lieu, dans les deux chemins de rendu (setHsSrc et le premier
   rendu après changement de spot). Vérifié : survol MARC 1,80 m / 160°, LOTUS
   1,80 / 150°, ECMWF 1,30 / 160°, pendant que `_fcastData.sw1h[3]` reste à 1,60.
-- **Colonne « Houle 2 » vide pour MARC et LOTUS** dans les Détails horaires :
-  `_swellCacheToTableData` ne lit que `c.secondary`, vide pour ces modèles dont
-  la houle 2 vit dans `partitions[]`. Mesuré : 37 créneaux avec H2 dans le
-  widget, 0 dans le tableau ; LOTUS 62 contre 0.
+- ~~Colonne « Houle 2 » vide pour MARC et LOTUS~~ **CORRIGÉ le 20/08** :
+  `_swellCacheToTableData` ne lisait que `c.secondary`, qui n'existe que pour
+  nc/gfs (tableau séparé Open-Meteo) — MARC, MFWAM et LOTUS portent leur houle 2
+  dans `partitions[]`. Elle vient désormais du train de rang 2 de `_swellTrains`,
+  la fonction qui fait déjà ce classement pour le tableau comparatif : un seul
+  endroit décide de ce qu'est « la houle 2 » d'un modèle. Vérifié : MARC 35/35
+  créneaux renseignés (0 avant), LOTUS 56/56, MFWAM 84/84 ; ECMWF reste à 0/25,
+  ce qui est juste — il n'a pas de partition. Au passage, les partitions SW2 de
+  hauteur NULLE de MFWAM sont écartées : la colonne annonçait « 0m » là où il
+  n'y a pas de deuxième train.
 - ~~Bloc « Modèles archivés »~~ **CORRIGÉ le 20/08** : toute ligne `kind=wave` y
   était lue en `totH/totT/totDir`, donc MFWAM/MARC/LOTUS montraient leur mer
   TOTALE sous l'étiquette « Houle ». La houle est désormais le train dominant du
