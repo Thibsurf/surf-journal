@@ -8772,6 +8772,52 @@ window.onerror + unhandledrejection : 0
 
 `CACHE_NAME` → v98.
 
+### Addendum — le même défaut vivait dans la page hebdo (`semaine.html`)
+
+Trouvé en balayant les AUTRES consommateurs après le correctif de
+`previsions.html` : `.github/scripts/build-week.mjs` lisait lui aussi `h.val`
+pour ecmwf/aifs, avec un commentaire qui argumentait explicitement ce choix
+(« les 6 bandes couvrent 10-30 s, donc de la houle par construction ») et
+écartait `totH` comme « gonflant ECMWF du double ». L'intention était juste, la
+grandeur non : `val` n'est qu'UNE bande de 2 s de large sur six. Si l'on voulait
+vraiment la houle ≥ 10 s de ces modèles ce serait √(Σ bandes²) — 0,66 m à Dumbéa
+le 20/08 11 h NC, contre 0,468 m pour `val` et 1,278 m pour la mer totale — et
+même là, la houle dominante calédonienne du moment (MARC : 1,44 m à **9,3 s**)
+tomberait HORS de ces bandes. Aucune décomposition ≥ 10 s ne peut représenter
+ce que ces modèles voient de la mer d'ici.
+
+Trois conséquences corrigées dans `build-week.mjs` :
+
+1. `swellHeightOf`/`swellDetailOf` renvoient `totH`/`totT`/`totDir`. Effet de
+   bord heureux : le météogramme affichait une hauteur SANS période ni flèche
+   pour ces deux modèles, au motif qu'ils n'ont pas de direction par bande —
+   `totT`/`totDir` existaient pourtant dans la ligne, jamais lus.
+2. ecmwf/aifs **écartés de la barre d'accord des modèles** (`SWELL_TOTAL_ONLY`).
+   Une mer totale mêlée à des houles primaires faisait dire « modèles en
+   désaccord » à ce qui n'était qu'une différence de définition.
+3. **`wave` gagne toujours sur `swell_primary` pour ces deux modèles**, quel que
+   soit `issued_at`. C'est la face « page hebdo » du ré-archivage navigateur :
+   la règle « garder la ligne la plus fraîche » retenait la copie du navigateur
+   (`issued_at = now`) plutôt que la ligne `wave` horodatée à l'heure de run.
+   Preuve à la régénération, avant ce point : ECMWF à 0,47 m à Dumbéa, Ténia et
+   Ouano (lignes navigateur) contre **1,39 m à Boulari** — le seul spot sans
+   copie navigateur récente, donc le seul juste. Pas de règle générale « wave
+   d'abord » : elle casserait MARC, dont les lignes `wave` sont figées à J-5.
+
+`semaine.html` régénérée à la main dans la foulée (le cron ne tourne que le
+dimanche 19 h UTC) et vérifiée sur les 4 spots :
+
+```
+                 avant            après        MARC au même créneau (repère)
+Passe de Dumbéa  0,47 m / —       1,28 m / 8 s / 164°     1,44 m / 9 s / 150°
+Ilot Ténia       0,47 m / —       1,16 m / 9 s / 175°     1,16 m / 12 s / 180°
+Passe de Boulari 1,39 m / —       1,39 m / 8 s / 151°     1,07 m / 8 s / 161°
+Passe de Ouano   0,77 m / —       1,97 m / 8 s / 164°     0,63 m / 12 s / 197°
+```
+
+(Dumbéa 1,28 m = la valeur d'`ecmwf_wam025` chez Open-Meteo au même point et au
+même instant, au millimètre près.)
+
 ### Reste ouvert (mesuré, assumé)
 
 Les rafales meteo.nc et le vent moyen viennent de deux produits différents (vent

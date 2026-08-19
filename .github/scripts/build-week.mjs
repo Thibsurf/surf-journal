@@ -308,21 +308,36 @@ function dominantSwellPartition(parts) {
 // `swell_wave_height` Open-Meteo, bom = `sig_ht_sw1`, nc = `primary_swell_height`,
 // marc = partition dominante) — mais les lignes `wave` des ingesteurs Python
 // rangent la même grandeur ailleurs :
-//   ecmwf/aifs → `val`, hauteur de la bande de période la plus haute. Les 6
-//     bandes couvrent 10-30 s, donc de la HOULE par construction, mer du vent
-//     (< 10 s) exclue : c'est bien l'équivalent, et c'est déjà ce que recopie
-//     previsions.html:_cacheModelPoints (valeurs identiques au champ près,
-//     vérifié le 10/08/2026 à Dumbéa : 0,276 et 0,317 m des deux côtés).
 //   mf/marc/lotus → `partitions`, cf. dominantSwellPartition.
-// PIÈGE : ces lignes `wave` portent AUSSI `totH`/`hs`, qui est la MER TOTALE
-// (ecmwf 0,608 m là où la houle vaut 0,276 m). La lire ici gonflerait ECMWF du
-// double et comparerait deux grandeurs différentes — mesuré, puis écarté.
+//
+// ── ecmwf/aifs : ni l'un ni l'autre, ils n'ONT pas de houle primaire ─────────
+// Révisé le 19/08/2026, après le même correctif côté previsions.html. Ce bloc
+// lisait `val` = hauteur de la BANDE DE PÉRIODE la plus haute parmi 6, au motif
+// que « les 6 bandes couvrent 10-30 s, donc de la houle par construction ».
+// L'intention était juste, la grandeur non : `val` n'est qu'UNE bande de 2 s de
+// large sur six, pas la houle. Si l'on voulait vraiment la houle ≥ 10 s de ces
+// modèles, ce serait sqrt(Σ bandes²) — et même là, les houles calédoniennes de
+// 8-10 s (l'essentiel de ce qu'on surfe) tomberaient HORS de ces bandes.
+// Mesuré à Passe de Dumbéa le 2026-08-20 11 h NC : val 0,468 m, sqrt(Σ bandes²)
+// 0,66 m, mer totale 1,278 m — et MARC voyait au même moment une houle
+// dominante de 1,44 m à 9,3 s, invisible pour les bandes ≥ 10 s.
+// On prend donc `totH`/`totT`/`totDir` (swh/mwp/mwd) : la seule grandeur que ces
+// modèles publient réellement, celle que renvoie `marine-api.open-meteo.com` en
+// `models=ecmwf_wam025` (1,28 m / 7,75 s / 164°, identique à la nôtre) et celle
+// que montre Windy. Ce n'est PAS une houle primaire, et rien ne le prétend :
+// ces deux modèles sont désormais écartés de la barre d'accord (cf.
+// modelsForSpot) et étiquetés « mer tot. » dans le sélecteur du météogramme.
 function swellHeightOf(row, h) {
   if (row.kind !== 'wave') return h.val;
-  if (row.model === 'ecmwf' || row.model === 'aifs') return h.val;
+  if (row.model === 'ecmwf' || row.model === 'aifs') return h.totH != null ? h.totH : null;
   const p = dominantSwellPartition(h.partitions);
   return p ? p.h : null;
 }
+// Ces deux modèles ne rapportent pas la même grandeur que les autres (mer totale
+// contre houle primaire) : les mêler à l'étendue min-max ferait dire à la barre
+// « modèles en désaccord » ce qui n'est qu'une différence de définition. Même
+// exclusion que la médiane Consensus de previsions.html.
+const SWELL_TOTAL_ONLY = { ecmwf: 1, aifs: 1 };
 
 // Hauteur + période + direction de la MÊME grandeur que swellHeightOf() —
 // pour le sélecteur de modèle du météogramme (cf. mgDraw côté client, WEEK.
@@ -333,7 +348,13 @@ function swellHeightOf(row, h) {
 // n'est appelée que si fromDeg != null).
 function swellDetailOf(row, h) {
   if (row.kind !== 'wave') return { val: h.val, per: h.period, dir: h.dir };
-  if (row.model === 'ecmwf' || row.model === 'aifs') return { val: h.val, per: null, dir: null };
+  // Mer totale, cohérente avec swellHeightOf ci-dessus. `per`/`dir` ne sont plus
+  // null : totT/totDir existent bel et bien dans la ligne (mwp/mwd), ils
+  // n'étaient simplement jamais lus — le météogramme affichait donc une hauteur
+  // sans période ni flèche pour ces deux modèles, alors que la donnée était là.
+  if (row.model === 'ecmwf' || row.model === 'aifs') {
+    return { val: h.totH != null ? h.totH : null, per: h.totT != null ? h.totT : null, dir: h.totDir != null ? h.totDir : null };
+  }
   const p = dominantSwellPartition(h.partitions);
   return p ? { val: p.h, per: p.t, dir: p.dir } : { val: null, per: null, dir: null };
 }
@@ -379,10 +400,29 @@ async function modelsForSpot(spot, days) {
   // figées à J-5 (fetch_marc.py ne réécrit que le jour le plus lointain de sa
   // fenêtre — anomalie distincte, non traitée ici) alors que son `swell_primary`
   // est réécrit à chaque run par le cron Node.
+  //
+  // EXCEPTION ecmwf/aifs (19/08/2026) : pour ces deux-là, `wave` gagne TOUJOURS
+  // sur `swell_primary`, quel que soit l'issued_at. Leur `swell_primary` n'a
+  // jamais eu qu'une origine — une visite navigateur sur ce spot — et cette
+  // écriture posait `issued_at = now`, donc plus récent que l'heure de run des
+  // lignes `wave` (00/06/12/18 Z) : la règle « la plus fraîche » retenait
+  // systématiquement la copie du navigateur. Or cette copie porte `val`, la
+  // hauteur d'une BANDE DE PÉRIODE, pas la mer totale — mesuré ce jour sur la
+  // page régénérée : ECMWF à 0,47 m à Dumbéa/Ténia/Ouano (lignes navigateur)
+  // contre 1,39 m à Boulari (ligne `wave`, seul spot sans copie récente), pour
+  // une houle réelle autour de 1,3 m. previsions.html a cessé de produire ces
+  // copies le même jour, mais celles déjà en base restent des semaines.
+  // Pas de règle générale « wave d'abord » pour autant : elle casserait MARC,
+  // dont les lignes `wave` sont figées à J-5 (cf. juste au-dessus).
+  const TOTAL_SEA_MODELS = { ecmwf: 1, aifs: 1 };
+  const kindRank = (r) => (TOTAL_SEA_MODELS[r.model] && r.kind === 'wave' ? 1 : 0);
   const latest = {};
   rows.forEach((r) => {
     const k = r.model + '|' + r.date;
-    if (!latest[k] || issuedMs(r) > issuedMs(latest[k])) latest[k] = r;
+    const cur = latest[k];
+    if (!cur) { latest[k] = r; return; }
+    const dk = kindRank(r) - kindRank(cur);
+    if (dk > 0 || (dk === 0 && issuedMs(r) > issuedMs(cur))) latest[k] = r;
   });
 
   // Écarter les runs PÉRIMÉS. Constaté le 05/08/2026 sur Ouano : BOM/GFS/MARC
@@ -421,7 +461,8 @@ async function modelsForSpot(spot, days) {
       const hour = Math.round(hh);
       if (hour < HOUR_MIN || hour > HOUR_MAX) return;
       const key = row.date + '|' + hour;
-      (out[key] = out[key] || []).push([label, val]);
+      // Barre d'accord : houles primaires seulement (cf. SWELL_TOTAL_ONLY).
+      if (!SWELL_TOTAL_ONLY[row.model]) (out[key] = out[key] || []).push([label, val]);
       const d = swellDetailOf(row, h);
       if (d.val != null) (modelSlots[row.model] = modelSlots[row.model] || []).push({ d: row.date, h: hour, hs: d.val, t: d.per, sd: d.dir });
     });
@@ -1075,7 +1116,11 @@ var MG_SPOT = 0, MG_HOVER = -1, MG_DPR = 1;
 // 12/08/2026). Labels alignés sur CMP_MODELS (build-week.mjs, Node) et sur
 // MODEL_STYLE (previsions.html) — même vocabulaire partout dans le projet.
 var MG_MODEL = 'nc';
-var MG_MODEL_LABELS = { nc: 'meteo.nc', marc: 'MARC', mf: 'MFWAM', gfs: 'GFS', bom: 'BOM', ecmwf: 'ECMWF', aifs: 'AIFS', lotus: 'LOTUS' };
+// « mer tot. » sur ecmwf/aifs : ces deux modèles ne publient pas de houle
+// primaire, le météogramme montre leur mer TOTALE (cf. swellHeightOf côté
+// build). Sans cette mention, basculer de MARC à ECMWF faisait sauter la
+// hauteur sans que rien n'explique pourquoi.
+var MG_MODEL_LABELS = { nc: 'meteo.nc', marc: 'MARC', mf: 'MFWAM', gfs: 'GFS', bom: 'BOM', ecmwf: 'ECMWF (mer tot.)', aifs: 'AIFS (mer tot.)', lotus: 'LOTUS' };
 // Rempli par mgDraw() ({v, y} par graduation houle), lu par mgRenderAxis()
 // (HTML sticky séparé du canvas, cf. #mgAxis) — évite de recalculer
 // maxV/waterY() une 2e fois pour construire les étiquettes.
@@ -1719,9 +1764,10 @@ function mgDraw() {
 
     ctx.save();
     ctx.beginPath(); ctx.rect(d * MG_DAY_W + 1, 0, MG_DAY_W - 2, MG_SKY_H + MG_SWELL_H); ctx.clip();
-    // peak.t peut être absent (ECMWF/AIFS n'ont pas de période par bande, cf.
-    // swellDetailOf côté build) : afficher "0s" serait faux, on omet la
-    // légende de période plutôt que d'inventer une valeur.
+    // peak.t peut être absent selon le modèle et le créneau : afficher "0s"
+    // serait faux, on omet la légende de période plutôt que d'inventer une
+    // valeur. (Ce n'est plus le cas d'ECMWF/AIFS depuis le 19/08/2026 : leur
+    // période totT est désormais lue, cf. swellDetailOf côté build.)
     mgSwellBadge(ctx, px, py, R, peak.hs.toFixed(1) + 'm', peak.t != null ? Math.round(peak.t) + 's' : null, peak.sd, accentRgb);
     ctx.restore();
   });
@@ -1802,9 +1848,9 @@ function mgUpdateReadout(dayKey) {
     var uvR = (ncAt && ncAt.uv != null) ? Math.round(ncAt.uv) : null;
     var uv = (uvR != null && uvR >= 1) ? (' · UV ' + uvR + ' ' + mgUvLabel(uvR)) : '';
     var wind = ncAt ? (' · <span style="color:' + windCol(ncAt.ws) + '">' + (ncAt.ws == null ? '—' : Math.round(ncAt.ws)) + ' nds ' + compass(ncAt.wd) + '</span>') : '';
-    // Période/direction houle : peuvent manquer (ECMWF/AIFS n'ont pas de
-    // période par bande ni de direction, cf. swellDetailOf côté build) — pas
-    // de "0s"/flèche inventée, la mention est simplement omise.
+    // Période/direction houle : peuvent manquer selon le modèle — pas de
+    // "0s"/flèche inventée, la mention est simplement omise. (ECMWF/AIFS en ont
+    // depuis le 19/08/2026 : totT/totDir, cf. swellDetailOf côté build.)
     var perDir = (s.t != null ? Math.round(s.t) + 's' : '') + (s.sd != null ? (s.t != null ? ' ' : '') + compass(s.sd) : '');
     return '<div>' + s.h + ' h — <b>' + s.hs.toFixed(1) + ' m</b>' + (perDir ? '/' + perDir : '') + sec
       + wind + temp + hum + uv + sky + rain + '</div>';
