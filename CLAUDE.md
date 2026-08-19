@@ -212,6 +212,20 @@ primaire ≠ mer totale (t02 ~7 s vs pic 12 s).
 un mode « à la station ». Ne pas copier le pattern spots+stations du vent vers un
 nouveau modèle de houle (commentaires `INVARIANT` posés aux 3 points d'entrée).
 
+**Un seul choix de modèle : `_currentHsSrc`.** Widget global, tableau « Ciel & houle »
+et tableau principal le lisent tous ; les sélecteurs délèguent tous à `setHsSrc()`.
+Ne JAMAIS réintroduire un état de source local à un bloc — c'est le bug du
+19/08/2026 (trois blocs, trois chiffres pour un même spot à une même heure, dont un
+étiqueté du nom d'un modèle qu'il n'affichait pas, cf. AUDIT.md). Corollaire : tout
+lecteur de `_currentHsSrc` doit traiter les **9** clés (`nc`, `om`, `bom`, `mf`,
+`ecmwf`, `aifs`, `marc`, `lotus`, `mix`) — un `=== 'nc' ? … : …` est un bug en
+attente. Quand le modèle demandé n'est pas chargé : message d'indisponibilité et
+restauration de la source précédente, jamais un repli silencieux.
+
+**Marée : `_tideStateAt()` attend un epoch RÉEL**, pas un `fc.dates[i]` (décalé
++11 h). Passer par `_tideStateAtFc()`. Se tromper décale la marée de 11 h sur un
+cycle de 12 h 25 — soit une marée quasi inversée, pas un petit écart.
+
 ---
 
 ## `assets/charts-core.js` — socle des panneaux temporels

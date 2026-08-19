@@ -8311,3 +8311,144 @@ Reste pour la suite de T18 : `core.js`, `sources.js`, `swell-compare.js`,
 `best-session.js`, `spots-compare.js`, `render-current.js`, `wind-arome.js`,
 `map-spots.js`, `tides-astro.js` — vérifier au cas par cas (comme ici) si un
 module candidat contient des appels top-level avant de décider `defer` ou non.
+
+## 2026-08-19 (suite 5) — « les valeurs divergent même pour un même modèle » : 5 bugs, tous mesurés
+
+Signalement utilisateur, mot pour mot : « entre les créneaux de session, le widget
+"yadusurf" et le widget météogramme, les valeurs de prévisions divergent même pour
+un même modèle sélectionné ». Signalement exact, et la cause n'était pas une :
+il y avait **quatre endroits où « le modèle choisi » pouvait vivre**, et deux
+lecteurs qui n'en connaissaient que la moitié.
+
+### Ce qui a été mesuré avant de toucher au code
+
+Harnais `__test.html` + Chrome headless, Passe de Dumbéa, données réelles.
+
+**1. Le widget affichait GFS sous l'étiquette du modèle choisi.** `setHsSrc()` sait
+afficher bom/mf/ecmwf/aifs/marc/lotus depuis le 18/08/2026
+(`_swellCacheToFcastShape`), mais `_gwActiveData()` se terminait par
+`return (_currentHsSrc==='nc') ? nc : om` — donc toute clé autre que `'nc'`
+retombait sur Open-Meteo. Avec MARC sélectionné dans le sélecteur de la page :
+
+| bloc | affiché |
+|---|---|
+| tableau principal | 2,8 m / 12 s ← MARC, correct |
+| **widget global** | **0,84 m / 13,4 s ← GFS, bouton MARC allumé** |
+| tableau « Ciel & houle » | 2,2 m / 12 s ← meteo.nc |
+
+Idem pour mf/ecmwf/lotus. Le pire des trois n'était pas seulement faux, il était
+**étiqueté du nom d'un modèle qu'il n'affichait pas**. Pour référence, l'écart réel
+entre modèles sur ce spot ce jour-là : nc vs GFS 0,57 m en moyenne (max 1,42),
+nc vs ECMWF 0,87 m (max 1,58). Ce n'est pas un arrondi.
+
+**2. Même trou dans `sbActiveSource()`** (tableau « Ciel & houle ») : ne testait que
+`'om'`, repli silencieux sur `_fcastData` (meteo.nc).
+
+**3. Trois états concurrents pour une seule question.** `_currentHsSrc` (page),
+`_gwExtraSrc` (widget, persisté dans localStorage) et `SB_SWELL_MODEL` (tableau
+Ciel & houle, jamais persisté, remis à `'auto'` à chaque chargement). Régler l'un
+ne réglait pas les autres — et `_gwExtraSrc` survivant au rechargement, un choix
+« MARC » fait la veille rouvrait la page avec le widget sur MARC et les deux
+autres blocs sur meteo.nc.
+
+**4. « Meilleurs créneaux » : marée lue 11 h trop tard.** Les 4 appels à
+`_tideStateAt()` passaient `fc.dates[i]`, qui porte la convention « +11 h déjà
+appliqué », alors que `tideSeries[].ms` vient de `parseTideEventMs()` et est un
+epoch RÉEL. Preuve : évalué à l'instant exact d'une pleine mer de la série,
+`_tideStateAt` rend `level01 = 1,00`, et à une basse mer `0,00` — la fonction attend
+donc un epoch réel, sans ambiguïté. Conséquence mesurée : créneau du 19/08 20 h NC
+noté avec `level01 = 0,10` (basse mer) au lieu de `0,45` (mi-marée). 11 h sur un
+cycle semi-diurne de 12 h 25, c'est une **marée quasi inversée** — `_tideAdj`
+appliquait jusqu'à ±0,5 point de score dans le mauvais sens, et la pastille
+« 〰 BM/PM » des cartes contredisait le graphe de marée de la même page.
+
+**5. « Meilleurs créneaux » : les spots n'étaient pas jugés avec la même règle.**
+Le spot AFFICHÉ voit son entrée de `_forecastCache` réécrite par `loadForecast()`
+depuis `_fcastData` ; les autres passent par `_fetchSpotFcRaw()`. Mesuré :
+
+- **rafales** — 40 valeurs sur le spot affiché, **0** sur les 7 autres
+  (`forecast/marine` n'a pas `wind_speed_gust`, `wg.push(null)` en dur). Or
+  `calcSurfScore` retire **2 points pleins** au-dessus de `gustMalusKt` (25 nds) :
+  le seul spot qui pouvait perdre ces 2 points était celui qu'on regardait ;
+- **marée** — 7,5 jours d'événements sur le spot affiché (loadForecast fetche
+  J-2→J+5), **0,8 jour** sur les 7 autres, pour une prévision qui va à J+8.
+  `interp()` rend la dernière hauteur connue au-delà de la série → `level01` gelé
+  pendant ~7 jours → `_tideAdj` appliquait un bonus/malus CONSTANT de ±0,5 sur
+  tous ces créneaux. Un classement qui compare une marée réelle à sept marées
+  gelées.
+
+### Ce qui a été fait
+
+**Un seul état de source.** `_gwExtraSrc` est supprimé (et sa clé localStorage
+purgée au chargement). `_currentHsSrc` est LE choix de modèle de la page ; le
+widget, le tableau « Ciel & houle » et le tableau principal le lisent tous.
+Les boutons du widget et le `<select>` du tableau appellent `setHsSrc()`. Il n'y a
+plus deux endroits où le choix puisse vivre, donc plus rien à synchroniser.
+
+- `_gwActiveData()` traite désormais TOUTES les clés (`GW_MODEL_KEYS`), et rend
+  `null` + `_gwFellBack` plutôt que de deviner. Un `else` qui devine est exactement
+  ce qu'il ne faut pas ici : mieux vaut le message « indisponible » qu'un chiffre
+  faux et bien étiqueté.
+- `sbActiveSource()` idem, et utilise le **même constructeur** que le widget
+  (`_gwBuildModelFcast` / `_gwBuildBestMix`) : les deux blocs ne peuvent plus
+  diverger, ils lisent la même fonction.
+- Supprimé `sbModelSlotsByDay()` et la branche « modèle » de `sbSwellSeries()` :
+  elles allaient chercher un AUTRE modèle dans `_swellCache` et l'appariaient à
+  l'heure la plus proche **à ±3 h**. Deux défauts d'un coup — houle d'un modèle à
+  côté du vent d'un autre, et une colonne « 11h » pouvant afficher la houle de 8h.
+- ECMWF et AIFS deviennent des sources du widget (houle seule, vent repris du
+  cache `..._wind` du comparatif vent — vérifié : rendu sans erreur, 44 cellules,
+  66 k pixels tracés). « Mix » devient une source de page à part entière
+  (`setHsSrc` sait l'assembler + fabriquer son `lbl`), sinon le choisir dans le
+  widget aurait recréé le trou qu'on vient de boucher.
+- Chemins d'échec de `setHsSrc()` : `_currentHsSrc` est **restauré** à sa valeur
+  précédente (`_abortSrc`). Sans ça, choisir BOM — source figée côté fournisseur,
+  donc `_swellCache.bom` vide — laissait toute la page étiquetée « BOM » en
+  affichant le modèle d'avant.
+- Un même modèle affichait 23 nds dans le widget et « — » dans le tableau
+  principal : le widget empruntait le forçage ECMWF de MARC pour MFWAM,
+  `_swellCacheToTableData` non. Emprunt ajouté des deux côtés, avec la même
+  priorité (natif d'abord, emprunt en repli).
+
+**« Meilleurs créneaux ».**
+- `_tideStateAtFc()` : point d'entrée unique qui convertit `fc.dates[]` → epoch
+  réel avant `_tideStateAt()`. Les 4 appels y passent, et `_tideStateAt` porte
+  maintenant un ⚠ sur sa convention de temps.
+- `_tideStateAt()` bascule sur le **modèle harmonique** (`assets/tide-harmonics.js`,
+  déjà le repli documenté du projet, cf. `_tideAdjAt`) au-delà de la série
+  fetchée, au lieu de figer la dernière hauteur. Même règle pour tous les spots,
+  zéro réseau en plus. Vérifié : aux instants d'événement de la série meteo.nc, il
+  rend 0,99 / 0,02 / 0,84 là où la série rend 1,00 / 0,00 / 0,85.
+- `_fetchSpotFcRaw()` fetche une 3ᵉ ressource, `forecast` (non marine), la seule à
+  porter `wind_speed_gust` — appariement ±90 min, **la même tolérance** que
+  `renderForecast()`. Pas de route worker pour cette API : appel direct rpcache,
+  et seulement si un token local est valide (sans token, `wg = null` PARTOUT, ce
+  qui reste symétrique).
+- L'encart dit enfin ce qu'il fait : classement sur **meteo.nc pour tous les
+  spots** (les autres modèles ne sont chargés que pour le spot affiché — les
+  fetcher × 8 spots, c'est du réseau externe qu'on ne veut pas au chargement), et
+  houle/vent = ceux du **meilleur créneau** du bloc, pas de son heure de début.
+  Deux choses qui faisaient légitimement passer ce bloc pour incohérent.
+
+### Vérification finale (headless, données réelles)
+
+Pour les 8 sources (`nc, om, marc, mf, ecmwf, aifs, lotus, mix`), widget et tableau
+« Ciel & houle » rendent **exactement les mêmes** hauteur, période ET vent — 8/8
+OK ; le tableau principal aussi, au seul arrondi près qu'il applique déjà
+(2,808 m → 2,8 m). BOM reste « indisponible » sans repli silencieux (source figée
+côté Pacific Community, cf. `_bomSourceState`) et la page reste sur sa source
+précédente. Marée du BSF recalée (0,45 au lieu de 0,10 au créneau témoin) et
+identique pour tous les spots à J+7 (0,35 partout, au lieu d'une valeur gelée par
+spot). Rafales présentes sur les 8 spots (12 à 40 selon l'horizon meteo.nc, contre
+40/0/0/0/0/0/0/0 avant). `window.onerror` + `unhandledrejection` : **0 erreur**.
+`CACHE_NAME` → v95.
+
+### Reste ouvert (mesuré, assumé)
+
+Le spot affiché garde un horizon de rafales plus long que les autres (~J+8 contre
+~J+2), parce que `renderForecast()` complète les siennes avec Open-Meteo au-delà de
+la portée de `forecast`. Le faire pour les 7 autres coûterait 7 requêtes Open-Meteo
+de plus au chargement — ce que `_fetchSpotFcRaw` évite explicitement depuis
+l'origine (CORS/rate-limit en multi-spots). L'écart restant est borné et va dans le
+même sens pour tous les spots au-delà de J+2 (aucun n'a de rafale), là où l'ancien
+comportement pénalisait un seul spot sur toute la fenêtre.

@@ -65,25 +65,52 @@ function _gwSwellCol(idx) {
   return (typeof _panelLight === 'function' && _panelLight()) ? c.light : c.dark;
 }
 
-// ─── Sources supplémentaires pour le widget (BOM/MFWAM) ─────────────────────
-// Le reste de la page (graphe principal, tableau détaillé, ~15 autres endroits)
-// ne bascule qu'entre meteo.nc/GFS via _currentHsSrc, partagé partout. BOM/MFWAM
-// sont ajoutés ICI en variable indépendante (_gwExtraSrc) pour que le widget
-// puisse les afficher SANS toucher aux autres endroits de la page (demande
-// utilisateur 27/07/2026, cf. AUDIT-previsions.md chantier 4/10) — nc/GFS
-// restent synchronisés avec le reste de la page comme avant (_gwExtraSrc=null).
-var _gwExtraSrc = (function(){ try { return localStorage.getItem('gwExtraSrc') || null; } catch(e){ return null; } })();
+// ─── Source du widget = LA source de la page ────────────────────────────────
+// Historique : le 27/07/2026, le reste de la page ne savait afficher que
+// meteo.nc/GFS (`_currentHsSrc`). BOM/MFWAM/MARC/LOTUS ont donc été ajoutés ICI
+// dans une variable À PART (`_gwExtraSrc`, persistée) pour que le widget puisse
+// les montrer sans toucher aux ~15 autres points d'affichage de la page.
+//
+// ══ Bug corrigé le 19/08/2026 — « les valeurs divergent même pour un même
+// modèle sélectionné » ══
+// Le 18/08/2026, `setHsSrc()` a appris à afficher les 6 autres modèles
+// (`_swellCacheToFcastShape`) : `_currentHsSrc` vaut désormais aussi bom/mf/
+// ecmwf/aifs/marc/lotus. Mais `_gwActiveData()` ci-dessous n'avait pas suivi —
+// son ternaire ne testait QUE 'nc', donc toute autre valeur retombait sur
+// `_omFcastData`. Résultat MESURÉ en headless (Passe de Dumbéa, 19/08, source
+// MARC choisie dans le sélecteur de la page) :
+//     tableau principal : 2,8 m / 12 s   ← MARC, correct
+//     WIDGET            : 0,84 m / 13,4 s ← GFS, avec le bouton MARC allumé
+//     tableau Ciel&houle: 2,2 m / 12 s   ← meteo.nc (même trou dans sbActiveSource)
+// Trois chiffres pour un spot à une heure, et le pire des trois n'était pas
+// seulement faux : il était ÉTIQUETÉ du nom d'un modèle qu'il n'affichait pas.
+// Idem pour mf/ecmwf/lotus. L'écart entre modèles atteint 1,58 m sur ce spot
+// (nc vs ECMWF, mesuré le même jour) — ce n'est pas un arrondi.
+//
+// Correctif : `_gwExtraSrc` est SUPPRIMÉ. Un seul état, `_currentHsSrc`, lu par
+// le widget, par le tableau « Ciel & houle » et par le tableau principal. Les
+// boutons du widget appellent `setHsSrc()` comme le sélecteur de la page :
+// impossible que deux blocs de la même page montrent deux modèles différents,
+// puisqu'il n'y a plus deux endroits où le choix puisse vivre.
+// Le seul ajout : 'mix' (jeu synthétique, cf. _gwBuildBestMix) est devenu une
+// source de page à part entière, sinon le choisir ici aurait recréé le trou.
+
+// Modèles que le widget construit depuis _swellCache (tout sauf nc/om, qui
+// viennent de _ncFcastData/_omFcastData, et 'mix', qui a son propre assembleur).
+var GW_MODEL_KEYS = { bom:1, mf:1, marc:1, lotus:1, ecmwf:1, aifs:1 };
 
 function _gwSetSrc(src) {
-  if (src === 'bom' || src === 'mf' || src === 'marc' || src === 'lotus' || src === 'mix') {
-    _gwExtraSrc = src;
-  } else {
-    _gwExtraSrc = null;
-    if (typeof setHsSrc === 'function') setHsSrc(src); // nc/om restent liés au reste de la page
-  }
-  try { localStorage.setItem('gwExtraSrc', _gwExtraSrc || ''); } catch(e){}
-  renderGlobalWidget();
+  // Un seul chemin, celui de la page — y compris pour nc/om. Le localStorage
+  // 'gwExtraSrc' n'est plus écrit (la préférence de source vit dans le spot,
+  // cf. spot.hsSrc / ⚙ Réglages spot) ; il est purgé au chargement plus bas
+  // pour qu'un ancien choix ne ressuscite pas un second état.
+  if (typeof setHsSrc === 'function') setHsSrc(src);
+  else renderGlobalWidget();
 }
+// Purge unique de l'ancien état parallèle (cf. bloc ci-dessus). Sans elle, la
+// clé resterait à traîner dans les navigateurs déjà passés par l'ancienne
+// version — sans effet, mais trompeuse au débogage.
+try { localStorage.removeItem('gwExtraSrc'); } catch(e){}
 
 // Classe les partitions MARC d'un pas de temps par ÉNERGIE/PÉRIODE, jamais par
 // position dans le tableau (cf. _marcPrimarySwell, previsions.html : les
@@ -168,6 +195,30 @@ function _gwBuildModelFcast(key) {
     var _marcEntry = (typeof _swellCache !== 'undefined' && _swellCache) ? _swellCache.marc : null;
     if (_marcEntry && _marcEntry.primary && _marcEntry.primary.length) mfWindPts = _marcEntry.primary;
   }
+  // ── Vent d'ECMWF/AIFS : leur flux HOULE n'en a pas, mais le leur existe ─────
+  // Ajouté le 19/08/2026 en même temps que l'unification des sélecteurs. Le
+  // tableau principal montrait DÉJÀ ce vent (_swellCacheToTableData le prend
+  // dans _aromeCmpCache.ecmwfWind/aifsWind, cache `..._wind` distinct du
+  // `..._wave`, chargé en même temps par le comparatif vent) ; ce constructeur-ci
+  // ne le faisait pas, donc le même modèle affichait un vent dans un bloc et
+  // « — » dans l'autre. Ce n'est pas un emprunt à un autre modèle comme celui de
+  // MFWAM ci-dessus : c'est le vent DU modèle, juste rangé dans un autre cache.
+  // Pas de rafale dans ce flux Open Data (u/v 10 m seulement) — jamais inventée.
+  var odWindPts = null;
+  if ((key === 'ecmwf' || key === 'aifs') && typeof _aromeCmpCache !== 'undefined' && _aromeCmpCache) {
+    odWindPts = (key === 'ecmwf') ? _aromeCmpCache.ecmwfWind : _aromeCmpCache.aifsWind;
+  }
+  // Mêmes epoch UTC vrais des deux côtés (Date.UTC(...) - 11h dans les deux
+  // fetch) : comparaison directe, surtout pas de +11h ici.
+  function nearestOdWind(ms) {
+    if (!odWindPts || !odWindPts.length) return null;
+    var best = null, bd = 5400000;
+    for (var k = 0; k < odWindPts.length; k++) {
+      var df = Math.abs(odWindPts[k].ms - ms);
+      if (df < bd) { bd = df; best = odWindPts[k]; }
+    }
+    return best;
+  }
   function nearestMarcWind(ms) {
     if (!mfWindPts) return null;
     // MÊME convention de temps des deux côtés : p.ms est un vrai epoch UTC pour
@@ -239,9 +290,10 @@ function _gwBuildModelFcast(key) {
     // publiait un : l'emprunt est un repli, pas un écrasement.
     var _bw = (key === 'mf' && p.windKt == null) ? nearestMarcWind(p.ms) : null;
     if (_bw) out.windBorrowedFrom = 'marc-ecmwf';
-    out.wSpd.push(p.windKt!=null ? p.windKt : (_bw ? _bw.windKt : null));
-    out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale ; le forçage ECMWF de MARC n'en a pas non plus (vent moyen 10m)
-    out.wDir.push(p.windDir!=null ? p.windDir : (_bw ? _bw.windDir : null));
+    var _ow = (odWindPts && p.windKt == null) ? nearestOdWind(p.ms) : null; // ECMWF/AIFS, cf. plus haut
+    out.wSpd.push(p.windKt!=null ? p.windKt : (_bw ? _bw.windKt : (_ow ? _ow.kt : null)));
+    out.wGst.push(p.windGustKt!=null ? p.windGustKt : null); // BOM: aucune rafale ; le forçage ECMWF de MARC n'en a pas non plus (vent moyen 10m), ECMWF/AIFS Open Data non plus
+    out.wDir.push(p.windDir!=null ? p.windDir : (_bw ? _bw.windDir : (_ow ? _ow.dir : null)));
     var _sw1h = out.sw1h[out.sw1h.length-1], _sw1t = out.sw1t[out.sw1t.length-1];
     out.pwr.push((_sw1h && _sw1t) ? +(0.5*_sw1h*_sw1h*_sw1t).toFixed(2) : null);
     var oi = nearestOmIdx(p.ms);
@@ -372,41 +424,47 @@ function _gwBuildBestMix() {
   return out;
 }
 
-// Même logique de sélection que setHsSrc : NC prioritaire, GFS si toggle ou si NC
-// absent — sauf si le widget a sa propre source BOM/MFWAM/MARC/mix sélectionnée
-// (_gwExtraSrc).
-// true tant que la dernière tentative de source (_gwExtraSrc) a dû retomber sur
-// meteo.nc/GFS — sert à afficher un avertissement plutôt que de laisser le bouton
-// "MARC"/"BOM"/etc. actif pendant qu'on affiche silencieusement autre chose (bug
-// signalé : le spectre MARC/le "≈" incohérent venaient d'un fetch MARC qui expirait
-// (12s, trop court pour cette requête ~10-20s) sans que rien ne le signale).
+// true tant que la source demandée (_currentHsSrc) n'a pas pu être construite —
+// sert à afficher un avertissement plutôt que de laisser le bouton "MARC"/"BOM"/
+// etc. actif pendant qu'on affiche silencieusement autre chose (bug signalé : le
+// spectre MARC/le "≈" incohérent venaient d'un fetch MARC qui expirait (12s, trop
+// court pour cette requête ~10-20s) sans que rien ne le signale).
 // Pas de repli silencieux (demandé explicitement par l'utilisateur : "si pas
 // dispo dans le widget, pas de backup, juste un message" — après avoir été
-// trompé par un repli meteo.nc affiché sous l'étiquette "MARC"). Quand la
-// source demandée (bom/mf/marc/mix) ne peut pas être construite, _gwActiveData()
-// renvoie null et _gwFellBack=true ; renderGlobalWidget() affiche alors un
-// message au lieu de retomber sur une autre source.
+// trompé par un repli meteo.nc affiché sous l'étiquette "MARC"). Quand la source
+// demandée ne peut pas être construite, _gwActiveData() renvoie null et
+// _gwFellBack=true ; renderGlobalWidget() affiche alors un message au lieu de
+// retomber sur une autre source.
+//
+// ⚠ TOUTE clé de _currentHsSrc doit être traitée ici. L'ancienne version se
+// terminait par `return (_currentHsSrc==='nc') ? nc : om`, ce qui transformait
+// les 6 modèles ajoutés à setHsSrc() le 18/08/2026 en "GFS affiché sous
+// l'étiquette du modèle choisi" (cf. le bloc de tête de ce fichier). Un `else`
+// qui devine est exactement ce qu'il ne faut pas ici : mieux vaut le message
+// d'indisponibilité qu'un chiffre faux et bien étiqueté.
 var _gwFellBack = false;
 function _gwActiveData() {
   _gwFellBack = false;
-  if (_gwExtraSrc === 'bom' || _gwExtraSrc === 'mf' || _gwExtraSrc === 'marc' || _gwExtraSrc === 'lotus') {
-    var built = _gwBuildModelFcast(_gwExtraSrc);
+  var src = _currentHsSrc;
+  if (GW_MODEL_KEYS[src]) {
+    var built = _gwBuildModelFcast(src);
     if (built) return built;
     _gwFellBack = true;
     return null;
   }
-  if (_gwExtraSrc === 'mix') {
+  if (src === 'mix') {
     var mix = _gwBuildBestMix();
     if (mix) return mix;
     _gwFellBack = true;
     return null;
   }
-  return (_currentHsSrc==='nc') ? (_ncFcastData||_fcastData) : (_omFcastData||_fcastData);
+  if (src === 'om') return _omFcastData || _fcastData;
+  return _ncFcastData || _fcastData;
 }
 
 // La donnée affichée est-elle bien meteo.nc ? (badge source du widget)
 function _gwIsNC() {
-  return !_gwExtraSrc && _currentHsSrc==='nc' && !!_ncFcastData;
+  return _currentHsSrc==='nc' && !!_ncFcastData;
 }
 
 // Groupe les points horaires par jour calendaire NC (clé sur les champs getUTC*
@@ -456,6 +514,8 @@ var GW_SRC_BTNS_DEF = [
   { key:'bom',  lbl:'🇦🇺 BOM' },
   { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France (Copernicus Marine, ~9 km) avec partitions directionnelles (mer du vent / houle 1 / houle 2). Le produit Copernicus est un modèle de VAGUES seul, sans aucun champ de vent : le vent affiché ici est le forçage ECMWF IFS (~9 km) qui pilote MFWAM, récupéré via MARC dont c\'est le forçage du run WW3 — même vent que l\'onglet MARC, pas un second avis. Pas de rafale (vent moyen 10 m), et le vent s\'arrête au bout de la fenêtre MARC (~5,5 j) alors que la houle MFWAM va plus loin (~10 j).' },
   { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Lu depuis un cache rafraîchi 3x/jour (ingestion/fetch_marc.py) ; repli sur une requête directe Ifremer (~3s) si le cache est vide pour ce spot.' },
+  { key:'ecmwf', lbl:'🇪🇺 ECMWF', title:'ECMWF IFS-HRES via Open Data (~28 km). Houle « primaire » = bande de période la plus haute parmi 6 (10-30 s), pas une vraie partition, et direction = celle de la mer TOTALE (mwd) faute de direction par bande. Le vent affiché vient du flux vent ECMWF Open Data du comparatif vent (10 m u/v) — pas de rafale dans ce flux.' },
+  { key:'aifs',  lbl:'🤖 AIFS',  title:'ECMWF AIFS-single, modèle IA opérationnel (pas de la physique), même Open Data / grille 0,25° (~28 km) qu\'IFS-HRES. Mêmes limites : houle approximée par bande de période, direction = celle de la mer totale. Vent = flux vent AIFS Open Data, sans rafale.' },
   { key:'lotus', lbl:'🏄 LOTUS', title:'Surfline — modèle propriétaire LOTUS (WW3 + assimilation satellite + forecasters), houle en trains directionnels + vent (avec rafale). Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa G+D/Boulari) : indisponible pour les autres spots. Cache rafraîchi 3x/jour (ingestion/fetch_surfline.py).' },
   { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km > BOM 14km > MFWAM ~9km, en repli créneau par créneau. Vent : meteo.nc > BOM 14km > MARC (= forçage ECMWF IFS réel du run, ~9km regrillé) > GFS 28km. MFWAM ferme la liste mais n\'y apporte jamais rien de neuf : son vent EST celui de MARC (forçage commun), déjà servi plus haut. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
 ];
@@ -466,13 +526,17 @@ function _gwResSuffix(key) {
 function _gwRenderBadge() {
   var badge = document.getElementById('gw-src-badge');
   if (!badge) return;
-  // Boutons plutôt qu'un badge passif : meteo.nc/GFS restent liés au reste de la
-  // page (_gwSetSrc les redirige vers setHsSrc), BOM/MFWAM/MARC sont propres au widget.
-  var activeSrc = _gwExtraSrc || _currentHsSrc;
-  badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget">'
+  // Boutons plutôt qu'un badge passif : ils pilotent LA source de la page
+  // (_gwSetSrc → setHsSrc), la même que le sélecteur ⚙/tableau — cf. le bloc de
+  // tête de ce fichier, il n'existe plus de source « propre au widget ».
+  var activeSrc = _currentHsSrc;
+  badge.innerHTML = '<div class="seg seg-sm" role="group" aria-label="Source des données du widget et de la page">'
     + GW_SRC_BTNS_DEF.map(function(s){
         var on = s.key === activeSrc;
-        var lbl = s.key==='om' ? s.lbl+_gwResSuffix('gfs') : s.key==='bom' ? s.lbl+_gwResSuffix('bom') : s.key==='marc' ? s.lbl+_gwResSuffix('marc') : s.lbl;
+        // Suffixe de résolution générique : le chaînage de ternaires précédent
+        // n'en donnait qu'à 3 boutons sur 7 et aurait fallu rallonger à chaque
+        // modèle ajouté. MODEL_STYLE porte déjà la clé pour tous (om = gfs).
+        var lbl = s.lbl + _gwResSuffix(s.key==='om' ? 'gfs' : s.key);
         return '<button class="seg-b'+(on?' is-on':'')+'" aria-pressed="'+on+'"'+(s.title?' title="'+s.title+'"':'')+' onclick="_gwSetSrc(\''+s.key+'\')">'+lbl+'</button>';
       }).join('')
     + '</div>';
@@ -483,7 +547,7 @@ function _gwRenderBadge() {
 // de données d'une AUTRE source affichées sous une étiquette qui ne correspond
 // plus à ce qu'on regarde vraiment.
 function _gwRenderUnavailable() {
-  var lbl = (GW_SRC_BTNS_DEF.find(function(s){return s.key===_gwExtraSrc;}) || {lbl:_gwExtraSrc}).lbl.replace(/<[^>]+>/g,'');
+  var lbl = (GW_SRC_BTNS_DEF.find(function(s){return s.key===_currentHsSrc;}) || {lbl:_currentHsSrc}).lbl.replace(/<[^>]+>/g,'');
   var msg = '<div style="grid-column:1/-1;padding:24px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;">'
     + '⚠ <b style="color:#e8a057;">'+lbl+'</b> indisponible pour ce spot en ce moment.<br>'
     + '<span style="font-size:11px;color:var(--faint);">Requête serveur trop lente ou en échec — réessaie dans un instant, ou choisis une autre source ci-dessus.</span>'
@@ -865,7 +929,7 @@ function _gwDrawVectors(fi) {
   // jamais en cône, pour ne pas suggérer une précision qui n'existe pas). "mix"
   // pioche toujours ses trains 3/4/5 (et donc son spectre) chez MARC en premier
   // (cf. HOULE_PRIORITY, _gwBuildBestMix) — même source que pour 'marc' seul.
-  var GW_SPECTRAL_KEY = { marc:'marc', mix:'marc', mf:'mf', lotus:'lotus' }[_gwExtraSrc];
+  var GW_SPECTRAL_KEY = { marc:'marc', mix:'marc', mf:'mf', lotus:'lotus' }[_currentHsSrc];
   var specParts = [];
   if (GW_SPECTRAL_KEY) {
     var specSrcPts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache[GW_SPECTRAL_KEY]) ? _swellCache[GW_SPECTRAL_KEY].primary : null;
