@@ -191,6 +191,15 @@ Attendre ~15 s avant de mesurer : les fetchs réseau réels doivent avoir abouti
   (~342 frames au chargement, puis 0). `--dump-dom` ne peut donc PAS vérifier ce qui
   passe par un `rafThrottle` : faire une **capture d'écran** (qui force des frames) ou
   **appeler la fonction directement**. Sinon on conclut à tort à un bug.
+- **Toutes les fonctions ne sont pas appelables depuis une sonde injectée.**
+  `_drawSpectrumRose` (et ses voisines) vivent dans une portée de fonction, pas
+  au global : un `<script>` injecté avant `</body>` lève « … is not defined » en
+  les appelant. Vérifié le 20/08/2026 — trois « exceptions » qui n'en étaient
+  pas, la page fonctionnait parfaitement. Le réflexe correct est de **lire le DOM
+  que la page a elle-même produit** (`#marc-spectrum-legend`, `#current-cond`,
+  `#cmp-table-wrap`…) plutôt que de rappeler la fonction : c'est de toute façon
+  ce qu'on cherche à vérifier. Et compter `window.onerror` séparément de ses
+  propres `catch`, sinon on s'accuse d'une régression inexistante.
 - Pour prouver qu'un tracé canvas existe vraiment : **compter les pixels non
   transparents** (`getImageData` → alpha > 0). C'est le seul contrôle fiable.
 

@@ -8166,7 +8166,23 @@ function _renderCmpTable() {
         // rendant le tableau vent visiblement moins "aéré" (signalé par
         // l'utilisateur) alors que c'est juste une différence de densité de
         // données, pas voulue visuellement.
-        return '<td style="padding:4px 4px;text-align:center;font-size:11px;border-left:' + bl + ';background:' + bg + ';color:var(--text);font-weight:700;white-space:nowrap;line-height:1.15;' + outline + '">'
+        // ── L'heure RÉELLE du point, quand elle n'est pas celle de la colonne ──
+        // Ajouté le 20/08/2026. Les colonnes de ce tableau tombent sur des heures
+        // NC multiples de 3 (00/03/06…, ancrées sur « maintenant » arrondi au
+        // créneau suivant), alors que la plupart des modèles publient sur
+        // 02/05/08/11… — deux familles de grille, mesurées : nc/mf/ecmwf/aifs/marc
+        // à ≡ 2 mod 3, gfs/lotus à ≡ 0 mod 3. L'appariement au plus proche (±1,6 h)
+        // choisit toujours le bon point, mais la MÊME valeur MARC s'affiche donc
+        // sous « 11h » dans la grille du widget et sous « 12h » ici — signalé comme
+        // déroutant, et c'en est. Rien à corriger côté données : aucune colonne
+        // commune ne peut convenir aux deux familles à la fois. On dit simplement
+        // de quelle heure vient le chiffre, dès qu'elle diffère de l'en-tête.
+        var _pHour = new Date(p.ms + 11 * 3600000).getUTCHours();
+        var _hourTitle = (_pHour !== s.hour)
+          ? ' title="' + st.label.replace(/"/g, '&quot;') + ' publie à ' + String(_pHour).padStart(2, '0')
+            + ' h — valeur reprise dans la colonne ' + String(s.hour).padStart(2, '0') + ' h, la plus proche"'
+          : '';
+        return '<td' + _hourTitle + ' style="padding:4px 4px;text-align:center;font-size:11px;border-left:' + bl + ';background:' + bg + ';color:var(--text);font-weight:700;white-space:nowrap;line-height:1.15;' + outline + '">'
           + '<div>' + main + ' <span style="font-weight:400;font-size:9px;opacity:.85;">' + arrow + '</span></div>'
           + '<div style="' + (sub ? '' : 'visibility:hidden;') + '">' + (sub || '&nbsp;') + '</div></td>';
       }).join('');

@@ -9113,10 +9113,20 @@ dont l'ingestion a par ailleurs été recoupée au champ près contre Open-Meteo
   toucher aux valeurs qui servent à CALCULER (score, puissance), qui gardent
   leur précision. Vérifié : 0 cellule trop précise sur om (88 lignes), nc (49),
   mix (49), marc (39).
-- **Étiquette d'heure** : deux familles de grille (heures NC ≡ 2 mod 3 pour
-  nc/mf/ecmwf/aifs/marc, ≡ 0 mod 3 pour gfs/lotus). La même valeur MARC apparaît
-  sous « 11h » dans le widget et sous « 12h » dans le tableau du bas. Défaut de
-  lisibilité, pas de valeur : les tolérances d'appariement ne peuvent pas
-  désigner deux points différents ici (1 h contre 2 h, jamais à égalité).
+- ~~Étiquette d'heure~~ **TRAITÉ le 20/08** (affichage seul, données intactes) :
+  deux familles de grille cohabitent — heures NC ≡ 2 mod 3 pour nc/mf/ecmwf/aifs/
+  marc, ≡ 0 mod 3 pour gfs/lotus — et les colonnes du tableau comparatif tombent
+  sur des multiples de 3. La même valeur MARC apparaît donc sous « 11h » dans le
+  widget et « 12h » en bas. Aucune colonne commune ne peut convenir aux deux
+  familles : plutôt que de déplacer des chiffres, chaque cellule dont le point
+  ne vient pas de l'heure de sa colonne porte désormais une infobulle qui le dit
+  (« MARC WW3 publie à 17 h — valeur reprise dans la colonne 18 h »). Vérifié :
+  444 cellules concernées sur la vue courante, sur 832 portant un title.
+
+- **Vérification headless, piège relevé** : `_drawSpectrumRose` n'est PAS globale
+  (portée de fonction) — une sonde injectée qui l'appelle lève « is not defined »
+  et fait croire à trois erreurs JS alors que `window.onerror` reste à 0. Lire le
+  DOM produit par la page (`#marc-spectrum-legend`) est à la fois plus simple et
+  plus juste : c'est ce qu'on cherche à vérifier. Noté dans `CLAUDE.md`.
 - Les deux agents coupés (valeurs fausses restantes, péremption silencieuse)
   n'ont rien rendu — leurs angles restent à couvrir.
