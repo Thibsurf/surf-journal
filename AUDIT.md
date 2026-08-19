@@ -8972,9 +8972,19 @@ window.onerror + unhandledrejection : 0
   `_swellCacheToTableData` ne lit que `c.secondary`, vide pour ces modèles dont
   la houle 2 vit dans `partitions[]`. Mesuré : 37 créneaux avec H2 dans le
   widget, 0 dans le tableau ; LOTUS 62 contre 0.
-- **Bloc « Modèles archivés »** : MFWAM y est affiché en mer totale (2,3 m) sous
-  l'étiquette « Houle » alors que sa houle primaire vaut 2,0 m ; MARC et LOTUS y
-  sont absents alors qu'ils ont des lignes `wave` en base.
+- ~~Bloc « Modèles archivés »~~ **CORRIGÉ le 20/08** : toute ligne `kind=wave` y
+  était lue en `totH/totT/totDir`, donc MFWAM/MARC/LOTUS montraient leur mer
+  TOTALE sous l'étiquette « Houle ». La houle est désormais le train dominant du
+  spectre — par énergie avec période de houle pour MARC/LOTUS, par index NATIF
+  pour MFWAM (sa source numérote WW/SW1/SW2, et les houles calédoniennes de 7 s
+  passent sous le seuil « mer du vent » de 8 s : la règle de période lui donnait
+  0,5 m / 12 s au lieu de 1,3 m / 7 s — deux sources, deux conventions, ne pas
+  les fondre). ECMWF/AIFS gardent leur mer totale, seule grandeur qu'ils
+  publient, et la cellule le dit désormais (« mer tot. »). MARC et LOTUS ajoutés
+  à `order` et à `MODEL_CACHE_LABELS` : ils avaient des lignes en base depuis des
+  semaines sans jamais apparaître. Vérifié : 7 modèles, MF 1,4 m/7 s (page 1,33),
+  MARC 1,5/9 (page 1,60), LOTUS 1,4/10 (page 1,51) — l'écart résiduel est
+  l'heure d'échantillonnage (ce bloc vise sessionHour, la page vise maintenant).
 - **Arrondis** : le tableau détaillé n'arrondit pas du tout pour nc/om/mix
   (« 0.82m / 13.4s » là où tout le reste affiche « 0,8 m / 13 s », 62 points
   concernés) ; et un point sur 243 diffère d'un dixième entre `Math.round` et

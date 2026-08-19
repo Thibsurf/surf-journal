@@ -17193,7 +17193,9 @@ var MODEL_CACHE_LABELS = {
   bom:   { label: 'BOM WW3',   col: '#e8a057' },
   mf:    { label: 'MF global', col: '#a99ff8' },
   ecmwf: { label: 'ECMWF',     col: '#e05c5c' },
-  aifs:  { label: 'AIFS',      col: '#e06bb0' }
+  aifs:  { label: 'AIFS',      col: '#e06bb0' },
+  marc:  { label: 'MARC WW3',  col: (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE.marc) ? MODEL_STYLE.marc.col : '#7b6cf6' },
+  lotus: { label: 'LOTUS',     col: (typeof MODEL_STYLE !== 'undefined' && MODEL_STYLE.lotus) ? MODEL_STYLE.lotus.col : '#f0c674' }
 };
 async function _renderCachedModelsBlock(spot, date) {
   if (typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return '';
@@ -17253,12 +17255,49 @@ async function _renderCachedModelsBlock(spot, date) {
       // laissait parfois swell_primary (périmé) écraser wave (frais). Le flag _waveSet
       // rend le choix indépendant de l'ordre : wave gagne toujours quand il existe.
       if (row.kind === 'swell_primary') { if (!byModel[row.model]._waveSet) byModel[row.model].swell = { val: p.val, period: p.period, dir: p.dir }; }
-      // kind='wave' (MARC/MF/ECMWF/AIFS/LOTUS) : houle totale totH/totT/totDir.
-      else if (row.kind === 'wave') { byModel[row.model].swell = { val: p.totH, period: p.totT, dir: p.totDir }; byModel[row.model]._waveSet = true; }
+      // kind='wave' : deux cas, et les confondre étiquetait « Houle » une mer
+      // totale (corrigé le 20/08/2026 — mesuré : MF global annoncé 2,3 m ici
+      // quand sa houle primaire vaut 2,0 m au même créneau).
+      //  • MARC/MFWAM/LOTUS publient un spectre PARTITIONNÉ : la houle est le
+      //    train dominant, choisi par énergie avec une période de houle — même
+      //    règle que _marcPrimarySwell / _swellTrains, jamais un index fixe (les
+      //    partitions WW3 ne sont pas numérotées de façon stable, cf. CLAUDE.md).
+      //  • ECMWF/AIFS n'ont AUCUNE partition : leur mer totale est la seule
+      //    grandeur publiée, et la colonne le dit (« mer tot. » sous le libellé).
+      else if (row.kind === 'wave') {
+        var _parts = p.partitions || [], _dom = null;
+        if (row.model === 'mf') {
+          // MFWAM est le SEUL modèle dont la source numérote ses partitions
+          // (WW / SW1 / SW2 = index 0 / 1 / 2) : sa houle primaire est SW1, et
+          // c'est ce que `_swellTrains` prend (`native`). Lui appliquer la règle
+          // de période valable pour MARC/LOTUS donnait 0,5 m / 12 s au lieu de
+          // 1,3 m / 7 s — mesuré le 20/08 : les houles calédoniennes de 7 s
+          // tombent sous le seuil « mer du vent » de 8 s alors qu'elles SONT la
+          // houle dominante ici. Deux sources, deux conventions : ne pas les
+          // fondre dans une règle unique.
+          _dom = (_parts[1] && _parts[1].h != null) ? _parts[1] : null;
+        } else {
+          _parts.forEach(function(q) {
+            if (!q || q.h == null) return;
+            if (q.t != null && q.t < 8) return;           // mer du vent
+            if (!_dom || q.h > _dom.h) _dom = q;
+          });
+        }
+        if (!_dom) _parts.forEach(function(q) {           // aucune houle : plus grosse partition
+          if (q && q.h != null && (!_dom || q.h > _dom.h)) _dom = q;
+        });
+        byModel[row.model].swell = _dom
+          ? { val: _dom.h, period: _dom.t, dir: _dom.dir }
+          : { val: p.totH, period: p.totT, dir: p.totDir, isTotal: true };
+        byModel[row.model]._waveSet = true;
+      }
       else if (row.kind === 'wind') byModel[row.model].wind = { val: p.val, dir: p.dir };
       byModelIssued[key] = row.issued_at;
     });
-    var order = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'aifs'];
+    // MARC et LOTUS ajoutés le 20/08/2026 : ils ont des lignes `wave` en base
+    // depuis des semaines et n'apparaissaient nulle part dans ce bloc, faute
+    // d'être listés ici — un modèle absent passe pour un modèle sans données.
+    var order = ['nc', 'gfs', 'bom', 'mf', 'ecmwf', 'aifs', 'marc', 'lotus'];
     var present = order.filter(function(k) { return byModel[k]; });
     if (!present.length) return '';
     var compass = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
@@ -17268,7 +17307,9 @@ async function _renderCachedModelsBlock(spot, date) {
       var sw = m.swell || {}, wd = m.wind || {};
       return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);">'
         + '<td style="padding:5px 6px;color:' + info.col + ';font-weight:600;font-size:11px;white-space:nowrap;">' + info.label + '</td>'
-        + '<td style="padding:5px 4px;text-align:center;font-size:11px;font-weight:600;">' + (sw.val != null ? sw.val.toFixed(1) + 'm' : '—') + '</td>'
+        + '<td style="padding:5px 4px;text-align:center;font-size:11px;font-weight:600;"' + (sw.isTotal ? ' title="Ce modèle ne publie pas de partition de houle : mer totale (toutes composantes)"' : '') + '>'
+        + (sw.val != null ? sw.val.toFixed(1) + 'm' : '—')
+        + (sw.isTotal ? '<span style="font-weight:400;font-size:8.5px;color:var(--faint);display:block;line-height:1;">mer tot.</span>' : '') + '</td>'
         + '<td style="padding:5px 4px;text-align:center;font-size:11px;">' + (sw.period != null ? Math.round(sw.period) + 's' : '—') + '</td>'
         + '<td style="padding:5px 4px;text-align:center;font-size:11px;color:var(--muted);white-space:nowrap;">' + dirLbl(sw.dir) + '</td>'
         + '<td style="padding:5px 4px;text-align:center;font-size:11px;">' + (wd.val != null ? Math.round(wd.val) + 'nds' : '—') + '</td>'
