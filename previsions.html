@@ -6354,6 +6354,42 @@ var BOM_WW3_BASE = 'https://ocean-thredds01.spc.int/thredds/dodsC/POP/model/regi
 // Sert au libellé honnête du modèle dans la légende et le tableau
 // (_swellModelDesc) : sans lui, une source figée est indistinguable d'une
 // source à jour, puisque la page redessine les mêmes chiffres sans rien dire.
+// ── Âge de la donnée, par modèle ────────────────────────────────────────────
+// Ajouté le 20/08/2026. Jusqu'ici, un seul modèle savait dire que sa source
+// était en panne : BOM (_bomSourceState, garde-fou epoch > 3 j posé le 13/08
+// quand le flux du Pacific Community s'est figé). Les cinq autres modèles servis
+// par `model_forecast_cache` n'avaient AUCUN moyen de le dire — si le cron
+// MFWAM, MARC, ECMWF, AIFS ou Surfline s'arrêtait, la page continuerait
+// d'afficher les dernières lignes écrites, aux dates qui tombent encore dans sa
+// fenêtre de lecture, sans que rien ne signale leur âge. C'est la forme la plus
+// pernicieuse du « pas à jour » : la donnée est là, elle a l'air normale, et
+// elle décrit la mer d'avant-hier.
+//
+// On mémorise donc, à chaque fetch d'archive, l'`issued_at` le plus récent
+// rencontré pour ce modèle. Attention, il ne veut PAS dire la même chose partout
+// (mesuré ce jour) : côté mf/marc c'est l'heure du JOB (0,6 h et 0,9 h d'âge
+// après un cron), côté ecmwf/aifs/lotus l'heure du RUN du modèle (12,2 h, 6,2 h
+// et 12,2 h au même instant — parfaitement sain). Le seuil doit donc absorber la
+// famille « heure de run » : un run 18 Z ingéré au cron de 09:47 Z le lendemain
+// fait déjà ~16 h, et une exécution de cron manquée ajoute 8 h. 36 h ne se
+// déclenche donc que sur une panne réelle de plusieurs runs d'affilée — c'est
+// voulu : une alerte qui crie pour rien n'est plus lue.
+var _modelIssuedMs = {};
+var MODEL_STALE_H = 36;
+function _noteModelIssued(key, rows) {
+  if (!rows || !rows.length) return;
+  var mx = 0;
+  rows.forEach(function(r) { var t = Date.parse(r && r.issued_at || ''); if (t && t > mx) mx = t; });
+  if (mx) _modelIssuedMs[key] = mx;
+}
+// Renvoie null quand tout va bien — appelé sur des chemins d'affichage, il ne
+// doit rien coûter ni rien dire dans le cas normal.
+function _modelStaleInfo(key) {
+  var ms = _modelIssuedMs[key];
+  if (!ms) return null;
+  var ageH = (Date.now() - ms) / 3600000;
+  return ageH > MODEL_STALE_H ? { ageH: ageH, issuedMs: ms } : null;
+}
 var _bomSourceState = null;
 // DEUX critères de péremption, à garder identiques dans
 // .github/scripts/cache-model-forecasts.mjs (page et cron doivent juger la
@@ -6583,8 +6619,11 @@ async function _fetchMfArchive(spot) {
       var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000); // jour NC-local
       ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_mf_wave');
     }
-    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+    // `issued_at` demandé depuis le 20/08/2026 : sans lui, ce lecteur ne pouvait
+    // pas savoir de quand datent les lignes qu'il sert (cf. _noteModelIssued).
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at').in('id', ids);
     if (!r || !r.data || !r.data.length) return null;
+    _noteModelIssued('mf', r.data);
     var primary = [], secondary = [];
     r.data.forEach(function(row) {
       var p = row.date.split('-');
@@ -6701,6 +6740,7 @@ function _fetchOpenDataArchive(cacheKey, spot) {
         .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05)
         .order('issued_at', { ascending: false });
       if (!r || !r.data || !r.data.length) return null;
+      _noteModelIssued(cacheKey, r.data);
       var seenDate = {}, rows = [];
       r.data.forEach(function(row) { if (!seenDate[row.date]) { seenDate[row.date] = true; rows.push(row); } });
       var primary = [];
@@ -6964,8 +7004,9 @@ async function _fetchMarcArchive(spot) {
       var d0 = new Date(nowA.getTime() + dd * 864e5 + 11 * 3600000); // jour NC-local
       ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_marc_wave');
     }
-    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours').in('id', ids);
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at').in('id', ids);
     if (!r || !r.data || !r.data.length) return null;
+    _noteModelIssued('marc', r.data);
     var primary = [];
     r.data.forEach(function(row) {
       var p = row.date.split('-');
@@ -7054,6 +7095,7 @@ async function _fetchLotusArchive(spot) {
       .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol)
       .order('issued_at', { ascending: false });
     if (!r || !r.data || !r.data.length) return null;
+    _noteModelIssued('lotus', r.data);
     var primary = [], seenDateL = {};
     // Une seule ligne par date, la plus récemment émise — même déduplication que
     // _fetchOpenDataArchive. fetch_surfline.py écrit un id déterministe par
@@ -7218,6 +7260,23 @@ function _swellModelDesc(key) {
       + _bomSourceState.ageDays.toFixed(1) + ' j) et ne couvre que jusqu\'au '
       + jj(fin) + '. Ce modèle est donc retiré du comparatif au lieu d\'afficher '
       + 'une prévision périmée — il reviendra tout seul dès que la source repartira.';
+  }
+  // Même principe que le garde-fou BOM ci-dessus, étendu aux cinq modèles servis
+  // par l'archive (cf. _modelStaleInfo) : un `desc` écrit en dur ne peut pas
+  // dire qu'une source s'est arrêtée. On n'écarte PAS le modèle pour autant —
+  // contrairement à BOM, dont la fenêtre de couverture elle-même était périmée :
+  // ici la prévision reste valide, elle est juste vieille, et le lecteur a le
+  // droit de savoir de combien pour en juger.
+  var _st = _modelStaleInfo(key);
+  if (_st) {
+    var _j = new Date(_st.issuedMs + 11 * 3600000);
+    var _pp = function(n) { return String(n).padStart(2, '0'); };
+    return m.desc + ' ⚠ DONNÉE ANCIENNE : le dernier run récupéré remonte au '
+      + _pp(_j.getUTCDate()) + '/' + _pp(_j.getUTCMonth() + 1) + ' à ' + _pp(_j.getUTCHours()) + ' h ('
+      + Math.round(_st.ageH) + ' h). Ce modèle est normalement rafraîchi 3×/jour : '
+      + 'son cron d\'ingestion est probablement en panne. La prévision affichée '
+      + 'reste celle de ce run, pas une invention — mais elle ne tient pas compte '
+      + 'de ce qui s\'est passé depuis.';
   }
   return m.desc;
 }
@@ -8159,6 +8218,11 @@ function _renderCmpTable() {
           if (sig && sig.dir != null) bits.push('~' + Math.round(sig.dir) + '°');
           if (sig && sig.t != null) bits.push(Math.round(sig.t) + ' s');
         }
+        // Âge anormal de la donnée du modèle (cf. _modelStaleInfo) : affiché ICI,
+        // sous le nom, parce que c'est la seule ligne que l'œil parcourt quand il
+        // compare les modèles entre eux — une info-bulle ne serait jamais lue.
+        var _stale = (kind === 'swell') ? _modelStaleInfo(d.key) : null;
+        if (_stale) bits.push('⚠ run J-' + (_stale.ageH / 24).toFixed(1));
         if (lastMs != null) {
           var dJ = (lastMs - (nowNc - 11 * 3600000)) / 864e5;
           // Horizon affiché seulement s'il tombe DANS la fenêtre du tableau :

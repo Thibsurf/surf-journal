@@ -8956,6 +8956,52 @@ window.onerror + unhandledrejection : 0
 
 `CACHE_NAME` → v100.
 
+### Addendum 20/08 — un modèle dont la source s'arrête peut enfin le dire
+
+Angle « péremption silencieuse », repris après la coupure de l'agent qui devait
+le couvrir. Constat : **un seul modèle savait signaler une source en panne**,
+BOM (`_bomSourceState`, garde-fou epoch > 3 j posé le 13/08 quand le flux du
+Pacific Community s'est figé). Les cinq autres servis par `model_forecast_cache`
+n'avaient aucun moyen de le dire — pire, `_fetchMfArchive` et `_fetchMarcArchive`
+ne demandaient même pas `issued_at` dans leur `select`. Si le cron MFWAM, MARC,
+ECMWF, AIFS ou Surfline s'arrêtait, la page continuerait de servir les dernières
+lignes écrites, aux dates encore dans sa fenêtre de lecture, sans que rien ne
+signale leur âge. C'est la forme la plus pernicieuse du « pas à jour » : la
+donnée est là, elle a l'air normale, et elle décrit la mer d'avant-hier.
+
+`_noteModelIssued` retient désormais l'`issued_at` le plus récent vu par modèle,
+et `_modelStaleInfo` le compare à un seuil. Piège relevé au passage : `issued_at`
+ne veut PAS dire la même chose partout — mesuré au même instant, mf 0,6 h et
+marc 1,0 h (heure du JOB) contre lotus 12,2 h, ecmwf 12,2 h et aifs 6,2 h (heure
+du RUN du modèle), toutes parfaitement saines. Le seuil doit absorber la famille
+« heure de run » : un run 18 Z ingéré au cron de 09:47 Z le lendemain fait déjà
+~16 h, et une exécution manquée ajoute 8 h. **36 h** ne se déclenche donc que sur
+une panne de plusieurs runs d'affilée — voulu : une alerte qui crie pour rien
+n'est plus lue.
+
+Contrairement à BOM, le modèle n'est PAS retiré : sa fenêtre de couverture reste
+valide, la prévision est seulement vieille, et le lecteur a le droit de savoir de
+combien. Le marqueur `⚠ run J-x` s'affiche sous le nom du modèle dans le tableau
+comparatif (la seule ligne que l'œil parcourt quand il compare), et le `desc`
+explique que le cron d'ingestion est probablement en panne.
+
+Vérifié en headless, **dans les deux sens** — c'est la seule façon de prouver un
+garde-fou :
+
+```
+ages réels vus : mf 0,6 h · marc 1,0 h · lotus 12,2 h · aifs 6,2 h · ecmwf 12,2 h
+état normal    : aucun modèle marqué, aucun avertissement dans les desc
+MARC vieilli de 48 h à la main :
+  _modelStaleInfo -> STALE 48,0 h
+  desc            -> « ⚠ DONNÉE ANCIENNE … son cron d'ingestion est
+                       probablement en panne »
+  tableau         -> « ⚠ run J-2.0 » sur les 5 lignes de trains MARC
+remise à zéro   : retour à la normale
+window.onerror  : 0
+```
+
+`CACHE_NAME` → v104.
+
 ### Reste ouvert, mesuré, PAS traité ce soir
 
 - ~~Quatre lecteurs restés sur `_fcastData`~~ **CORRIGÉ le 20/08** : `renderRose`,
