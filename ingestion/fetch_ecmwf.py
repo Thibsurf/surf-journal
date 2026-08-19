@@ -83,7 +83,18 @@ MS_KT = 1.943844  # m/s -> nds (convention affichée partout sur le site)
 
 MODELS = [("ifs", "ecmwf"), ("aifs-single", "aifs")]  # (nom ecmwf-opendata, clé cache)
 STEPS = list(range(0, 145, 6))  # 0..144h par 6h — cf. docstring, cadence mesurée sûre
-WAVE_PARAMS = ["swh", "mwd", "mwp", "h1012", "h1214", "h1417", "h1721", "h2125", "h2530"]
+# `pp1d` (période de PIC) ajouté le 20/08/2026. Il est publié dans le flux — vérifié
+# sur l'index réel du run 00z du 19/08, qui liste exactement 13 paramètres :
+# cdww h1012 h1214 h1417 h1721 h2125 h2530 mp2 mwd mwp pp1d swh wmb — et il n'était
+# tout simplement pas demandé. Ce que la page affichait comme « période » d'ECMWF/AIFS
+# était `mwp`, la période MOYENNE de tout le spectre, mer du vent comprise : 7,8 s à
+# Passe de Dumbéa quand MARC annonçait 9,3 s et meteo.nc 10 s pour la même mer. Ces
+# deux-là donnent une période de train ou de pic ; comparer une moyenne à un pic dans
+# la même colonne « période » invite à une conclusion fausse. `pp1d` est la grandeur
+# comparable, et c'est aussi celle qui parle à un surfeur.
+# Coût : un paramètre GRIB de plus, ~2,4 Mo/step/param x 25 steps x 2 modèles, soit
+# ~120 Mo par run sur les ~515 Mo déjà téléchargés. Assumé pour une colonne juste.
+WAVE_PARAMS = ["swh", "mwd", "mwp", "pp1d", "h1012", "h1214", "h1417", "h1721", "h2125", "h2530"]
 WIND_PARAMS = ["10u", "10v"]
 # Milieu indicatif de chaque bande de période (s) — PAS une période mesurée,
 # juste un repère d'affichage pour la "houle primaire" approximée (cf. docstring).
@@ -230,9 +241,17 @@ def build_wave_rows(cache_key, point, pt_ds, run_iso, tag):
             if h is not None and h > best_h:
                 best_idx, best_h = i_b, h
         mwd = r1(v("mwd"))
+        # Période de pic — DÉFENSIF : si le paramètre venait à manquer d'un run
+        # (renommage cfgrib, cycle qui ne le publie pas), on écrit None et le
+        # lecteur retombe sur `totT` comme avant. Une colonne « période » un peu
+        # moins bonne vaut mieux qu'un job d'ingestion qui s'arrête.
+        try:
+            pp = r2(v("pp1d"))
+        except Exception:
+            pp = None
         by_date.setdefault(ds_key, []).append({
             "hour": round(hour, 2),
-            "totH": r3(tot_h), "totT": r2(v("mwp")), "totDir": mwd,
+            "totH": r3(tot_h), "totT": r2(v("mwp")), "totPP": pp, "totDir": mwd,
             "val": bands[best_idx] if best_idx is not None else None,
             "period": BAND_MID[BAND_ORDER[best_idx]] if best_idx is not None else None,
             # = totDir : direction de la mer totale faute de direction par bande

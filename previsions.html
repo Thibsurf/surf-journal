@@ -6830,9 +6830,18 @@ function _fetchOpenDataArchive(cacheKey, spot) {
             // AFFICHE ». `!= null` et pas `||` partout : 0° (nord) est une
             // direction valide, et 0 m une hauteur valide, qu'un test de
             // véracité écraserait en null.
-            h: hh.totH, t: hh.totT != null ? hh.totT : null,
+            // Période : le PIC (`totPP`, pp1d) plutôt que la moyenne (`totT`,
+            // mwp) dès qu'il est là. Ajouté à l'ingestion le 20/08/2026 — mwp est
+            // une moyenne sur tout le spectre, mer du vent comprise, structurellement
+            // plus basse que la période de train ou de pic qu'annoncent les autres
+            // modèles : 7,8 s affichés pour ECMWF quand MARC disait 9,3 s et
+            // meteo.nc 10 s sur la même mer. Comparer une moyenne à un pic dans une
+            // colonne « période » invite à une conclusion fausse. Repli sur totT
+            // tant que les lignes d'avant ce changement n'ont pas été réécrites, et
+            // définitivement si un run ne publiait pas pp1d.
+            h: hh.totH, t: hh.totPP != null ? hh.totPP : (hh.totT != null ? hh.totT : null),
             dir: hh.totDir != null ? hh.totDir : null,
-            totH: hh.totH, totT: hh.totT != null ? hh.totT : null, totDir: hh.totDir,
+            totH: hh.totH, totT: hh.totT != null ? hh.totT : null, totPP: hh.totPP != null ? hh.totPP : null, totDir: hh.totDir,
             // Marqueur lu par _swellTrains (étiquette « Mer totale ») et par
             // _gwBuildModelFcast (infobulle de la ligne Houle 1 du widget) :
             // c'est la donnée elle-même qui dit ce qu'elle est, pas une liste
