@@ -8566,3 +8566,80 @@ En mode **« au point de mesure »**, ECMWF/AIFS restent masqués
 échantillonne le vent sur `spots + stations`, et les 24 stations sont bien dans la
 table (vérifié ce jour : Phare Amédée, Nouméa, La Tontouta…). Il ne manque que le
 branchement dans `_fetchWindAtStation`. Chantier séparé, non fait ici.
+
+---
+
+## 2026-08-19 (suite 7) — ECMWF/AIFS ré-échantillonnés « au point de mesure »
+
+Suite directe du chantier précédent, qui laissait ce point ouvert : en mode « au
+point de mesure », ECMWF et AIFS étaient masqués (`WIND_UNRESAMPLABLE`), au motif
+d'une « grille Open Data fixe ». Ce motif était périmé depuis le 30/07/2026 :
+ces modèles ne sont plus liés à un id de spot Windguru, et `fetch_ecmwf.py` boucle
+sur `spots + stations` pour le vent (le même invariant que `fetch_arome.py`). La
+donnée aux 24 stations était donc déjà en base — vérifié ce jour, Phare Amédée,
+Nouméa, La Tontouta et les 21 autres. **Seule la lecture manquait.**
+
+### Ce qui a été branché
+
+- `_fetchWindAtStation` appelle `_fetchOpenDataWind('ecmwf'|'aifs', {lat,lon})` —
+  la même fonction qu'au spot, `spot` n'y étant qu'un couple lat/lon.
+- `ecmwf`/`aifs` sortis de `WIND_UNRESAMPLABLE`, qui se réduit à `{lotus:1}` — la
+  seule indisponibilité qui reste tient à la source (Surfline ne modélise que ses
+  5 zones fixes, il n'y a pas de point libre à demander), pas à un branchement
+  manquant.
+- Les consommateurs suivent : substitution des séries au redessin, `corrSeries`
+  (ces deux modèles entrent donc dans le **classement de fiabilité**, dont ils
+  étaient absents), les deux listes de survol (barre de lecture et tableau du
+  comparatif), la note du sélecteur, l'info-bulle de légende et le bas de vignette
+  de corrélation — trois textes qui affirmaient encore le contraire.
+
+### Une dette révélée par le chantier précédent, corrigée ici
+
+Le lecteur d'historique multi-modèles (`gfs/bom/ecmwf/aifs/marc`, celui qui donne
+sa profondeur au badge de corrélation) ne connaissait que la clé `h`. Il ne rendait
+donc des points ECMWF/AIFS **que grâce aux lignes que la page se réécrivait à
+elle-même** — celles qu'on vient d'arrêter d'écrire. Sans cette tolérance, on
+aurait vidé l'historique ECMWF/AIFS du badge dès la sortie de fenêtre des dernières
+lignes navigateur. Vérifié sur les 8 jours de recul du spot Dumbéa : les lignes
+Python (`hour`) étaient bien là, sous les lignes navigateur, jamais lues.
+
+Convention notée dans `CLAUDE.md` : **deux schémas d'heure coexistent** dans
+`model_forecast_cache` (`hour` côté jobs Python ecmwf/mfwam/marc/surfline, `h` côté
+`fetch_arome.py`, `cache-model-forecasts.mjs` et `_cacheModelPoints`). Tout lecteur
+couvrant les deux familles doit tolérer les deux clés.
+
+### Vérification (headless, données réelles, mode station forcé)
+
+Station retenue pour le spot par défaut : **Phare Amédée**.
+
+```
+séries station : nc=25 gfs=150 bom=0 aro=56 marc=38  ecmwf=27  aifs=26
+tracé canvas   : px_ECMWF=796  px_AIFS=754
+légende        : ecmwf opacité 1 (actif)   lotus opacité .28 (grisé)
+tableau        : lignes ECMWF/AIFS présentes, valeurs réelles (20, 22, 19, 16… nds)
+```
+
+Preuve que le ré-échantillonnage est RÉEL et non un repli silencieux sur le spot —
+mêmes horodatages, valeurs comparées une à une :
+
+```
+spot Dumbéa 27 pts vs station Phare Amédée 28 pts
+communs : 27 différents, 0 identiques   (ex. 18/08 06:00 — spot 21,8 nds / station 19,3)
+```
+
+Les deux points tombent bien dans deux mailles distinctes de la grille 0,25°
+(−22,25/166,25 contre −22,50/166,50). À noter au passage : la tolérance ±0,05° de
+la requête peut ramener un point voisin (Phare Amédée attrape aussi Passe de
+Boulari, 2,4 km) — sans conséquence sur une maille de ~28 km, où c'est la même
+donnée, mais à ne pas transposer à AROME (2,5 km) ou MARC (5,5 km). Commenté sur
+place.
+
+Effet visible immédiat sur le classement de fiabilité, qui ignorait ces deux
+modèles à la station :
+
+```
+🎯 Vitesse — le plus proche (10 pts) : AIFS MAE 2.6 nds (biais +2.0) · SS +44%
+   · ECMWF 3.6 · AROME 3.7 · MARC 4.2 · GFS 5.6
+```
+
+`window.onerror` + `unhandledrejection` : **0 erreur**. `CACHE_NAME` → v97.

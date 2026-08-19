@@ -118,10 +118,21 @@ d'ECMWF (licence payante/institutionnelle) — pas accessible via l'Open Data
 gratuit ni via un compte `api.ecmwf.int` standard (vérifié en pratique le
 30/07/2026 : `who-am-i` marche, `services/mars` répond "no access").
 
-ECMWF/AIFS ne sont pas (encore) ré-échantillonnables « au point de mesure » dans
-le comparatif vent (`WIND_UNRESAMPLABLE = {ecmwf:1}`, AIFS pas ajouté à ce
-comparatif du tout) — la donnée cache le permettrait (spots+stations), pas branché
-pour ne pas alourdir un widget déjà dense. Extension possible plus tard.
+Dans le comparatif vent, `WIND_UNRESAMPLABLE = {lotus:1}` : tous les modèles sont
+ré-échantillonnables « au point de mesure » sauf LOTUS (Surfline ne modélise que ses
+5 zones fixes, pas de lat/lon libre). ECMWF/AIFS y sont branchés depuis le
+19/08/2026 — `fetch_ecmwf.py` écrit leur vent aux spots ET aux stations.
+
+**Deux schémas d'heure coexistent dans `model_forecast_cache`** : les jobs Python
+`fetch_ecmwf.py`/`fetch_mfwam.py`/`fetch_marc.py`/`fetch_surfline.py` écrivent
+`hours[].hour`, tandis que `fetch_arome.py`, `cache-model-forecasts.mjs` et
+`_cacheModelPoints` (écriture navigateur) écrivent `hours[].h`. Tout lecteur qui
+couvre les deux familles doit tolérer les deux clés — un lecteur qui n'en connaît
+qu'une renvoie silencieusement zéro point (cf. `AUDIT.md` 19/08). Corollaire : ne
+JAMAIS ré-archiver via `_cacheModelPoints` un modèle qui se LIT depuis cette même
+table (ecmwf/aifs sont cache-only) — l'écriture navigateur porte un `issued_at=now`
+qui gagne toujours le tri « ligne la plus récente par date », et la page finit par
+ne relire qu'elle-même.
 
 ## Règles de travail
 

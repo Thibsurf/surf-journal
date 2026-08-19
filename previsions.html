@@ -7207,7 +7207,7 @@ function _renderCmpExtremes(atMs) {
     // on saute les modèles décochés dans la légende (_windCmpHidden).
     var atSt = _windCmpAtStation && wc.station;
     var wdefs = atSt
-      ? [['AROME', 'aro', wc.station.aro], ['meteo.nc', 'nc', wc.station.nc], ['GFS', 'gfs', wc.station.gfs], ['BOM', 'bom', wc.station.bom], ['MARC', 'marc', wc.station.marc]]
+      ? [['AROME', 'aro', wc.station.aro], ['meteo.nc', 'nc', wc.station.nc], ['GFS', 'gfs', wc.station.gfs], ['BOM', 'bom', wc.station.bom], ['ECMWF', 'ecmwf', wc.station.ecmwf], ['AIFS', 'aifs', wc.station.aifs], ['MARC', 'marc', wc.station.marc]]
       : [['AROME', 'aro', wc.aro], ['meteo.nc', 'nc', wc.pageNc], ['GFS', 'gfs', wc.pageGfs], ['BOM', 'bom', wc.bomWind], ['ECMWF', 'ecmwf', wc.ecmwfWind], ['AIFS', 'aifs', wc.aifsWind], ['MARC', 'marc', wc.marcWind], ['LOTUS', 'lotus', wc.lotusWind]];
     wdefs.forEach(function(d) {
       if (_windCmpHidden[d[1]]) return;
@@ -7782,7 +7782,7 @@ function _renderCmpTable() {
     var wc = _aromeCmpCache;
     var atSt = _windCmpAtStation && wc.station;
     var wdefs = atSt
-      ? [['aro', wc.station.aro], ['nc', wc.station.nc], ['gfs', wc.station.gfs], ['bom', wc.station.bom], ['marc', wc.station.marc]]
+      ? [['aro', wc.station.aro], ['nc', wc.station.nc], ['gfs', wc.station.gfs], ['bom', wc.station.bom], ['ecmwf', wc.station.ecmwf], ['aifs', wc.station.aifs], ['marc', wc.station.marc]]
       : [['aro', wc.aro], ['nc', wc.pageNc], ['gfs', wc.pageGfs], ['bom', wc.bomWind], ['ecmwf', wc.ecmwfWind], ['aifs', wc.aifsWind], ['marc', wc.marcWind], ['lotus', wc.lotusWind]];
     wdefs.forEach(function(d) {
       if (!d[1] || !d[1].length) return;
@@ -11942,8 +11942,8 @@ function _toggleAromeCmpHistory() {
 // _windCmpHidden : séries décochées dans la légende (persisté — « je ne veux voir que
 // GFS+ECMWF » survit au changement de spot/session). _windCmpAtStation : false = modèles
 // pris AU SPOT (défaut) ; true = ré-échantillonnés aux coordonnées de la STATION de
-// mesure → corrélation sans biais de distance. Seul ECMWF est lié à un id de spot
-// Windguru (non ré-échantillonnable à une lat/lon libre) → masqué dans ce mode.
+// mesure → corrélation sans biais de distance. Seul LOTUS ne suit pas (Surfline ne
+// modélise que ses 5 zones fixes) → masqué dans ce mode, cf. WIND_UNRESAMPLABLE.
 // _windStationCache : séries station déjà fetchées, par station → pas de refetch au
 // va-et-vient du toggle (« garder ça en cache » demandé).
 var _windCmpHidden = (function(){ try { return JSON.parse(localStorage.getItem('windCmpHidden')||'{}') || {}; } catch(e){ return {}; } })();
@@ -11954,9 +11954,14 @@ var _windCmpAtStation = (function(){ try { return localStorage.getItem('windCmpA
 var _windStationCache = {};
 // AROME (aro) est ré-échantillonnable depuis 2026-07-24 : décodage direct des
 // GRIB2 Météo-France (ingestion/fetch_arome.py, cf. model_forecast_cache) à
-// n'importe quelle lat/lon, y compris une station — seul ECMWF reste lié à un
-// spot Windguru fixe.
-var WIND_UNRESAMPLABLE = { ecmwf: 1, aifs: 1, lotus: 1 }; // lotus : Surfline ne modélise que ses 5 zones fixes (pas de point libre)
+// n'importe quelle lat/lon, y compris une station.
+// ECMWF et AIFS l'ont rejoint le 19/08/2026 : ils n'ont jamais été « liés à un
+// spot Windguru » depuis le passage à Open Data (30/07/2026), et
+// ingestion/fetch_ecmwf.py échantillonne leur vent sur `spots + stations` —
+// la donnée aux 24 stations était donc déjà en base, seule la lecture manquait.
+// Reste LOTUS, indisponible pour une vraie raison de source : Surfline ne
+// modélise que ses 5 zones fixes, il n'y a pas de point libre à demander.
+var WIND_UNRESAMPLABLE = { lotus: 1 };
 function _toggleWindCmpModel(key) {
   if (_windCmpAtStation && WIND_UNRESAMPLABLE[key]) return; // indispo en mode station
   _windCmpHidden[key] = !_windCmpHidden[key];
@@ -11990,15 +11995,31 @@ async function _setWindCmpStation(atStation) {
   }
   finally { if (spotBtn) spotBtn.disabled = false; if (stBtn) stBtn.disabled = false; }
 }
-// Ré-échantillonne les modèles « grille » (meteo.nc / GFS / BOM) aux coordonnées de la
-// station de mesure — les seuls dont l'API accepte une lat/lon libre. Mis en cache par
-// station : le toggle spot↔station ne refetch plus. Mêmes conventions d'unité (nds) et
-// de temps (vrai epoch UTC) que les séries « au spot » de _renderAromeCompare.
+// Ré-échantillonne aux coordonnées de la station de mesure les modèles qui le
+// permettent : meteo.nc / GFS / BOM / MARC par API à lat/lon libre, AROME et
+// ECMWF/AIFS par lecture de model_forecast_cache (leurs jobs d'ingestion écrivent
+// aux spots ET aux stations). Mis en cache par station : le toggle spot↔station ne
+// refetch plus. Mêmes conventions d'unité (nds) et de temps (vrai epoch UTC) que
+// les séries « au spot » de _renderAromeCompare.
 async function _fetchWindAtStation(stLat, stLon) {
   var key = stLat.toFixed(3) + '_' + stLon.toFixed(3);
   if (_windStationCache[key]) return _windStationCache[key];
-  var out = { nc: [], gfs: [], bom: [], aro: [], marc: [] };
+  var out = { nc: [], gfs: [], bom: [], aro: [], marc: [], ecmwf: [], aifs: [] };
   await Promise.all([
+    // ECMWF / AIFS — même lecture qu'au spot (_fetchOpenDataWind, cache-only),
+    // simplement demandée aux coordonnées de la station : ingestion/fetch_ecmwf.py
+    // boucle sur `spots + stations` pour le vent (le même invariant que
+    // fetch_arome.py), donc les 24 stations sont déjà en base. Branché le
+    // 19/08/2026 — jusque-là ces deux modèles disparaissaient du comparatif en
+    // mode « au point de mesure » alors que leur donnée y était.
+    // À savoir : la tolérance ±0,05° de cette requête peut attraper un point
+    // VOISIN (Phare Amédée −22,4783/166,480 ramène aussi Passe de Boulari
+    // −22,50/166,44). Sans conséquence ICI : sur la grille 0,25° d'Open Data
+    // (~28 km), 2,4 km d'écart tombent dans la même maille — les deux séries
+    // sont la même donnée. Ne pas transposer ce raisonnement à un modèle fin
+    // (AROME 2,5 km, MARC 5,5 km), où deux points voisins diffèrent vraiment.
+    (async function(){ try { out.ecmwf = await _fetchOpenDataWind('ecmwf', { lat: stLat, lon: stLon }); } catch(e) { out.ecmwf = []; } })(),
+    (async function(){ try { out.aifs  = await _fetchOpenDataWind('aifs',  { lat: stLat, lon: stLon }); } catch(e) { out.aifs  = []; } })(),
     // GFS (Open-Meteo) — vent horaire en nds (gfs_seamless), timezone GMT = vrai UTC.
     (async function(){
       try {
@@ -12093,7 +12114,7 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
     var dkm = stDistKm != null ? ' (~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km)' : '';
     var stLine = stName ? '<b>' + stName + '</b>' + dkm : 'station inconnue';
     note.innerHTML = atStation
-      ? 'Modèles ré-échantillonnés au point de mesure ' + stLine + ' — le classement de fiabilité ci-dessous est valide ici, et seulement ici. ECMWF et AIFS indisponibles dans ce mode (ré-échantillonnage à la station pas encore branché pour ces sources).'
+      ? 'Modèles ré-échantillonnés au point de mesure ' + stLine + ' — le classement de fiabilité ci-dessous est valide ici, et seulement ici. LOTUS indisponible dans ce mode : Surfline ne modélise que ses 5 zones fixes.'
       : (hasStation
           ? 'Ce que tu vas surfer. Modèles échantillonnés au spot — mesures les plus proches : ' + stLine + '. Un écart inclut cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle.'
           : 'Station de mesure inconnue — comparaison au spot uniquement, aucune vérification possible ici.');
@@ -12109,7 +12130,7 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
     if (hidden) anyHidden = true;
     if (unavailable) {
       sp.style.opacity = '.28'; sp.style.cursor = 'not-allowed';
-      sp.title = 'Indisponible en mode « au point de mesure » (ré-échantillonnage à la station pas encore branché pour cette source)';
+      sp.title = 'Indisponible en mode « au point de mesure » : Surfline ne modélise que ses 5 zones fixes, il n\'y a pas de point libre à demander';
     } else {
       sp.style.opacity = hidden ? '.4' : '1';
       sp.style.cursor = 'pointer';
@@ -12645,11 +12666,11 @@ async function _fetchBomWind(spot) {
 // le 30/07/2026 le relais Windguru (id_model=117, ECMWF seulement — AIFS n'y
 // a jamais eu d'entrée). Cache-ONLY, pas de repli live (même décision que
 // _fetchOpenDataArchive côté houle) : ce vent est échantillonné aux spots ET
-// aux stations (fetch_ecmwf.py suit le même invariant que fetch_arome.py),
-// mais PAS encore branché en mode « au point de mesure » ici pour ces deux
-// modèles (WIND_UNRESAMPLABLE les garde tous les deux — cf. commentaire à cet
-// endroit) : ce serait une extension naturelle, pas faite dans ce chantier
-// pour ne pas alourdir un widget déjà dense. Factorisée sur `cacheKey`
+// aux stations (fetch_ecmwf.py suit le même invariant que fetch_arome.py).
+// `spot` n'est donc qu'un couple lat/lon : depuis le 19/08/2026, cette même
+// fonction sert AUSSI le mode « au point de mesure », appelée avec les
+// coordonnées de la station (cf. _fetchWindAtStation) — d'où la sortie
+// d'ecmwf/aifs de WIND_UNRESAMPLABLE. Factorisée sur `cacheKey`
 // ('ecmwf'/'aifs') comme _fetchOpenDataArchive côté houle — même schéma de
 // cache, seul le suffixe d'id change.
 function _fetchOpenDataWind(cacheKey, spot) {
@@ -12711,9 +12732,9 @@ function _fetchOpenDataWind(cacheKey, spot) {
 function _fetchEcmwfWind(spot) { return _fetchOpenDataWind('ecmwf', spot); }
 function _fetchAifsWind(spot) { return _fetchOpenDataWind('aifs', spot); }
 // MARC-WW3 NC — vent ECMWF opérationnel au point de grille (uwnd/vwnd, même
-// résolution 5,5 km que la houle, cf. _fetchMarcWave). Contrairement à AROME/
-// ECMWF/AIFS (Open Data, grille fixe), ré-échantillonnable à n'importe quelle lat/lon → PAS dans
-// WIND_UNRESAMPLABLE, disponible aussi en mode station.
+// résolution 5,5 km que la houle, cf. _fetchMarcWave). Interrogeable à n'importe
+// quelle lat/lon en direct, donc disponible aussi en mode station — comme AROME
+// et ECMWF/AIFS, qui y arrivent par leur cache d'ingestion plutôt qu'en direct.
 async function _fetchMarcWind(spot) {
   var ctrl = new AbortController();
   var tt = setTimeout(function(){ ctrl.abort(); }, 25000); // cf. _fetchMarcWave, même serveur/latence
@@ -12915,8 +12936,22 @@ async function _renderAromeCompare(j) {
             if (seenDate[row.date]) return; seenDate[row.date] = true;
             var p = row.date.split('-');
             (row.hours || []).forEach(function(hhh) {
-              if (!hhh || hhh.h == null || hhh.val == null) return;
-              var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhh.h), Math.round((hhh.h % 1) * 60)) - 11 * 3600000;
+              // Deux schémas d'heure dans cette même boucle : gfs/bom/marc
+              // écrivent `h` (cache-model-forecasts.mjs et _cacheModelPoints),
+              // ecmwf/aifs écrivent `hour` (ingestion/fetch_ecmwf.py). Cette
+              // lecture ne connaissait que `h` : elle ne rendait des points
+              // ECMWF/AIFS que grâce aux lignes que la page se réécrivait à
+              // elle-même — celles-là mêmes qui cassaient _fetchOpenDataWind
+              // (cf. le correctif du 19/08/2026). En arrêtant cette écriture, on
+              // aurait vidé l'historique ECMWF/AIFS du badge de corrélation dès
+              // que les lignes navigateur seraient sorties de la fenêtre : d'où
+              // la tolérance ici aussi. Vérifié le 19/08 sur les 8 jours de
+              // recul du spot Dumbéa : les lignes Python (`hour`) existaient bel
+              // et bien sous les lignes navigateur, jamais lues.
+              if (!hhh || hhh.val == null) return;
+              var hhhH = hhh.hour != null ? hhh.hour : hhh.h;
+              if (hhhH == null) return;
+              var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhhH), Math.round((hhhH % 1) * 60)) - 11 * 3600000;
               if (ms > now) return;
               dst.push({ ms: ms, kt: hhh.val });
             });
@@ -12979,17 +13014,17 @@ async function _renderAromeCompare(j) {
       if (pair[1] && pair[1].length) _cacheModelPoints(SPOTS[currentSpot], pair[0], 'wind', pair[1], 'kt', null);
     });
   } catch (e) {}
-  // Mode « au point de mesure » : ré-échantillonne meteo.nc/GFS/BOM/AROME/MARC aux
-  // coordonnées de la station (mis en cache par station). Sans station connue, on
-  // retombe sur le mode spot (le bouton se désactivera via _updateWindCmpControls).
-  // ECMWF et AIFS (Open Data, grille fixe) restent indisponibles dans ce mode →
-  // séries vides (cf. WIND_UNRESAMPLABLE).
+  // Mode « au point de mesure » : ré-échantillonne meteo.nc/GFS/BOM/AROME/MARC/
+  // ECMWF/AIFS aux coordonnées de la station (mis en cache par station). Sans
+  // station connue, on retombe sur le mode spot (le bouton se désactivera via
+  // _updateWindCmpControls). Seul LOTUS reste indisponible dans ce mode → série
+  // vide (cf. WIND_UNRESAMPLABLE).
   var stationSeries = null;
   if (stLat == null) _windCmpAtStation = false;
   if (_windCmpAtStation && stLat != null) {
     var _st = await _fetchWindAtStation(stLat, stLon);
     if (SPOTS[currentSpot] !== _spotForWind) return; // spot changé pendant l'attente réseau
-    stationSeries = { nc: clip(_st.nc), gfs: clip(_st.gfs), bom: clip(_st.bom), aro: clip(_st.aro || []), marc: clip(_st.marc || []) };
+    stationSeries = { nc: clip(_st.nc), gfs: clip(_st.gfs), bom: clip(_st.bom), aro: clip(_st.aro || []), marc: clip(_st.marc || []), ecmwf: clip(_st.ecmwf || []), aifs: clip(_st.aifs || []) };
   }
   // Cache des séries déjà fetchées → permet de redessiner (zoom, encart extrêmes,
   // lien croisé avec le comparatif houle) SANS refaire tous les appels réseau
@@ -13022,16 +13057,17 @@ function _drawAromeCompareFromCache() {
       gfsCachePtsBias = c.gfsCachePtsBias, bomCachePtsBias = c.bomCachePtsBias, ecmwfCachePtsBias = c.ecmwfCachePtsBias, aifsCachePtsBias = c.aifsCachePtsBias, marcCachePtsBias = c.marcCachePtsBias,
       stName = c.stName, stDistKm = c.stDistKm, now = c.now;
   // Mode « au point de mesure » : substitue les séries ré-échantillonnées à la station.
-  // AROME (aro) et MARC viennent de model_forecast_cache/THREDDS à la lat/lon de la
-  // station (cf. _fetchWindAtStation) — ECMWF et AIFS restent indisponibles (grille
-  // Open Data fixe, cf. WIND_UNRESAMPLABLE). aromeCachePts (archive Windguru côté
-  // client, au SPOT) reste vidée : incohérente avec un échantillonnage à la station.
+  // AROME (aro), MARC et — depuis le 19/08/2026 — ECMWF/AIFS viennent de
+  // model_forecast_cache/THREDDS à la lat/lon de la station (cf. _fetchWindAtStation).
+  // Les *CachePts (archives de PROFONDEUR, lues au SPOT) restent vidées : elles sont
+  // incohérentes avec un échantillonnage à la station, quel que soit le modèle.
   var atStation = _windCmpAtStation && c.station;
   if (atStation) {
     pageNc = c.station.nc; pageGfs = c.station.gfs; bomWind = c.station.bom; aro = c.station.aro || []; marcWind = c.station.marc || [];
-    // LOTUS indisponible « au point de mesure » : Surfline ne modélise que ses 5
-    // zones fixes (pas de ré-échantillonnage à une lat/lon libre), comme ECMWF/AIFS.
-    ecmwfWind = []; aifsWind = []; lotusWind = []; cachePts = []; aromeCachePts = []; bomCachePts = []; ecmwfCachePts = []; aifsCachePts = []; marcCachePts = [];
+    ecmwfWind = c.station.ecmwf || []; aifsWind = c.station.aifs || [];
+    // LOTUS reste indisponible « au point de mesure » : Surfline ne modélise que ses
+    // 5 zones fixes, il n'y a pas de lat/lon libre à demander (cf. WIND_UNRESAMPLABLE).
+    lotusWind = []; cachePts = []; aromeCachePts = []; bomCachePts = []; ecmwfCachePts = []; aifsCachePts = []; marcCachePts = [];
   }
   _updateWindCmpControls(atStation, c.stHasCoords, stName, stDistKm);
   var cv = document.getElementById('arome-cmp');
@@ -13046,8 +13082,8 @@ function _drawAromeCompareFromCache() {
     nc:    atStation ? pageNc  : pageNc.concat(cachePtsBias),
     gfs:   atStation ? pageGfs : pageGfs.concat(gfsCachePtsBias),
     bom:   atStation ? bomWind : bomWind.concat(bomCachePtsBias),
-    ecmwf: atStation ? [] : ecmwfWind.concat(ecmwfCachePtsBias),
-    aifs:  atStation ? [] : aifsWind.concat(aifsCachePtsBias),
+    ecmwf: atStation ? ecmwfWind : ecmwfWind.concat(ecmwfCachePtsBias),
+    aifs:  atStation ? aifsWind : aifsWind.concat(aifsCachePtsBias),
     marc:  atStation ? marcWind : marcWind.concat(marcCachePtsBias),
     // LOTUS n'a pas d'archive vent côté client (pas de _cacheModelPoints pour
     // 'lotus' : c'est déjà un cache serveur lu frais) — série directe, sans bias.
@@ -13244,7 +13280,7 @@ function _drawAromeCompareFromCache() {
         + dir.slice(1).map(function(c) { return c.label + ' ' + Math.round(c.r.avg) + '° (' + c.r.n + ')'; }).join(' · ') + '</div>';
     }
     var caveat = atStation
-      ? '<div style="margin-top:6px;font-size:11px;color:var(--faint);line-height:1.45;">✓ Modèles ré-échantillonnés <b>au point de mesure</b> (station ' + (stName || '?') + ') — comparaison sans biais de distance. ECMWF et AIFS indisponibles ici (grille Open Data fixe).</div>'
+      ? '<div style="margin-top:6px;font-size:11px;color:var(--faint);line-height:1.45;">✓ Modèles ré-échantillonnés <b>au point de mesure</b> (station ' + (stName || '?') + ') — comparaison sans biais de distance. LOTUS indisponible ici (Surfline ne modélise que ses 5 zones fixes).</div>'
       : '<div style="margin-top:6px;font-size:11px;color:var(--faint);line-height:1.45;">⚠ Modèles échantillonnés <b>au spot</b> · mesures à la station <b>' + (stName || '?') + '</b>'
         + (stDistKm != null ? ' (~' + (stDistKm < 10 ? stDistKm.toFixed(1) : Math.round(stDistKm)) + ' km)' : '')
         + ' — un écart peut refléter cette distance (cap, lagon, relief), pas seulement l\'erreur du modèle. Bascule sur « au point de mesure » pour l\'annuler.</div>';
