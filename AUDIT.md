@@ -9113,6 +9113,103 @@ window.onerror : 0
 
 `CACHE_NAME` → v107.
 
+### Addendum 20/08 — « Windy y arrive pourtant » : ce que publie vraiment le flux ECMWF
+
+Objection posée : Windy affiche bien des directions de houle pour ces modèles.
+Vérification faite **à la source** plutôt que de mémoire — téléchargement de
+l'index du run 00z du 19/08 sur `data.ecmwf.int`. Le flux `wave` liste :
+
+```
+ifs         (13) cdww h1012 h1214 h1417 h1721 h2125 h2530 mp2 mwd mwp pp1d swh wmb
+aifs-single (10) cdww h1012 h1214 h1417 h1721 h2125 h2530     mwd mwp      swh wmb
+```
+
+Aucun `shts/mdts/mpts` (houle totale directionnelle), aucun `shww/mdww/mpww`
+(mer du vent directionnelle), aucun `swh1/mwd1/mwp1` (partitions numérotées).
+**Il n'y a donc bien aucune direction de houle partitionnée dans l'Open Data
+gratuit** — c'est constaté, plus déduit. Windy est licencié commercial d'ECMWF :
+le catalogue temps réel complet, qui contient `swh1/mwd1/mwp1`, est accessible
+sous licence payante (déjà testé ici le 30/07 avec une clé `api.ecmwf.int` :
+`who-am-i` répond, `services/mars` répond « no access »). Second scénario
+possible, non tranché : leurs couches Swell 1/2/3 pourraient venir d'un autre
+modèle de vagues que celui sélectionné.
+
+Ce relevé a fait sortir **trois défauts**, dont deux chez nous et un introduit le
+jour même :
+
+**1. `pp1d` (période de PIC) est publiée par IFS et n'était pas demandée.** La
+page affichait `mwp`, la période MOYENNE de tout le spectre, mer du vent
+comprise : 7,8 s à Passe de Dumbéa quand MARC annonçait 9,3 s et meteo.nc 10 s
+pour la même mer. Les autres modèles donnent une période de train ou de pic —
+mettre une moyenne à côté d'eux sous une colonne « période » invite à conclure
+qu'ECMWF voit une mer plus courte qu'elle ne l'est. Même famille d'erreur que la
+hauteur corrigée la veille : un champ voisin pris pour celui que le libellé
+annonce. Coût assumé : un paramètre GRIB de plus, ~120 Mo par run sur les
+~515 Mo déjà téléchargés.
+
+**2. IFS et AIFS ne publient PAS le même jeu de paramètres**, contrairement à ce
+qu'affirmait la docstring de `fetch_ecmwf.py` (« mêmes 13 paramètres pour les
+deux modèles »). AIFS n'a ni `pp1d` ni `mp2`. Le premier commit ajoutait `pp1d` à
+la liste commune, donc le réclamait aussi à AIFS — un champ absent de son index,
+au mieux ignoré, au pire une erreur cassant toute son ingestion houle. Corrigé
+dans la foulée par deux listes séparées. Conséquence assumée : ECMWF affiche une
+période de pic, AIFS garde la moyenne, faute de mieux dans son flux.
+
+**3. Les bornes de bandes de `_odSwellGroups` étaient supposées, pas relevées.**
+Erreur introduite une heure plus tôt avec les groupes de houle : centres
+`[11, 13.5, 16, 18.5, 22.5, 27.5]`, déduits de bornes 12-15/15-17/17-20/20-25 s.
+Les vraies bornes sont 12-14/14-17/17-21/21-25 s, donc les centres
+`[11, 13, 15.5, 19, 23, 27.5]` — ceux que `BAND_MID` porte déjà côté ingestion.
+Les deux avaient divergé. Effet sur l'exemple de Dumbéa : 0,1 s seulement, parce
+que l'énergie se concentre sur la première bande dont le centre était juste ;
+l'écart atteignait 1,5 s dès que l'énergie se déplaçait vers les bandes 2 à 4.
+
+### Balayage du même angle sur les autres modèles — rien à récupérer
+
+Le motif « champ publié mais jamais demandé » ayant payé deux fois, vérifié
+ailleurs :
+
+- **MFWAM** demande 12 des 19 variables du produit CMEMS. `VTPK` (période de pic
+  du spectre total) n'est pas demandée, mais elle n'apporterait rien : MFWAM
+  fournit déjà une période PAR PARTITION (`VTM01_SW1`/`_SW2`/`_WW`), qui est la
+  grandeur comparable aux autres modèles. Le pic du spectre total serait un
+  troisième chiffre moins utile que ceux qu'on a déjà.
+- **MARC** demande `phs`/`ptp`/`pdir`/`pspr` par partition — `ptp` EST la période
+  de pic de chaque train. Rien ne manque.
+
+Le trou était donc propre à ECMWF/AIFS, et pour une raison structurelle : ce sont
+les deux seuls modèles du comparatif sans aucune partition, donc les seuls où la
+période affichée devait venir du spectre entier.
+
+### Validation en vrai (job d'ingestion déclenché à la main, run 12Z du 19/08)
+
+Le job a été lancé AVANT le correctif des deux listes, donc avec `pp1d` demandé
+aux deux modèles — ce qui a fourni le test grandeur nature de ce cas :
+
+```
+WARNING No index entries for param=pp1d        <- AIFS, exactement le diagnostic
+ecmwf : 5 jobs / 5 réussis, upserts normaux
+```
+
+Le client `ecmwf-opendata` AVERTIT et poursuit, il n'échoue pas. Le risque était
+donc moindre que craint — mais les deux listes restent la bonne écriture : on ne
+réclame pas un champ qu'on sait absent, et on ne dépend pas de la clémence d'une
+bibliothèque tierce.
+
+Résultat en base, Passe de Dumbéa, run 12Z :
+
+```
+ecmwf   totH 1,46 m   totT (mwp) 7,05 s   totPP (pic) 9,65 s   -> affiche 9,65 s
+aifs    totH 1,758 m  totT (mwp) 7,52 s   totPP        null    -> affiche 7,52 s (repli)
+repères au même instant :  MFWAM houle dominante 2,33 m @ 9,3 s
+                           MARC  houle dominante 2,42 m @ 13,6 s
+```
+
+ECMWF passe donc de 7,05 s à 9,65 s : il rejoint la famille des périodes de train
+des autres modèles au lieu de traîner 2 à 3 s en dessous pour une raison purement
+définitionnelle. AIFS reste sur la moyenne, faute de mieux dans son flux, et le
+repli fonctionne exactement comme prévu.
+
 ### Reste ouvert, mesuré, PAS traité ce soir
 
 - ~~Quatre lecteurs restés sur `_fcastData`~~ **CORRIGÉ le 20/08** : `renderRose`,
