@@ -6748,7 +6748,14 @@ async function _fetchMfCombined(spot) {
 //    n'ont donc pas de flèche, et le disent.
 function _odSwellGroups(bands) {
   if (!bands || bands.length !== 6) return null;
-  var MID = [11, 13.5, 16, 18.5, 22.5, 27.5]; // centre de chaque bande (s)
+  // Centres RÉELS des six bandes, relevés sur l'index du flux ECMWF le
+  // 20/08/2026 : h1012, h1214, h1417, h1721, h2125, h2530 — soit 10-12, 12-14,
+  // 14-17, 17-21, 21-25 et 25-30 s. Ce tableau valait [11, 13.5, 16, 18.5, 22.5,
+  // 27.5] à sa première écriture (bornes supposées 12-15/15-17/17-20/20-25) :
+  // les périodes affichées étaient fausses de 1,5 s au pire. `BAND_MID` dans
+  // ingestion/fetch_ecmwf.py porte déjà les bonnes valeurs — les deux doivent
+  // rester d'accord, c'est la même découpe.
+  var MID = [11.0, 13.0, 15.5, 19.0, 23.0, 27.5];
   var MIN_PEAK = 0.05, MIN_GROUP = 0.1;       // m — sous ça, c'est du résiduel
   var peaks = [], i;
   for (i = 0; i < 6; i++) {
