@@ -16,7 +16,9 @@ data.ecmwf.int, puis un vrai retrieve()) :
 - grille réelle 0,25° (~28 km à la latitude NC — PAS 9 km comme l'affichait
   jusqu'ici MODEL_STYLE.ecmwf, valeur Windguru non vérifiable), 4 runs/j
   (00/06/12/18Z), dispo ~7-9h après l'heure de run.
-- flux `wave` (mêmes 13 paramètres pour les deux modèles) : swh/mwd/mwp
+- flux `wave` (PAS le même jeu selon le modèle — vérifié sur les index réels le
+  20/08/2026 : IFS publie 13 paramètres, AIFS-single seulement 10, sans `pp1d`
+  ni `mp2`) : swh/mwd/mwp
   (mer totale) + 6 hauteurs significatives par bande de période 10-30s
   (h1012...h2530, nouveauté cycle 50r1/mai 2026) — SANS direction par bande.
   Pas de vraie partition houle/mer du vent (swh1/mwd1/mwp1 existent dans le
@@ -94,7 +96,19 @@ STEPS = list(range(0, 145, 6))  # 0..144h par 6h — cf. docstring, cadence mesu
 # comparable, et c'est aussi celle qui parle à un surfeur.
 # Coût : un paramètre GRIB de plus, ~2,4 Mo/step/param x 25 steps x 2 modèles, soit
 # ~120 Mo par run sur les ~515 Mo déjà téléchargés. Assumé pour une colonne juste.
-WAVE_PARAMS = ["swh", "mwd", "mwp", "pp1d", "h1012", "h1214", "h1417", "h1721", "h2125", "h2530"]
+WAVE_PARAMS = ["swh", "mwd", "mwp", "h1012", "h1214", "h1417", "h1721", "h2125", "h2530"]
+# `pp1d` est demandé EN PLUS, et seulement pour IFS. Les deux modèles ne publient
+# PAS le même jeu — relevé sur les index réels du run 00z du 19/08 :
+#   ifs         13 params : cdww h1012 h1214 h1417 h1721 h2125 h2530 mp2 mwd mwp pp1d swh wmb
+#   aifs-single 10 params : cdww h1012 h1214 h1417 h1721 h2125 h2530      mwd mwp      swh wmb
+# La docstring de ce fichier affirmait « mêmes 13 paramètres pour les deux
+# modèles » : c'est faux, AIFS n'a ni pp1d ni mp2. Demander pp1d pour AIFS
+# reviendrait à réclamer un champ absent de son index — au mieux ignoré, au pire
+# une erreur qui casserait toute son ingestion. D'où deux listes.
+WAVE_PARAMS_BY_MODEL = {
+    "ifs": WAVE_PARAMS + ["pp1d"],
+    "aifs-single": WAVE_PARAMS,
+}
 WIND_PARAMS = ["10u", "10v"]
 # Milieu indicatif de chaque bande de période (s) — PAS une période mesurée,
 # juste un repère d'affichage pour la "houle primaire" approximée (cf. docstring).
@@ -341,7 +355,8 @@ def fetch_model(ecmwf_model, cache_key, spots, stations):
         wind_path = Path(tmpdir) / f"{cache_key}_wind.grib2"
 
         logger.info("[%s] téléchargement flux wave (%d steps)...", cache_key, len(STEPS))
-        client.retrieve(stream="wave", type="fc", date=run_dt, param=WAVE_PARAMS, step=STEPS, target=str(wave_path))
+        wave_params = WAVE_PARAMS_BY_MODEL.get(ecmwf_model, WAVE_PARAMS)
+        client.retrieve(stream="wave", type="fc", date=run_dt, param=wave_params, step=STEPS, target=str(wave_path))
         logger.info("[%s] téléchargement flux oper/vent (%d steps)...", cache_key, len(STEPS))
         client.retrieve(stream="oper", type="fc", date=run_dt, param=WIND_PARAMS, step=STEPS, target=str(wind_path))
 
