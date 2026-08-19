@@ -9042,6 +9042,32 @@ Ce qui a été vérifié et jugé SAIN de ce côté : les lecteurs bornés par d
 `_fetchMarcArchive` par `in('id', …)`) sont très loin du plafond et le resteront
 — une fenêtre de dates bornée est exactement ce qui protège de ce piège.
 
+### Addendum 20/08 — balayage sentinelles : le flux MARINE de meteo.nc est propre
+
+Contrôle sur la réponse réelle (Passe de Dumbéa, 42 créneaux), champ par champ :
+
+```
+wind_speed_kt            null= 0  zéro= 0  sentinelle= 0   5 → 22
+wind_direction           null= 0  zéro= 0  sentinelle= 0   70 → 115
+wave_height              null=12  zéro= 0  sentinelle= 0   0,8 → 2,6
+max_wave_height          null=16  zéro= 0  sentinelle= 0   2,6 → 4,6
+wind_waves_height        null=21  zéro= 0  sentinelle= 0   0,8 → 1,4
+primary_swell_height     null=12  zéro= 0  sentinelle= 0   0,5 → 1,8
+primary_swell_period     null=12  zéro= 0  sentinelle= 0   8 → 14
+primary_swell_direction  null=12  zéro= 0  sentinelle= 0   135 → 200
+T_sea                    null= 1  zéro= 0  sentinelle= 0   22,8 → 23,1
+```
+
+Aucun 0, aucun 9999/-999/-32767/1e36 : les absences y sont de vrais `null`
+(les 12 à 21 manquants sont l'horizon marine, plus court que l'horizon vent).
+**La pathologie du zéro est donc propre au flux TERRESTRE** `/forecast`, celui
+des rafales — déjà corrigé ce jour (`_ncGustKt`). Il n'y a pas de deuxième
+sentinelle cachée du côté meteo.nc, et les deux autres connues du projet
+(`_FillValue` −32767 côté MARC, 1e36 côté BOM) sont documentées et traitées
+depuis longtemps. Angle considéré comme couvert pour les sources principales,
+dont l'ingestion a par ailleurs été recoupée au champ près contre Open-Meteo
+(GFS, ECMWF, MFWAM).
+
 ### Reste ouvert, mesuré, PAS traité ce soir
 
 - ~~Quatre lecteurs restés sur `_fcastData`~~ **CORRIGÉ le 20/08** : `renderRose`,
