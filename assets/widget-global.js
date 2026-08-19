@@ -240,6 +240,12 @@ function _gwBuildModelFcast(key) {
     // Vent emprunté (MFWAM ← forçage ECMWF de MARC) : marqué pour que l'UI puisse
     // le dire sans avoir à redeviner la provenance.
     windBorrowedFrom: null,
+    // `swellIsTotal` : la série de ce modèle EST la mer totale, il ne publie pas
+    // de train de houle (ECMWF/AIFS Open Data — cf. _fetchOpenDataArchive dans
+    // previsions.html). Lu sur la donnée, pas sur une liste de clés : la grille
+    // s'en sert pour dire que H.1 répète Tot. au lieu de laisser croire à deux
+    // mesures indépendantes.
+    swellIsTotal: !!(entry.primary[0] && entry.primary[0].swellIsTotal),
     sw2Native: (key === 'marc' || key === 'lotus') ? true : sec.length > 0 };
   entry.primary.forEach(function(p){
     out.dates.push(new Date(p.ms + 11*3600000)); // même convention que partout : UTC+11 lu en getUTC*
@@ -514,8 +520,8 @@ var GW_SRC_BTNS_DEF = [
   { key:'bom',  lbl:'🇦🇺 BOM' },
   { key:'mf',   lbl:'🌊 MFWAM', title:'Houle Météo-France (Copernicus Marine, ~9 km) avec partitions directionnelles (mer du vent / houle 1 / houle 2). Le produit Copernicus est un modèle de VAGUES seul, sans aucun champ de vent : le vent affiché ici est le forçage ECMWF IFS (~9 km) qui pilote MFWAM, récupéré via MARC dont c\'est le forçage du run WW3 — même vent que l\'onglet MARC, pas un second avis. Pas de rafale (vent moyen 10 m), et le vent s\'arrête au bout de la fenêtre MARC (~5,5 j) alors que la houle MFWAM va plus loin (~10 j).' },
   { key:'marc', lbl:'🎯 MARC', title:'Ifremer/CNRS-IRD-UBO — houle 5,5km (spectre par train) + vent = forçage ECMWF réel du run (~9km, regrillé sur la maille 5,5km). Lu depuis un cache rafraîchi 3x/jour (ingestion/fetch_marc.py) ; repli sur une requête directe Ifremer (~3s) si le cache est vide pour ce spot.' },
-  { key:'ecmwf', lbl:'🇪🇺 ECMWF', title:'ECMWF IFS-HRES via Open Data (~28 km). Houle « primaire » = bande de période la plus haute parmi 6 (10-30 s), pas une vraie partition, et direction = celle de la mer TOTALE (mwd) faute de direction par bande. Le vent affiché vient du flux vent ECMWF Open Data du comparatif vent (10 m u/v) — pas de rafale dans ce flux.' },
-  { key:'aifs',  lbl:'🤖 AIFS',  title:'ECMWF AIFS-single, modèle IA opérationnel (pas de la physique), même Open Data / grille 0,25° (~28 km) qu\'IFS-HRES. Mêmes limites : houle approximée par bande de période, direction = celle de la mer totale. Vent = flux vent AIFS Open Data, sans rafale.' },
+  { key:'ecmwf', lbl:'🇪🇺 ECMWF', title:'ECMWF IFS-HRES via Open Data (~28 km). Ce modèle ne publie aucune partition de houle en Open Data gratuit : la hauteur affichée est la MER TOTALE (swh/mwp/mwd, toutes composantes — la même valeur que Windy montre pour ECMWF), pas une houle primaire. Les lignes Tot. et H.1 de la grille portent donc le même chiffre, c\'est normal. Le vent affiché vient du flux vent ECMWF Open Data du comparatif vent (10 m u/v) — pas de rafale dans ce flux.' },
+  { key:'aifs',  lbl:'🤖 AIFS',  title:'ECMWF AIFS-single, modèle IA opérationnel (pas de la physique), même Open Data / grille 0,25° (~28 km) qu\'IFS-HRES. Mêmes limites : aucune partition publiée, la hauteur affichée est la MER TOTALE (swh/mwp/mwd), pas une houle primaire — Tot. et H.1 portent le même chiffre. Vent = flux vent AIFS Open Data, sans rafale.' },
   { key:'lotus', lbl:'🏄 LOTUS', title:'Surfline — modèle propriétaire LOTUS (WW3 + assimilation satellite + forecasters), houle en trains directionnels + vent (avec rafale). Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa G+D/Boulari) : indisponible pour les autres spots. Cache rafraîchi 3x/jour (ingestion/fetch_surfline.py).' },
   { key:'mix',  lbl:'🏆 Mix', title:'Houle : MARC 5,5km > meteo.nc (régional, résolution non documentée) > GFS 28km > BOM 14km > MFWAM ~9km, en repli créneau par créneau. Vent : meteo.nc > BOM 14km > MARC (= forçage ECMWF IFS réel du run, ~9km regrillé) > GFS 28km. MFWAM ferme la liste mais n\'y apporte jamais rien de neuf : son vent EST celui de MARC (forçage commun), déjà servi plus haut. Choix par résolution documentée, pas encore par fiabilité mesurée (pas assez de sessions par spot pour un vrai skill score).' }
 ];
@@ -1331,7 +1337,9 @@ function _gwRenderGrid(d, day) {
   html += _gwLbl(2,'💨 Vent','Vent moyen (nds) + rafales');
   html += _gwLbl(3,'Dir.');
   html += _gwLbl(4,'🌊 Tot.','Houle totale (m)');
-  html += _gwLbl(5,'H.1','Houle primaire — hauteur + période');
+  html += d.swellIsTotal
+    ? _gwLbl(5,'H.1','Ce modèle (ECMWF/AIFS Open Data) ne publie PAS de partition de houle : la seule hauteur qu\'il fournit est la mer totale, reprise ici — même chiffre que la ligne 🌊 Tot. juste au-dessus. Ce n\'est pas une houle primaire et ce n\'est pas comparable telle quelle au H.1 de meteo.nc/GFS/MARC/MFWAM/LOTUS, qui excluent la mer du vent.')
+    : _gwLbl(5,'H.1','Houle primaire — hauteur + période');
   html += _gwLbl(6,'Dir.');
   html += _gwLbl(7,'H.2','Houle secondaire — hauteur + période, flèche = direction (Open-Meteo si non fournie). "≈" = résidu calculé (Hs-H1-mer du vent), pas une vraie houle secondaire modélisée — voir la cellule concernée.');
   extraDefs.forEach(function(def, ei){ html += _gwLbl(8+ei, def.lbl, 'Train de houle n°'+(ei+3)+' (spectre MARC, énergie décroissante) — hauteur + période, flèche = direction'); });

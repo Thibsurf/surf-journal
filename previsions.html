@@ -5918,6 +5918,34 @@ function renderTideEncart(tide, spot) {
 }
 
 // ─── FORECAST PRINCIPAL ────────────────────────────────────────────────
+// Rafale meteo.nc : 0 est un CODE D'ABSENCE, pas une mesure.
+// Corrigé le 19/08/2026 après vérification sur la réponse réelle de
+// `rpcache.meteo.nc/.../forecast?lat=&lon=` (Passe de Dumbéa, 109 créneaux) :
+// le champ `wind_speed_gust` est absent sur 80 créneaux et vaut littéralement 0
+// sur 11 des 29 restants — alternance nette (0 h : 0, 6 h : 15, 12 h : 0…) alors
+// que le vent moyen du même créneau est à 16-19 nds. Une rafale de 0 nd sous
+// 19 nds de vent établi n'existe pas : c'est « pas de rafale notable prévue »,
+// codé par un zéro.
+//
+// Le test `!= null` retenait donc ce zéro comme une valeur, avec quatre effets,
+// tous mesurés côté page avant correctif (9 créneaux sur 32 à Dumbéa) :
+//   • le tableau comparatif affichait « g0 » sous un vent de 19 nds ;
+//   • le survol du widget lisait « vent 19 nds (raf 0) » ;
+//   • le repli Open-Meteo, gardé par `wGst[i] === null`, ne se déclenchait
+//     jamais sur ces créneaux — la rafale existait pourtant côté GFS ;
+//   • calcSurfScore recevait wg = 0 : le malus de rafale (2 points pleins
+//     au-delà de 25 nds) disparaissait un créneau sur deux, et
+//     _saveForecastDays archivait ce 0 dans meteo_cache, donc le Journal
+//     comparait ensuite le vécu à une rafale nulle.
+// On renvoie null : la donnée redevient « absente », ce qu'elle est, et les
+// replis déjà en place font leur travail. Rien n'est inventé — un 0 n'est
+// jamais remplacé par une valeur calculée, seulement écarté.
+function _ncGustKt(row) {
+  if (!row) return null;
+  var g = row.wind_speed_gust;
+  if (g == null || !(g > 0)) return null;
+  return Math.round(g);
+}
 function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
   var now=new Date();
   var lbl=[],sw1h=[],sw2h=[],wndH=[],totH=[],sw1t=[],sw1d=[],sw2d=[],sw2t=[],wSpd=[],wGst=[],wDir=[],sst=[],pwr=[],dates=[],cld=[],rain=[],cldL=[],cldM=[],cldH=[],tAir=[];
@@ -5996,10 +6024,13 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
     if(fcRows && fcRows.length) {
       rows.forEach(function(d,i){
         var tms = new Date(d.time).getTime();
+        // `_ncGustKt(f) != null` et non `f.wind_speed_gust != null` : sans ça,
+        // le créneau était CONSOMMÉ par un zéro-code d'absence (cf. _ncGustKt),
+        // et le repli Open-Meteo juste en dessous ne pouvait plus le remplir.
         var fcMatch = fcRows.find(function(f){
-          return f.wind_speed_gust != null && Math.abs(new Date(f.time).getTime() - tms) < 5400000;
+          return _ncGustKt(f) != null && Math.abs(new Date(f.time).getTime() - tms) < 5400000;
         });
-        if(fcMatch) { wGst[i] = Math.round(fcMatch.wind_speed_gust); gotNcGusts = true; }
+        if(fcMatch) { wGst[i] = _ncGustKt(fcMatch); gotNcGusts = true; }
       });
     }
     // Fallback Open-Meteo pour les créneaux au-delà de la portée de /forecast (~48h)
@@ -6513,10 +6544,37 @@ async function _fetchMfCombined(spot) {
 // source Open Data est gratuite/documentée/fiable, contrairement au relais
 // Windguru — rien à sauver en repli). Grille réelle 0,25° (~28 km), cf.
 // ingestion/fetch_ecmwf.py. Pas de vraie partition houle/mer du vent en Open
-// Data gratuit : `h`/`t` = hauteur de la bande de période la plus haute
-// (approximation, PAS une période mesurée) — `bands` porte les 6 hauteurs
-// brutes pour la figure combinée dédiée (cf. _drawBandsCombined).
-// `totH`/`totDir` = mer totale (swh/mwd).
+// Data gratuit : `bands` porte les 6 hauteurs par bande de période (10-30 s)
+// pour la figure combinée dédiée (cf. _drawBandsCombined).
+//
+// ── CE QUE LA PAGE AFFICHE POUR CES DEUX MODÈLES : LA MER TOTALE ────────────
+// Corrigé le 19/08/2026 (signalé : « les prévisions des modèles sur mon site
+// sont fausses VS ce que je vois sur windy »). `h`/`t` valaient jusqu'ici
+// `hh.val`/`hh.period`, c'est-à-dire la hauteur de la BANDE DE PÉRIODE la plus
+// haute parmi 6 et le MILIEU de cette bande. Ce n'est pas une hauteur de houle :
+// une bande de 2 s de large ne porte qu'une fraction de l'énergie du spectre.
+// Mesure sur données réelles (Passe de Dumbéa, 2026-08-20 11 h NC) :
+//
+//   Open-Meteo `ecmwf_wam025` (même modèle, référence)  1,28 m · 7,75 s · 164°
+//   notre ingestion, totH/totT/totDir                   1,278 m · 7,77 s · 163,9°   ← identique
+//   ce que la page affichait (val/period)               0,468 m · 11 s              ← 2,73× trop bas
+//
+// L'ingestion était donc juste depuis le début ; seule la LECTURE prenait le
+// mauvais champ. Conséquences mesurées : ligne ECMWF/AIFS du comparatif à ~0,5 m
+// quand les 6 autres modèles annonçaient ~1,4 m au même créneau, médiane
+// « Consensus » tirée vers le bas, score de session calculé sur une houle
+// fantôme (petite hauteur ET fausse période longue de 11 s, qui gonflait le
+// bonus de période), et deux chiffres contradictoires pour un même modèle sur
+// une même page — le bloc « 🆚 Modèles archivés » (_renderCachedModelsBlock)
+// et le Journal (index.html:_modelTrains) lisaient DÉJÀ totH/totT/totDir.
+//
+// On affiche donc la mer totale (swh/mwp/mwd), la seule grandeur que ces deux
+// modèles publient vraiment — c'est aussi ce que montre Windy pour ECMWF. Ce
+// n'est pas une houle primaire et la page ne le prétend plus : le comparatif
+// étiquette ces lignes « Mer totale » (cf. _swellTrains/_renderCmpTable) et les
+// exclut de la médiane Consensus, qui ne compare que des trains de houle.
+// Les valeurs par bande ne sont pas perdues : `bands` (les 6) plus `bandH`/
+// `bandT` (la plus haute, l'ancien couple affiché) restent sur chaque point.
 //
 // `dir` était forcé à null ici depuis le branchement d'Open Data (30/07/2026),
 // au motif qu'aucune direction n'est publiée PAR BANDE de période. Vrai, mais
@@ -6570,12 +6628,24 @@ function _fetchOpenDataArchive(cacheKey, spot) {
           if (!hh || hh.totH == null || hh.hour == null) return;
           var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
           primary.push({
-            ms: ms, h: hh.val, t: hh.period,
-            // cf. en-tête : direction de la mer TOTALE (mwd), faute de direction
-            // par bande. `!= null` et pas `||` — 0° (nord) est une direction
-            // valide qu'un test de véracité écraserait en null.
+            ms: ms,
+            // Mer TOTALE (swh/mwp/mwd) — cf. en-tête, bloc « CE QUE LA PAGE
+            // AFFICHE ». `!= null` et pas `||` partout : 0° (nord) est une
+            // direction valide, et 0 m une hauteur valide, qu'un test de
+            // véracité écraserait en null.
+            h: hh.totH, t: hh.totT != null ? hh.totT : null,
             dir: hh.totDir != null ? hh.totDir : null,
-            totH: hh.totH, totDir: hh.totDir, bands: hh.bands || null,
+            totH: hh.totH, totT: hh.totT != null ? hh.totT : null, totDir: hh.totDir,
+            // Marqueur lu par _swellTrains (étiquette « Mer totale ») et par
+            // _gwBuildModelFcast (infobulle de la ligne Houle 1 du widget) :
+            // c'est la donnée elle-même qui dit ce qu'elle est, pas une liste
+            // de clés de modèles recopiée dans chaque consommateur.
+            swellIsTotal: true,
+            // Décomposition par bande de période conservée telle quelle : c'est
+            // la seule information spectrale de ces modèles (histogramme
+            // _drawBandsBars). bandH/bandT = la bande la plus haute et le milieu
+            // de cette bande — l'ancien couple h/t, gardé pour ne rien perdre.
+            bands: hh.bands || null, bandH: hh.val, bandT: hh.period,
           });
         });
       });
@@ -6877,13 +6947,36 @@ async function _fetchLotusArchive(spot) {
   try {
     if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return null;
     var tol = 0.05;
-    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,lat,lon')
-      .eq('model', 'lotus').eq('kind', 'wave')
+    // Fenêtre de dates BORNÉE (-1..+7 j), ajoutée le 19/08/2026. Sans elle, la
+    // requête ramenait TOUT l'historique de la zone : mesuré ce jour à Passe de
+    // Dumbéa, 200 points couvrant 25 jours (depuis le 01/08) pour ~64 utiles.
+    // La table `model_forecast_cache` n'est pas purgée, donc ce volume ne fait
+    // que croître à chaque jour qui passe. Rien de faux à l'écran (le comparatif
+    // a une fenêtre fixe -24 h→J+6 et _gwGroupDays écarte les jours passés),
+    // mais c'est du réseau et du tri pour rien, et une série qui traîne 3
+    // semaines de prévisions périmées est un piège pour le prochain
+    // consommateur qui la lira sans se méfier. Même fenêtre que
+    // _fetchOpenDataArchive, avec un jour de marge de plus (LOTUS va à ~J+6).
+    var dates = [], nowL = Date.now();
+    for (var dd = -1; dd <= 7; dd++) {
+      var dL = new Date(nowL + dd * 864e5 + 11 * 3600000);
+      dates.push(dL.getUTCFullYear() + '-' + String(dL.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dL.getUTCDate()).padStart(2, '0'));
+    }
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,lat,lon,issued_at')
+      .eq('model', 'lotus').eq('kind', 'wave').in('date', dates)
       .gte('lat', spot.lat - tol).lte('lat', spot.lat + tol)
-      .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol);
+      .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol)
+      .order('issued_at', { ascending: false });
     if (!r || !r.data || !r.data.length) return null;
-    var primary = [];
+    var primary = [], seenDateL = {};
+    // Une seule ligne par date, la plus récemment émise — même déduplication que
+    // _fetchOpenDataArchive. fetch_surfline.py écrit un id déterministe par
+    // (date, zone), donc en pratique il n'y a qu'une ligne ; la garde évite
+    // d'entrelacer deux runs si un jour ce n'était plus vrai (ce qui donnerait
+    // deux points par heure, et une courbe en dents de scie inexplicable).
     _lotusNearestZoneRows(r.data, spot).forEach(function(row) {
+      if (seenDateL[row.date]) return;
+      seenDateL[row.date] = true;
       var p = row.date.split('-');
       (row.hours || []).forEach(function(hh) {
         if (!hh || hh.hs == null) return;
@@ -7003,8 +7096,8 @@ var SWELL_MODELS = [
   { key: 'gfs',   label: 'GFS',       col: _rgbaFromHex(MODEL_STYLE.gfs.col, .95), desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
   { key: 'bom',   label: 'BOM WW3',   col: _rgbaFromHex(MODEL_STYLE.bom.col, .95),   desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
   { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine (GLOBAL_ANALYSISFORECAST_WAV_001_027) — grille 0,083° (~9 km), houle primaire/secondaire + mer du vent avec direction' },
-  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Houle "primaire" = bande de période la plus haute parmi 6 (10-30s), pas une vraie partition mesurée. Direction = celle de la mer TOTALE (mwd), faute de direction publiée par bande : elle peut s\'écarter de la houle longue quand une mer du vent croisée est grosse.' },
-  { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Mêmes limites : houle "primaire" approximée par bande de période, direction = celle de la mer totale (mwd).' },
+  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Ce modèle ne publie AUCUNE partition de houle en Open Data gratuit : la ligne affichée est la MER TOTALE (swh/mwp/mwd — hauteur significative toutes composantes confondues, houle + mer du vent), la même valeur que Windy montre pour ECMWF. Elle n\'est donc pas comparable telle quelle à la « Houle 1 » des modèles partitionnés (meteo.nc, GFS, MARC, MFWAM, LOTUS), qui en excluent la mer du vent — et elle est exclue de la médiane Consensus pour cette raison. Le seul détail spectral disponible est la répartition par bande de période (10-30 s), montrée en histogramme.' },
+  { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Mêmes limites : aucune partition publiée, la ligne affichée est la MER TOTALE (swh/mwp/mwd), pas une houle primaire — exclue de la médiane Consensus, comme ECMWF.' },
   // desc étendue le 01/08/2026 (audit houle 1/2) : MARC est désormais le SEUL
   // modèle du comparatif dont la « houle 1 » n'est ni un champ natif ni
   // disclosed dans son desc — nc/gfs/bom/mf ont un vrai champ natif, ecmwf/aifs
@@ -7659,7 +7752,14 @@ function _swellTrains(key) {
     if (cache.primary[i].partitions && cache.primary[i].partitions.length) { hasParts = true; break; }
   }
   if (!hasParts) {
-    var flat = [{ rank: 1, pts: cache.primary }];
+    // `total` : ce modèle ne publie pas de train de houle, la série EST la mer
+    // totale (ECMWF/AIFS Open Data, cf. _fetchOpenDataArchive). Lu sur la donnée
+    // (`swellIsTotal`) et non sur une liste de clés recopiée ici — le jour où un
+    // autre modèle arrive dans le même cas, il suffit qu'il pose le marqueur.
+    // Sans ça, le tableau étiquetait « Houle 1 » une mer totale et la médiane
+    // Consensus mélangeait deux grandeurs différentes.
+    var isTotal = !!cache.primary[0].swellIsTotal;
+    var flat = [{ rank: 1, pts: cache.primary, total: isTotal }];
     if (cache.secondary && cache.secondary.length) flat.push({ rank: 2, pts: cache.secondary });
     return flat;
   }
@@ -7803,7 +7903,7 @@ function _renderCmpTable() {
       if (_swellHidden[m.key]) { hiddenSwellCount++; return; }
       trains.forEach(function(tr, ti) {
         swellDefs.push({
-          key: m.key, pts: tr.pts, rank: tr.rank, sea: !!tr.sea,
+          key: m.key, pts: tr.pts, rank: tr.rank, sea: !!tr.sea, total: !!tr.total,
           isFirst: ti === 0, nTrains: trains.length
         });
       });
@@ -7951,11 +8051,15 @@ function _renderCmpTable() {
       }
       var rankHtml = '';
       if (kind === 'swell' && !d.cons) {
-        var rankTxt = d.sea ? 'Mer du vent' : 'Houle ' + d.rank;
-        // Mer du vent en italique + teinte atténuée : elle se lit dans le même
-        // tableau mais ne doit pas être prise pour un train de houle.
-        rankHtml = '<span style="font-weight:' + (d.sea ? '500' : '600') + ';font-size:10px;color:var(--muted);'
-          + (d.sea ? 'font-style:italic;' : '') + (inGroup && !d.isFirst ? '' : 'margin-left:5px;') + '">' + rankTxt + '</span>';
+        // « Mer totale » : ECMWF/AIFS ne publient pas de train de houle (cf.
+        // _fetchOpenDataArchive). Étiqueter leur ligne « Houle 1 » revenait à
+        // annoncer une partition qui n'existe pas, à côté de 6 modèles qui, eux,
+        // en donnent une — même traitement visuel que « Mer du vent » : italique
+        // atténué, pour qu'on lise la valeur sans la prendre pour une houle.
+        var rankTxt = d.total ? 'Mer totale' : (d.sea ? 'Mer du vent' : 'Houle ' + d.rank);
+        var soft = d.sea || d.total;
+        rankHtml = '<span style="font-weight:' + (soft ? '500' : '600') + ';font-size:10px;color:var(--muted);'
+          + (soft ? 'font-style:italic;' : '') + (inGroup && !d.isFirst ? '' : 'margin-left:5px;') + '">' + rankTxt + '</span>';
       }
       if (d.cons) rankHtml = '<span style="font-size:9.5px;color:var(--muted);margin-left:5px;">médiane · ' + d.nModels + ' modèles</span>';
       // 2e ligne du libellé : signature du train (direction + période dominantes
@@ -7991,7 +8095,10 @@ function _renderCmpTable() {
   // _cmpTrainSignature), les médianer mélangerait des houles différentes.
   // La mer du vent est exclue pour la même raison (ce n'est pas une houle).
   function consensusDef(defs, kind) {
-    var src = defs.filter(function(d) { return kind === 'wind' ? true : (d.rank === 1 && !d.sea); });
+    // `!d.total` : une mer totale (ECMWF/AIFS) inclut la mer du vent — la
+    // médianer avec des houles primaires comparerait deux grandeurs. Exclue au
+    // même titre que la mer du vent, et pour la même raison.
+    var src = defs.filter(function(d) { return kind === 'wind' ? true : (d.rank === 1 && !d.sea && !d.total); });
     if (src.length < 3) return null; // sous 3 modèles, une « médiane » n'apporte rien
     var pts = [];
     slots.forEach(function(s) {
@@ -8536,7 +8643,32 @@ async function _renderSwellCompare() {
   // Archivage best-effort (table optionnelle, no-op si absente) — ne bloque
   // jamais le rendu, lancé après coup sans attendre.
   try {
+    // N'archiver QUE les modèles réellement fetchés en direct. nc/GFS/BOM ont un
+    // fetch live (meteo.nc, Open-Meteo, OPeNDAP Pacific Community) : les archiver
+    // ajoute à la table une donnée qu'elle n'aurait pas autrement.
+    //
+    // ecmwf/aifs/lotus/mf/marc en sont RETIRÉS le 19/08/2026 — ils SORTENT de
+    // model_forecast_cache (cache-only pour les trois premiers, archive-d'abord
+    // avec repli live pour mf/marc). Les y réécrire était un aller-retour
+    // lecture->écriture sur la même ligne logique, avec deux effets nocifs, le
+    // premier déjà mesuré côté VENT le même jour (cf. AUDIT.md) :
+    //   1. `_cacheModelPoints` pose `issued_at = now`, toujours plus récent que
+    //      celui des jobs Python (qui vaut l'heure du RUN du modèle, ex. 00 Z).
+    //      Tout lecteur qui garde « la ligne la plus récente par date » relit
+    //      donc la copie du navigateur — figée sur le run d'AVANT — et ignore le
+    //      run frais arrivé depuis. Une prévision périmée qui a l'air fraîche.
+    //   2. la copie est LOSSY : `_cacheModelPoints` n'écrit que val/period/dir,
+    //      ce qui perd `partitions`, `bands`, totH/totT/totDir — précisément les
+    //      champs dont dépendent le spectre, le Journal et le bloc « 🆚 Modèles
+    //      archivés ».
+    // L'archive de ces cinq modèles est déjà assurée 3×/jour par les jobs
+    // (fetch_ecmwf.py, fetch_mfwam.py, fetch_marc.py, fetch_surfline.py) sous
+    // kind='wave', complète et horodatée au vrai run. Les lecteurs de
+    // 'swell_primary' ont tous un repli sur 'wave' (_lookupModelCache ici,
+    // _modelTrains côté Journal) — rien ne disparaît de l'écran.
+    var SWELL_ARCHIVABLE = { nc: 1, gfs: 1, bom: 1 };
     Object.keys(_swellCache).forEach(function(key) {
+      if (!SWELL_ARCHIVABLE[key]) return;
       var comp = _swellCache[key];
       if (comp && comp.primary && comp.primary.length) _cacheModelPoints(_spotForFetch, key, 'swell_primary', comp.primary, 'h', 't');
       if (comp && comp.secondary && comp.secondary.length) _cacheModelPoints(_spotForFetch, key, 'swell_secondary', comp.secondary, 'h', 't');
@@ -9652,10 +9784,13 @@ async function _fetchSpotFcRaw(spot) {
   var fcRows = (ncFcRaw && ncFcRaw.properties && ncFcRaw.properties.forecast) || null;
   function _gustAt(tms) {
     if (!fcRows) return null;
+    // Même règle qu'au rendu du spot affiché (cf. _ncGustKt) : deux lectures
+    // différentes du même champ rendraient à nouveau les spots incomparables,
+    // ce que ce bloc existe précisément pour éviter.
     var m = fcRows.find(function(f) {
-      return f.wind_speed_gust != null && Math.abs(new Date(f.time).getTime() - tms) < 5400000;
+      return _ncGustKt(f) != null && Math.abs(new Date(f.time).getTime() - tms) < 5400000;
     });
-    return m ? Math.round(m.wind_speed_gust) : null;
+    return m ? _ncGustKt(m) : null;
   }
   rows.forEach(function(d) {
     var tms = new Date(d.time).getTime();

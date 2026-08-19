@@ -8643,3 +8643,145 @@ modèles à la station :
 ```
 
 `window.onerror` + `unhandledrejection` : **0 erreur**. `CACHE_NAME` → v97.
+
+---
+
+## 2026-08-19 (suite 8) — « les prévisions sont fausses vs Windy » : quatre défauts, un majeur
+
+Signalé : « j'ai l'impression que les prévisions des modèles sur mon site sont
+fausses ou pas du tout à jour VS ce que je vois sur windy », et « je vois des
+écarts entre ce qui est annoncé dans les widgets détaillés en haut de
+previsions.html et le tableau censé présenter les mêmes données tout en bas ».
+Les deux symptômes ont la même cause racine.
+
+### 1. ECMWF/AIFS affichés 2,7× trop bas (le défaut majeur)
+
+`_fetchOpenDataArchive` lisait `hh.val`/`hh.period` comme hauteur et période de
+houle. Ce n'est PAS une houle : `fetch_ecmwf.py` y met la hauteur de la BANDE DE
+PÉRIODE la plus haute parmi 6 (10-12 s, 12-15 s… 25-30 s) et le MILIEU de cette
+bande. Une bande de 2 s de large ne porte qu'une fraction de l'énergie du
+spectre. Mesure sur données réelles (Passe de Dumbéa, 2026-08-20 11 h NC) :
+
+| | Hs | T | dir |
+|---|---|---|---|
+| Open-Meteo `ecmwf_wam025` (même modèle, référence externe) | 1,28 m | 7,75 s | 164° |
+| notre ingestion, `totH`/`totT`/`totDir` | 1,278 m | 7,77 s | 163,9° |
+| ce que la page affichait (`val`/`period`) | **0,468 m** | **11 s** | — |
+
+L'ingestion était donc juste **depuis le début** — au champ près, Open-Meteo et
+nous lisons la même grille ECMWF. Seule la LECTURE prenait le mauvais champ.
+Comparaison des 8 modèles au même créneau, avant / après :
+
+```
+avant : nc 1,60  gfs 1,18  mf 1,49  ecmwf 0,47  aifs 0,58  marc 1,44  lotus 1,29
+après : nc 1,60  gfs 1,18  mf 1,49  ecmwf 1,28  aifs 1,69  marc 1,44  lotus 1,29
+```
+
+Conséquences mesurées : ligne ECMWF/AIFS du comparatif à ~0,5 m contre ~1,4 m
+partout ailleurs, médiane « Consensus » tirée vers le bas, score de session
+calculé sur une houle fantôme (petite hauteur ET fausse période de 11 s, qui
+gonflait le bonus de période — doublement faux), et **deux chiffres
+contradictoires pour un même modèle sur une même page** : le bloc « Modèles
+archivés » (`_renderCachedModelsBlock`) et le Journal (`index.html:_modelTrains`)
+lisaient DÉJÀ `totH/totT/totDir`. Le commentaire de `_modelTrains` affirmait même
+« ce qui rend AUSSI le Journal COHÉRENT avec le comparatif de previsions.html,
+qui utilise déjà totH/totT/totDir pour ces modèles » — c'était faux, et c'est
+exactement l'écart haut/bas de page signalé.
+
+**Correctif** : `h`/`t`/`dir` = mer totale (`swh`/`mwp`/`mwd`), la seule grandeur
+que ces deux modèles publient — et celle que Windy montre pour ECMWF. Rien n'est
+perdu : `bands` (les 6) plus `bandH`/`bandT` (l'ancien couple) restent sur chaque
+point. Le marqueur `swellIsTotal` voyage AVEC la donnée (pas une liste de clés
+recopiée dans chaque consommateur) : `_swellTrains` en fait un train `total`, le
+tableau étiquette la ligne **« Mer totale »** en italique atténué (comme « Mer du
+vent ») au lieu de « Houle 1 », la médiane Consensus l'exclut — une mer totale
+inclut la mer du vent, la médianer avec des houles primaires comparerait deux
+grandeurs — et la grille du widget explique en infobulle pourquoi H.1 répète
+la ligne Tot. Le `desc` des deux modèles et les titres des boutons de source
+sont réécrits en conséquence.
+
+### 2. Le navigateur ré-archivait des modèles qu'il LIT dans la même table
+
+Même faute que celle corrigée le matin même côté vent, restée entière côté houle :
+l'archivage best-effort de `_swellCache` bouclait sur TOUTES les clés, dont
+ecmwf/aifs/lotus (cache-only) et mf/marc (archive d'abord, live en repli).
+`_cacheModelPoints` pose `issued_at = now`, toujours plus récent que celui des
+jobs Python (= heure du RUN, ex. 00 Z) : tout lecteur « ligne la plus récente par
+date » relit donc la copie du navigateur, figée sur le run d'AVANT — une
+prévision périmée qui a l'air fraîche. Et la copie est LOSSY (val/period/dir
+seulement) : `partitions`, `bands`, totH/totT/totDir disparaissent. Constaté en
+base ce soir : lignes `swell_primary` écrites à 11:52 UTC pour lotus/ecmwf/marc/
+mf, dont des dates du 1er au 3 août. Archivage restreint à `{nc, gfs, bom}`, les
+trois seuls réellement fetchés en direct.
+
+### 3. Rafales meteo.nc : 0 est un code d'absence, pas une mesure
+
+Vérifié sur la réponse réelle de `rpcache.meteo.nc/.../forecast?lat=&lon=`
+(Passe de Dumbéa, 109 créneaux) : `wind_speed_gust` est absent sur 80 créneaux et
+vaut **littéralement 0** sur 11 des 29 restants, en alternance nette (0 h : 0,
+6 h : 15, 12 h : 0…), alors que le vent moyen du même créneau est à 16-19 nds.
+Le test `!= null` retenait ce zéro. Effets mesurés côté page (9 créneaux sur 32) :
+« g0 » sous 19 nds dans le tableau comparatif, « raf 0 » au survol du widget,
+repli Open-Meteo gardé par `wGst[i] === null` **jamais déclenché**, et
+`calcSurfScore` recevant wg = 0 — le malus de rafale disparaissait un créneau sur
+deux, et `_saveForecastDays` archivait ce 0 dans `meteo_cache`, donc le Journal
+comparait ensuite le vécu à une rafale nulle. Helper `_ncGustKt()` partagé par
+`renderForecast()` et le Best Session Finder (deux lectures différentes du même
+champ rendraient à nouveau les spots incomparables). Après correctif : 0 zéro sur
+31 créneaux, tous remplis par le repli Open-Meteo (18, 18, 17, 15…).
+
+### 4. LOTUS chargeait 25 jours d'historique à chaque affichage
+
+`_fetchLotusArchive` interrogeait `model_forecast_cache` sans borne de dates :
+200 points couvrant du 01/08 au 26/08 pour ~64 utiles, et ce volume ne fait que
+croître (table non purgée). Rien de faux à l'écran — le comparatif a une fenêtre
+fixe −24 h→J+6 et `_gwGroupDays` écarte les jours passés — mais c'est du réseau
+et du tri pour rien, et une série qui traîne trois semaines de prévisions
+périmées est un piège pour le prochain consommateur. Fenêtre −1..+7 j +
+déduplication « ligne la plus récente par date » (comme `_fetchOpenDataArchive`).
+Vérifié : 200 → 64 points.
+
+### Ce qui a été vérifié et jugé SAIN (pour ne pas y revenir)
+
+- **Fraîcheur des ingestions** : crons verts, `issued_at` le plus récent par
+  modèle au moment de l'audit — nc/gfs live, mf 2,2 h, marc 2,6 h, ecmwf/aifs run
+  00 Z du jour (~12 h, cadence normale du produit), `aro` run 00 Z. Aucun modèle
+  n'était réellement en retard : le « pas à jour » était le point 1.
+- **Valeurs des autres modèles, contre référence externe** (Open-Meteo, mêmes
+  point et instant) : `ncep_gfswave025` swell 1,28 m / 9,05 s / 160° = notre GFS
+  au champ près ; `meteofrance_wave` 1,56 m / 7,2 s / 170° vs notre MFWAM direct
+  Copernicus 1,49 / 7,3 / 172,9 (écart d'interpolation de grille, attendu).
+- **Vent GFS à 6,6 nds quand les 6 autres modèles donnent ~16** : ce n'est pas un
+  bug, `gfs_seamless` d'Open-Meteo donne 6,6 nds / 92° au même créneau. Vrai
+  désaccord de modèle (28 km lisse l'alizé près de la côte).
+- **BOM absent** : source Pacific Community toujours figée (dernier fichier du
+  05/08). Le garde-fou epoch > 3 j fait son travail, le modèle est retiré du
+  comparatif au lieu d'afficher du périmé.
+- **Cadence GFS/nc à 3 h** (et non 1 h) : ce n'est pas un décalage de fuseau, les
+  points tombent bien sur 12/15/18/21 h NC.
+
+### Vérification finale (headless, données réelles, Passe de Dumbéa)
+
+```
+houle @2026-08-20 11 h NC : nc 1,60 · gfs 1,18 · mf 1,49 · ecmwf 1,28 ·
+                            aifs 1,69 · marc 1,44 · lotus 1,29   (bom absent)
+rafales nc : 31 créneaux, 0 zéro (avant : 9)    cellules « g0 » du tableau : 0
+libellés    : ECMWF/AIFS « Mer totale », Consensus houle sur 5 modèles
+window.onerror + unhandledrejection : 0
+```
+
+`CACHE_NAME` → v98.
+
+### Reste ouvert (mesuré, assumé)
+
+Les rafales meteo.nc et le vent moyen viennent de deux produits différents (vent
+moyen = flux marine 3 h, rafale = flux terrestre 6 h, appariés à ±90 min) : on
+observe donc parfois une rafale légèrement SOUS le vent moyen (16 nds / g15).
+Physiquement incohérent, mais borné et sans sentinelle en jeu — corriger
+demanderait soit d'inventer une valeur, soit de renoncer à la rafale meteo.nc.
+Laissé tel quel, sciemment.
+
+Les lignes `swell_primary` déjà écrites par les navigateurs pour ecmwf/aifs/
+lotus/mf/marc restent en base. Elles ne sont plus produites, et tous les lecteurs
+priorisent `wave`, mais elles sortiront de la fenêtre à leur rythme — la purge
+relève de la compaction (P1, cf. `db_maintenance.py`).
