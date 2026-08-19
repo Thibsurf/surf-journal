@@ -2357,16 +2357,16 @@ function _hbCondRenderTide(pm, bm, spot){
       <div class="section-label" role="heading" aria-level="2" style="margin-bottom:0;">📋 Tableau <span id="tbl-source" style="font-weight:400;color:var(--faint);text-transform:none;">meteo.nc</span></div>
       <div style="display:flex;gap:2px;background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:2px;margin-left:auto;flex-wrap:wrap;max-width:100%;">
         <div style="display:flex;flex-wrap:wrap;background:rgba(255,255,255,.05);border-radius:20px;border:1px solid var(--border);padding:2px;gap:2px;">
-          <button id="tbl-btn-nc" onclick="switchTable('nc')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;white-space:nowrap;">🛰 meteo.nc</button>
-          <button id="tbl-btn-om" onclick="switchTable('om')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">🌐 GFS</button>
-          <button id="tbl-btn-bom" onclick="switchTable('bom')" title="Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">BOM</button>
-          <button id="tbl-btn-mf" onclick="switchTable('mf')" title="Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine — grille 0,083° (~9 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
-          <button id="tbl-btn-ecmwf" onclick="switchTable('ecmwf')" title="ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
-          <button id="tbl-btn-aifs" onclick="switchTable('aifs')" title="ECMWF AIFS-single (modèle IA) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">AIFS</button>
-          <button id="tbl-btn-marc" onclick="switchTable('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
+          <button id="tbl-btn-nc" onclick="setHsSrc('nc')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:rgba(61,186,138,.2);color:#3dba8a;font-weight:600;transition:all .2s;white-space:nowrap;">🛰 meteo.nc</button>
+          <button id="tbl-btn-om" onclick="setHsSrc('om')" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">🌐 GFS</button>
+          <button id="tbl-btn-bom" onclick="setHsSrc('bom')" title="Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">BOM</button>
+          <button id="tbl-btn-mf" onclick="setHsSrc('mf')" title="Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine — grille 0,083° (~9 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MF global</button>
+          <button id="tbl-btn-ecmwf" onclick="setHsSrc('ecmwf')" title="ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">ECMWF</button>
+          <button id="tbl-btn-aifs" onclick="setHsSrc('aifs')" title="ECMWF AIFS-single (modèle IA) — grille 0,25° (~28 km) — vent 10m, pas de rafale dans ce produit" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">AIFS</button>
+          <button id="tbl-btn-marc" onclick="setHsSrc('marc')" title="Ifremer/CNRS-IRD-UBO — WaveWatch III régional Nouvelle-Calédonie — grille 0,05° (~5,5 km)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">MARC</button>
           <!-- LOTUS ajouté le 18/08/2026 — présent dans _swellCache depuis le 02/08 mais
                oublié de TABLE_SRC_DEFS/ce sélecteur jusqu'ici. -->
-          <button id="tbl-btn-lotus" onclick="switchTable('lotus')" title="Surfline — modèle propriétaire LOTUS. Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa/Boulari)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">LOTUS</button>
+          <button id="tbl-btn-lotus" onclick="setHsSrc('lotus')" title="Surfline — modèle propriétaire LOTUS. Couverture LIMITÉE à 5 zones NC (St Vincent/False Pass/Dumbéa/Boulari)" style="padding:3px 10px;border-radius:16px;border:none;cursor:pointer;font-size:11px;font-family:var(--font-b);background:none;color:var(--muted);transition:all .2s;white-space:nowrap;">LOTUS</button>
         </div>
       </div>
     </div>
@@ -4776,7 +4776,22 @@ function setHsSrc(src, skipRedraw) {
   _buildSecondaryCharts(d);
 
   // Tableau + conditions actuelles
-  renderTable(d.dates||[],d.sw1h||[],d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[]);
+  // `d.totH`/`d.wndH` PASSÉS explicitement (20/08/2026) : sans eux, renderTable
+  // retombait sur `_fcastData` (meteo.nc) et affichait sa mer totale sous
+  // l'étiquette du modèle choisi — pire, à l'INDEX DE LIGNE de l'autre série,
+  // donc à un autre instant. Mesuré à Passe de Dumbéa : « Hs tot. 2,2 m »
+  // identique pour MARC, MFWAM, LOTUS et ECMWF (c'était _fcastData.totH[3]),
+  // là où les mêmes lignes vues par le bouton du tableau donnaient 2,5 / 2,8 /
+  // 3,2 / 1,6 m. Les deux chemins de rendu doivent passer les mêmes tableaux.
+  // Le tableau détaillé suit LE choix de modèle de la page (CLAUDE.md : « un
+  // seul choix de modèle, `_currentHsSrc` »). `_tableSrc` restait sinon sur sa
+  // valeur d'avant, avec deux conséquences mesurées : l'étiquette #tbl-source
+  // annonçait « meteo.nc » sous un badge « MARC WW3 », et le libellé de colonne
+  // « H2 résid. » (propre à la décomposition meteo.nc) s'affichait sur la houle 2
+  // de modèles qui n'ont rien d'un résidu.
+  _tableSrc = src;
+  try { _tableSrcUI(src); } catch(_){}
+  renderTable(d.dates||[],d.sw1h||[],d.sw1t||[],d.sw1d||[],d.sw2h||[],d.sw2d||[],d.wSpd||[],d.wGst||[],d.wDir||[],d.pwr||[],d.sst||[],d.totH||null,d.wndH||null);
   try { renderGlobalWidget(); } catch(_){} // le widget global suit le toggle de source
   // Tableau ciel & houle (#sb-card, au-dessus de #gw-widget) : même logique —
   // basculer la source avec le toggle doit le rafraîchir tout de suite, sinon
@@ -4784,10 +4799,31 @@ function setHsSrc(src, skipRedraw) {
   // selon le modèle choisi", sur le météogramme qu'il remplace).
   try { if (typeof sbOnSourceChange === 'function') sbOnSourceChange(); } catch(_){}
   if(d.sw1h&&d.sw1h.length) {
-    // Marée (18/08/2026) : realMs = epoch réel, d.dates[0] est déjà décalé +11h.
+    // ── L'index de « maintenant », et surtout PAS l'index 0 ────────────────
+    // Corrigé le 20/08/2026. Cette carte s'intitule « ⏱ Maintenant — prévision
+    // modèle · heure en cours » et prenait pourtant `[0]`, le PREMIER point de
+    // la série. Pour meteo.nc/GFS, fetchés en direct à partir de l'heure
+    // courante, ça tombait à peu près juste ; pour les six modèles servis par
+    // l'archive, l'index 0 est le début de la fenêtre de recul — mesuré ce
+    // jour à Passe de Dumbéa : LOTUS affichait un point vieux de 47,6 h
+    // (2,7 m annoncés « maintenant » contre 1,7 m réels), MFWAM 36,6 h,
+    // ECMWF 30,6 h, MARC 27,6 h, AIFS 24,6 h, GFS 11,6 h. La puissance et le
+    // SCORE de la carte en découlent, donc ils étaient faux d'autant.
+    // `d.dates[i]` est décalé +11 h (convention du projet) : on retire ce
+    // décalage pour comparer à un vrai `Date.now()`.
     var _curSpot = SPOTS[currentSpot];
-    var _curTideAdj = (d.dates && d.dates[0]) ? _tideAdjAt(_curSpot, d.dates[0].getTime() - 11*3600000) : 0;
-    renderCurrent(d.sw1h[0],d.sw1t&&d.sw1t[0],d.sw1d&&d.sw1d[0],d.sw2h&&d.sw2h[0],d.totH&&d.totH[0],d.wSpd&&d.wSpd[0],d.wGst&&d.wGst[0],d.wDir&&d.wDir[0],d.pwr&&d.pwr[0],_curTideAdj);
+    var _nowI = 0;
+    if (d.dates && d.dates.length) {
+      var _nowMs = Date.now(), _bd = Infinity;
+      for (var _ni = 0; _ni < d.dates.length; _ni++) {
+        if (!d.dates[_ni]) continue;
+        var _df = Math.abs((d.dates[_ni].getTime() - 11*3600000) - _nowMs);
+        if (_df < _bd) { _bd = _df; _nowI = _ni; }
+      }
+    }
+    // Marée (18/08/2026) : realMs = epoch réel, d.dates[] est déjà décalé +11h.
+    var _curTideAdj = (d.dates && d.dates[_nowI]) ? _tideAdjAt(_curSpot, d.dates[_nowI].getTime() - 11*3600000) : 0;
+    renderCurrent(d.sw1h[_nowI],d.sw1t&&d.sw1t[_nowI],d.sw1d&&d.sw1d[_nowI],d.sw2h&&d.sw2h[_nowI],d.totH&&d.totH[_nowI],d.wSpd&&d.wSpd[_nowI],d.wGst&&d.wGst[_nowI],d.wDir&&d.wDir[_nowI],d.pwr&&d.pwr[_nowI],_curTideAdj);
   }
 
   // Badge source — TABLE_SRC_DEFS comme source unique du libellé/couleur pour
@@ -10711,16 +10747,46 @@ function renderCurrent(hs,T,dir,hs2,tot,ws,wg,wd,p,tideAdj){
   // Pastilles score
   var dots = '';
   for(var si=0;si<5;si++) dots += '<span style="color:'+(si<surf.score?surf.col:'rgba(255,255,255,.1)')+';">●</span>';
+  // ── Nommer la source AFFICHÉE, pas « GFS par défaut » ────────────────────
+  // Corrigé le 20/08/2026. Ces deux libellés faisaient `_currentHsSrc === 'nc'
+  // ? 'meteo.nc' : 'GFS'` — le motif que CLAUDE.md signale comme « un bug en
+  // attente » depuis l'unification des sources : il y a NEUF clés. Résultat
+  // mesuré : « Houle 1 · GFS 2,5 m » affiché alors que la donnée venait de
+  // MARC, et pareil pour MFWAM, ECMWF, AIFS, LOTUS et Mix. Exactement la faute
+  // du 19/08 (« étiqueté du nom d'un modèle qu'il n'affiche pas »), un cran
+  // plus loin dans la page. TABLE_SRC_DEFS couvre les 9 clés et sert déjà de
+  // source unique aux badges — on la réutilise plutôt que d'inventer une
+  // dixième liste de libellés.
+  var _srcDef = (typeof TABLE_SRC_DEFS !== 'undefined' && TABLE_SRC_DEFS[_currentHsSrc]) ? TABLE_SRC_DEFS[_currentHsSrc] : null;
+  var _srcLbl = _srcDef ? _srcDef.label : (_currentHsSrc || 'modèle');
+  // Houle 2 de meteo.nc = résidu calculé (Hs − H1 − mer du vent), pas un train
+  // modélisé — la mention « résid. » ne vaut que pour lui.
+  var _sw2Lbl = (_currentHsSrc === 'nc' && _ncFcastData) ? 'résid.' : _srcLbl;
+  // Le petit repère GFS en gris ne se justifie QUE si la source affichée n'est
+  // pas GFS elle-même (sinon on comparait GFS à GFS), et il doit pointer le
+  // créneau courant, pas l'index 0 de la série Open-Meteo — même faute que la
+  // carte elle-même, mesurée à 11,6 h de retard.
+  var _omI = -1;
+  if (_currentHsSrc !== 'om' && _omFcastData && _omFcastData.dates && _omFcastData.dates.length) {
+    var _omNow = Date.now(), _omBd = Infinity;
+    for (var _oi = 0; _oi < _omFcastData.dates.length; _oi++) {
+      if (!_omFcastData.dates[_oi]) continue;
+      var _od = Math.abs((_omFcastData.dates[_oi].getTime() - 11*3600000) - _omNow);
+      if (_od < _omBd) { _omBd = _od; _omI = _oi; }
+    }
+  }
+  var _omH1 = (_omI >= 0 && _omFcastData.sw1h) ? _omFcastData.sw1h[_omI] : null;
+  var _omH2 = (_omI >= 0 && _omFcastData.sw2h) ? _omFcastData.sw2h[_omI] : null;
   document.getElementById('current-cond').innerHTML=
     sc('Hs totale',(tot||'—')+'m','',hsCol(tot))+
-    sc('Houle 1 · '+(_currentHsSrc==='nc'&&_ncFcastData?'meteo.nc':'GFS'),
+    sc('Houle 1 · '+_srcLbl,
        (hs||'—')+'m',
        (dir!==null&&dir!==undefined ? svgArrow(dir,'#4fa3c7')+' '+compass(dir)+' · ' : '')+(T?T+'s':'—')
-       +(_omFcastData&&_omFcastData.sw1h&&_omFcastData.sw1h[0]!=null?'<span style="color:var(--faint);font-size:11px;"> GFS:'+(_omFcastData.sw1h[0]||'—')+'m</span>':''),
+       +(_omH1!=null?'<span style="color:var(--faint);font-size:11px;"> GFS:'+_omH1+'m</span>':''),
        hsCol(hs))+
-    (hs2>0.1 ? sc('Houle 2 · '+(_currentHsSrc==='nc'&&_ncFcastData?'résid.':'GFS'),
+    (hs2>0.1 ? sc('Houle 2 · '+_sw2Lbl,
        hs2.toFixed(2)+'m',
-       _omFcastData&&_omFcastData.sw2h&&_omFcastData.sw2h[0]>0?'<span style="font-size:11px;color:var(--faint);">GFS: '+_omFcastData.sw2h[0].toFixed(2)+'m</span>':'',
+       (_omH2>0?'<span style="font-size:11px;color:var(--faint);">GFS: '+_omH2.toFixed(2)+'m</span>':''),
        hsCol(hs2)) : '')+
     sc('Vent',(ws?Math.round(ws):'—')+' nds',
        (wd!==null&&wd!==undefined ? svgArrow(wd,'#e8a057')+' '+compass(wd)+' · ' : '')+'Raf. '+(wg?Math.round(wg):'—')+' nds',
@@ -11675,8 +11741,14 @@ function _swellCacheToFcastShape(key) {
 }
 
 var _tableSrc = 'nc'; // 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf' | 'aifs' | 'marc' | 'lotus'
-function switchTable(src) {
-  _tableSrc = src;
+// Boutons + étiquette de source du tableau détaillé. Extrait de switchTable()
+// le 20/08/2026 pour que setHsSrc() puisse les tenir à jour lui aussi : sans ça,
+// changer de modèle par le toggle de l'histogramme laissait `_tableSrc` sur sa
+// valeur précédente, et le prochain `switchTable(_tableSrc)` — déclenché par la
+// MOLETTE du comparatif houle, un changement de spot ou la fin du fetch —
+// remplaçait le tableau du modèle choisi par celui de l'ancienne source SANS
+// toucher au badge. Mesuré : badge « MARC WW3 » au-dessus d'un tableau meteo.nc.
+function _tableSrcUI(src) {
   Object.keys(TABLE_SRC_DEFS).forEach(function(k) {
     var b = document.getElementById(TABLE_SRC_DEFS[k].btn);
     if (!b) return;
@@ -11685,6 +11757,10 @@ function switchTable(src) {
   });
   var srcEl=document.getElementById('tbl-source');
   if(srcEl) srcEl.textContent = TABLE_SRC_DEFS[src] ? TABLE_SRC_DEFS[src].label : src;
+}
+function switchTable(src) {
+  _tableSrc = src;
+  _tableSrcUI(src);
   if (src === 'nc' || src === 'om') {
     var d = (src==='om' && _omFcastData) ? _omFcastData : _fcastData;
     if(d && d.dates && d.dates.length) {
@@ -11708,8 +11784,19 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst,totH,
   // les nouvelles sources (bom/mf/ecmwf/marc) les passent explicitement — lire
   // _fcastData pour elles aurait affiché la mer totale de meteo.nc à la place
   // de celle du modèle réellement sélectionné.
-  totH = totH || (_fcastData && _fcastData.totH);
-  wndHarr = wndHarr || (_fcastData && _fcastData.wndH);
+  // Repli sur `_fcastData` UNIQUEMENT si c'est bien SA série qu'on est en train
+  // de rendre (identité du tableau `dates`, pas une simple absence d'argument).
+  // Durci le 20/08/2026 : le test précédent (`totH || _fcastData.totH`) prenait
+  // la mer totale de meteo.nc pour n'importe quelle source dont l'appelant avait
+  // oublié de passer l'argument, et l'indexait par NUMÉRO DE LIGNE — deux séries
+  // n'ayant ni la même cadence ni le même point de départ, la valeur affichée
+  // pouvait venir d'un instant distant de deux jours. Sans série propre, mieux
+  // vaut une colonne vide qu'un chiffre d'un autre modèle à une autre heure.
+  var _isNcSeries = !!(_fcastData && _fcastData.dates && dates === _fcastData.dates);
+  var _isOmSeries = !!(_omFcastData && _omFcastData.dates && dates === _omFcastData.dates);
+  if (!totH) totH = _isNcSeries ? (_fcastData && _fcastData.totH) : (_isOmSeries ? (_omFcastData && _omFcastData.totH) : null);
+  if (!wndHarr) wndHarr = _isNcSeries ? (_fcastData && _fcastData.wndH) : (_isOmSeries ? (_omFcastData && _omFcastData.wndH) : null);
+  totH = totH || []; wndHarr = wndHarr || [];
   // Source active pour le tableau — _tableSrc (pas _currentHsSrc, le toggle de
   // l'histogramme Hs juste au-dessus : un état différent, qui peut diverger de
   // la source réellement affichée ici) : sinon le libellé « H2 résid. » (propre
