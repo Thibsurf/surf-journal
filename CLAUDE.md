@@ -233,6 +233,43 @@ lecteur de `_currentHsSrc` doit traiter les **9** clés (`nc`, `om`, `bom`, `mf`
 attente. Quand le modèle demandé n'est pas chargé : message d'indisponibilité et
 restauration de la source précédente, jamais un repli silencieux.
 
+**ECMWF/AIFS n'ont PAS de houle primaire — ce qu'on affiche est la mer totale.**
+Open Data gratuit ne publie aucune partition pour ces deux modèles. `fetch_ecmwf.py`
+écrit `val`/`period` = hauteur de la BANDE DE PÉRIODE la plus haute parmi 6 et le
+MILIEU de cette bande : ce n'est pas une hauteur de houle et ça ne doit JAMAIS être
+affiché comme telle (mesuré le 19/08/2026 : 0,468 m affiché contre 1,278 m réels,
+2,73× trop bas, à côté de six modèles annonçant ~1,4 m). La seule grandeur réelle
+est `totH`/`totT`/`totDir` (swh/mwp/mwd) — exactement ce que renvoie
+`marine-api.open-meteo.com` en `models=ecmwf_wam025`, et ce que montre Windy. Le
+marqueur `swellIsTotal` est posé sur chaque point par `_fetchOpenDataArchive` et
+voyage AVEC la donnée : `_swellTrains` en fait un train `total`, le comparatif
+l'étiquette « Mer totale » et l'exclut de la médiane Consensus, la grille du widget
+l'explique en infobulle. Tout nouveau consommateur doit le lire plutôt que de
+recopier une liste de clés de modèles.
+
+**Rafales meteo.nc : `wind_speed_gust === 0` veut dire « absente ».** Vérifié sur la
+réponse réelle de `rpcache.meteo.nc/.../forecast?lat=&lon=` : le champ est absent sur
+80 créneaux sur 109 et vaut littéralement 0 sur 11 des 29 restants, alors que le vent
+moyen du même créneau est à 16-19 nds. Passer par `_ncGustKt()` (rejette `<= 0`),
+jamais par un test `!= null` — sinon le repli Open-Meteo ne se déclenche plus, le
+tableau affiche « g0 », et `calcSurfScore` perd son malus de rafale un créneau sur
+deux. Corollaire connu et assumé : vent moyen (flux marine, 3 h) et rafale (flux
+terrestre, 6 h) viennent de deux produits appariés à ±90 min, donc une rafale peut
+tomber légèrement sous le vent moyen — ne pas « corriger » ça en inventant une valeur.
+
+**Ne jamais ré-archiver un modèle qu'on LIT dans `model_forecast_cache`.** Vaut pour
+la houle comme pour le vent : l'archivage navigateur est restreint à `{nc, gfs, bom}`,
+les seuls réellement fetchés en direct. ecmwf/aifs/lotus sont cache-only, mf/marc
+lisent l'archive d'abord. `_cacheModelPoints` pose `issued_at = now`, toujours plus
+récent que celui des jobs Python (= heure du RUN) : tout lecteur « ligne la plus
+récente par date » relirait la copie du navigateur, figée sur le run d'avant, et
+appauvrie (val/period/dir seulement — `partitions`, `bands`, totH/totT/totDir perdus).
+
+**Toute requête à `model_forecast_cache` doit borner ses dates.** La table n'est jamais
+purgée : `_fetchLotusArchive` ramenait 200 points sur 25 jours pour ~64 utiles avant le
+19/08/2026. Fenêtre type −1..+6 j (−1..+7 pour LOTUS) + déduplication « ligne la plus
+récente par date », comme `_fetchOpenDataArchive`.
+
 **Marée : `_tideStateAt()` attend un epoch RÉEL**, pas un `fc.dates[i]` (décalé
 +11 h). Passer par `_tideStateAtFc()`. Se tromper décale la marée de 11 h sur un
 cycle de 12 h 25 — soit une marée quasi inversée, pas un petit écart.
