@@ -9002,6 +9002,46 @@ window.onerror  : 0
 
 `CACHE_NAME` → v104.
 
+### Addendum 20/08 — le plafond PostgREST de 1000 lignes est ATTEINT, mais pas encore franchi
+
+Angle « péremption silencieuse », deuxième volet. Mesuré sur les données réelles
+(Passe de Dumbéa, date du jour, bbox ±0,05°) :
+
+```
+requête du bloc « Modèles archivés » (date + bbox)  : 1000 lignes  ← PLAFOND
+même requête sans bbox, par date seule              : 1000 lignes  ← PLAFOND
+ecmwf wave, 8 dates + bbox                          :   91 lignes
+lotus wave, 9 dates + bbox                          :   16 lignes
+```
+
+Le plafond est donc bel et bien touché par la requête large. **Aucun modèle n'en
+tombe aujourd'hui** : le tri `issued_at desc` est en place, et la 1000ᵉ ligne
+renvoyée date du **13/08** — six jours de runs empilés avant d'atteindre la
+limite, alors que la ligne la plus fraîche de chaque modèle date de quelques
+heures. Contrôle explicite : les 21 couples (modèle | kind) attendus sont tous
+présents dans les 1000, et une requête ciblée modèle par modèle ne révèle aucun
+absent que la requête large aurait masqué.
+
+La marge est donc réelle mais **non garantie** : elle tient uniquement au fait
+que 1000 lignes couvrent encore six jours. `model_forecast_cache` n'est jamais
+purgée et grossit d'environ 6 600 lignes par jour (cf. entrée du 03/08) — le jour
+où 1000 lignes ne couvriront plus que quelques heures, le modèle dont
+l'`issued_at` est le plus ancien disparaîtra en silence. Et ce sera ECMWF ou
+AIFS, précisément parce que leur `issued_at` est le plus honnête des six : ils
+portent l'heure du RUN (06:00 Z) et non celle du job (17:39).
+
+Rien n'est corrigé ici, volontairement : le vrai remède n'est pas un `.range()`
+de plus mais la **compaction**, écrite et validée en dry-run (−73 %) au P1 du
+03/08 (`ingestion/db_maintenance.py action compact` + `.github/workflows/
+db-compaction.yml`, seuils 14/120 j) et **jamais activée**. L'activer purge des
+données de production : c'est une décision à prendre éveillé, pas une correction
+à pousser dans la nuit. À trancher.
+
+Ce qui a été vérifié et jugé SAIN de ce côté : les lecteurs bornés par dates
+(`_fetchOpenDataArchive` 91 lignes, `_fetchLotusArchive` 16, `_fetchMfArchive` et
+`_fetchMarcArchive` par `in('id', …)`) sont très loin du plafond et le resteront
+— une fenêtre de dates bornée est exactement ce qui protège de ce piège.
+
 ### Reste ouvert, mesuré, PAS traité ce soir
 
 - ~~Quatre lecteurs restés sur `_fcastData`~~ **CORRIGÉ le 20/08** : `renderRose`,
