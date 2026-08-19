@@ -1028,14 +1028,27 @@ function _hbCondReveal(){
   if (any) _hbCondFit();
 }
 
-// Houle MARC "maintenant" — même lecture que _drawSpectrumRose('marc', atMs)
-// (plus haut dans cette page) mais sans dépendre de son DOM (.marc-spectrum-*,
-// vivant dans l'accordéon comparatif) : copie volontairement locale du nearest()
-// et du filtre idx>=1 (convention MARC : partition 0 = mer du vent, jamais
-// numérotée "Houle N", cf. hasWindSeaSlot dans _drawSpectrumRose) plutôt qu'un
-// couplage entre deux composants indépendants. Aucune limite posée sur le
+// Houle MARC "maintenant". Lecture locale (pas de couplage au DOM du comparatif),
+// mais MÊME classement que tout le reste de la page. Aucune limite posée sur le
 // nombre de houles secondaires affichées (règle : jamais masquer une donnée) —
 // .hc-sub replie sur 2 lignes plutôt que tronquer si MARC en expose beaucoup.
+//
+// ── Le filtre `idx >= 1` a été retiré le 20/08/2026 ──────────────────────────
+// Il écartait `partitions[0]` au motif que « partition 0 = mer du vent ». C'est
+// précisément le piège documenté dans CLAUDE.md : les partitions WW3 de ce
+// produit MARC ne sont PAS numérotées de façon stable, et ce point avait déjà
+// été corrigé deux fois ailleurs (_marcPrimarySwell le 29/07, le widget le
+// 04/08) sans que cette carte-ci le reçoive. Mesuré ce jour sur les 37 pas MARC
+// de Passe de Dumbéa : la houle dominante est au slot 0 sur 20 pas, et les
+// périodes de ce slot vont de 4,8 à 13,5 s (médiane 9,0 s, 20 sur 33 au-dessus
+// de 8 s) — ce n'est donc pas de la mer du vent. Conséquence : la carte
+// divergeait de la page sur 20 pas sur 37, écart moyen 0,73 m, max 1,45 m
+// (elle affichait 1,6 m / 13 s quand la page affichait 2,5 m / 11 s).
+//
+// On repart donc du point normalisé (`best.h/t/dir` EST la houle primaire, déjà
+// sélectionnée par _marcPrimarySwell en amont) et on classe le reste du spectre
+// par PÉRIODE, comme _swellTrains : sous SWELL_WINDSEA_MAX_T c'est de la mer du
+// vent, au-dessus c'est un train de houle.
 function _hbCondRenderHoule(spot){
   var sec = document.getElementById('hb-cond-houle-sec');
   var body = document.getElementById('hb-cond-houle');
@@ -1044,12 +1057,21 @@ function _hbCondRenderHoule(spot){
   var pts = (typeof _swellCache !== 'undefined' && _swellCache && _swellCache.marc) ? _swellCache.marc.primary : null;
   var best = null, bd = 4 * 3600000;
   if (pts) pts.forEach(function(p){ var df = Math.abs(p.ms - Date.now()); if (df < bd) { bd = df; best = p; } });
-  var parts = (best && best.partitions) ? best.partitions
-    .map(function(pt, idx){ return pt ? { idx:idx, h:pt.h, t:pt.t, dir:pt.dir } : null; })
-    .filter(function(x){ return x && x.h != null && x.dir != null && x.idx >= 1; }) : [];
-  if (!parts.length) { sec.classList.add('hb-cond-hide'); _hbCondReveal(); return; }
+  if (!best || best.h == null || best.dir == null) { sec.classList.add('hb-cond-hide'); _hbCondReveal(); return; }
+  // Le train qui a produit la primaire est retiré du reste, repéré par valeur
+  // (h/t/dir y ont été copiés verbatim) — sinon il réapparaîtrait en doublon
+  // juste en dessous de lui-même. Même repérage que _swellTrains.
+  var _usedPrimary = false;
+  var parts = (best.partitions || [])
+    .map(function(pt){ return pt ? { h:pt.h, t:pt.t, dir:pt.dir } : null; })
+    .filter(function(x){
+      if (!x || x.h == null || x.dir == null) return false;
+      if (!_usedPrimary && x.h === best.h && x.t === best.t && x.dir === best.dir) { _usedPrimary = true; return false; }
+      // Mer du vent écartée par sa PÉRIODE, pas par sa position dans le tableau.
+      return !(x.t != null && x.t < SWELL_WINDSEA_MAX_T);
+    });
   parts.sort(function(a,b){ return b.h - a.h; });
-  var main = parts[0], rest = parts.slice(1);
+  var main = { h: best.h, t: best.t, dir: best.dir }, rest = parts;
   body.innerHTML = '<div class="hc-main"><div class="hc-val">' + _hbCondArrow(main.dir, '#4fa3c7', 13)
     + '<b>' + _hbCondNum(main.h, 1) + '</b><span class="hc-unit">m</span></div>'
     + '<span class="hc-per">' + (main.t != null ? Math.round(main.t) + ' s' : '') + '</span></div>'
@@ -8847,17 +8869,46 @@ function _drawSwellCompare() {
     if (!wrap || !el) return false;
     var modelPts = _swellCache && _swellCache[modelKey] && _swellCache[modelKey].primary;
     var p = modelPts && nearest(modelPts, atMs, 4 * 3600000);
-    var parts = p && p.partitions ? p.partitions
-      .map(function(pt, idx) { return pt ? { idx: idx, h: pt.h, t: pt.t, dir: pt.dir, spread: pt.spread } : null; })
-      .filter(function(x) { return x && x.dir != null; }) : [];
-    if (!parts.length) { wrap.style.display = 'none'; return false; }
-    // MARC/MFWAM ont un slot 0 = « mer du vent » par convention de la source
-    // (déjà nommé en toutes lettres, pas de numéro) — LOTUS/Surfline n'a PAS
-    // cette convention : `partitions` y est juste l'ordre brut swells[] de
-    // l'API (zéro-remplissage déjà filtré côté client), aucun train n'y est
-    // "la mer du vent". Sans cette distinction, le 1er train LOTUS aurait été
-    // affiché sans numéro et légendé "Mer du vent" à tort.
-    var hasWindSeaSlot = (modelKey === 'marc' || modelKey === 'mf');
+    // ── Le rang vient du CLASSEMENT, plus de la position dans le tableau ────
+    // Corrigé le 20/08/2026. `idx` valait la position brute dans `partitions[]`,
+    // et le libellé se lisait dans MARC_PART_LABELS à cet index — donc « slot 0
+    // = mer du vent, slot 1 = houle 1 ». C'est vrai pour MFWAM (sa source numérote
+    // WW/SW1/SW2 : mesuré, périodes du slot 0 entre 0,5 et 4,7 s, 0 sur 89 pas
+    // au-dessus de 8 s), mais FAUX pour MARC — le piège documenté dans CLAUDE.md,
+    // déjà corrigé deux fois ailleurs sans que cette rose le reçoive. Mesuré ce
+    // jour sur les 37 pas MARC de Passe de Dumbéa : la houle dominante est au
+    // slot 0 sur 20 pas, et ce slot a une période médiane de 9,0 s. La légende
+    // annonçait donc « Mer du vent 1,8 m / 9 s » pour ce que toute la page
+    // appelle « Houle 1 », et « Houle 1 » pour la houle 2. Faux pour LOTUS
+    // aussi, autrement : la rose gardait l'ordre brut de l'API quand
+    // _swellTrains trie par hauteur — 48 pas sur 64 en désaccord.
+    //
+    // On classe donc comme partout ailleurs : mer du vent = période sous
+    // SWELL_WINDSEA_MAX_T (et une seule, la plus haute), houles numérotées de 1
+    // en hauteur décroissante. MFWAM garde sa numérotation native, seul modèle
+    // dont la source la garantit (`native`, même test que _swellTrains).
+    var _rawParts = p && p.partitions ? p.partitions
+      .map(function(pt, idx) { return pt ? { raw: idx, h: pt.h, t: pt.t, dir: pt.dir, spread: pt.spread } : null; })
+      .filter(function(x) { return x && x.dir != null && x.h != null; }) : [];
+    if (!_rawParts.length) { wrap.style.display = 'none'; return false; }
+    var _native = (modelKey === 'mf');
+    var parts = [];
+    if (_native) {
+      _rawParts.forEach(function(x) { x.idx = x.raw; parts.push(x); });
+    } else {
+      var _sea = null, _pool = [];
+      _rawParts.forEach(function(x) {
+        if (x.t != null && x.t < SWELL_WINDSEA_MAX_T) { if (!_sea || x.h > _sea.h) { if (_sea) _pool.push(_sea); _sea = x; } else _pool.push(x); }
+        else _pool.push(x);
+      });
+      _pool.sort(function(a, b) { return b.h - a.h; });
+      if (_sea) { _sea.idx = 0; parts.push(_sea); }
+      _pool.forEach(function(x, i) { x.idx = i + 1; parts.push(x); });
+    }
+    // (`hasWindSeaSlot` a disparu ici le 20/08/2026 : le rang porté par `idx`
+    // suffit désormais à nommer chaque train, et un drapeau « ce modèle a-t-il
+    // un slot 0 » ne pouvait de toute façon pas décrire une convention qui
+    // change d'un pas de temps à l'autre.)
     wrap.style.display = '';
     var S = 92, cx = S / 2, cy = S / 2, R = 34;
     var svg = '<svg width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '">';
@@ -8919,11 +8970,16 @@ function _drawSwellCompare() {
       // vue satellite du widget (_gwDrawVectors, widget-global.js), pour relier
       // l'écart angulaire affiché au numéro de houle listé dans la légende
       // ci-dessous (demande explicite de l'utilisateur). Pas de numéro pour la
-      // mer du vent (idx 0, MARC/MFWAM uniquement), déjà nommée en toutes
-      // lettres dans la légende — LOTUS numérote TOUS ses trains dès 1 (pas de
-      // slot mer du vent, cf. hasWindSeaSlot).
-      if (hasWindSeaSlot ? pt.idx >= 1 : true) {
-        var numLabel = hasWindSeaSlot ? pt.idx : (pt.idx + 1);
+      // mer du vent (idx 0), déjà nommée en toutes lettres dans la légende.
+      // `idx` porte désormais le RANG, pas la position brute (cf. le classement
+      // plus haut) : 0 = mer du vent reconnue à ce pas, 1..N = houles par hauteur
+      // décroissante. Le numéro est donc l'idx lui-même, et la mer du vent n'en
+      // reçoit pas — elle est nommée en toutes lettres dans la légende. Ne plus
+      // passer par `hasWindSeaSlot` ici : quand aucune mer du vent n'était
+      // reconnue à ce pas, l'ancienne branche `pt.idx + 1` décalait TOUS les
+      // numéros d'un cran (mesuré : la houle 1 de MARC légendée « Houle 2 »).
+      if (pt.idx >= 1) {
+        var numLabel = pt.idx;
         var nrad = Math.min(len + 9, R - 2);
         var nx = cx + nrad * Math.cos(centerRad), ny = cy + nrad * Math.sin(centerRad);
         svg += '<text x="' + nx + '" y="' + (ny + 3) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + col + '" font-family="DM Sans,sans-serif">' + numLabel + '</text>';
@@ -8962,10 +9018,14 @@ function _drawSwellCompare() {
         + '<span style="color:var(--faint);">Mer totale (toutes composantes)</span>'
         + '</div>') : '';
       legHtml += sorted.map(function(pt) {
-        // LOTUS n'a pas de slot "mer du vent" (cf. hasWindSeaSlot) : label
-        // générique "Houle N" numéroté à partir de 1, jamais MARC_PART_LABELS
-        // (qui suppose l'index 0 = mer du vent).
-        var lbl = hasWindSeaSlot ? MARC_PART_LABELS[pt.idx] : ('Houle ' + (pt.idx + 1));
+        // MFWAM garde la numérotation native de sa source (WW/SW1/SW2 = index
+        // 0/1/2, vérifié : 0 sur 89 pas n'a de période ≥ 8 s au slot 0). Pour
+        // MARC et LOTUS, `idx` est le rang CALCULÉ plus haut — 0 = mer du vent
+        // reconnue par sa période, 1..N = houles par hauteur décroissante — donc
+        // le libellé se déduit directement de lui, sans repasser par un drapeau
+        // « ce modèle a-t-il un slot 0 » qui décalait tout d'un cran dès qu'un
+        // pas de temps n'avait pas de mer du vent identifiable.
+        var lbl = _native ? MARC_PART_LABELS[pt.idx] : (pt.idx === 0 ? 'Mer du vent' : 'Houle ' + pt.idx);
         return '<div style="display:flex;align-items:center;gap:5px;">'
           + '<span style="width:7px;height:7px;border-radius:50%;background:' + MARC_PART_COLORS[pt.idx % MARC_PART_COLORS.length] + ';flex-shrink:0;"></span>'
           + '<b style="color:var(--text);">' + pt.h.toFixed(1) + 'm</b>'

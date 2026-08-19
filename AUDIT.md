@@ -8831,3 +8831,154 @@ Les lignes `swell_primary` déjà écrites par les navigateurs pour ecmwf/aifs/
 lotus/mf/marc restent en base. Elles ne sont plus produites, et tous les lecteurs
 priorisent `wave`, mais elles sortiront de la fenêtre à leur rythme — la purge
 relève de la compaction (P1, cf. `db_maintenance.py`).
+
+---
+
+## 2026-08-20 — passe de vérification croisée : six écarts de plus, tous « un lecteur resté en arrière »
+
+Trois agents lancés sur la page corrigée, sous trois angles (valeurs fausses,
+cohérence entre surfaces, péremption silencieuse). Deux ont été coupés par la
+limite de session ; celui de la **cohérence** a rendu 10 constats mesurés sur la
+vraie page (Passe de Dumbéa, données réelles, 0 erreur JS). Six sont traités ici,
+tous de la même famille : un lecteur qui n'avait pas suivi l'unification des
+sources du 19/08.
+
+**Ce qui a été confirmé SAIN par cette passe** (à ne pas revisiter) : la houle 1
+— hauteur, période, direction — est désormais **identique sur les cinq surfaces**
+(widget, Ciel & houle, Détails horaires, graphe comparatif, tableau du bas) pour
+les 8 modèles disponibles ; 0 écart sur 243 points entre le graphe comparatif et
+le constructeur du widget ; le vent concorde en valeur ET en horodatage ; BOM
+reste correctement indisponible sans repli silencieux. L'hypothèse d'un
+désaccord entre les deux classificateurs de partitions MARC
+(`_gwMarcClassifyPartitions` contre `_swellTrains`) est **infirmée** : 37 pas sur
+37 identiques.
+
+### 1. La carte « ⏱ Maintenant » montrait un point vieux de 48 h
+
+`renderCurrent()` prenait l'**index 0** de la série. Pour meteo.nc/GFS, fetchés
+en direct à partir de l'heure courante, ça passait ; pour les six modèles servis
+par l'archive, l'index 0 est le début de la fenêtre de recul.
+
+```
+LOTUS  47,6 h de retard   2,7 m annoncés « maintenant »  contre 1,7 m réels
+MFWAM  36,6 h             2,3 m                                 1,6 m
+ECMWF  30,6 h             2,2 m                                 1,5 m
+MARC   27,6 h             2,5 m                                 1,8 m
+AIFS   24,6 h             2,5 m                                 1,9 m
+GFS    11,6 h             0,82 m                                1,3 m
+```
+
+La puissance et le **score** de la carte en découlent, donc ils étaient faux
+d'autant. On cherche désormais l'index le plus proche de maintenant. Le petit
+repère GFS gris de cette même carte avait la même faute et ne s'affiche plus
+quand GFS EST la source affichée (il se comparait à lui-même).
+
+### 2. « Houle 1 · GFS » sous six modèles qui ne sont pas GFS
+
+Le libellé faisait `_currentHsSrc === 'nc' ? 'meteo.nc' : 'GFS'` — le motif que
+`CLAUDE.md` signale comme « un bug en attente » depuis qu'il y a neuf clés.
+Mesuré dans le DOM pour mf/ecmwf/aifs/marc/lotus/mix : « Houle 1 · **GFS**
+2,5 m » sur une donnée MARC. Exactement la faute du 19/08 (« étiqueté du nom d'un
+modèle qu'il n'affiche pas »), un cran plus loin dans la page. `TABLE_SRC_DEFS`
+couvre les 9 clés et sert déjà de source unique aux badges.
+
+### 3. « Hs tot. » et « Mer vent » du tableau détaillé : meteo.nc, mal indexé
+
+Le chemin `setHsSrc` ne passait pas `d.totH`/`d.wndH` à `renderTable`, qui
+retombait alors sur `_fcastData` (meteo.nc) — et l'indexait par **numéro de
+ligne**, donc à un autre instant. Deux séries n'ayant ni la même cadence ni le
+même point de départ, l'écart pouvait atteindre deux jours.
+
+```
+                 via le toggle de source      via le bouton du tableau
+MARC   05h       Hs tot. 2,2 m                Hs tot. 2,5 m
+MFWAM  20h               2,2 m                        2,8 m
+LOTUS  09h               2,2 m                        3,2 m
+ECMWF  17h               2,2 m                        1,6 m
+```
+
+Le 2,2 m identique pour quatre modèles est la preuve : c'était `_fcastData.totH`.
+Le repli ne s'applique plus qu'à la série qui lui appartient vraiment (identité
+du tableau `dates`, pas une simple absence d'argument) — sans série propre, une
+colonne vide vaut mieux qu'un chiffre d'un autre modèle à une autre heure.
+
+### 4. `_tableSrc` divergeait de `_currentHsSrc`
+
+`setHsSrc` ne touchait pas `_tableSrc`, `switchTable` ne touchait pas
+`_currentHsSrc`. Mesuré après `setHsSrc('marc')` : badge « MARC WW3 » au-dessus
+d'une étiquette `#tbl-source` « meteo.nc ». Pire, tout `switchTable(_tableSrc)`
+ultérieur — et il y en a trois, dont un déclenché **à chaque cran de la molette**
+du comparatif houle — remplaçait le tableau du modèle choisi par l'ancienne
+source **sans toucher au badge**. Corollaire : l'en-tête affichait « H2 résid. »
+(propre à la décomposition meteo.nc) sur la houle 2 de MARC/MFWAM/LOTUS, qui n'a
+rien d'un résidu. `setHsSrc` synchronise maintenant les deux, et les huit boutons
+du tableau lui délèguent (`CLAUDE.md` : « les sélecteurs délèguent tous à
+`setHsSrc()` »).
+
+### 5. MARC : la carte de conditions et la rose du spectre décalaient tous les rangs
+
+Les deux supposaient `partitions[0]` = mer du vent — le piège documenté dans
+`CLAUDE.md`, déjà corrigé deux fois ailleurs (`_marcPrimarySwell` le 29/07, le
+widget le 04/08) sans que ces deux surfaces-ci le reçoivent. Mesuré sur les 37
+pas MARC du jour à Dumbéa : la houle dominante est au **slot 0 sur 20 pas**, et
+les périodes de ce slot vont de 4,8 à 13,5 s (médiane **9,0 s**, 20 sur 33
+au-dessus de 8 s) — ce n'est pas de la mer du vent. La carte divergeait de la
+page sur 20 pas sur 37, écart moyen 0,73 m, **max 1,45 m** ; la légende de la
+rose appelait « Mer du vent » ce que la page appelle « Houle 1 », et « Houle 1 »
+la houle 2. Pour LOTUS, autre variante : la rose gardait l'ordre brut de l'API
+quand `_swellTrains` trie par hauteur — **48 pas sur 64** en désaccord.
+
+Les deux surfaces classent désormais comme le reste de la page : mer du vent
+reconnue par sa **période** (`SWELL_WINDSEA_MAX_T`), houles numérotées de 1 en
+hauteur décroissante. MFWAM garde sa numérotation native, seul modèle dont la
+source la garantit (vérifié : 0 pas sur 89 n'a de période ≥ 8 s au slot 0). Le
+drapeau `hasWindSeaSlot` a disparu : un « ce modèle a-t-il un slot 0 » ne peut
+pas décrire une convention qui change d'un pas de temps à l'autre, et sa branche
+de repli décalait tous les numéros d'un cran dès qu'aucune mer du vent n'était
+identifiable.
+
+### Vérification (headless, données réelles, Passe de Dumbéa)
+
+```
+4 modèles testés : index à ≤ 1,1 h de maintenant (la cadence du modèle),
+  libellés « LOTUS » / « MARC WW3 » / « ECMWF » / « MF global »,
+  _tableSrc suivi, « Hs tot. » enfin distinct (3,0 / 2,7 / 1,6 / 2,5 m
+  contre 2,2 partout avant)
+
+carte MARC       1,6 m 9 s · 0,9 m 12 s · 0,2 m 20 s · 0,2 m 17 s
+trains de la page H1 1,60/9  H2 0,89/12  H3 0,24/20  H4 0,19/17   ← identiques
+rose MARC        Houle 1 1,6/9 · Houle 2 0,9/12 · Houle 3 0,2/20 · Houle 4 0,2/17
+rose MFWAM       Houle 1 1,3/7 · Houle 2 0,7/11 · Mer du vent 0,7/3  (natif, intact)
+rose LOTUS       Houle 1 1,5/10 · Houle 2 1,2/12 · Houle 3 0,3/18
+
+window.onerror + unhandledrejection : 0
+```
+
+`CACHE_NAME` → v100.
+
+### Reste ouvert, mesuré, PAS traité ce soir
+
+- **Quatre lecteurs sont restés sur `_fcastData`** alors que la page affiche un
+  autre modèle : `renderRose` (rose des houles — affiche 1,6 m/180° meteo.nc
+  quand MARC dit 1,4 m/150°), `updateHsHover` (survol de l'histogramme Hs, dans
+  la carte qui porte pourtant le badge « MARC WW3 »), `_pwrHoverInfo` (détail
+  sous la figure Puissance) et `mkStackedHs` (calendrier de `_fcastData` posé sur
+  les barres d'un autre modèle → décalage de 27 h mesuré).
+- **Colonne « Houle 2 » vide pour MARC et LOTUS** dans les Détails horaires :
+  `_swellCacheToTableData` ne lit que `c.secondary`, vide pour ces modèles dont
+  la houle 2 vit dans `partitions[]`. Mesuré : 37 créneaux avec H2 dans le
+  widget, 0 dans le tableau ; LOTUS 62 contre 0.
+- **Bloc « Modèles archivés »** : MFWAM y est affiché en mer totale (2,3 m) sous
+  l'étiquette « Houle » alors que sa houle primaire vaut 2,0 m ; MARC et LOTUS y
+  sont absents alors qu'ils ont des lignes `wave` en base.
+- **Arrondis** : le tableau détaillé n'arrondit pas du tout pour nc/om/mix
+  (« 0.82m / 13.4s » là où tout le reste affiche « 0,8 m / 13 s », 62 points
+  concernés) ; et un point sur 243 diffère d'un dixième entre `Math.round` et
+  `toFixed` (MFWAM 0,95 m → « 0.9 » ici, « 1.0 » là).
+- **Étiquette d'heure** : deux familles de grille (heures NC ≡ 2 mod 3 pour
+  nc/mf/ecmwf/aifs/marc, ≡ 0 mod 3 pour gfs/lotus). La même valeur MARC apparaît
+  sous « 11h » dans le widget et sous « 12h » dans le tableau du bas. Défaut de
+  lisibilité, pas de valeur : les tolérances d'appariement ne peuvent pas
+  désigner deux points différents ici (1 h contre 2 h, jamais à égalité).
+- Les deux agents coupés (valeurs fausses restantes, péremption silencieuse)
+  n'ont rien rendu — leurs angles restent à couvrir.
