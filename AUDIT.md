@@ -8958,12 +8958,16 @@ window.onerror + unhandledrejection : 0
 
 ### Reste ouvert, mesuré, PAS traité ce soir
 
-- **Quatre lecteurs sont restés sur `_fcastData`** alors que la page affiche un
-  autre modèle : `renderRose` (rose des houles — affiche 1,6 m/180° meteo.nc
-  quand MARC dit 1,4 m/150°), `updateHsHover` (survol de l'histogramme Hs, dans
-  la carte qui porte pourtant le badge « MARC WW3 »), `_pwrHoverInfo` (détail
-  sous la figure Puissance) et `mkStackedHs` (calendrier de `_fcastData` posé sur
-  les barres d'un autre modèle → décalage de 27 h mesuré).
+- ~~Quatre lecteurs restés sur `_fcastData`~~ **CORRIGÉ le 20/08** : `renderRose`,
+  `updateHsHover` et `_pwrHoverInfo` refaisaient chacun le choix de source avec
+  `_currentHsSrc === 'om' ? _omFcastData : _fcastData` — le motif à deux branches
+  qui ignore sept des neuf clés. Mesuré, source MARC active : la rose affichait
+  1,6 m / 180° (meteo.nc) quand la page affichait 1,4 m / 150°, et le survol de
+  l'histogramme Hs donnait meteo.nc dans la carte qui porte le badge « MARC WW3 ».
+  Remplacés par `_hsData()`, qui rend `_hsRenderData` — LE jeu de données posé
+  là où le tracé a lieu, dans les deux chemins de rendu (setHsSrc et le premier
+  rendu après changement de spot). Vérifié : survol MARC 1,80 m / 160°, LOTUS
+  1,80 / 150°, ECMWF 1,30 / 160°, pendant que `_fcastData.sw1h[3]` reste à 1,60.
 - **Colonne « Houle 2 » vide pour MARC et LOTUS** dans les Détails horaires :
   `_swellCacheToTableData` ne lit que `c.secondary`, vide pour ces modèles dont
   la houle 2 vit dans `partitions[]`. Mesuré : 37 créneaux avec H2 dans le

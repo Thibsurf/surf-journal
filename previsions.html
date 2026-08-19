@@ -4740,6 +4740,15 @@ var _currentHsSrc = 'nc'; // source active: 'nc' | 'om' | 'bom' | 'mf' | 'ecmwf'
 function _normHsSrc(v) { return v === 'gfs' ? 'om' : (v || 'nc'); }
 var _forecastCache = {};  // cache BSF : { spotName → { fc, _ts } }
 
+// Jeu de données de l'histogramme Hs et de ses lecteurs de survol — cf. le
+// commentaire dans setHsSrc(). Null tant que rien n'a été tracé : les lecteurs
+// retombent alors sur meteo.nc/GFS comme avant, ce qui est juste puisque c'est
+// ce que le premier rendu trace.
+var _hsRenderData = null;
+function _hsData() {
+  if (_hsRenderData && _hsRenderData.lbl && _hsRenderData.lbl.length) return _hsRenderData;
+  return (_currentHsSrc === 'om' && _omFcastData) ? _omFcastData : _fcastData;
+}
 function setHsSrc(src, skipRedraw) {
   // ══ 19/08/2026 ══ `_currentHsSrc` est LE choix de modèle de la page : le
   // widget global et le tableau « Ciel & houle » le lisent maintenant aussi
@@ -4793,6 +4802,18 @@ function setHsSrc(src, skipRedraw) {
   }
   if(!d || !d.lbl || !d.lbl.length) return;
 
+  // ── Le jeu de données RÉELLEMENT tracé, mémorisé pour les lecteurs de survol ─
+  // Ajouté le 20/08/2026. Quatre fonctions (renderRose, updateHsHover,
+  // _pwrHoverInfo, et le calendrier de mkStackedHs) refaisaient chacune leur
+  // propre choix de source avec `_currentHsSrc === 'om' ? _omFcastData :
+  // _fcastData` — le motif à deux branches que CLAUDE.md signale comme un bug en
+  // attente depuis qu'il y a neuf clés. Résultat mesuré, source MARC active :
+  // la rose des houles affichait 1,6 m / 180° (meteo.nc) quand la page affichait
+  // 1,4 m / 150°, et le survol de l'histogramme Hs donnait 1,6 m / 10 s /
+  // 12,8 kW/m dans la carte qui porte pourtant le badge « MARC WW3 ».
+  // Une seule variable, posée là où le tracé a lieu : impossible qu'un lecteur
+  // et le tracé qu'il commente divergent.
+  _hsRenderData = d;
   // Mettre à jour TOUS les graphiques
   mkStackedHs('c-hs', d.lbl, d.sw1h, d.sw2h, d.wndH, d.totH);
   _buildSecondaryCharts(d);
@@ -4895,7 +4916,7 @@ function _gwSyncFromPower(idx, click) {
 // Détail du créneau survolé sous la figure Puissance (valeur + composition + repère perso)
 function _pwrHoverInfo(idx) {
   var el = document.getElementById('pwr-hover-info'); if (!el) return;
-  var d = (_currentHsSrc === 'om' && _omFcastData) ? _omFcastData : _fcastData;
+  var d = _hsData(); // cf. _hsRenderData : la source réellement tracée
   if (!d || !d.pwr) return;
   var p = d.pwr[idx], hs = d.sw1h[idx], T = d.sw1t[idx], lbl = (d.lbl && d.lbl[idx]) || '';
   if (p == null) { el.innerHTML = '<b style="color:var(--text);">' + lbl + '</b> · puissance indisponible sur ce créneau'; return; }
@@ -6269,6 +6290,13 @@ function renderForecast(ncMarine, ncForecast, omMarine, omWind, spot) {
 
   // Histogramme Hs empilé — dessiner selon la source active
   var _hsD = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
+  // Même mémorisation qu'au chemin setHsSrc (cf. _hsRenderData) : ce rendu-ci
+  // est le PREMIER après un changement de spot, et sans cette ligne les lecteurs
+  // de survol resteraient sur le jeu de données du spot précédent — un chiffre
+  // d'un autre spot, ce qui est pire que celui d'un autre modèle. setHsSrc est
+  // rappelé juste après quand la source du spot n'est ni nc ni om (cf. la fin de
+  // _renderSwellCompare), et écrasera cette valeur par la bonne.
+  _hsRenderData = _hsD;
   mkStackedHs('c-hs', _hsD.lbl, _hsD.sw1h, _hsD.sw2h, _hsD.wndH, _hsD.totH);
 
   // Graphiques secondaires (période, vent, puissance) avec crosshair
@@ -10722,7 +10750,7 @@ function mkStackedHs(id,lbl,sw1h,sw2h,wndH,totH){
 
 function updateHsHover(i){
   var el=document.getElementById('hs-hover-table'); if(!el) return;
-  var d = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
+  var d = _hsData(); // cf. _hsRenderData : la source réellement tracée
   if(!d||!d.lbl||!d.lbl[i]) return;
   // Guard: si i dépasse les arrays (crosshair GFS > NC), clamp
   if(i >= d.lbl.length) i = d.lbl.length - 1;
@@ -11493,7 +11521,7 @@ function _jumpRoseDay(idx) {
 
 function renderRose(idx) {
   var cv=document.getElementById('c-rose'); if(!cv) return;
-  var d = (_currentHsSrc==='om' && _omFcastData) ? _omFcastData : _fcastData;
+  var d = _hsData(); // cf. _hsRenderData : la source réellement tracée
   if(!d||!d.lbl||!d.lbl.length) return;
   var i = (idx===undefined||idx===null) ? 0 : idx;
 
