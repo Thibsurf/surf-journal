@@ -8257,3 +8257,57 @@ deux dialogues, marée transportée, **rejeu == note affichée**, somme cohéren
 avec `raw10`, sélecteur satellite présent, 0 erreur JS. Capture d'écran relue.
 
 `sw.js` : `CACHE_NAME` v92 → **v93**.
+
+---
+
+## 2026-08-19 (suite 4) — T18 : extraction requin/cyclone/BMS vers assets/alerts.js
+
+Reprise de T18 (chantier 2, `AUDIT-previsions.md`), en pause depuis le 28/07 —
+`previsions.html` restait à 18 423 lignes, aucun des ~10 modules restants extrait.
+Choisi `alerts.js` (requin/cyclone/BMS) comme prochain module, sur recommandation
+laissée dans `REPRISE.md`.
+
+### Le piège trouvé avant d'écrire quoi que ce soit
+
+Contrairement à `enso.js`/`widget-global.js`/`settings-utils.js` (tous `defer`,
+sûrs car appelés uniquement après clic utilisateur), le bas du script inline
+contient deux instructions **top-level synchrones** :
+
+```js
+try { _renderBmsNotifToggle(); } catch(e) {}
+setInterval(function() { try { updateNavBMSBanner(); } catch(e) {} }, 5*60*1000);
+```
+
+Un script `defer` s'exécute APRÈS un script classique placé plus tôt dans le
+document — donc si `alerts.js` avait été chargé en `defer` (comme les 3 modules
+précédents), ces deux lignes auraient levé un `ReferenceError` dès le premier
+chargement. Repéré par lecture du code AVANT extraction, pas après coup.
+
+**Fix** : `alerts.js` chargé **sans `defer`**, dans le même groupe que
+`charts-core.js`/`score-core.js`/`tide-harmonics.js` (avant le bloc inline).
+Les deux instructions top-level restent dans `previsions.html` — seules les
+DÉFINITIONS de fonctions ont bougé.
+
+### Contenu déplacé
+
+`_renderSharkRisk`, `_renderCycloneIndicator`, `_fetchCycloneBulletin`,
+`_bmsParse`, `_bmsSeverity`, `getActiveBMS`, `_fetchNavBMS` (bloc contigu
+L16200-16652), puis `updateNavBMSBanner`, `_bmsId`, `_maybeNotifyBms`,
+`enableBmsNotifications`, `_renderBmsNotifToggle`, `openNavBMSDetail` (bloc
+contigu L17989-18116, hors les 2 lignes top-level ci-dessus). `previsions.html` :
+18 423 → 17 861 lignes.
+
+### Vérification
+
+`node --check assets/alerts.js` propre. Headless Chrome : les 4 fonctions
+critiques existent globalement (`typeof === 'function'`), `#shark-risk-indicator`
+et `#cyclone-indicator` reçoivent un vrai rendu HTML (2928/5796 caractères,
+données réseau réelles). Passage sur les 7 onglets (`forecast`, `maree`,
+`compare`, `windy`, `synop`, `enso`, `map`) via `showTab()` : **0 erreur JS**.
+
+`sw.js` : `CACHE_NAME` v93 → **v94**, `alerts.js` ajouté à `ASSETS`.
+
+Reste pour la suite de T18 : `core.js`, `sources.js`, `swell-compare.js`,
+`best-session.js`, `spots-compare.js`, `render-current.js`, `wind-arome.js`,
+`map-spots.js`, `tides-astro.js` — vérifier au cas par cas (comme ici) si un
+module candidat contient des appels top-level avant de décider `defer` ou non.
