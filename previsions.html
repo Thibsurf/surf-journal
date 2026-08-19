@@ -12675,16 +12675,31 @@ function _fetchOpenDataWind(cacheKey, spot) {
       rows.forEach(function(row) {
         var p = row.date.split('-');
         (row.hours || []).forEach(function(hh) {
-          // hh.hour == null : garde contre une ligne d'une ANCIENNE archive
-          // (avant ce chantier, le relais Windguru/_cacheModelPoints écrivait
-          // `hh.h`, pas `hh.hour`, sur le même id `..._ecmwf_wind` bare —
-          // constaté en vérifiant après coup : une ligne du 29/07 datant d'avant
-          // la migration de clé de run traînait encore avec ce vieux schéma).
-          // Sans cette garde, Math.floor(undefined) -> NaN -> ms NaN -> corrompt
-          // le Math.max(t1) global du comparatif vent (TOUTES les séries clippées
-          // à rien, pas seulement ECMWF) — bug trouvé en vérifiant en headless.
-          if (!hh || hh.val == null || hh.hour == null) return;
-          var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.hour), Math.round((hh.hour % 1) * 60)) - 11 * 3600000;
+          // DEUX schémas d'heure coexistent dans cette table : `hour`
+          // (ingestion/fetch_ecmwf.py, la vraie source) et `h`
+          // (_cacheModelPoints, écriture navigateur). Le commentaire précédent
+          // attribuait `h` à une vieille ligne Windguru résiduelle — c'était
+          // faux : la page elle-même ré-archivait ici, à chaque affichage du
+          // comparatif vent, ce qu'elle venait de lire, avec `h` et un
+          // issued_at=now toujours plus récent que celui de Python (= l'heure
+          // du run ECMWF, 00/06/12/18Z). Comme on ne garde que la ligne la plus
+          // récente par date, la page relisait donc SA propre écriture et la
+          // jetait intégralement : ECMWF/AIFS vent vides depuis le 30/07/2026.
+          // Mesuré le 19/08/2026 sur les données réelles (tri du client
+          // répliqué) : Dumbéa 0 point retenu sur 27 présents, Ténia 0/28 —
+          // et Boulari 25/28, le seul spot dont le navigateur n'était pas
+          // repassé, donc resté sur les lignes Python. L'écriture fautive est
+          // supprimée (cf. l'archivage best-effort du comparatif vent), mais on
+          // lit les deux clés : les lignes déjà empoisonnées restent en tête de
+          // leur date tant qu'un run Python plus récent ne les dépasse pas, et
+          // leurs valeurs sont bonnes — c'est la clé, pas la donnée, qui différait.
+          // La garde reste indispensable : sans elle Math.floor(undefined) -> NaN
+          // -> ms NaN -> corrompt le Math.max(t1) global du comparatif vent
+          // (TOUTES les séries clippées à rien, pas seulement ECMWF).
+          if (!hh || hh.val == null) return;
+          var hhH = hh.hour != null ? hh.hour : hh.h;
+          if (hhH == null) return;
+          var ms = Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hhH), Math.round((hhH % 1) * 60)) - 11 * 3600000;
           pts.push({ ms: ms, kt: hh.val, dir: hh.dir });
         });
       });
@@ -12944,7 +12959,23 @@ async function _renderAromeCompare(j) {
     // décodage GRIB2 direct — deux sources différentes sous un même nom
     // fausseraient toute comparaison. L'archive AROME reste assurée 3x/jour par
     // le job Python, aux spots ET aux stations.
-    [['nc', pageNc], ['gfs', pageGfs], ['bom', bomWind], ['ecmwf', ecmwfWind], ['aifs', aifsWind], ['marc', marcWind]].forEach(function(pair) {
+    //
+    // ECMWF et AIFS RETIRÉS le 19/08/2026, pour une raison PLUS GRAVE que celle
+    // d'AROME : ces deux-là ne sont pas fetchés en direct, ils SORTENT de cette
+    // table (_fetchOpenDataWind, cache-only). Les ré-archiver ici était un
+    // aller-retour lecture->écriture sur la même ligne logique, et il changeait
+    // la clé d'heure au passage — `h` ici (cf. _cacheModelPoints) contre `hour`
+    // chez ingestion/fetch_ecmwf.py — avec un issued_at=now toujours plus récent
+    // que celui de Python (qui vaut l'heure du run ECMWF, 00/06/12/18Z). Comme
+    // le lecteur ne garde que la ligne la plus récente par date, la page se
+    // relisait elle-même au chargement suivant et n'y comprenait plus rien :
+    // séries vides, donc ni courbe, ni ligne de tableau, ni pétale de rose pour
+    // ECMWF/AIFS dans le comparatif vent depuis le 30/07/2026. Le lecteur
+    // accepte désormais les deux clés (pour les lignes déjà écrites), mais on
+    // arrête d'en produire : l'archive est déjà faite 3x/jour par le job Python,
+    // aux spots ET aux stations, et chaque ligne inutile alourdit une table qui
+    // fait déjà expirer les requêtes larges (statement timeout).
+    [['nc', pageNc], ['gfs', pageGfs], ['bom', bomWind], ['marc', marcWind]].forEach(function(pair) {
       if (pair[1] && pair[1].length) _cacheModelPoints(SPOTS[currentSpot], pair[0], 'wind', pair[1], 'kt', null);
     });
   } catch (e) {}

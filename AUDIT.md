@@ -8452,3 +8452,117 @@ de plus au chargement — ce que `_fetchSpotFcRaw` évite explicitement depuis
 l'origine (CORS/rate-limit en multi-spots). L'écart restant est borné et va dans le
 même sens pour tous les spots au-delà de J+2 (aucun n'a de rafale), là où l'ancien
 comportement pénalisait un seul spot sur toute la fenêtre.
+
+---
+
+## 2026-08-19 (suite 6) — « pourquoi pas d'ECMWF/AIFS dans les vents ? » : la page écrasait sa propre source
+
+Signalé : ECMWF et AIFS sont absents des courbes ET du tableau du comparatif vent,
+alors que ces produits sont bien ingérés. Question posée : « peut-être manque-t-il
+d'autres données ? » **Non — la donnée est là, complète. C'est la page qui la
+détruisait.**
+
+### Le mécanisme (boucle lecture → écriture sur la même ligne)
+
+ECMWF/AIFS sont les deux seuls modèles du comparatif vent en **cache-only** : ils
+n'ont pas de fetch live, ils sortent de `model_forecast_cache`
+(`_fetchOpenDataWind`), alimentée 3×/j par `ingestion/fetch_ecmwf.py`. Or le bloc
+d'archivage best-effort du comparatif vent les **ré-archivait** à chaque affichage,
+c'est-à-dire réécrivait dans la table ce qu'il venait d'en lire — et changeait la
+clé d'heure au passage :
+
+| | écrit | lit |
+|---|---|---|
+| `ingestion/fetch_ecmwf.py` (`build_wind_rows`) | `{hour, val, dir}` | — |
+| `_cacheModelPoints` (navigateur) | `{h, val, period, dir}` | — |
+| `_fetchOpenDataWind` | — | exigeait `hh.hour` |
+
+`_cacheModelPoints` écrit `issued_at = now`, toujours plus récent que celui de
+Python (qui vaut l'**heure du run ECMWF**, 00/06/12/18 Z, pas l'heure du job). Comme
+le lecteur ne garde que la ligne la plus récente par date, la page relisait sa
+propre écriture au chargement suivant, ne trouvait pas `hour`, et jetait **tous**
+les points. Série vide → ni courbe, ni ligne de tableau, ni pétale de rose.
+
+En place depuis le 30/07/2026 (`be5f5399`, `217450f5` — les commits qui ont branché
+Open Data puis AIFS). Le commentaire de `_fetchOpenDataWind` attribuait ces lignes
+`h` à « une vieille ligne Windguru résiduelle du 29/07 » : c'était faux, la page
+en produisait de nouvelles à chaque visite. D'où le caractère intermittent (ça
+remarchait une fois après chaque run Python dont l'`issued_at` dépassait le dernier
+empoisonnement, puis se recassait aussitôt).
+
+### Mesure sur les données réelles (tri du client répliqué en REST, avant correctif)
+
+```
+Dumbéa  ecmwf:  0 point retenu / 27 présents      aifs:  0 / 26
+Ténia   ecmwf:  0 / 28                            aifs:  0 / 26
+Boulari ecmwf: 25 / 28                            aifs: 26 / 26
+```
+
+Boulari est la preuve du mécanisme : c'est le seul spot où le navigateur n'était
+pas repassé récemment, donc le seul resté sur les lignes Python — et le seul où
+ECMWF/AIFS s'affichaient.
+
+### Correctif (2 points)
+
+1. **`ecmwf`/`aifs` retirés du bloc d'archivage du comparatif vent.** Même
+   traitement qu'AROME le 14/08, pour une raison plus grave : ici l'écriture
+   corrompait la lecture suivante. L'archive reste assurée 3×/j par le job Python,
+   aux spots ET aux stations, et chaque ligne en moins allège une table qui fait
+   déjà expirer les requêtes larges (`statement timeout` reproduit sur un `count`
+   ce jour).
+2. **`_fetchOpenDataWind` lit les deux clés** (`hh.hour != null ? hh.hour : hh.h`).
+   Nécessaire pour les lignes déjà empoisonnées, qui restent en tête de leur date
+   jusqu'au prochain run Python : leurs **valeurs sont bonnes** (c'est un
+   ré-archivage fidèle), seule la clé différait. La garde anti-`null` reste
+   indispensable — un `ms` NaN corrompt le `Math.max(t1)` global et cliperait
+   TOUTES les séries à rien, pas seulement ECMWF.
+
+Ce que le correctif ne touche pas : la **houle** ECMWF/AIFS n'a jamais été atteinte
+(le navigateur archive sous `kind='swell_primary'`, le lecteur interroge
+`kind='wave'` — pas de collision), et les autres modèles vent non plus (nc/gfs/bom/
+marc ont un fetch live, et leur relecteur d'archive `_windCmpFromCache` lit `hhh.h`,
+cohérent avec l'écriture).
+
+### Vérification (headless, données réelles)
+
+Lecteur, appel direct sur 3 spots dont les 2 empoisonnés :
+
+```
+Dumbéa ecmwf=27 (1er point 22 nds / 119°)   aifs=26     ← 0 avant
+Ténia  ecmwf=28 (22 nds / 129°)             aifs=26     ← 0 avant
+Boulari ecmwf=28 (26 nds / 120°)            aifs=26
+```
+
+Écriture, page complète chargée puis `_renderAromeCompare()` déclenché — avec les
+modèles restés dans le bloc d'archivage comme **témoin** que ce bloc s'est bien
+exécuté :
+
+```
+nouvelles lignes kind='wind' après T0 :  nc=7  gfs=7  marc=6  |  ecmwf=0  aifs=0
+_aromeCmpCache : nc=32 gfs=50 marc=38 ecmwf=27 aifs=26
+```
+
+(BOM à 0 sur ce chargement — source figée côté Pacific Community, sans rapport.)
+
+Tracé, comptage des pixels non transparents du canvas `arome-cmp` à la couleur de
+chaque modèle (le seul contrôle fiable pour un canvas, cf. en-tête de ce journal),
+**avec la version d'avant correctif comme témoin sur la même machine et les mêmes
+données** :
+
+```
+HEAD (avant) : cache ecmwf=0  aifs=0   -> px_ECMWF=0    px_AIFS=0
+après        : cache ecmwf=27 aifs=26  -> px_ECMWF=841  px_AIFS=785
+```
+
+Tableau « Détails horaires », colonne vent, via `_swellCacheToTableData` :
+ECMWF 27/27 lignes renseignées (ex. 22 nds / 119°), AIFS 26/26 (16 nds / 117°) —
+c'étaient des « — » partout. `window.onerror` + `unhandledrejection` : **0 erreur**.
+`CACHE_NAME` → v96.
+
+### Reste ouvert (mesuré, assumé)
+
+En mode **« au point de mesure »**, ECMWF/AIFS restent masqués
+(`WIND_UNRESAMPLABLE`). Ce n'est plus la donnée qui l'impose : `fetch_ecmwf.py`
+échantillonne le vent sur `spots + stations`, et les 24 stations sont bien dans la
+table (vérifié ce jour : Phare Amédée, Nouméa, La Tontouta…). Il ne manque que le
+branchement dans `_fetchWindAtStation`. Chantier séparé, non fait ici.
