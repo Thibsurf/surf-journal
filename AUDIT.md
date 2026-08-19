@@ -9085,22 +9085,33 @@ de temps réels** d'ECMWF et d'AIFS, **35 % présentent deux pics séparables** 
 le spectre — typiquement un vers 10-12 s et un autre vers 15-17 s. Une houle
 longue distincte, jusqu'ici invisible autrement qu'en barres.
 
- en tire des GROUPES : un maximum local du spectre, plus les
+`_odSwellGroups` en tire des GROUPES : un maximum local du spectre, plus les
 bandes qui lui retombent dessus. Hauteur = √Σh² sur ses bandes (l'énergie
 s'additionne, pas les hauteurs) ; période = centre de bande pondéré par
-l'énergie. **Direction : aucune**, et elle le reste —  est celle de la mer
+l'énergie. **Direction : aucune**, et elle le reste — `mwd` est celle de la mer
 totale, l'attribuer à un groupe serait une invention, donc ces lignes n'ont pas
 de flèche.
 
-Rendu : sous la ligne « Mer totale » du comparatif,  et, quand
-le spectre se sépare, . Exclues de la médiane Consensus, comme
-la mer totale.
+Rendu : sous la ligne « Mer totale » du comparatif, `└ Houle ≥10 s (1)` et, quand
+le spectre se sépare, `└ Houle ≥10 s (2)`. Exclues de la médiane Consensus, comme
+la mer totale. Le groupe (1) est TOUJOURS renseigné — quand le spectre n'a qu'un
+seul tenant (2 créneaux sur 3), il vaut toute l'énergie ≥ 10 s, même formule
+appliquée au spectre entier. Une ligne vide deux fois sur trois aurait eu l'air
+d'une donnée manquante alors que la houle longue est bien là.
 
 Vérifié sur données réelles (Passe de Dumbéa) :
 
+```
+bandes         [0.50 0.30 0.32 0.26 0.12 0.04]
+groupes        0,59 m @ 11,7 s   +   0,43 m @ 17,5 s
+conservation   racine(somme groupes²) = 0,729
+             = racine(somme bandes²)  = 0,729     rien créé, rien perdu
+mer totale du même pas : 1,25 m
+lignes remplies : ECMWF G1 25/25, G2 6/25 · AIFS G1 25/25, G2 13/25
+window.onerror : 0
+```
 
-
- → v107.
+`CACHE_NAME` → v107.
 
 ### Reste ouvert, mesuré, PAS traité ce soir
 
