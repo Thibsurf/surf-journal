@@ -9068,6 +9068,40 @@ depuis longtemps. Angle considéré comme couvert pour les sources principales,
 dont l'ingestion a par ailleurs été recoupée au champ près contre Open-Meteo
 (GFS, ECMWF, MFWAM).
 
+### Addendum 20/08 — ECMWF/AIFS : ce qu'on peut tirer des bandes de période
+
+Question posée : « ECMWF pas de houle primaire/secondaire ? si plusieurs on peut
+les reclasser ? on veut toutes les infos ». Réponse mesurée, pas théorique.
+
+Ce que la source publie : la mer totale (swh/mwp/mwd) **plus six hauteurs
+significatives découpées par bande de période** — 10-12, 12-15, 15-17, 17-20,
+20-25, 25-30 s — **sans direction par bande**. Ce ne sont pas des partitions :
+une bande est une tranche fixe du spectre, pas un train physique, et l'énergie
+d'un même train déborde sur les bandes voisines. D'où l'impossibilité d'en faire
+une « houle 1 » au sens de MARC ou MFWAM.
+
+Mais on peut faire mieux que l'histogramme brut, et c'est mesuré : sur **280 pas
+de temps réels** d'ECMWF et d'AIFS, **35 % présentent deux pics séparables** dans
+le spectre — typiquement un vers 10-12 s et un autre vers 15-17 s. Une houle
+longue distincte, jusqu'ici invisible autrement qu'en barres.
+
+ en tire des GROUPES : un maximum local du spectre, plus les
+bandes qui lui retombent dessus. Hauteur = √Σh² sur ses bandes (l'énergie
+s'additionne, pas les hauteurs) ; période = centre de bande pondéré par
+l'énergie. **Direction : aucune**, et elle le reste —  est celle de la mer
+totale, l'attribuer à un groupe serait une invention, donc ces lignes n'ont pas
+de flèche.
+
+Rendu : sous la ligne « Mer totale » du comparatif,  et, quand
+le spectre se sépare, . Exclues de la médiane Consensus, comme
+la mer totale.
+
+Vérifié sur données réelles (Passe de Dumbéa) :
+
+
+
+ → v107.
+
 ### Reste ouvert, mesuré, PAS traité ce soir
 
 - ~~Quatre lecteurs restés sur `_fcastData`~~ **CORRIGÉ le 20/08** : `renderRose`,

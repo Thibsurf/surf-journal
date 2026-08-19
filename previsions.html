@@ -6717,6 +6717,70 @@ async function _fetchMfCombined(spot) {
 // pour que la lecture reste honnête. Le repli existait DÉJÀ pour la flèche de
 // la carte (`_totDir != null ? p.totDir : p.dir`) et côté Journal depuis
 // c7294cb3 : cette ligne aligne simplement le reste de la page.
+// ── Regrouper les 6 bandes de période en GROUPES DE HOULE ────────────────────
+// Ajouté le 20/08/2026, sur demande : « ECMWF pas de houle primaire/secondaire ?
+// si plusieurs on peut les reclasser ? on veut toutes les infos ».
+//
+// Ce que la source donne vraiment : `swh/mwp/mwd` (mer totale) + six hauteurs
+// significatives découpées par bande de période — 10-12, 12-15, 15-17, 17-20,
+// 20-25, 25-30 s — SANS direction par bande. Ce ne sont pas des partitions : une
+// bande est une tranche fixe du spectre, pas un train physique, et l'énergie d'un
+// même train déborde sur les bandes voisines. D'où l'impossibilité d'en faire une
+// « houle 1 » au sens de MARC ou MFWAM.
+//
+// Mais on peut faire mieux que l'histogramme brut, et c'est MESURÉ : sur 280 pas
+// de temps réels d'ECMWF et d'AIFS, 35 % présentent DEUX pics séparables dans le
+// spectre (typiquement 10-12 s + 15-17 s) — une houle courte et une houle longue
+// bien distinctes, aujourd'hui visibles seulement en barres. Les 65 % restants
+// sont un spectre décroissant d'un seul tenant : rien à séparer, et on ne
+// fabrique alors aucun groupe.
+//
+// Méthode, sans rien inventer :
+//  • un GROUPE = un maximum local du spectre, avec les bandes qui lui retombent
+//    dessus (chaque bande va au pic le plus proche) ;
+//  • sa hauteur = √Σh² sur ses bandes — l'énergie s'additionne, pas les hauteurs
+//    (même règle que partout ailleurs sur ce site) ; l'énergie totale est donc
+//    conservée, on ne crée pas de mer ;
+//  • sa période = moyenne des centres de bande PONDÉRÉE PAR L'ÉNERGIE, donc une
+//    période représentative du groupe et non le milieu d'une bande choisie ;
+//  • sa DIRECTION reste inconnue et le reste : `mwd` est celle de la mer totale,
+//    l'attribuer à un groupe serait une invention. Les lignes correspondantes
+//    n'ont donc pas de flèche, et le disent.
+function _odSwellGroups(bands) {
+  if (!bands || bands.length !== 6) return null;
+  var MID = [11, 13.5, 16, 18.5, 22.5, 27.5]; // centre de chaque bande (s)
+  var MIN_PEAK = 0.05, MIN_GROUP = 0.1;       // m — sous ça, c'est du résiduel
+  var peaks = [], i;
+  for (i = 0; i < 6; i++) {
+    var l = i > 0 ? bands[i - 1] : -1, r = i < 5 ? bands[i + 1] : -1;
+    if (bands[i] > l && bands[i] > r && bands[i] > MIN_PEAK) peaks.push(i);
+  }
+  // Spectre d'un seul tenant (2 fois sur 3) : on renvoie quand même UN groupe,
+  // qui vaut toute l'énergie ≥ 10 s. C'est la même formule appliquée au spectre
+  // entier, pas un cas particulier — et ça rend la ligne « Houle ≥10 s (1) »
+  // toujours renseignée, au lieu d'une ligne vide 2 créneaux sur 3 qui aurait
+  // l'air d'une donnée manquante alors que la houle longue est bien là. La
+  // ligne (2) n'apparaît, elle, que quand le spectre se sépare vraiment.
+  if (!peaks.length) peaks = [0];
+  var groups = peaks.map(function(pi) { return { peak: pi, e: 0, wt: 0 }; });
+  for (i = 0; i < 6; i++) {
+    if (!(bands[i] > 0)) continue;
+    var best = 0, bd = 99;
+    for (var k = 0; k < peaks.length; k++) {
+      var dd = Math.abs(i - peaks[k]);
+      if (dd < bd) { bd = dd; best = k; }
+    }
+    var e = bands[i] * bands[i];
+    groups[best].e += e; groups[best].wt += e * MID[i];
+  }
+  var out = [];
+  groups.forEach(function(g) {
+    var h = Math.sqrt(g.e);
+    if (h >= MIN_GROUP) out.push({ h: h, t: g.e > 0 ? g.wt / g.e : MID[g.peak] });
+  });
+  out.sort(function(a, b) { return b.h - a.h; });
+  return out.length ? out : null;
+}
 function _fetchOpenDataArchive(cacheKey, spot) {
   return (async function() {
     try {
@@ -6772,6 +6836,10 @@ function _fetchOpenDataArchive(cacheKey, spot) {
             // _drawBandsBars). bandH/bandT = la bande la plus haute et le milieu
             // de cette bande — l'ancien couple h/t, gardé pour ne rien perdre.
             bands: hh.bands || null, bandH: hh.val, bandT: hh.period,
+            // Groupes de houle dérivés des bandes (cf. _odSwellGroups) — null
+            // quand le spectre n'a qu'un seul tenant, ce qui est le cas 2 fois
+            // sur 3. Sans direction : la source n'en publie pas par bande.
+            groups: _odSwellGroups(hh.bands),
           });
         });
       });
@@ -7224,8 +7292,8 @@ var SWELL_MODELS = [
   { key: 'gfs',   label: 'GFS',       col: _rgbaFromHex(MODEL_STYLE.gfs.col, .95), desc: 'NOAA GFS-Wave (ncep_gfswave025) — grille 0,25° (~28 km)' },
   { key: 'bom',   label: 'BOM WW3',   col: _rgbaFromHex(MODEL_STYLE.bom.col, .95),   desc: 'Bureau of Meteorology (Australie), WaveWatch III régional — grille 0,125° (~14 km)' },
   { key: 'mf',    label: 'MF global', col: _rgbaFromHex(MODEL_STYLE.mf.col, .95),    desc: 'Météo-France — modèle vague global MFWAM, direct depuis Copernicus Marine (GLOBAL_ANALYSISFORECAST_WAV_001_027) — grille 0,083° (~9 km), houle primaire/secondaire + mer du vent avec direction' },
-  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Ce modèle ne publie AUCUNE partition de houle en Open Data gratuit : la ligne affichée est la MER TOTALE (swh/mwp/mwd — hauteur significative toutes composantes confondues, houle + mer du vent), la même valeur que Windy montre pour ECMWF. Elle n\'est donc pas comparable telle quelle à la « Houle 1 » des modèles partitionnés (meteo.nc, GFS, MARC, MFWAM, LOTUS), qui en excluent la mer du vent — et elle est exclue de la médiane Consensus pour cette raison. Le seul détail spectral disponible est la répartition par bande de période (10-30 s), montrée en histogramme.' },
-  { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Mêmes limites : aucune partition publiée, la ligne affichée est la MER TOTALE (swh/mwp/mwd), pas une houle primaire — exclue de la médiane Consensus, comme ECMWF.' },
+  { key: 'ecmwf', label: 'ECMWF',     col: _rgbaFromHex(MODEL_STYLE.ecmwf.col, .95), desc: 'ECMWF IFS-HRES, direct depuis Open Data (data.ecmwf.int) — grille 0,25° (~28 km). Ce modèle ne publie AUCUNE partition de houle en Open Data gratuit : la ligne affichée est la MER TOTALE (swh/mwp/mwd — hauteur significative toutes composantes confondues, houle + mer du vent), la même valeur que Windy montre pour ECMWF. Elle n\'est donc pas comparable telle quelle à la « Houle 1 » des modèles partitionnés (meteo.nc, GFS, MARC, MFWAM, LOTUS), qui en excluent la mer du vent — et elle est exclue de la médiane Consensus pour cette raison. Le seul détail spectral disponible est la répartition par bande de période (10-30 s) : elle est montrée en histogramme, et regroupée en « Houle ≥10 s (1)/(2) » sous la ligne du modèle dans le comparatif quand le spectre présente plusieurs pics séparables — mesuré sur 35 % des créneaux. Ces groupes somment l\'énergie de leurs bandes (√Σh², rien n\'est créé ni perdu) et portent une période pondérée par l\'énergie, mais AUCUNE direction : la source n\'en publie pas par bande.' },
+  { key: 'aifs',  label: 'AIFS',      col: _rgbaFromHex(MODEL_STYLE.aifs.col, .95),  desc: 'ECMWF AIFS-single — modèle IA opérationnel (pas de la physique), même Open Data/grille 0,25° (~28 km) qu\'IFS-HRES ci-dessus. Mêmes limites : aucune partition publiée, la ligne affichée est la MER TOTALE (swh/mwp/mwd), pas une houle primaire — exclue de la médiane Consensus, comme ECMWF. Mêmes groupes « Houle ≥10 s » dérivés de ses bandes de période.' },
   // desc étendue le 01/08/2026 (audit houle 1/2) : MARC est désormais le SEUL
   // modèle du comparatif dont la « houle 1 » n'est ni un champ natif ni
   // disclosed dans son desc — nc/gfs/bom/mf ont un vrai champ natif, ecmwf/aifs
@@ -7906,6 +7974,29 @@ function _swellTrains(key) {
     var isTotal = !!cache.primary[0].swellIsTotal;
     var flat = [{ rank: 1, pts: cache.primary, total: isTotal }];
     if (cache.secondary && cache.secondary.length) flat.push({ rank: 2, pts: cache.secondary });
+    // ── Groupes de houle d'ECMWF/AIFS (20/08/2026) ───────────────────────────
+    // Sous la mer totale, une ligne par GROUPE du spectre de période quand il y
+    // en a plusieurs de séparables (cf. _odSwellGroups — 35 % des pas de temps
+    // mesurés). C'est la seule décomposition que ces modèles permettent, et elle
+    // dit quelque chose d'utile : « une houle courte de 0,57 m à 12 s ET une
+    // houle longue de 0,44 m à 17 s », là où la mer totale seule n'en montre
+    // qu'une. Sans direction — ces lignes n'auront pas de flèche, la source n'en
+    // publie pas par bande, et `mwd` est celle de la mer totale.
+    // Le nombre de groupes peut varier d'un pas de temps à l'autre : on aligne
+    // sur le MAXIMUM rencontré et chaque ligne ne porte que les pas où son rang
+    // existe — un trou est alors un vrai « pas de 2e groupe à cette heure-là ».
+    if (isTotal) {
+      var maxG = 0;
+      cache.primary.forEach(function(p) { if (p.groups && p.groups.length > maxG) maxG = p.groups.length; });
+      for (var gi = 0; gi < maxG && gi < SWELL_MAX_TRAINS; gi++) {
+        var gpts = [];
+        cache.primary.forEach(function(p) {
+          var g = p.groups && p.groups[gi];
+          if (g) gpts.push({ ms: p.ms, h: g.h, t: g.t, dir: null });
+        });
+        if (gpts.length) flat.push({ rank: gi + 1, pts: gpts, band: true });
+      }
+    }
     return flat;
   }
   var native = (key === 'mf'); // seul modèle dont la source numérote ses partitions
@@ -8048,7 +8139,7 @@ function _renderCmpTable() {
       if (_swellHidden[m.key]) { hiddenSwellCount++; return; }
       trains.forEach(function(tr, ti) {
         swellDefs.push({
-          key: m.key, pts: tr.pts, rank: tr.rank, sea: !!tr.sea, total: !!tr.total,
+          key: m.key, pts: tr.pts, rank: tr.rank, sea: !!tr.sea, total: !!tr.total, band: !!tr.band,
           isFirst: ti === 0, nTrains: trains.length
         });
       });
@@ -8200,6 +8291,12 @@ function _renderCmpTable() {
       // par la 1re ligne. Répéter « MARC WW3 » 5 fois d'affilée aurait noyé
       // l'information utile (le rang du train) dans une colonne déjà étroite.
       var inGroup = kind === 'swell' && d.nTrains > 1;
+      // Ces groupes ne participent pas à la médiane Consensus : ce n'est pas une
+      // houle primaire comparable à celle des modèles partitionnés (déjà assuré
+      // par le filtre `rank === 1 && !sea && !total`, qui les exclut de fait
+      // puisqu'ils portent `total: false` — sauf le groupe de rang 1. On le dit
+      // explicitement dans consensusDef plutôt que de compter sur un effet de
+      // bord.)
       var groupTop = (kind === 'swell' && d.isFirst) ? 'border-top:2px solid var(--border-h);' : '';
       var nameHtml, indent = '';
       if (!inGroup || d.isFirst) {
@@ -8217,8 +8314,13 @@ function _renderCmpTable() {
         // annoncer une partition qui n'existe pas, à côté de 6 modèles qui, eux,
         // en donnent une — même traitement visuel que « Mer du vent » : italique
         // atténué, pour qu'on lise la valeur sans la prendre pour une houle.
-        var rankTxt = d.total ? 'Mer totale' : (d.sea ? 'Mer du vent' : 'Houle ' + d.rank);
-        var soft = d.sea || d.total;
+        // « Houle ≥10 s (1) » : groupe du spectre de période d'ECMWF/AIFS, pas une
+        // partition — le libellé le dit, et la période affichée sous le nom suffit
+        // à l'identifier. Sans direction (cf. _odSwellGroups).
+        var rankTxt = d.band ? ('Houle ≥10 s (' + d.rank + ')')
+                    : d.total ? 'Mer totale'
+                    : (d.sea ? 'Mer du vent' : 'Houle ' + d.rank);
+        var soft = d.sea || d.total || d.band;
         rankHtml = '<span style="font-weight:' + (soft ? '500' : '600') + ';font-size:10px;color:var(--muted);'
           + (soft ? 'font-style:italic;' : '') + (inGroup && !d.isFirst ? '' : 'margin-left:5px;') + '">' + rankTxt + '</span>';
       }
@@ -8264,7 +8366,7 @@ function _renderCmpTable() {
     // `!d.total` : une mer totale (ECMWF/AIFS) inclut la mer du vent — la
     // médianer avec des houles primaires comparerait deux grandeurs. Exclue au
     // même titre que la mer du vent, et pour la même raison.
-    var src = defs.filter(function(d) { return kind === 'wind' ? true : (d.rank === 1 && !d.sea && !d.total); });
+    var src = defs.filter(function(d) { return kind === 'wind' ? true : (d.rank === 1 && !d.sea && !d.total && !d.band); });
     if (src.length < 3) return null; // sous 3 modèles, une « médiane » n'apporte rien
     var pts = [];
     slots.forEach(function(s) {
