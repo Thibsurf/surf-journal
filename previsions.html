@@ -11946,6 +11946,18 @@ function switchTable(src) {
   }
 }
 
+// Arrondi d'AFFICHAGE, appliqué ici et pas chez l'appelant (20/08/2026).
+// `fmt()` (assets/settings-utils.js) concatène sans jamais arrondir, et seul
+// _swellCacheToTableData arrondissait en amont (r1/r0) : le même tableau
+// affichait donc « 1.4m / 9s » pour MARC et « 0.82m / 13.4s » pour GFS ou le
+// Mix, à quelques lignes d'écart — 62 points concernés, mesurés le 20/08. Le
+// commentaire d'origine supposait que « nc/GFS arrivent déjà propres de leur
+// API » : faux, Open-Meteo publie deux décimales. Arrondir au rendu plutôt qu'à
+// la source vaut pour TOUS les appelants, présents et futurs, et ne touche pas
+// aux valeurs utilisées pour calculer (score, puissance), qui gardent leur
+// précision.
+function _tblH(v) { return v == null ? null : Math.round(v * 10) / 10; }
+function _tblT(v) { return v == null ? null : Math.round(v); }
 function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst,totH,wndHarr){
   var days=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'],lastDay=null;
   // totH/wndHarr optionnels : nc/om ne les passent pas (comportement historique
@@ -12005,12 +12017,12 @@ function renderTable(dates,sw1h,sw1t,sw1d,sw2h,sw2d,wSpd,wGst,wDir,pwr,sst,totH,
     var _swOut = _swMatch ? 'outline:2px solid var(--sun);outline-offset:-2px;' : '';
     html+='<tr'+(isN?' class="night"':'')+'>'
       +'<td style="color:var(--muted)">'+String(h).padStart(2,'0')+'h</td>'
-      +'<td style="font-weight:500;color:'+hsCol(totH&&totH[i])+'">'+fmt(totH&&totH[i],'m')+'</td>'
-      +'<td style="color:'+hsCol(sw1h[i])+';'+_swOut+'">'+fmt(sw1h[i],'m')+'</td>'
-      +'<td style="'+_swOut+'">'+fmt(sw1t[i],'s')+'</td>'
+      +'<td style="font-weight:500;color:'+hsCol(totH&&totH[i])+'">'+fmt(_tblH(totH&&totH[i]),'m')+'</td>'
+      +'<td style="color:'+hsCol(sw1h[i])+';'+_swOut+'">'+fmt(_tblH(sw1h[i]),'m')+'</td>'
+      +'<td style="'+_swOut+'">'+fmt(_tblT(sw1t[i]),'s')+'</td>'
       +'<td style="'+_swOut+'">'+svgArrow(sw1d[i],'#4fa3c7')+' <span style="white-space:nowrap;">'+compass(sw1d[i])+'<span style="color:var(--faint);font-size:11px;margin-left:2px;">'+(sw1d[i]!==null&&sw1d[i]!==undefined?Math.round(sw1d[i])+'°':'')+'</span></span></td>'
-      +'<td style="color:'+hsCol(sw2h[i])+'">'+fmt(sw2h[i],'m')+'</td>'
-      +'<td style="color:rgba(232,160,87,.8)">'+fmt(wnd,'m')+'</td>'
+      +'<td style="color:'+hsCol(sw2h[i])+'">'+fmt(_tblH(sw2h[i]),'m')+'</td>'
+      +'<td style="color:rgba(232,160,87,.8)">'+fmt(_tblH(wnd),'m')+'</td>'
       +'<td style="color:'+windCol(wSpd[i])+'">'+fmt(wSpd[i]?Math.round(wSpd[i]):null,' nds')+'</td>'
       +'<td style="color:'+windCol(wGst[i])+'">'+fmt(wGst[i]?Math.round(wGst[i]):null,' nds')+'</td>'
       +'<td>'+svgArrow(wDir[i],'#e8a057')+' <span style="white-space:nowrap;">'+compass(wDir[i])+'<span style="color:var(--faint);font-size:11px;margin-left:2px;">'+(wDir[i]!==null&&wDir[i]!==undefined?Math.round(wDir[i])+'°':'')+'</span></span></td>'

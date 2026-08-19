@@ -9037,10 +9037,16 @@ window.onerror  : 0
   semaines sans jamais apparaître. Vérifié : 7 modèles, MF 1,4 m/7 s (page 1,33),
   MARC 1,5/9 (page 1,60), LOTUS 1,4/10 (page 1,51) — l'écart résiduel est
   l'heure d'échantillonnage (ce bloc vise sessionHour, la page vise maintenant).
-- **Arrondis** : le tableau détaillé n'arrondit pas du tout pour nc/om/mix
-  (« 0.82m / 13.4s » là où tout le reste affiche « 0,8 m / 13 s », 62 points
-  concernés) ; et un point sur 243 diffère d'un dixième entre `Math.round` et
-  `toFixed` (MFWAM 0,95 m → « 0.9 » ici, « 1.0 » là).
+- ~~Arrondis du tableau détaillé~~ **CORRIGÉ le 20/08** : `fmt()` concatène sans
+  jamais arrondir, et seul `_swellCacheToTableData` arrondissait en amont — le
+  même tableau montrait donc « 1.4m / 9s » pour MARC et « 0.82m / 13.4s » pour
+  GFS ou le Mix, à quelques lignes d'écart. Le commentaire d'origine supposait
+  que « nc/GFS arrivent déjà propres de leur API » : faux, Open-Meteo publie deux
+  décimales. L'arrondi se fait désormais **au rendu** (`_tblH`/`_tblT` dans
+  `renderTable`), donc pour tous les appelants présents et futurs, et sans
+  toucher aux valeurs qui servent à CALCULER (score, puissance), qui gardent
+  leur précision. Vérifié : 0 cellule trop précise sur om (88 lignes), nc (49),
+  mix (49), marc (39).
 - **Étiquette d'heure** : deux familles de grille (heures NC ≡ 2 mod 3 pour
   nc/mf/ecmwf/aifs/marc, ≡ 0 mod 3 pour gfs/lotus). La même valeur MARC apparaît
   sous « 11h » dans le widget et sous « 12h » dans le tableau du bas. Défaut de
