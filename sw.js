@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v93';
+const CACHE_NAME = 'surf-nc-v94';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -27,6 +27,10 @@ const ASSETS = [
   // tide-harmonics.js : le widget marée du Journal en dépend pour tracer la courbe
   // du jour — sans précache, le formulaire de session serait cassé hors-ligne.
   '/surf-journal/assets/tide-harmonics.js',
+  // alerts.js : requin/cyclone/BMS (AUDIT-previsions.md T18). Sans précache,
+  // previsions.html lèverait un ReferenceError au 1er lancement hors-ligne
+  // (chargé SANS defer, avant le bloc inline qui l'appelle en top-level).
+  '/surf-journal/assets/alerts.js',
   // Bibliothèques servies depuis le dépôt (plus depuis jsdelivr/cdnjs) : sans elles
   // en cache, le 1er lancement hors-ligne laissait `sb` à null et Chart.js absent —
   // donc pas d'app du tout, alors que le reste était précaché.
