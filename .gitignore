@@ -20,3 +20,10 @@ __pycache__/
 # jamais versionnés (données volatiles, régénérées à chaque run)
 ingestion/surfline_state/
 ingestion/debug_raw/
+
+# Pages de diagnostic headless : copies temporaires de previsions.html injectées
+# d'un <script> de mesure (cf. CLAUDE.md, « Diagnostic runtime »). Elles pèsent
+# 1,1 Mo chacune et n'ont aucune valeur hors de la session qui les crée — une a
+# été committée par erreur le 19/08/2026 par un `git add -A` lancé pendant qu'un
+# agent de vérification en avait une sur le disque.
+__test*.html
