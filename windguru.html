@@ -221,15 +221,17 @@ document.getElementById('b-cfg').onclick = function () {
 // comparatif ne marche pas » alors que les widgets s'affichent. Constat depuis
 // l'extérieur : /debug du Worker répond, /arome?spot=6476 renvoie une erreur
 // serveur. On suit donc le MÊME ordre que previsions.html depuis le 02/08/2026 :
-//   1. archive GRIB2 Météo-France (table model_forecast_cache, model=aro,
-//      kind=wind, écrite 3×/jour par ingestion/fetch_arome.py) ;
-//   2. repli sur /arome du Worker si le point n'est pas archivé.
+//   (ordre inversé le soir même, cf. loadCmp : Windguru d'abord et seul par
+//   défaut ; l'archive GRIB2 Météo-France — model_forecast_cache, model=aro,
+//   kind=wind, écrite 3×/jour par ingestion/fetch_arome.py — seulement si
+//   l'utilisateur la demande par le bouton.)
 // La source ET l'heure du run sont affichées par spot : c'est l'info qui dit de
 // quand date la prévision. Les widgets Windguru du dessous sont des iframes d'un
 // autre domaine : impossible d'y lire quoi que ce soit (ni chiffres, ni run).
 var H0 = 5, H1 = 18;            // heures NC affichées dans le comparatif
 var cmpData = {};               // key spot → { pts:[{ms,w,g}], runMs, src } ou { err }
 var cmpDay = null;              // jour NC sélectionné ('AAAA-M-J')
+var useArchive = false;         // true = l'utilisateur a accepté l'archive Météo-France à défaut de Windguru
 var sharedSpots = null;         // spots de l'app (shared_spots) → lat/lon réellement archivés
 
 // Convention projet : NC = UTC+11 fixe → new Date(ms + 11h) lu en getUTC*.
@@ -311,7 +313,7 @@ function fromArchive(s, cb) {
 }
 
 function fromWorker(s, cb) {
-  if (!s.id || typeof _NC_WORKER === 'undefined') { cb(null, 'aucune source'); return; }
+  if (!s.id || typeof _NC_WORKER === 'undefined') { cb(null, 'pas d\'id Windguru'); return; }
   var x = new XMLHttpRequest();
   x.open('GET', _NC_WORKER + '/arome?spot=' + s.id, true);
   x.timeout = 25000;
@@ -321,7 +323,7 @@ function fromWorker(s, cb) {
     if (x.status === 200 && j && j.ok && j.hours && j.hours.length && j.init) {
       for (k = 0; k < j.hours.length; k++) pts.push({ ms: j.init * 1000 + j.hours[k] * 3600000, w: num(j.WINDSPD[k]), g: num(j.GUST[k]), run: null });
       cb({ pts: pts, runMs: j.init * 1000, fixedRun: true, src: 'Windguru (via worker)' });
-    } else cb(null, (j && j.error === 'AROME_NOT_AVAILABLE') ? 'AROME indisponible chez Windguru pour ce spot' : 'relais Windguru en erreur (HTTP ' + x.status + ')');
+    } else cb(null, (j && j.error === 'AROME_NOT_AVAILABLE') ? 'AROME indisponible chez Windguru pour ce spot' : 'le relais du worker répond HTTP ' + (x.status || 'aucune réponse') + (j && j.error ? ' : ' + String(j.error).slice(0, 80) : ''));
   };
   x.send();
 }
@@ -333,10 +335,15 @@ function loadCmp() {
   document.getElementById('c-body').innerHTML = 'Chargement…';
   function done() { pending--; if (pending === 0 && seq === loadSeq) drawCmp(); }
   function one(s) {
-    fromArchive(s, function (a) {
-      if (a) { cmpData[s.key] = a; done(); return; }
-      fromWorker(s, function (w, why) {
-        cmpData[s.key] = w || { err: 'pas de point archivé près de ce spot, et ' + why };
+    // Windguru D'ABORD et, par défaut, SEULEMENT (demande explicite de
+    // l'utilisateur le 10/11/2026 : « je veux être sûr que ça vienne de
+    // Windguru »). L'archive Météo-France n'est lue que s'il la demande lui-même
+    // (useArchive), jamais en repli silencieux — et la colonne « source » le dit.
+    fromWorker(s, function (w, why) {
+      if (w) { cmpData[s.key] = w; done(); return; }
+      if (!useArchive) { cmpData[s.key] = { err: 'Windguru indisponible — ' + why }; done(); return; }
+      fromArchive(s, function (a) {
+        cmpData[s.key] = a || { err: 'Windguru indisponible (' + why + ') et pas de point archivé près de ce spot' };
         done();
       });
     });
@@ -370,7 +377,8 @@ function drawCmp() {
   if (!days.length) {
     var why = '';
     for (i = 0; i < spots.length; i++) { d = cmpData[spots[i].key]; if (d && d.err) why += '<br>• ' + spots[i].name + ' : ' + d.err; }
-    body.className = 'note'; body.innerHTML = 'Comparatif indisponible pour l\'instant.' + why;
+    body.className = 'note'; body.innerHTML = 'Comparatif indisponible pour l\'instant.' + why + archBtn();
+    bindArch();
     return;
   }
   days.sort(function (a, b) { return a.ms - b.ms; });
@@ -454,7 +462,19 @@ function drawCmp() {
     + '<div class="note">Grand chiffre = vent moyen (nds), petit = rafales. En jaune : le spot où le vent atteint le seuil le plus tard, et celui au matin le plus calme.'
     + (anyMixed ? ' * = les heures de ce jour viennent de deux runs différents.' : '')
     + ' Les tableaux Windguru ci-dessous affichent leur propre date de run dans leur en-tête : elle peut différer de celle-ci.</div>';
-  body.className = ''; body.innerHTML = html;
+  var anyErr = false;
+  for (i = 0; i < rows.length; i++) if (rows[i].err) anyErr = true;
+  body.className = ''; body.innerHTML = html + ((anyErr || useArchive) ? '<div class="note">' + archBtn() + '</div>' : '');
+  bindArch();
+}
+function archBtn() {
+  return '<br><button id="c-arch" type="button" style="margin-top:8px;">' + (useArchive
+    ? 'Revenir à Windguru uniquement'
+    : 'Afficher à la place l\'archive Météo-France du site (même modèle AROME, pas les chiffres Windguru)') + '</button>';
+}
+function bindArch() {
+  var b = document.getElementById('c-arch');
+  if (b) b.onclick = function () { useArchive = !useArchive; loadSeq++; loadCmp(); };
 }
 document.getElementById('c-day').onchange = function () { cmpDay = this.value; drawCmp(); };
 document.getElementById('c-thr').onchange = function () { drawCmp(); };

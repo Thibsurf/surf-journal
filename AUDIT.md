@@ -9320,3 +9320,8 @@ maison de `previsions.html` ne lui inspire pas toujours confiance.
 - **Mesuré** : `node --check` + rejeu Node avec archive simulée (deux runs, deux points
   dans la boîte, relais en 500). **Non vérifié** : réponse réelle de Supabase et rendu
   des iframes (inaccessibles depuis la session).
+- **Même soir, ordre des sources inversé à la demande de l'utilisateur** (« je veux être
+  sûr que ça vienne de Windguru ») : comparatif = relais `/arome` (flux Windguru) SEUL par
+  défaut ; l'archive Météo-France n'est lue que sur clic explicite d'un bouton, jamais en
+  repli silencieux. En cas d'échec, la ligne affiche le code HTTP et le message du Worker
+  (ex. `spot fetch 403`) pour diagnostiquer la panne du relais — toujours pas diagnostiquée.
