@@ -9272,3 +9272,24 @@ repli fonctionne exactement comme prévu.
   plus juste : c'est ce qu'on cherche à vérifier. Noté dans `CLAUDE.md`.
 - Les deux agents coupés (valeurs fausses restantes, péremption silencieuse)
   n'ont rien rendu — leurs angles restent à couvrir.
+
+## 2026-11-10 — nouvelle page `windguru.html` : comparatif vent AROME 2.5 des passes
+
+Demande utilisateur : voir les tableaux Windguru AROME 2.5 « tels quels » pour Ouano,
+Ténia (passe de St-Vincent), Dumbéa et Boulari, plus un comparatif simple (quelle passe
+a le vent qui se lève le plus tard / le matin le plus calme), parce que la table AROME
+maison de `previsions.html` ne lui inspire pas toujours confiance.
+
+- **Fait** : page autonome ES5. En haut, tableau comparatif (vent/rafales par heure NC
+  5h–18h, heure de passage d'un seuil 8/10/12/15 nds, moyenne 6h–11h) alimenté par la
+  route `/arome` du Worker ; en dessous, les widgets Windguru officiels (`js/widget.php`,
+  `m=94`, mêmes paramètres pour les 4 spots, défilement horizontal lié) comme référence.
+  Ids par spot modifiables dans ⚙ (localStorage `wg_passes_ids_v1`).
+- **Mesuré** : `node --check` + logique du comparatif rejouée sous Node avec des données
+  synthétiques (heures manquantes → « ? », jamais de valeur inventée).
+- **NON vérifié** : ni le Worker ni windguru.cz n'étaient joignables depuis la session
+  qui a écrit la page → rendu réel des widgets et réponse `/arome` à contrôler en ligne.
+- **Écarté / à faire** : pas d'id Windguru vérifié pour Boulari (carte vide tant que
+  l'id n'est pas saisi) ; Ouano = 208762 comme `_wgIdForSpot()` (354584 « Passe de
+  Ouano » existe aussi, non testé) ; page pas encore liée depuis la navigation, pas
+  ajoutée à `ASSETS` de `sw.js`, pas de beacon Web Analytics.

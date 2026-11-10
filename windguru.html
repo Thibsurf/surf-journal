@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1620">
+<title>Vent AROME 2.5 — passes (Windguru)</title>
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="icon_app.png">
+<style>
+  :root { --bg:#0b1620; --card:#12222f; --line:#22384a; --text:#e8eef3; --muted:#8fa5b5; --accent:#e8c44a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding:14px 14px 6px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:12px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; padding:8px 14px 4px; }
+  button, select { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px; }
+  button.on { border-color:var(--accent); color:var(--accent); }
+  .card { margin:10px 8px; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .card h2 { font-size:15px; margin:0; padding:10px 12px 6px; display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .card h2 a { color:var(--accent); font-size:12px; font-weight:400; text-decoration:none; white-space:nowrap; }
+  .card .id { color:var(--muted); font-size:11px; font-weight:400; }
+  /* Le tableau est celui de Windguru, rendu par LEUR script : on ne touche à
+     aucune valeur. Fond blanc = leurs couleurs d'origine restent lisibles. */
+  .wg { background:#fff; color:#000; overflow-x:auto; -webkit-overflow-scrolling:touch; min-height:60px; }
+  .empty { padding:14px 12px; color:var(--muted); font-size:13px; background:var(--card); }
+  #cfg { display:none; margin:10px 8px; padding:12px; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+  #cfg label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  #cfg input { width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font-size:15px; }
+  #cmp { margin:10px 8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 0 8px; }
+  #cmp h2 { font-size:15px; margin:0; padding:0 12px 6px; }
+  #cmp .note { color:var(--muted); font-size:11px; padding:6px 12px 0; }
+  #cmp .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  #cmp table { border-collapse:collapse; font-size:12px; min-width:100%; }
+  #cmp td, #cmp th { padding:5px 5px; text-align:center; white-space:nowrap; border-top:1px solid var(--line); font-weight:400; }
+  #cmp th { color:var(--muted); font-size:11px; }
+  #cmp td.n, #cmp th.n { position:sticky; left:0; background:var(--card); text-align:left; padding-left:12px; font-weight:600; z-index:1; }
+  #cmp td.k { font-weight:700; border-left:1px solid var(--line); }
+  #cmp .best { color:var(--accent); }
+  #cmp .g { display:block; font-size:10px; color:var(--muted); }
+  footer { padding:10px 14px 30px; color:var(--muted); font-size:11px; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>💨 Vent AROME 2.5 km — les passes</h1>
+  <div class="sub">Tableaux officiels Windguru (widget « Add to your website »), empilés avec les mêmes heures et les mêmes lignes pour comparer d'un coup d'œil. En haut, un comparatif résumé ; en dessous, les tableaux Windguru tels quels pour contrôler.</div>
+</header>
+
+<div class="bar">
+  <button id="b-day" type="button">Heures : 5h–19h</button>
+  <button id="b-sync" type="button" class="on">Défilement lié : oui</button>
+  <button id="b-reload" type="button">↻ Recharger</button>
+  <button id="b-cfg" type="button">⚙ Spots</button>
+</div>
+
+<div id="cfg"></div>
+
+<div id="cmp">
+  <h2>Comparatif vent (nœuds)</h2>
+  <div class="bar" style="padding:0 12px 8px;">
+    <select id="c-day" aria-label="Jour"></select>
+    <select id="c-thr" aria-label="Seuil de vent">
+      <option value="8">Seuil 8 nds</option><option value="10" selected>Seuil 10 nds</option>
+      <option value="12">Seuil 12 nds</option><option value="15">Seuil 15 nds</option>
+    </select>
+  </div>
+  <div id="c-body" class="note">Chargement…</div>
+</div>
+<div id="cards"></div>
+
+<footer>
+  Source : <a href="https://www.windguru.cz" target="_blank" rel="noopener">windguru.cz</a> — modèle demandé : AROME 2.5 km (m=94).
+  Vérifie le nom du modèle affiché dans l'en-tête de chaque tableau : si Windguru n'a pas AROME pour un spot, c'est lui qui décide quoi afficher.
+</footer>
+
+<script>
+// ── Page autonome : 4 widgets Windguru officiels (js/widget.php) empilés ──
+// POURQUOI cette page : previsions.html redessine AROME dans une table maison
+// (données via le worker /arome). Ici on veut l'inverse — le tableau produit
+// par Windguru lui-même, sans aucune transformation de notre côté, pour servir
+// de référence quand on doute de la table maison.
+// ES5 volontaire (cf. CLAUDE.md). Aucune date manipulée ici : c'est le widget
+// qui gère le fuseau du spot.
+
+var MODEL = 94; // AROME 2.5 km chez Windguru (même id que worker.js / previsions.html)
+
+// Ids par défaut. 6476 / 208760 / 208762 = même table que _wgIdForSpot() de
+// previsions.html. Boulari : aucun id Windguru vérifié → vide, à saisir dans ⚙
+// (le nombre dans l'URL windguru.cz du spot). Ouano : 354584 = « Passe de
+// Ouano » existe aussi chez Windguru, à essayer dans ⚙ si tu préfères ce point.
+var DEFAULTS = [
+  { key:'ouano',   name:'Passe de Ouano',                 id:'208762' },
+  { key:'tenia',   name:'Ilot Ténia (passe de St-Vincent)', id:'6476' },
+  { key:'dumbea',  name:'Passe de Dumbéa',                id:'208760' },
+  { key:'boulari', name:'Passe de Boulari',               id:'' }
+];
+var LS_KEY = 'wg_passes_ids_v1';
+var dayOnly = true, syncScroll = true, loadSeq = 0;
+
+function readIds() {
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (e) { saved = {}; }
+  var out = [], i, d;
+  for (i = 0; i < DEFAULTS.length; i++) {
+    d = DEFAULTS[i];
+    out.push({ key:d.key, name:d.name, id:(saved[d.key] !== undefined ? String(saved[d.key]) : d.id) });
+  }
+  return out;
+}
+function saveIds(spots) {
+  var o = {}, i;
+  for (i = 0; i < spots.length; i++) o[spots[i].key] = spots[i].id;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(o)); } catch (e) {}
+}
+// Un id Windguru est un entier ; on accepte aussi une URL collée (on garde le nombre final).
+function cleanId(v) {
+  var m = String(v || '').match(/(\d+)\s*$/);
+  return m ? m[1] : '';
+}
+
+function render() {
+  var spots = readIds(), host = document.getElementById('cards'), i, s, card, h2, box, uid, anchor, js, args;
+  loadSeq++;
+  host.innerHTML = '';
+  for (i = 0; i < spots.length; i++) {
+    s = spots[i];
+    card = document.createElement('div'); card.className = 'card';
+    h2 = document.createElement('h2');
+    h2.innerHTML = '<span>' + s.name + (s.id ? ' <span class="id">#' + s.id + '</span>' : '') + '</span>'
+      + (s.id ? '<a href="https://www.windguru.cz/' + s.id + '" target="_blank" rel="noopener">ouvrir sur Windguru ↗</a>' : '');
+    card.appendChild(h2);
+    if (!s.id) {
+      box = document.createElement('div'); box.className = 'empty';
+      box.innerHTML = 'Pas d\'id Windguru renseigné pour ce spot. Ouvre ⚙ Spots et colle le numéro (ou l\'URL) du spot windguru.cz que tu utilises.';
+      card.appendChild(box); host.appendChild(card);
+      continue;
+    }
+    box = document.createElement('div'); box.className = 'wg';
+    // Le widget Windguru s'insère à côté de l'élément dont l'id = uid.
+    uid = 'wg_fwdg_' + s.id + '_' + MODEL + '_' + loadSeq + i;
+    anchor = document.createElement('script'); anchor.id = uid; anchor.type = 'text/plain';
+    box.appendChild(anchor);
+    card.appendChild(box); host.appendChild(card);
+    // Mêmes paramètres pour les 4 spots → colonnes identiques, donc comparables
+    // ligne à ligne. hrsm=1 : pas horaire (AROME est horaire).
+    args = ['s=' + s.id, 'm=' + MODEL, 'uid=' + uid, 'wj=knots', 'tj=c', 'waj=m',
+      'odh=' + (dayOnly ? 5 : 0), 'doh=' + (dayOnly ? 19 : 24), 'fhours=48', 'hrsm=1',
+      'vt=forecasts', 'lng=fr', 'p=WINDSPD,GUST,SMER'];
+    js = document.createElement('script');
+    js.src = 'https://www.windguru.cz/js/widget.php?' + args.join('&');
+    document.body.appendChild(js);
+  }
+  bindSync();
+  loadCmp();
+}
+
+// Défilement horizontal lié : on fait défiler un tableau, les autres suivent →
+// la même heure reste alignée verticalement sur les 4 spots.
+var syncing = false;
+function bindSync() {
+  var boxes = document.querySelectorAll('.wg'), i;
+  for (i = 0; i < boxes.length; i++) boxes[i].onscroll = onScroll;
+}
+function onScroll(ev) {
+  if (!syncScroll || syncing) return;
+  var src = ev.target || this, boxes = document.querySelectorAll('.wg'), i;
+  syncing = true;
+  for (i = 0; i < boxes.length; i++) if (boxes[i] !== src) boxes[i].scrollLeft = src.scrollLeft;
+  setTimeout(function () { syncing = false; }, 30);
+}
+
+function renderCfg() {
+  var spots = readIds(), c = document.getElementById('cfg'), html = '', i;
+  for (i = 0; i < spots.length; i++) {
+    html += '<label for="cfg-' + spots[i].key + '">' + spots[i].name + ' — id ou URL Windguru</label>'
+      + '<input id="cfg-' + spots[i].key + '" inputmode="url" value="' + spots[i].id + '" placeholder="ex : 6476 ou https://www.windguru.cz/6476">';
+  }
+  html += '<div style="margin-top:12px;display:flex;gap:8px;"><button id="cfg-save" type="button" class="on">Enregistrer</button>'
+    + '<button id="cfg-reset" type="button">Valeurs par défaut</button></div>';
+  c.innerHTML = html;
+  document.getElementById('cfg-save').onclick = function () {
+    var sp = readIds(), j;
+    for (j = 0; j < sp.length; j++) sp[j].id = cleanId(document.getElementById('cfg-' + sp[j].key).value);
+    saveIds(sp); c.style.display = 'none'; render();
+  };
+  document.getElementById('cfg-reset').onclick = function () {
+    try { localStorage.removeItem(LS_KEY); } catch (e) {}
+    renderCfg(); render();
+  };
+}
+
+document.getElementById('b-day').onclick = function () {
+  dayOnly = !dayOnly;
+  this.innerHTML = 'Heures : ' + (dayOnly ? '5h–19h' : '24 h');
+  render();
+};
+document.getElementById('b-sync').onclick = function () {
+  syncScroll = !syncScroll;
+  this.className = syncScroll ? 'on' : '';
+  this.innerHTML = 'Défilement lié : ' + (syncScroll ? 'oui' : 'non');
+};
+document.getElementById('b-reload').onclick = function () { render(); };
+document.getElementById('b-cfg').onclick = function () {
+  var c = document.getElementById('cfg');
+  if (c.style.display === 'block') { c.style.display = 'none'; return; }
+  renderCfg(); c.style.display = 'block';
+};
+
+// ── Comparatif maison (au-dessus des tableaux officiels) ─────────────────────
+// Données : route /arome du worker du site (même flux AROME Windguru que la
+// carte AROME de previsions.html, format j.init / j.hours / j.WINDSPD / j.GUST).
+// Ce bloc RÉSUME (heure où le vent passe le seuil, moyenne du matin) ; les
+// tableaux Windguru officiels juste en dessous restent la référence pour
+// contrôler chaque chiffre — c'est tout l'intérêt de la page.
+var WORKER = 'https://meteo-proxy-worker.thibault-dlh.workers.dev';
+var H0 = 5, H1 = 18;            // heures NC affichées dans le comparatif
+var cmpData = {};               // key spot → { j, err }
+var cmpDay = null;              // 'AAAA-M-J' (jour NC) sélectionné
+
+// Convention projet : NC = UTC+11 fixe → new Date(ms + 11h) lu en getUTC*.
+function ncParts(ms) {
+  var d = new Date(ms + 11 * 3600000);
+  return { key: d.getUTCFullYear() + '-' + (d.getUTCMonth() + 1) + '-' + d.getUTCDate(),
+           h: d.getUTCHours(), wd: d.getUTCDay(), dom: d.getUTCDate(), mon: d.getUTCMonth() + 1 };
+}
+function windBg(kt) { // mêmes seuils que WIND_COL_THRESHOLDS du site : 7/12/17/23
+  return kt < 7 ? 'rgba(61,186,138,.30)' : kt < 12 ? 'rgba(232,196,74,.28)' : kt < 17 ? 'rgba(232,168,87,.38)' : kt < 23 ? 'rgba(232,110,70,.45)' : 'rgba(220,60,60,.55)';
+}
+function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+
+function loadCmp() {
+  var spots = readIds(), i, pending = 0, seq = loadSeq;
+  cmpData = {};
+  document.getElementById('c-body').innerHTML = 'Chargement…';
+  function one(s) {
+    if (!s.id) { cmpData[s.key] = { err: 'pas d\'id' }; return; }
+    pending++;
+    var x = new XMLHttpRequest();
+    x.open('GET', WORKER + '/arome?spot=' + s.id, true);
+    x.timeout = 25000;
+    x.onloadend = function () {
+      if (seq !== loadSeq) return; // un rechargement plus récent a pris la main
+      var j = null;
+      try { j = JSON.parse(x.responseText); } catch (e) { j = null; }
+      if (x.status === 200 && j && j.ok && j.hours && j.hours.length) cmpData[s.key] = { j: j };
+      else cmpData[s.key] = { err: (j && j.error === 'AROME_NOT_AVAILABLE') ? 'AROME indisponible pour ce spot chez Windguru' : 'données indisponibles (réseau ou run en cours)' };
+      pending--;
+      if (pending === 0) drawCmp();
+    };
+    x.send();
+  }
+  for (i = 0; i < spots.length; i++) one(spots[i]);
+  if (pending === 0) drawCmp();
+}
+
+function drawCmp() {
+  var spots = readIds(), body = document.getElementById('c-body'), sel = document.getElementById('c-day');
+  var thr = Number(document.getElementById('c-thr').value) || 10;
+  var DAYS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+  var days = [], seen = {}, i, k, s, d, j, p, runs = [], todayKey = ncParts(Date.now()).key, pastToday = false;
+  // Jours couverts (au moins une heure entre H0 et H1) tous spots confondus
+  for (i = 0; i < spots.length; i++) {
+    d = cmpData[spots[i].key];
+    if (!d || !d.j) continue;
+    j = d.j;
+    runs.push(j.init);
+    for (k = 0; k < j.hours.length; k++) {
+      p = ncParts(j.init * 1000 + j.hours[k] * 3600000);
+      if (p.h < H0 || p.h > H1) continue;
+      if (!seen[p.key]) { seen[p.key] = 1; days.push({ key: p.key, lbl: DAYS[p.wd] + ' ' + p.dom + '/' + p.mon, ms: j.init * 1000 + j.hours[k] * 3600000 }); }
+    }
+  }
+  if (!days.length) {
+    var why = '';
+    for (i = 0; i < spots.length; i++) { d = cmpData[spots[i].key]; if (d && d.err) why += '<br>' + spots[i].name + ' : ' + d.err; }
+    body.className = 'note'; body.innerHTML = 'Comparatif indisponible pour l\'instant.' + why;
+    return;
+  }
+  days.sort(function (a, b) { return a.ms - b.ms; });
+  // On écarte les jours déjà passés ; aujourd'hui reste proposé.
+  var keep = [], t0 = Date.now() - 24 * 3600000;
+  for (i = 0; i < days.length; i++) if (days[i].ms > t0 || days[i].key === todayKey) keep.push(days[i]);
+  if (keep.length) days = keep;
+  var has = false;
+  for (i = 0; i < days.length; i++) if (days[i].key === cmpDay) has = true;
+  // Par défaut : aujourd'hui le matin, demain une fois midi passé (la session
+  // du jour est jouée, c'est la suivante qu'on prépare).
+  if (!has) cmpDay = (days[0].key === todayKey && ncParts(Date.now()).h >= 12 && days.length > 1) ? days[1].key : days[0].key;
+  var opts = '';
+  for (i = 0; i < days.length; i++) opts += '<option value="' + days[i].key + '"' + (days[i].key === cmpDay ? ' selected' : '') + '>' + days[i].lbl + (days[i].key === todayKey ? ' (auj.)' : '') + '</option>';
+  sel.innerHTML = opts;
+
+  // Lignes : par spot, vent/rafale par heure NC du jour choisi
+  var rows = [], bestRise = -1, bestMean = 1e9, h;
+  for (i = 0; i < spots.length; i++) {
+    s = spots[i]; d = cmpData[s.key];
+    var row = { s: s, err: d && d.err, w: {}, g: {}, rise: null, mean: null, n: 0 };
+    if (d && d.j) {
+      j = d.j;
+      for (k = 0; k < j.hours.length; k++) {
+        p = ncParts(j.init * 1000 + j.hours[k] * 3600000);
+        if (p.key !== cmpDay || p.h < H0 || p.h > H1) continue;
+        row.w[p.h] = num(j.WINDSPD[k]); row.g[p.h] = num(j.GUST[k]);
+      }
+      // « Se lève à » = première heure (≥ H0) où le vent moyen atteint le seuil.
+      // Une heure sans donnée AVANT d'avoir trouvé interdit de conclure → '?'.
+      var sum = 0, cnt = 0, unknown = false;
+      for (h = H0; h <= H1; h++) {
+        if (row.w[h] === null || row.w[h] === undefined) { if (row.rise === null) unknown = true; continue; }
+        row.n++;
+        if (h >= 6 && h <= 11) { sum += row.w[h]; cnt++; }
+        if (row.rise === null && !unknown && row.w[h] >= thr) row.rise = h;
+      }
+      row.unknown = unknown && row.rise === null;
+      row.never = !row.unknown && row.rise === null && row.n > 0;
+      row.mean = cnt === 6 ? sum / cnt : null; // moyenne 6h–11h seulement si les 6 heures sont là
+      var riseRank = row.never ? 99 : (row.rise === null ? -1 : row.rise);
+      row.riseRank = riseRank;
+      if (riseRank > bestRise) bestRise = riseRank;
+      if (row.mean !== null && row.mean < bestMean) bestMean = row.mean;
+    }
+    rows.push(row);
+  }
+  var html = '<div class="scroll"><table><tr><th class="n">Spot</th><th>vent ≥ ' + thr + ' à</th><th>moy. 6–11h</th>';
+  for (h = H0; h <= H1; h++) html += '<th>' + h + 'h</th>';
+  html += '</tr>';
+  for (i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    html += '<tr><td class="n">' + r.s.name.replace(' (passe de St-Vincent)', '') + '</td>';
+    if (r.err || !r.n) { html += '<td colspan="' + (2 + H1 - H0 + 1) + '" style="color:var(--muted);text-align:left;">' + (r.err || 'pas de données ce jour-là') + '</td></tr>'; continue; }
+    var riseTxt = r.unknown ? '?' : r.never ? 'jamais' : (r.rise === H0 ? 'dès ' + H0 + 'h' : r.rise + 'h');
+    html += '<td class="k' + (r.riseRank === bestRise && bestRise >= 0 && !r.unknown ? ' best' : '') + '">' + riseTxt + '</td>';
+    html += '<td class="k' + (r.mean !== null && r.mean === bestMean ? ' best' : '') + '">' + (r.mean === null ? '?' : (Math.round(r.mean * 10) / 10)) + '</td>';
+    for (h = H0; h <= H1; h++) {
+      var w = r.w[h], g = r.g[h];
+      if (w === null || w === undefined) html += '<td style="color:var(--muted);">–</td>';
+      else html += '<td style="background:' + windBg(w) + ';">' + Math.round(w) + (g !== null && g !== undefined ? '<span class="g">' + Math.round(g) + '</span>' : '') + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</table></div>';
+  // Run : affiché tel quel ; alerte si les spots ne sont pas sur le même run.
+  var same = true, rp;
+  for (i = 1; i < runs.length; i++) if (runs[i] !== runs[0]) same = false;
+  rp = ncParts(runs[0] * 1000);
+  html += '<div class="note">Grand chiffre = vent moyen, petit = rafales. En jaune : le spot où le vent passe le seuil le plus tard, et celui au matin le plus calme. '
+    + 'Run AROME du ' + rp.dom + '/' + rp.mon + ' ' + rp.h + 'h (heure NC)' + (same ? '' : ' — ⚠ les spots ne sont pas tous sur le même run') + '. '
+    + 'Chiffres lus via le worker du site ; contrôle-les sur les tableaux Windguru ci-dessous.</div>';
+  body.className = ''; body.innerHTML = html;
+}
+document.getElementById('c-day').onchange = function () { cmpDay = this.value; drawCmp(); };
+document.getElementById('c-thr').onchange = function () { drawCmp(); };
+
+
+render();
+</script>
+</body>
+</html>
