@@ -9332,3 +9332,12 @@ maison de `previsions.html` ne lui inspire pas toujours confiance.
   comparatif de la toute première version reste inexpliqué (cache froid ? délai de 25 s ?).
   À surveiller plutôt qu'à « réparer » : si une ligne retombe en erreur, le message
   affiché (code HTTP + texte du Worker) dira où chercher.
+- **Mato retiré** (spot custom → widget réservé aux comptes Windguru PRO, constaté par
+  l'utilisateur). Restent Ouano, Ténia, Dumbéa.
+- **OUVERT — écarts comparatif / widgets officiels signalés par l'utilisateur.** Non
+  reproduits ni mesurés ici (aucun des deux flux n'est visible depuis la session). Pistes,
+  dans l'ordre : (1) fraîcheur — `/arome` sert le cache edge 2 h puis `arome_wg_cache`
+  jusqu'à 150 min, donc potentiellement le run précédent, alors que le widget est en
+  direct ; (2) le widget n'afficherait pas le modèle 94 demandé ; (3) décalage d'heure
+  (`init + hours`) ; (4) arrondi. Bandeau d'avertissement ajouté dans le comparatif en
+  attendant une capture d'écran côte à côte pour trancher.

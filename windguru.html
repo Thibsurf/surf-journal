@@ -79,7 +79,7 @@
 
 <script src="assets/nc-token.js"></script>
 <script>
-// ── Page autonome : 4 widgets Windguru officiels (js/widget.php) empilés ──
+// ── Page autonome : 3 widgets Windguru officiels (js/widget.php) empilés ──
 // POURQUOI cette page : previsions.html redessine AROME dans une table maison
 // (données via le worker /arome). Ici on veut l'inverse — le tableau produit
 // par Windguru lui-même, sans aucune transformation de notre côté, pour servir
@@ -90,17 +90,16 @@
 var MODEL = 94; // AROME 2.5 km chez Windguru (même id que worker.js / previsions.html)
 
 // Ids par défaut. 6476 / 208760 / 208762 = même table que _wgIdForSpot() de
-// previsions.html ; 316701 = « New Caledonia - Passe de Mato » chez Windguru.
-// Boulari retiré le 10/11/2026 (pas de spot Windguru) et remplacé par Mato à la
-// demande de l'utilisateur. lat/lon = SPOTS de previsions.html (points archivés
-// par fetch_arome.py) ; Mato n'en a pas : pas de coordonnée vérifiée, il ne sera
-// dans le comparatif que si un spot « Mato » existe dans l'app (shared_spots).
+// previsions.html .
+// Boulari retiré le 10/11/2026 (pas de spot Windguru). Mato (316701) essayé puis
+// retiré le même soir : c'est un spot « custom », son widget exige un compte
+// Windguru PRO (constaté par l'utilisateur). lat/lon = SPOTS de previsions.html (points archivés
+// par fetch_arome.py).
 // `match` = fragment de nom (sans accent) cherché dans shared_spots.
 var DEFAULTS = [
   { key:'ouano',  name:'Passe de Ouano',                   short:'Ouano',  match:'ouano', id:'208762', lat:-21.91, lon:165.75 },
   { key:'tenia',  name:'Ilot Ténia (passe de St-Vincent)', short:'Ténia',  match:'tenia', id:'6476',   lat:-22.01, lon:165.94 },
-  { key:'dumbea', name:'Passe de Dumbéa',                  short:'Dumbéa', match:'dumbe', id:'208760', lat:-22.35, lon:166.24 },
-  { key:'mato',   name:'Passe de Mato',                    short:'Mato',   match:'mato',  id:'316701' }
+  { key:'dumbea', name:'Passe de Dumbéa',                  short:'Dumbéa', match:'dumbe', id:'208760', lat:-22.35, lon:166.24 }
 ];
 var LS_KEY = 'wg_passes_ids_v2';
 var dayOnly = true, syncScroll = true, loadSeq = 0;
@@ -149,7 +148,7 @@ function render() {
     anchor = document.createElement('script'); anchor.id = uid; anchor.type = 'text/plain';
     box.appendChild(anchor);
     card.appendChild(box); host.appendChild(card);
-    // Mêmes paramètres pour les 4 spots → colonnes identiques, donc comparables
+    // Mêmes paramètres pour tous les spots → colonnes identiques, donc comparables
     // ligne à ligne. hrsm=1 : pas horaire (AROME est horaire).
     args = ['s=' + s.id, 'm=' + MODEL, 'uid=' + uid, 'wj=knots', 'tj=c', 'waj=m',
       'odh=' + (dayOnly ? 5 : 0), 'doh=' + (dayOnly ? 19 : 24), 'fhours=48', 'hrsm=1',
@@ -458,7 +457,12 @@ function drawCmp() {
     var ageH = Math.round((Date.now() - runs[0]) / 3600000);
     banner = '🕒 Prévision : run AROME du <b>' + fmtRun(runs[0]) + '</b> (heure NC), commun à tous les spots affichés — calculé il y a ' + ageH + ' h.';
   } else banner = '⚠ Les spots ne sont PAS tous sur le même run : regarde la colonne « run » de chaque ligne avant de comparer.';
-  html = '<div class="note" style="padding-bottom:8px;color:var(--text);">' + banner + '</div>' + html
+  // 10/11/2026 : l'utilisateur constate des écarts entre ce comparatif et les
+  // widgets officiels. Cause non établie (piste n°1 : le Worker sert un cache
+  // de 2 h + 150 min, donc possiblement le run précédent). Tant que ce n'est pas
+  // tranché, on le dit en clair plutôt que de laisser croire à des chiffres sûrs.
+  html = '<div class="note" style="padding-bottom:8px;color:var(--accent);">⚠ Comparatif en cours de vérification : en cas d\'écart, ce sont les tableaux Windguru du dessous qui font foi. Compare d\'abord la date du run ci-dessous avec celle de leur en-tête.</div>'
+    + '<div class="note" style="padding-bottom:8px;color:var(--text);">' + banner + '</div>' + html
     + '<div class="note">Grand chiffre = vent moyen (nds), petit = rafales. En jaune : le spot où le vent atteint le seuil le plus tard, et celui au matin le plus calme.'
     + (anyMixed ? ' * = les heures de ce jour viennent de deux runs différents.' : '')
     + ' Les tableaux Windguru ci-dessous affichent leur propre date de run dans leur en-tête : elle peut différer de celle-ci.</div>';
