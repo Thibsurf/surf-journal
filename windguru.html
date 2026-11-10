@@ -314,14 +314,18 @@ function fromArchive(s, cb) {
 function fromWorker(s, cb) {
   if (!s.id || typeof _NC_WORKER === 'undefined') { cb(null, 'pas d\'id Windguru'); return; }
   var x = new XMLHttpRequest();
-  x.open('GET', _NC_WORKER + '/arome?spot=' + s.id, true);
+  // fresh=1 : demande au Worker d'aller chez Windguru en direct (cf. worker.js,
+  // route /arome). Un Worker pas encore redéployé ignore le paramètre et sert son
+  // cache : on le détecte à l'absence de fetched_at et on l'AFFICHE.
+  // + anti-cache navigateur (l'ancienne réponse portait max-age=7200).
+  x.open('GET', _NC_WORKER + '/arome?spot=' + s.id + '&fresh=1&t=' + Date.now(), true);
   x.timeout = 25000;
   x.onloadend = function () {
     var j = null, pts = [], k;
     try { j = JSON.parse(x.responseText); } catch (e) { j = null; }
     if (x.status === 200 && j && j.ok && j.hours && j.hours.length && j.init) {
       for (k = 0; k < j.hours.length; k++) pts.push({ ms: j.init * 1000 + j.hours[k] * 3600000, w: num(j.WINDSPD[k]), g: num(j.GUST[k]), run: null });
-      cb({ pts: pts, runMs: j.init * 1000, fixedRun: true, src: 'Windguru (via worker)' });
+      cb({ pts: pts, runMs: j.init * 1000, fixedRun: true, src: 'Windguru (via worker)', fetchedMs: j.fetched_at ? new Date(j.fetched_at).getTime() : null, viaWg: true });
     } else cb(null, (j && j.error === 'AROME_NOT_AVAILABLE') ? 'AROME indisponible chez Windguru pour ce spot' : 'le relais du worker répond HTTP ' + (x.status || 'aucune réponse') + (j && j.error ? ' : ' + String(j.error).slice(0, 80) : ''));
   };
   x.send();
@@ -433,11 +437,11 @@ function drawCmp() {
   }
   var html = '<div class="scroll"><table><tr><th class="n">Spot</th><th>≥ ' + thr + ' nds à</th><th>moy. 6–11h</th>';
   for (h = H0; h <= H1; h++) html += '<th>' + h + 'h</th>';
-  html += '<th>run (heure NC)</th><th>source</th></tr>';
+  html += '<th>run (heure NC)</th><th>lu chez Windguru</th><th>source</th></tr>';
   for (i = 0; i < rows.length; i++) {
     var r = rows[i];
     html += '<tr><td class="n">' + r.s.short + '</td>';
-    if (r.err || !r.n) { html += '<td colspan="' + (4 + H1 - H0 + 1) + '" style="color:var(--muted);text-align:left;white-space:normal;">' + (r.err || 'pas de données ce jour-là') + '</td></tr>'; continue; }
+    if (r.err || !r.n) { html += '<td colspan="' + (5 + H1 - H0 + 1) + '" style="color:var(--muted);text-align:left;white-space:normal;">' + (r.err || 'pas de données ce jour-là') + '</td></tr>'; continue; }
     var riseTxt = r.unknown ? '?' : r.never ? 'jamais' : (r.rise === H0 ? 'dès ' + H0 + 'h' : r.rise + 'h');
     html += '<td class="k' + (r.riseRank === bestRise && bestRise >= 0 ? ' best' : '') + '">' + riseTxt + '</td>';
     html += '<td class="k' + (r.mean !== null && r.mean === bestMean ? ' best' : '') + '">' + (r.mean === null ? '?' : (Math.round(r.mean * 10) / 10)) + '</td>';
@@ -446,7 +450,7 @@ function drawCmp() {
       if (w === null || w === undefined) html += '<td style="color:var(--muted);">–</td>';
       else html += '<td style="background:' + windBg(w) + ';">' + Math.round(w) + (g !== null && g !== undefined ? '<span class="g">' + Math.round(g) + '</span>' : '') + '</td>';
     }
-    html += '<td>' + (r.runMs ? fmtRun(r.runMs) + (r.mixed ? ' *' : '') : 'inconnu') + '</td><td style="color:var(--muted);">' + r.d.src + '</td></tr>';
+    html += '<td>' + (r.runMs ? fmtRun(r.runMs) + (r.mixed ? ' *' : '') : 'inconnu') + '</td><td>' + (!r.d.viaWg ? '–' : r.d.fetchedMs ? 'il y a ' + Math.max(0, Math.round((Date.now() - r.d.fetchedMs) / 60000)) + ' min' : 'inconnu (cache)') + '</td><td style="color:var(--muted);">' + r.d.src + '</td></tr>';
   }
   html += '</table></div>';
   // Bandeau « de quand date la prévision » : commun ou non, dit explicitement.
@@ -457,11 +461,21 @@ function drawCmp() {
     var ageH = Math.round((Date.now() - runs[0]) / 3600000);
     banner = '🕒 Prévision : run AROME du <b>' + fmtRun(runs[0]) + '</b> (heure NC), commun à tous les spots affichés — calculé il y a ' + ageH + ' h.';
   } else banner = '⚠ Les spots ne sont PAS tous sur le même run : regarde la colonne « run » de chaque ligne avant de comparer.';
-  // 10/11/2026 : l'utilisateur constate des écarts entre ce comparatif et les
-  // widgets officiels. Cause non établie (piste n°1 : le Worker sert un cache
-  // de 2 h + 150 min, donc possiblement le run précédent). Tant que ce n'est pas
-  // tranché, on le dit en clair plutôt que de laisser croire à des chiffres sûrs.
-  html = '<div class="note" style="padding-bottom:8px;color:var(--accent);">⚠ Comparatif en cours de vérification : en cas d\'écart, ce sont les tableaux Windguru du dessous qui font foi. Compare d\'abord la date du run ci-dessous avec celle de leur en-tête.</div>'
+  // 10/11/2026, capture d'écran de l'utilisateur (19h31 NC, jour affiché Mer 11/11) :
+  // comparatif (run 10/11 11h NC) ≠ widget officiel. Ouano vent 5h–15h :
+  // 15 11 15 17 17 15 20 19 20 20 17 ici, 12 8 9 18 14 17 20 19 19 20 20 chez
+  // Windguru — mêmes ordres de grandeur, plusieurs heures identiques, pas de
+  // décalage de colonnes : signature de deux runs voisins du même modèle, pas
+  // d'une erreur de conversion. D'où fresh=1 côté Worker. Tant que le Worker
+  // sert un cache d'âge inconnu, on l'écrit en clair au-dessus du tableau.
+  var stale = false, oldest = 0;
+  for (i = 0; i < rows.length; i++) if (rows[i].d && rows[i].d.viaWg && rows[i].n) {
+    if (!rows[i].d.fetchedMs) stale = true;
+    else oldest = Math.max(oldest, Date.now() - rows[i].d.fetchedMs);
+  }
+  html = '<div class="note" style="padding-bottom:8px;color:var(--accent);">' + (stale
+      ? '⚠ Ces chiffres sortent du cache du worker (jusqu\'à 4 h 30 de retard, donc peut-être le run précédent) : ils peuvent différer des tableaux Windguru du dessous, qui font foi.'
+      : 'Chiffres lus chez Windguru il y a ' + Math.round(oldest / 60000) + ' min au plus. En cas d\'écart, les tableaux Windguru du dessous font foi.') + '</div>'
     + '<div class="note" style="padding-bottom:8px;color:var(--text);">' + banner + '</div>' + html
     + '<div class="note">Grand chiffre = vent moyen (nds), petit = rafales. En jaune : le spot où le vent atteint le seuil le plus tard, et celui au matin le plus calme.'
     + (anyMixed ? ' * = les heures de ce jour viennent de deux runs différents.' : '')

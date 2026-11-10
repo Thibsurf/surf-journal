@@ -9341,3 +9341,28 @@ maison de `previsions.html` ne lui inspire pas toujours confiance.
   direct ; (2) le widget n'afficherait pas le modèle 94 demandé ; (3) décalage d'heure
   (`init + hours`) ; (4) arrondi. Bandeau d'avertissement ajouté dans le comparatif en
   attendant une capture d'écran côte à côte pour trancher.
+
+### 2026-11-10 (suite 2) — écart comparatif / widget Windguru : mesuré sur capture, cause probable = cache
+
+Capture utilisateur à 19h31 NC, jour affiché Mer 11/11, comparatif annoncé « run 10/11 11h NC ».
+Vent moyen 5h→15h, comparatif (relais `/arome`) contre widget officiel :
+
+- Ouano : `15 11 15 17 17 15 20 19 20 20 17` contre `12 8 9 18 14 17 20 19 19 20 20`
+- Ténia : `10 10 6 13 14 18 18 17 13 11 10` contre `12 13 12 18 16 18 18 16 17 11 10`
+
+Mêmes ordres de grandeur, plusieurs heures strictement identiques (vent ET rafales), aucun
+décalage de colonnes → pas une erreur de conversion d'heure ; signature de deux runs
+voisins du même modèle. **Non prouvé** : l'en-tête du widget (modèle + run) n'est pas
+lisible sur la capture. Cohérent avec le cache du Worker (edge 2 h + `arome_wg_cache`
+150 min) qui peut servir le run précédent alors que le widget est en direct.
+
+- **Worker** (`/arome`) : paramètre `fresh=1` → saute cache edge (sauf copie < 10 min) et
+  Supabase, fetch Windguru en direct, 502 sans repli si échec. Champ `fetched_at` ajouté à
+  la sortie de `fetchAromeFromWindguru()` (voyage dans les caches). Comportement sans
+  `fresh` inchangé, donc `previsions.html` n'est pas affecté. **À DÉPLOYER à la main
+  (`wrangler deploy`) — tant que ce n'est pas fait, rien ne change côté données.**
+- **Page** : appelle `fresh=1`, colonne « lu chez Windguru » (âge du fetch, ou « inconnu
+  (cache) » si le Worker n'est pas redéployé) et bandeau qui dit lequel des deux cas.
+- **À vérifier après déploiement** : mêmes valeurs que le widget, heure par heure. Si
+  l'écart persiste avec « lu il y a < 10 min », l'hypothèse du cache est fausse : regarder
+  alors si le widget affiche bien le modèle 94.

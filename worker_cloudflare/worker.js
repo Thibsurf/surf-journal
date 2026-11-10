@@ -149,6 +149,10 @@ async function fetchAromeFromWindguru(spot) {
   const sp0 = sj.spots ? Object.values(sj.spots)[0] : null;
   return {
     ok: true, spot: Number(spot),
+    // Heure réelle du fetch chez Windguru (ajouté le 10/11/2026) : voyage avec la
+    // donnée à travers les caches (edge + arome_wg_cache), pour que le client
+    // puisse dire « récupéré il y a X min » au lieu de laisser croire à du direct.
+    fetched_at: new Date().toISOString(),
     spotname: sp0 ? sp0.spotname : null,
     init: fj.wgmodel ? fj.wgmodel.initstamp : null,
     model: "AROME 2.5 km NC (Météo-France) · données via windguru.cz",
@@ -438,14 +442,33 @@ export default {
         if (!spot || !/^\d+$/.test(spot)) return json({ error: "missing/invalid spot" }, 400);
         const cache = caches.default;
         const cacheKey = new Request("https://surf-nc-cache/arome-" + spot);
+        // ?fresh=1 (ajouté le 10/11/2026, pour windguru.html) : l'utilisateur a
+        // constaté sur capture d'écran que le comparatif de cette page (servi par
+        // ce cache, run du 10/11 00 UTC) ne donnait pas les mêmes valeurs que le
+        // widget officiel Windguru affiché juste en dessous (direct). Les caches
+        // ci-dessous peuvent cumuler ~2 h (edge) + 150 min (Supabase), donc servir
+        // le run PRÉCÉDENT. fresh=1 saute les deux et va chez Windguru en direct —
+        // sauf si la copie edge a moins de 10 min (garde-fou : pas plus de 6
+        // allers-retours Windguru par heure et par spot, même en rechargeant).
+        // En cas d'échec du direct : erreur 502, PAS de repli silencieux sur le
+        // cache — c'est tout l'objet du paramètre.
+        const fresh = url.searchParams.get("fresh") === "1";
         let hit = await cache.match(cacheKey);
+        if (hit && fresh) {
+          let young = false;
+          try {
+            const hj = await hit.clone().json();
+            young = !!hj.fetched_at && (Date.now() - new Date(hj.fetched_at).getTime()) < 10 * 60 * 1000;
+          } catch (e) { young = false; }
+          if (!young) hit = null;
+        }
         if (hit) {
           return new Response(hit.body, {
             status: 200,
-            headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },
+            headers: { "Content-Type": "application/json", "Cache-Control": fresh ? "no-store" : "public, max-age=7200", ...cors },
           });
         }
-        const fromSupabase = await getAromeFromSupabase(env, spot);
+        const fromSupabase = fresh ? null : await getAromeFromSupabase(env, spot);
         if (fromSupabase) {
           const body = JSON.stringify(fromSupabase);
           // Réchauffe le cache LOCAL de ce colo au passage : la prochaine requête
@@ -475,7 +498,7 @@ export default {
         ctx.waitUntil(putAromeToSupabase(env, spot, out));
         return new Response(body, {
           status: 200,
-          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=7200", ...cors },
+          headers: { "Content-Type": "application/json", "Cache-Control": fresh ? "no-store" : "public, max-age=7200", ...cors },
         });
       }
 
