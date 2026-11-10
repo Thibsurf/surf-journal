@@ -9325,3 +9325,10 @@ maison de `previsions.html` ne lui inspire pas toujours confiance.
   défaut ; l'archive Météo-France n'est lue que sur clic explicite d'un bouton, jamais en
   repli silencieux. En cas d'échec, la ligne affiche le code HTTP et le message du Worker
   (ex. `spot fetch 403`) pour diagnostiquer la panne du relais — toujours pas diagnostiquée.
+- **Rectificatif (10/11, 19h25 NC) : le relais `/arome` n'est PAS établi comme en panne.**
+  Le comparatif Windguru-seul s'affiche chez l'utilisateur. Le seul indice de panne était
+  un appel externe unique à `/arome?spot=6476` revenu en erreur serveur (outil de la
+  session, sans corps de réponse lisible) : insuffisant pour conclure. L'échec du
+  comparatif de la toute première version reste inexpliqué (cache froid ? délai de 25 s ?).
+  À surveiller plutôt qu'à « réparer » : si une ligne retombe en erreur, le message
+  affiché (code HTTP + texte du Worker) dira où chercher.
