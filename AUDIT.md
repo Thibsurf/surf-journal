@@ -9293,3 +9293,30 @@ maison de `previsions.html` ne lui inspire pas toujours confiance.
   l'id n'est pas saisi) ; Ouano = 208762 comme `_wgIdForSpot()` (354584 « Passe de
   Ouano » existe aussi, non testé) ; page pas encore liée depuis la navigation, pas
   ajoutée à `ASSETS` de `sw.js`, pas de beacon Web Analytics.
+
+### 2026-11-10 (suite) — `windguru.html` : trois retours utilisateur après mise en ligne
+
+- **« Le comparatif ne marche pas » alors que les widgets s'affichent.** Constat depuis
+  l'extérieur : `/debug` du Worker répond, `/arome?spot=6476` renvoie une erreur serveur
+  → le relais Windguru, seule source de la v1, est en panne (cause non diagnostiquée
+  ici, à regarder côté Worker). Correctif : même ordre que `previsions.html` — archive
+  GRIB2 d'abord (`model_forecast_cache`, `model=aro`, `kind=wind`, dates bornées J-1..J+2,
+  point le plus proche dans la boîte ±0,05° pour ne pas mélanger spot et station), repli
+  `/arome` ensuite. Coordonnées lues dans `shared_spots` (ce sont ces points-là que
+  `fetch_arome.py` archive), valeurs de `SPOTS` en défaut. `assets/nc-token.js` chargé
+  pour l'URL du Worker et la clé anon (pas de duplication).
+- **« Préciser de quand date la prévision ».** Colonne « run (heure NC) » + source par
+  spot, et bandeau disant si le run est commun. Le run affiché est celui des heures DU
+  JOUR REGARDÉ (champ `run` de chaque heure), pas le plus récent toutes dates confondues.
+  Les widgets Windguru sont des iframes cross-origin : leur run n'est pas lisible, seul
+  leur propre en-tête le donne.
+- **Défilement lié inopérant.** Cause : le widget est une iframe `width:100%` qui défile
+  en interne. Parade : largeur fixe de l'iframe (1100 px en 5h–19h, 1700 px en 24 h,
+  estimées à ~30 px/colonne — NON mesurées, à ajuster si le tableau est tronqué ou
+  suivi d'un grand blanc) et défilement de notre conteneur, synchronisé. Case à cocher.
+- **Boulari retiré, Passe de Mato ajoutée** (id Windguru 316701). Mato n'a pas de
+  coordonnée vérifiée : absent du comparatif tant qu'un spot « Mato » n'existe pas dans
+  l'app (donc dans `shared_spots`, donc archivé).
+- **Mesuré** : `node --check` + rejeu Node avec archive simulée (deux runs, deux points
+  dans la boîte, relais en 500). **Non vérifié** : réponse réelle de Supabase et rendu
+  des iframes (inaccessibles depuis la session).
