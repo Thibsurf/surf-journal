@@ -9366,3 +9366,8 @@ lisible sur la capture. Cohérent avec le cache du Worker (edge 2 h + `arome_wg_
 - **À vérifier après déploiement** : mêmes valeurs que le widget, heure par heure. Si
   l'écart persiste avec « lu il y a < 10 min », l'hypothèse du cache est fausse : regarder
   alors si le widget affiche bien le modèle 94.
+- **Raccourci écran d'accueil pour `windguru.html`** : entrée « Vent passes » ajoutée en tête
+  des `shortcuts` de `manifest.json` (appui long sur l'icône de la PWA), icône dédiée
+  `icons/vent-*.png`, aussi déclarée dans le `<head>` de la page. `CACHE_NAME` → v110 car
+  `manifest.json` est dans `ASSETS`. Non vérifié sur téléphone ; la mise à jour des
+  raccourcis d'une PWA déjà installée peut prendre un jour ou plus côté Android.

@@ -12,11 +12,29 @@
   "lang": "fr",
   "shortcuts": [
     {
+      "name": "Vent des passes (AROME)",
+      "short_name": "Vent passes",
+      "url": "/surf-journal/windguru.html",
+      "icons": [
+        {
+          "src": "icons/vent-192.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any maskable"
+        }
+      ]
+    },
+    {
       "name": "Prévisions",
       "short_name": "Prévisions",
       "url": "/surf-journal/previsions.html",
       "icons": [
-        { "src": "icons/shortcut-previsions.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
+        {
+          "src": "icons/shortcut-previsions.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any maskable"
+        }
       ]
     },
     {
@@ -24,7 +42,12 @@
       "short_name": "Sorties",
       "url": "/surf-journal/sorties.html",
       "icons": [
-        { "src": "icons/shortcut-sorties.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
+        {
+          "src": "icons/shortcut-sorties.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any maskable"
+        }
       ]
     },
     {
@@ -32,7 +55,12 @@
       "short_name": "Fuel Pro",
       "url": "/surf-journal/marine_fuel_pro.html",
       "icons": [
-        { "src": "icons/shortcut-fuel.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
+        {
+          "src": "icons/shortcut-fuel.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any maskable"
+        }
       ]
     }
   ],
