@@ -9371,3 +9371,171 @@ lisible sur la capture. Cohérent avec le cache du Worker (edge 2 h + `arome_wg_
   `icons/vent-*.png`, aussi déclarée dans le `<head>` de la page. `CACHE_NAME` → v110 car
   `manifest.json` est dans `ASSETS`. Non vérifié sur téléphone ; la mise à jour des
   raccourcis d'une PWA déjà installée peut prendre un jour ou plus côté Android.
+
+---
+
+# 2026-11-20 — Check-up complet : état des 8 modèles, relais bloqués, pannes silencieuses
+
+Demande : check-up du site, correction des erreurs, vérification de la cohérence
+scientifique des données, et traitement de `windguru.html` (page non référencée).
+
+## État des sources, mesuré en base (pas déduit des logs)
+
+Les logs GitHub Actions disent « success » partout : ils ne suffisent pas, le succès du
+job ne dit rien du succès du modèle. Comptage serveur dans `model_forecast_cache`,
+lignes de date ≥ aujourd'hui, par `model`/`kind` :
+
+| modèle | kind | lignes J≥auj | horizon | dernier run |
+|--------|------|--------------|---------|-------------|
+| nc | swell_primary / wind | 498 / 1002 | J+9 | 20/11 08h |
+| gfs | swell_primary / wind | 1128 / 987 | J+10 | 20/11 08h |
+| bom | swell_primary / wind | 1215 / 1123 | J+9 | 20/11 08h |
+| mf | wave | 80 | J+9 | 20/11 08h |
+| ecmwf | wave / wind | 416 / 1612 | J+6 | 20/11 00h |
+| aifs | wave / wind | 416 / 1612 | J+6 | 20/11 00h |
+| marc | swell_primary / wave / wind | 220 / 186 / 282 | J+5 | 20/11 07h |
+| **aro** | wind | 279 | J+2 | 20/11 00h |
+| **lotus** | — | **0** | — | **19/10, soit 32 j** |
+
+**7 modèles sur 8 sont sains.** Deux pièges rencontrés en route, à ne pas refaire :
+
+- La clé modèle d'AROME est **`aro`**, pas `arome` : une requête sur `arome` renvoie
+  30 lignes d'août et laisse croire à une panne de 3 mois.
+- Un `select` par date seule sur cette table **bute sur le plafond PostgREST de
+  1000 lignes** et ne montre que 4 modèles sur 9 (piège déjà consigné le 03/08). Compter
+  côté serveur (`Prefer: count=exact`), jamais trier un échantillon.
+
+**BOM est revenu.** La note « source figée depuis le 05/08 » est périmée : le flux SPC
+republie, horizon J+9, run du jour. Le garde-fou epoch>3j a fait exactement son travail —
+retirer le modèle pendant la panne, le réintégrer seul au retour.
+
+## ✗ LOTUS mort depuis 32 jours, sans que rien ne le dise
+
+`ingestion/fetch_surfline.py` : 403 sur `forecasts/swells` ET `forecasts/wind`, 3 tentatives
+par spot, 5 spots, **0 ligne upsert** — à chaque run depuis le 19/10. Le job finissait
+quand même « success » : les échecs par spot sont des `logger.warning` que la boucle avale.
+
+Côté page, le silence était total et pour une raison précise : `_modelStaleInfo` se nourrit
+de `issued_at`, donc **il lui faut au moins une ligne pour parler**. Un modèle qui passe à
+zéro ligne sortait de `_noteModelIssued` sans un mot. Et le `desc` figé de LOTUS explique
+son absence par sa couverture à 5 zones — la bonne explication écrite au mauvais moment.
+
+Diagnostic de la cause, à ne pas refaire (`ca18587`) :
+
+- `forecasts/swells` et `forecasts/wind` répondent **200** depuis une connexion
+  résidentielle, avec les paramètres exacts du module. Bissection des paramètres :
+  `days`, `intervalHours`, `units[...]` ne changent rien ; seul `days=16` donne un 400
+  légitime. Ce n'est donc **pas** un problème de requête ni d'en-têtes.
+- `kbyg/spots/batch` répond 200 mais ne porte plus que les **métadonnées** du spot
+  (1,9 Ko). L'affirmation « batch renvoie toujours 6 trains » du docstring de
+  `surfline_client.py` **n'est plus vraie** : Surfline a changé son API. Ce n'est pas une
+  voie de repli.
+- Le 403 est systématique uniquement **depuis les runners GitHub** : blocage d'IP
+  datacenter côté Surfline. Aucun jeu d'en-têtes n'y changera quoi que ce soit.
+
+Correctifs : `_modelNoData` (`b290af8`), sortie non nulle + annotation `::error::` et
+`continue-on-error` sur le job (`ca18587`). **Reste à décider** : abandonner LOTUS
+(supprimer le job) ou lui ouvrir un chemin depuis une IP résidentielle.
+
+## ✗ Le relais `/arome` du Worker est bloqué, lui aussi
+
+`GET /arome?spot=<id>` renvoie **502 `{"error":"spot fetch 403"}`** pour tous les spots,
+chemin caché comme `fresh=1`, et le repli `arome_wg_cache` est vide puisque le cron échoue
+pareil. Les trois niveaux de cache tombent ensemble.
+
+Le rectificatif du 10/11 (« le relais n'est pas établi comme en panne ») est donc dépassé :
+il l'est, et de façon structurelle. Mesuré :
+
+- `www.windguru.cz/int/iapi.php?q=forecast_spot&id_spot=6476` répond **200** depuis ce
+  poste **avec les en-têtes exacts du Worker** (Referer windguru.cz + UA SurfNC/1.0).
+- Le modèle 94 est **toujours publié** pour ce spot (run `2026112000` relevé dans
+  `id_model_arr`), aux côtés de 3, 117, 45, 59, 83.
+
+C'est donc l'**egress Cloudflare** que windguru.cz refuse. Même classe de panne que
+Surfline ci-dessus, autre fournisseur. Rien que le Worker puisse corriger : inutile de
+chercher le bon User-Agent.
+
+Conséquence pour `previsions.html` : **aucune**. Sa carte AROME lit l'archive GRIB2 en
+priorité depuis le 02/08 et ne tombe sur Windguru qu'en repli séquentiel — le bon ordre
+était déjà en place. Vérifié en headless : la carte s'affiche, 0 erreur.
+
+## ✗ `windguru.html` : comparatif mort en permanence, page dans aucun menu
+
+La page faisait l'inverse de `previsions.html` : Windguru d'abord **et seul** par défaut,
+l'archive seulement sur clic. Avec le relais bloqué, rendu réel vérifié en headless avant
+correction : « Comparatif indisponible pour l'instant » suivi de trois lignes d'erreur.
+
+Corrigé (`f42fb4b`) : archive GRIB2 Météo-France par défaut (même modèle AROME 2,5 km,
+même donnée amont, un relais en moins), Windguru essayable par bouton. Les widgets
+officiels du dessous sont des **iframes chargées par le navigateur**, pas par le Worker :
+intacts, et ils font toujours foi.
+
+Trois défauts trouvés en passant :
+
+- La **direction du vent** manquait alors que l'archive la porte (`hh.dir`). Une vitesse
+  sans direction ne dit pas si la passe est offshore ou onshore — c'est pourtant la seule
+  question que pose cette page. Ajoutée : flèche + secteur sur 16, convention météo du
+  site (d'où vient le vent, la flèche montre où il va).
+- `runMs` était figé à `null` alors que `runIso` était calculé juste au-dessus : variable
+  morte, colonne « run » à « inconnu ».
+- Le bandeau de provenance disait « lu chez Windguru » quelle que soit la source réelle.
+
+Et la page n'était référencée **dans aucun menu** (seulement dans les `shortcuts` du
+manifest, invisibles hors appui long sur l'icône) : entrée « Vent passes » ajoutée dans
+`previsions.html` et `index.html`, plus « La semaine » qui manquait aussi dans
+`index.html`, et un lien retour dans la page.
+
+## ✓ Cohérence scientifique : recoupée modèle par modèle contre Open-Meteo
+
+Méthode de `reference_verite_terrain_open_meteo` : Open-Meteo publie les mêmes modèles,
+donc l'écart distingue « notre ingestion est fausse » de « la page lit le mauvais champ ».
+Passe de Dumbéa, 21/11 11h NC (soit 00:00 UTC, même instant absolu des deux côtés) :
+
+| grandeur | site | Open-Meteo | écart |
+|----------|------|------------|-------|
+| GFS houle 1 — hauteur | 1,98 m | 1,98 m | **0,00 m** |
+| GFS houle 1 — période | 13,40 s | 13,40 s | **0,00 s** |
+| GFS houle 1 — direction | 189° | 189° | **0°** |
+| ECMWF mer totale — hauteur | 1,54 m | 1,54 m | **0,00 m** |
+| ECMWF mer totale — période | 9,16 s | 9,15 s | +0,01 s |
+| MFWAM mer totale — hauteur | 1,99 m | 2,24 m | −0,25 m |
+| MFWAM houle 1 — hauteur | 1,78 m | 2,02 m | −0,24 m |
+
+- **GFS et ECMWF collent au centième.** Le correctif ECMWF du 19/08 (mer totale `totH`
+  au lieu de la bande de période) tient toujours : `val`=0,571 et `totH`=1,458 cohabitent
+  dans la ligne, et c'est bien `totH` qui sort.
+- ⚠ **MFWAM : −0,25 m, soit −11 %**, contre ~0,07 m noté le 19/08. Explication la plus
+  probable : notre accès Copernicus prend la case de grille la plus proche, Open-Meteo
+  interpole, et Dumbéa est côtier sur une grille de 9 km. **Non prouvé** — à retester sur
+  un point du large (où l'interpolation ne joue plus) avant de conclure à un bug.
+- Les quatre modèles sans équivalent Open-Meteo direct forment un groupe cohérent au même
+  instant : meteo.nc 2,2 m/12 s/180°, BOM 2,01 m/13,5 s/181°, MARC 2,2 m/13,7 s/191°.
+  Aucun aberrant.
+- ✓ **Pièges de partition intacts.** MARC : `t02` à 6,59 s (mer totale) contre partition
+  dominante à 13,7 s — `_marcPrimarySwell` sélectionne bien le train, pas la mer totale.
+  MFWAM : `totT` à 5,98 s contre train primaire à 8,44 s, même distinction.
+- ✓ **Puissance** : la formule donne 2,0 m / 12 s = 24 kW/m, exactement ce qu'affiche la
+  page. L'étiquette dit « formule Windguru », ce qui est honnête : la formule rigoureuse
+  en eau profonde tombe à 2 % de celle-ci.
+
+Cadence horaire par date, contrôlée sur 8 jours : GFS parfait (8 créneaux/jour), BOM a des
+**trous isolés d'un créneau** (14h absent le 21/11, 5h le 22/11, soit 7/8 au lieu de 8/8),
+meteo.nc se dégrade avec l'horizon (8 puis 6 puis 4 puis 2) ce qui est la nature de son
+flux, pas un bug. Les trous BOM n'ont pas été creusés : un créneau manquant sur huit ne
+déplace aucune décision, et les courbes interpolent.
+
+## ✓ Erreurs informatiques : aucune trouvée
+
+- `window.onerror` et `unhandledrejection` comptés en headless sur données réelles, 20 s
+  d'attente : **0 erreur** sur `previsions.html`, `index.html`, `sorties.html`,
+  `marine_fuel_pro.html`, `semaine.html`, `windguru.html`.
+- `node --check` sur `assets/*.js`, `.github/scripts/*.mjs`, `worker_cloudflare/worker.js`,
+  et sur les blocs inline extraits : propre. `test_score.js` donne **48/48**.
+- Le Worker lui-même va bien hors `/arome` : `/debug` donne `tokenValid:true`, `/token`
+  répond 200, `/enso` répond 200 (30 Ko). Le cron token tourne (âge 1 min au test).
+- La compaction hebdomadaire `db-compaction.yml` **tourne bien** depuis le 18/10 (5 runs,
+  tous verts) — la note « à activer via Actions » est périmée.
+
+⚠ Rappel non traité ici : `_noteModelNoData` n'est posé que par les lecteurs de HOULE.
+Le comparatif VENT a ses propres lecteurs (`_fetchWindAtStation` et voisins) qui n'ont pas
+encore d'équivalent — un modèle de vent qui disparaîtrait serait encore silencieux.
