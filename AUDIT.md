@@ -9776,3 +9776,116 @@ au précache. `semaine.html` y reste volontairement (réécrite chaque lundi).
 **Règle pratique** : tout déploiement qui touche un fichier d'`assets/` ou une
 page précachée doit bumper `CACHE_NAME`, sinon l'utilisateur voit l'ancienne
 version un tour de plus.
+
+---
+
+# 2026-11-20 (5) — Chercheur de créneaux, et un thème cassé en production
+
+## ✗ Le thème d'accueil.html était mort depuis sa mise en ligne
+
+La page est partie hier avec **un fond blanc, un texte prévu pour du sombre et
+les polices par défaut**. Elle est restée comme ça jusqu'à ce qu'une capture
+d'écran soit regardée.
+
+Cause : dans un commentaire de la feuille de style, la séquence `.hb-*/.hc-*`.
+Le `*` suivi du `/` **ferme le commentaire** au milieu de la phrase ; le reste du
+texte devient du CSS invalide, et l'erreur de syntaxe avale la règle `:root`
+juste en dessous — donc **toutes** les variables de thème.
+
+Ce qui rend ce bug méchant mérite d'être écrit noir sur blanc :
+
+| contrôle | verdict |
+|----------|---------|
+| `window.onerror` + `unhandledrejection` en headless | **0 erreur**, trois fois |
+| `node --check` sur le bloc inline | **OK** |
+| rendu DOM des éléments testés | **tous peuplés** |
+| capture d'écran | ✗ le bug saute aux yeux |
+
+**Compter les erreurs JS ne valide pas une page.** Un navigateur applique le CSS
+valide et jette le reste en silence. C'est la même famille que le job vert à zéro
+ligne et le modèle disparu sans un mot, mais côté présentation.
+
+## ✓ `test_pages.js` — 59 assertions sur 8 pages
+
+Contrôles structurels, sans navigateur : commentaires CSS équilibrés (parcours
+ORDONNÉ, pas un décompte global — un `*/` parasite suivi d'un `/* */` complet
+laisse le total équilibré), accolades, `var(--x)` jamais utilisée sans
+définition, id lus en JS présents dans le balisage, `loading="lazy"` interdit sur
+les icônes météo.
+
+**Validé par mutation** : en remettant le `*/` accidentel, deux assertions
+sautent. Et consigné dans le fichier : ce sont bien ces deux-là le garde-fou, pas
+l'assertion « :root déclare des variables », qui est textuelle et ne rejoue pas
+le parseur du navigateur.
+
+**Débarrassé de ses faux positifs**, parce qu'un test qui crie au loup finit par
+ne plus être lu. Trois corrections avant de le committer :
+
+- `previsions.html` contient la chaîne `<style>` **dans des commentaires HTML**.
+  Une recherche naïve appariait ce faux tag ouvrant avec le vrai `</style>` situé
+  17 000 lignes plus loin, avalait tout le JavaScript, et signalait un
+  déséquilibre inexistant. On masque d'abord les commentaires HTML et le type de
+  bloc opposé.
+- Les variables posées par `style.setProperty('--mgw', …)` ou en attribut
+  `style="--c:…"` sont bien des définitions : `semaine.html` et `windguru.html`
+  étaient signalées à tort.
+- La règle « pas de `loading="lazy"` » ne vaut QUE pour les icônes `assets/wx/`.
+  La carte isofronts et la vignette satellite sont de grosses images sous la
+  ligne de flottaison : leur lazy est légitime.
+
+### Il a trouvé un vrai défaut en passant
+
+`var(--panel)`, utilisée par `.sb-gut` et `.sb-head` de `previsions.html`,
+**n'était définie nulle part**. La gouttière collante du tableau de bord était
+donc transparente **dans les deux thèmes**, alors que son propre commentaire
+explique qu'elle doit masquer les colonnes qui défilent dessous. Passée à
+`var(--deep)`, qui est thémée.
+
+## ✓ Trouver un créneau — tous les spots
+
+Reprend les curseurs du comparatif de `previsions.html` (secteur de houle,
+période, hauteur) avec deux ajouts : **les conditions de vent**, et une sortie
+qui n'est plus une courbe mais la **liste des créneaux qui passent** — spot,
+jour, heure, houle, vent, marée, note.
+
+Les critères sont **persistés** et la recherche part seule au chargement : c'est
+ce qui change l'usage, on ne re-saisit pas « entre 180 et 270 » à chaque visite.
+
+Trois décisions de fond :
+
+- **Lectures par spot, pas une grande requête sur une boîte englobante.** Mesuré
+  ce jour : cette requête ramène **1068 lignes** pour `nc/wind` et **1150** pour
+  `gfs/swell_primary`, donc au-delà du plafond PostgREST de 1000. Le piège est
+  déjà consigné deux fois dans ce fichier. Borner par spot garde chaque réponse
+  à ~100 lignes.
+- **Chaque créneau est noté avec les réglages DE SON SPOT.** `calcSurfScore` lit
+  la globale `SCORE_PARAMS` : sans l'installer par spot, trois spots sortaient la
+  même note — celle du spot sélectionné — pendant que la légende affirmait
+  l'inverse. Corrigé, et visible : les notes passent de 1 à 2.
+- **Quand rien ne passe, la page NOMME le réglage qui écarte le plus de
+  créneaux.** Le diagnostic est dérivé du filtrage lui-même, pas écrit en prose.
+
+La notification réutilise le mécanisme des alertes BMS, **avec sa limite écrite à
+l'écran** : sans serveur de push, elle ne peut partir qu'à l'ouverture de la
+page, et signale alors ce qui est apparu depuis la dernière visite. Aucune
+promesse de réveiller le téléphone.
+
+## ✗ Station de marée fausse pour deux spots
+
+`accueil.html` lisait `spot.tidePort`, **un champ qui n'existe pas** dans
+`shared_spots` : tous les spots retombaient sur Nouméa. Sans conséquence pour les
+six spots du Grand Nouméa, mais **faux pour Ouano et Gouaro**, qui dépendent de
+Bourail (station 9880352). Le vrai champ est `tideId`, un identifiant de station ;
+les fonctions de `tide-harmonics.js` attendent une clé de PORT, d'où un
+renversement explicite.
+
+## État final
+
+| harnais | résultat |
+|---------|----------|
+| `test_pages.js` | 59/59 |
+| `test_score.js` | 48/48 |
+| `test_tide.js` | 44/44 |
+
+Page en ligne vérifiée : fond sombre confirmé au pixel, chercheur peuplé,
+0 erreur JS. **25 Ko transférés** contre 362 Ko pour `previsions.html`.

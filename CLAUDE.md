@@ -137,10 +137,19 @@ ne relire qu'elle-même.
 ## Règles de travail
 
 1. Un chantier = un commit. Vérifier qu'aucun `ReferenceError` n'apparaît.
-1bis. **Deux harnais à relancer avant de pousser** : `node test_score.js` (48
-   assertions, moteur de score) et `node test_tide.js` (44, marée + fuseau —
-   il se relance seul dans 3 fuseaux hostiles, ce que le sandbox réglé sur
-   Pacific/Noumea ne peut pas détecter). Aucun des deux n'a besoin du réseau.
+1bis. **Trois harnais à relancer avant de pousser**, aucun n'a besoin du réseau :
+   - `node test_score.js` (48 assertions) — moteur de score.
+   - `node test_tide.js` (44) — marée + fuseau. Il se relance seul dans 3 fuseaux
+     hostiles, ce que le sandbox réglé sur `Pacific/Noumea` ne peut pas détecter.
+   - `node test_pages.js` (59, sur 8 pages) — invariants STRUCTURELS : commentaires
+     CSS équilibrés, accolades, `var(--x)` jamais utilisée sans définition, id lus
+     en JS présents dans le balisage.
+   **Pourquoi le troisième existe** : le 20/11/2026, `accueil.html` est partie en
+   production avec un fond blanc et les polices par défaut, parce qu'un `*` suivi
+   d'un `/` dans un commentaire CSS le fermait par accident et avalait la règle
+   `:root`. **Aucune erreur nulle part** — la sonde headless comptait « 0 erreur »
+   à chaque passage. Un navigateur applique le CSS valide et jette le reste en
+   silence : compter les `window.onerror` ne suffit donc PAS à valider une page.
 2. Après toute extraction de code vers `assets/` : **bumper `CACHE_NAME` dans `sw.js`**
    et compléter `ASSETS`. Le bumper aussi dès qu'un fichier d'`assets/` change.
    POURQUOI c'est non négociable (mesuré le 20/11/2026) : le `fetch` de `sw.js`
@@ -314,6 +323,20 @@ Créé au chantier 10. Toute nouvelle courbe à axe temporel doit passer par là
 Côté `previsions.html` : `_cmpZoom` (zoom UNIQUE partagé houle+vent),
 `_redrawBothCmp()`, `_cmpVisibleWindow()`, `_cmpFrameDay()`, `_renderCmpReadBar()`,
 `_nightIntervals()`, `_cmpTideAt()`, `_tideMatches()`.
+
+---
+
+**Un `*` suivi d'un `/` ferme un commentaire CSS.** Écrire `.hb-*/.hc-*` dans un
+commentaire de feuille de style termine le commentaire au milieu de la phrase ; le
+reste du texte devient du CSS invalide qui avale la règle suivante. Quand cette
+règle est `:root`, la page perd TOUTES ses variables de thème : fond blanc, texte
+clair illisible, polices par défaut — et pas une seule erreur signalée. Vérifié
+par `test_pages.js`. Écrire « site-banner, hb- et hc- » en toutes lettres.
+
+**Une `var(--x)` non définie ne lève rien non plus.** Elle rend la propriété
+invalide et l'élément garde sa valeur héritée — typiquement un fond transparent
+là où il fallait de l'opaque. C'était le cas de `--panel` (gouttière collante du
+tableau de bord) jusqu'au 20/11/2026, dans les deux thèmes.
 
 ---
 
