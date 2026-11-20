@@ -9539,3 +9539,109 @@ déplace aucune décision, et les courbes interpolent.
 ⚠ Rappel non traité ici : `_noteModelNoData` n'est posé que par les lecteurs de HOULE.
 Le comparatif VENT a ses propres lecteurs (`_fetchWindAtStation` et voisins) qui n'ont pas
 encore d'équivalent — un modèle de vent qui disparaîtrait serait encore silencieux.
+
+---
+
+# 2026-11-20 (2) — `accueil.html`, la version « un écran »
+
+Demande : une page de prévision à part, gardant le bandeau photo du haut et le
+tableau détaillé des directions, avec la marée, et vérifier que la marée est juste.
+
+## Ce que pèse le problème
+
+| page | transféré (gzip) |
+|------|------------------|
+| previsions.html | 362 Ko |
+| index.html | 160 Ko |
+| semaine.html | 50 Ko |
+| **accueil.html** | **18 Ko** |
+
+previsions.html répond très bien à « pourquoi », et mal à « j'y vais ou pas, là ».
+20× plus léger, sur du réseau calédonien, ce n'est pas un détail d'esthétique.
+
+## Architecture : importer, jamais recopier
+
+Le risque réel d'une deuxième page de prévision, c'est le bug du 19/08/2026 —
+trois blocs, trois chiffres pour un même spot à une même heure. La règle tenue
+ici : **tout ce qui CALCULE est importé**.
+
+- `score-core.js` → `calcSurfScore`, `surfPower`, `powerBand`
+- `tide-harmonics.js` → modèle harmonique Nouméa ajusté SHOM, arbitrage du
+  suffixe Z, interpolation en douzièmes
+- `settings-utils.js` → `compass`, `hsCol`, `windCol`, `pwrCol`,
+  `scoreBreakdownHtml` (donc l'explication de la note est DÉRIVÉE du calcul, la
+  même fonction que previsions.html, jamais une prose parallèle)
+- données : la MÊME table `model_forecast_cache`, même fenêtre bornée, même
+  déduplication « ligne la plus récente par date », même garde du point le plus
+  proche dans la boîte ±0,06°
+- spot actif partagé via `localStorage['surf-active-spot']`, paramètres de score
+  lus dans `spot.scoreParams` comme `loadScoreParams()`
+
+**Une seule exception, assumée et commentée des deux côtés** : `_tideAdj()` (le
+bonus/malus de marée du score) est encore inline dans previsions.html et non
+dans un asset. Les seuils sont recopiés avec un avertissement explicite. Si
+l'une des deux bouge, l'autre doit suivre — même convention que
+`KNOWN_WG_SPOTS` dans worker.js.
+
+## ✓ Marée : vérifiée contre la source, pas supposée
+
+C'est le bug qui est revenu **trois fois** dans ce projet (11 h de décalage sur
+un cycle de 12 h 25, soit une marée quasi inversée). Contrôle fait contre la
+réponse brute du Worker, station 9881852 (Nouméa) :
+
+| extremum affiché | brut meteo.nc (converti NC) | écart |
+|------------------|------------------------------|-------|
+| PM 04h13 · 1,2 m | 19/11 17:13Z → 20/11 04:13 · 1,16 m | 0 min |
+| BM 09h56 · 0,7 m | 19/11 22:56Z → 20/11 09:56 · 0,72 m | 0 min |
+| PM 16h23 · 1,4 m | 20/11 05:23Z → 20/11 16:23 · 1,39 m | 0 min |
+| BM 23h04 · 0,6 m | 20/11 12:04Z → 20/11 23:04 · 0,55 m | 0 min |
+
+Deux choses que ce tableau prouve au passage : la page va bien chercher les
+extrema de la **veille** pour le début de journée (sans quoi le matin serait
+extrapolé), et l'arbitrage du suffixe Z a tranché « UTC vrai », ce qui est
+cohérent avec la mesure du 04/08 sur les réponses `&date=`.
+
+Les heures tombaient d'abord à 2 min près (04h15 affiché contre 04h13 réel) :
+le balayage d'extrema se faisait au pas de 5 min. Ajout d'un **affinage au pas
+de 6 s** dans la fenêtre encadrante. L'interpolation étant une demi-cosinusoïde
+entre deux extrema RÉELS, son extremum tombe exactement sur l'extremum réel,
+donc affiner converge vers la bonne heure — ce n'est pas un lissage cosmétique.
+
+## ✓ Houle : la bonne partition par modèle
+
+Le sélecteur est volontairement **restreint aux modèles qui publient une vraie
+houle partitionnée** : meteo.nc, GFS, BOM, MFWAM, MARC. ECMWF et AIFS en sont
+ABSENTS — ce qu'ils publient est la mer totale, les montrer sous l'étiquette
+« Houle » serait exactement l'erreur corrigée le 19/08. LOTUS aussi, sa source
+étant éteinte depuis le 19/10.
+
+Vérifié en bascule réelle : MARC affiche **2,2 m / 14 s**, c'est-à-dire le train
+dominant, pas la mer totale (`t02` = 6,4 s au même créneau). MFWAM lit
+`partitions[1]`, jamais `totH`/`totT`.
+
+## ✓ Vérifications
+
+- **0 erreur** JS en headless sur données réelles, y compris après bascule de
+  source. Une TypeError de course a été trouvée et corrigée au passage : le
+  `ResizeObserver` se déclenche avant que `shared_spots` soit résolu.
+- Courbe de marée réellement tracée : **62 129 pixels non transparents**
+  (`getImageData`, alpha > 0 — le seul contrôle fiable pour un canvas).
+- Lever/coucher du soleil (grisage des lignes de nuit) : **05h02 / 18h17** le
+  20/11 à Nouméa, **06h33 / 17h19** au solstice d'hiver. Conforme.
+- Rendu étroit : reprend le comportement mobile de previsions.html (photo en
+  haut, titre dessous, encart déplié en carte pleine largeur).
+- L'encart débordait et se superposait à lui-même en capture : le filet
+  `.hb-cond-tight` de previsions.html avait été oublié à l'extraction du CSS.
+  Ajouté avec sa fonction de mesure.
+- `svgArrow()` (settings-utils.js) trace un TRAIT de 2 px sur une boîte de 24 :
+  réduit à 12-13 px, c'est un cheveu illisible. Remplacé par l'aiguille PLEINE
+  de `_hbCondArrow()`, qui garde sa silhouette à toute taille.
+
+## Reste à décider
+
+- **LOTUS** : supprimer le job `surfline`, ou lui ouvrir un chemin depuis une IP
+  résidentielle. En attendant, `continue-on-error` + annotation.
+- Un raccourci PWA « L'essentiel » dans `manifest.json` demanderait une icône
+  dédiée (comme `icons/vent-*.png`) : pas fait, pour ne pas inventer un visuel.
+- `_tideAdj()` gagnerait à descendre dans `score-core.js`, ce qui supprimerait
+  la dernière duplication entre les deux pages.
