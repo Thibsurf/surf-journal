@@ -137,8 +137,18 @@ ne relire qu'elle-même.
 ## Règles de travail
 
 1. Un chantier = un commit. Vérifier qu'aucun `ReferenceError` n'apparaît.
+1bis. **Deux harnais à relancer avant de pousser** : `node test_score.js` (48
+   assertions, moteur de score) et `node test_tide.js` (44, marée + fuseau —
+   il se relance seul dans 3 fuseaux hostiles, ce que le sandbox réglé sur
+   Pacific/Noumea ne peut pas détecter). Aucun des deux n'a besoin du réseau.
 2. Après toute extraction de code vers `assets/` : **bumper `CACHE_NAME` dans `sw.js`**
    et compléter `ASSETS`. Le bumper aussi dès qu'un fichier d'`assets/` change.
+   POURQUOI c'est non négociable (mesuré le 20/11/2026) : le `fetch` de `sw.js`
+   est un **stale-while-revalidate pour TOUT**, navigations HTML comprises — et
+   non « network-first pour le HTML » comme une note antérieure l'affirmait. Une
+   page **précachée** est donc rafraîchie en UN rechargement grâce au bump
+   (`install` la re-télécharge, `skipWaiting`+`clients.claim` prennent la main) ;
+   une page **non précachée** n'apparaît à jour qu'au SECOND rechargement.
 3. **Ne rien inventer sur les données** : si un chiffre n'est pas mesuré, le mesurer.
 4. Ce dépôt n'a **pas de CI** : penser à `git push`, pas seulement à committer.
 

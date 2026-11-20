@@ -9645,3 +9645,134 @@ dominant, pas la mer totale (`t02` = 6,4 s au même créneau). MFWAM lit
   dédiée (comme `icons/vent-*.png`) : pas fait, pour ne pas inventer un visuel.
 - `_tideAdj()` gagnerait à descendre dans `score-core.js`, ce qui supprimerait
   la dernière duplication entre les deux pages.
+
+---
+
+# 2026-11-20 (3) — LOTUS : le module marche, c'est l'IP qui est refusée
+
+Relance demandée sur LOTUS, à juste titre. **`fetch_surfline.py` fonctionne
+parfaitement** : exécuté sur le poste Windows, il ramène 5 spots × 7 jours =
+70 lignes, run LOTUS du 20/11 00h, trains directionnels compris. Rien à réparer
+dans le module.
+
+## La preuve que c'est l'IP
+
+Run déclenché à la main pendant la même minute qu'un appel local réussi :
+
+| depuis | résultat |
+|--------|----------|
+| poste résidentiel | 200, 70 lignes |
+| runner GitHub | 403 en 0,14 s, dès la 1re tentative, sur tous les endpoints |
+
+Même code, mêmes en-têtes, même minute. Ce n'est donc ni le rythme des requêtes
+ni un en-tête : **inutile d'aller modifier `DEFAULT_HEADERS`**.
+
+## Deux pistes mesurées et ÉCARTÉES
+
+- **Appel direct depuis le navigateur : impossible.** Surfline renvoie 403 dès
+  que l'en-tête `Origin` n'est pas le sien. Bissection, deux passes identiques :
+  sans Origin → 200, `Origin: https://www.surfline.com` → 200,
+  `Origin: https://thibsurf.github.io` → **403**. Un navigateur ne peut pas
+  mentir sur Origin, donc aucune page ne pourra jamais appeler cette API. Cela
+  ferme définitivement l'idée d'une ingestion côté client.
+- **`kbyg/spots/batch` comme repli** : répond 200 mais ne porte plus que les
+  métadonnées du spot (1,9 Ko). Le docstring de `surfline_client.py` affirmait
+  qu'il renvoie toujours 6 trains : **ce n'est plus vrai**.
+
+## Le relais, et deux pannes silencieuses trouvées en le construisant
+
+Route `/surfline` ajoutée au Worker. Ce n'est **pas** un proxy ouvert : endpoint
+validé contre une liste blanche, `spotId` validé contre sa forme, paramètres
+reconstruits un par un, unités forcées en métrique. Le client la tente d'abord
+quand `SURFLINE_PROXY` est défini et retombe en direct sinon — donc **en local
+rien ne change**, ce qui préserve le chemin qui marche à la main.
+
+Deux défauts trouvés en testant, tous deux de la famille « succès silencieux » :
+
+1. **Le Worker répondait 200 « worker ready » à TOUTE route inconnue.** Un client
+   appelant une route pas encore déployée recevait un JSON valide avec le code du
+   succès et repartait avec un objet vide. Mesuré en vrai : le job finissait
+   « 0 ligne » sans un mot sur la cause. Les routes inconnues renvoient désormais
+   **404**, la racine exacte reste en 200 comme ping de vivacité. Et le client
+   refuse en plus toute réponse portant l'enveloppe du Worker.
+2. **L'annotation `::error::` ajoutée le matin plantait** sur un
+   `UnicodeEncodeError` en console Windows (cp1252 ne sait pas encoder `⊘`),
+   masquant précisément le code de sortie qu'on venait d'ajouter. Réécrite en
+   ASCII.
+
+⚠ **Reste une commande, côté utilisateur** : `npx wrangler login && npx wrangler
+deploy` depuis `worker_cloudflare/`. Le jeton local a expiré. Tant que ce n'est
+pas fait, `/surfline` n'existe pas, le client le détecte et retombe en direct —
+donc rien n'est pire qu'avant. **Non vérifié** : que Cloudflare passe. windguru.cz
+refuse déjà cet egress, donc Surfline pourrait faire pareil.
+
+---
+
+# 2026-11-20 (4) — Les remarques, traitées
+
+## ✓ `test_tide.js` — 44 assertions, le bug récurrent enfin verrouillé
+
+Le décalage de marée est revenu **trois fois** et n'avait aucun test, pendant que
+le moteur de score, qui a cassé moins souvent, en a 48. C'était à l'envers.
+
+Aucun réseau : les données sont de **vraies réponses du Worker** pour la station
+de Nouméa, figées dans le fichier. Les heures NC attendues sont calculées à la
+main, pas par le code testé.
+
+Couverture : l'arbitrage du suffixe Z sur les **deux** écritures de la même
+journée, minuit NC et l'absence d'heure d'été, la chaîne complète (4 extrema à la
+minute et à 2 cm, dont deux venant du fichier de la VEILLE), et le modèle
+harmonique qui sert d'arbitre autant que de repli.
+
+**Le point aveugle du projet est enfin couvert** : le sandbox de vérification
+étant réglé sur `Pacific/Noumea`, un bug de fuseau y est invisible. Le harnais se
+relance lui-même dans trois fuseaux hostiles (Los Angeles avec heure d'été,
+Kiritimati à UTC+14, et UTC) et exige une empreinte identique au caractère près.
+
+**Vérifié par MUTATION**, parce qu'un test qui passe ne prouve rien tant qu'il n'a
+pas attrapé le bug :
+
+| mutation appliquée | résultat |
+|--------------------|----------|
+| arbitrage du Z neutralisé | 2 échecs ciblés |
+| `_tideMidnightNC` passé en heure locale | 14 échecs, dont les 3 fuseaux |
+| fichier restauré | 44/44 |
+
+## ✓ Le comparatif VENT avait encore le trou de la houle
+
+`_modelNoData` ne couvrait que les lecteurs de houle. Les cinq lecteurs de vent
+renvoyaient une série vide sans un mot. Drapeaux ajoutés sous des clés préfixées
+`wind:`, légende qui barre le modèle en donnant la raison. Vérifié en headless :
+`_modelNoData` contient bien `lotus` ET `wind:lotus`.
+
+## ✓ `_fetchLotusWind` ne bornait pas ses dates
+
+Dernière requête du fichier dans ce cas, alors que la règle est posée depuis le
+19/08. Fenêtre −1..+7 j, plus la sonde qui distingue « hors des 5 zones » de
+« source éteinte ».
+
+## ✓ Dernière duplication supprimée
+
+Les seuils du bonus de marée du score sont descendus dans `score-core.js`
+(`spotTidePref` / `tideScoreAdj` / `tideMatchesPref`). Les deux pages délèguent,
+avec repli local si l'asset n'a pas chargé.
+
+## ✓ `windguru.html` entre au précache — et pourquoi ça compte
+
+Question posée en cours de route : **comment les pages se rafraîchissent-elles ?**
+Réponse mesurée dans `sw.js`, et elle corrige une note de passation erronée qui
+disait « network-first pour le HTML ». C'est **faux** : le `fetch` est un
+**stale-while-revalidate pour TOUT**, navigations comprises. Donc :
+
+- page **précachée** : `install` la re-télécharge au bump de `CACHE_NAME`, et
+  `skipWaiting` + `clients.claim` prennent la main tout de suite → **un seul
+  rechargement**.
+- page **non précachée** : servie depuis le cache, mise à jour en arrière-plan →
+  la nouvelle version n'apparaît qu'au **second** rechargement.
+
+`windguru.html` était dans le second cas, juste après avoir été corrigée. Ajoutée
+au précache. `semaine.html` y reste volontairement (réécrite chaque lundi).
+
+**Règle pratique** : tout déploiement qui touche un fichier d'`assets/` ou une
+page précachée doit bumper `CACHE_NAME`, sinon l'utilisateur voit l'ancienne
+version un tour de plus.
