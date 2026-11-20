@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Coups de surf — l'essentiel</title>
+<meta name="description" content="L'essentiel des prévisions de surf en Nouvelle-Calédonie : houle, direction, vent et marée, sur un écran.">
+<meta name="theme-color" content="#0a1628">
+<link rel="icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="icon_app.png">
+<link rel="manifest" href="manifest.json">
+<link rel="preload" as="image" href="assets/hero-banniere.jpg" fetchpriority="high">
+<link rel="preconnect" href="https://tiiptlozingmgzcnexpu.supabase.co" crossorigin>
+<link rel="preconnect" href="https://meteo-proxy-worker.thibault-dlh.workers.dev" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap">
+<!-- Cloudflare Web Analytics : inséré à la main comme sur les 7 autres pages (le
+     front est servi par GitHub Pages, donc pas d'injection automatique possible). -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "f9e1c9c2f09e4b5ab3a6dd4dd9ba00ad"}'></script>
+<style>
+/* ════════════════════════════════════════════════════════════════════════════
+   accueil.html — la version « un écran » des prévisions.
+   Thème SOMBRE uniquement, comme index/sorties/fuel : le thème clair est
+   volontairement exclusif à previsions.html (cf. mémoire projet).
+   Les règles .site-banner/.hb-*/.hc-* sont reprises TELLES QUELLES de
+   previsions.html pour que le haut de page soit identique au pixel. Si l'une
+   des deux bouge, l'autre doit suivre.
+   ════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --ocean:#0a1628;--deep:#0d1f3c;--mid:#1a3a5c;--surface:#1e2d42;
+  --glass:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);--border-h:rgba(255,255,255,0.16);
+  --text:#e8eef4;--muted:#7a94aa;--faint:#728aa1;
+  --accent:#4fa3c7;--warm:#e8a057;--tube:#7b6cf6;--ok:#3dba8a;--bad:#e05c5c;
+  --font-d:'Playfair Display',Georgia,serif;--font-b:'DM Sans',system-ui,sans-serif;
+  --r:12px;--rs:8px;--sun:#fde068;
+  --sw-tot:rgba(79,163,199,.9);--sw-pri:rgba(185,208,235,.95);
+  --sunken:rgba(0,0,0,.25);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--ocean);color:var(--text);font-family:var(--font-b);
+  font-size:14px;line-height:1.55;-webkit-text-size-adjust:100%;}
+a{color:var(--accent);}
+
+/* ── Bandeau (copie conforme de previsions.html) ───────────────────────────── */
+.site-banner{position:relative;width:100%;background:#0a1826;}
+.site-banner .hb-toolbar{display:flex;align-items:center;gap:.6rem;padding:7px 1.5rem;
+  min-height:46px;background:rgba(10,22,40,.92);border-bottom:1px solid var(--border);
+  flex-wrap:wrap;}
+.site-banner .hb-tools{display:flex;align-items:center;gap:.6rem;margin-left:auto;flex-wrap:wrap;}
+.site-banner .hb-stage{position:relative;width:100%;height:clamp(180px,20vw,460px);
+  container-type:size;container-name:hbphoto;}
+.site-banner .hb-photo{position:absolute;inset:0;overflow:hidden;}
+.site-banner .hb-photo img{width:100%;height:100%;object-fit:cover;object-position:center 58%;display:block;}
+.site-banner .hb-scrim{position:absolute;inset:0;
+  background:linear-gradient(100deg,rgba(4,14,24,.78) 0%,rgba(4,14,24,.42) 30%,rgba(4,14,24,.08) 54%,rgba(4,14,24,0) 70%),
+             linear-gradient(to bottom,rgba(10,24,38,.42) 0%,rgba(10,24,38,0) 22%,rgba(10,24,38,0) 62%,rgba(10,24,38,.5) 89%,#0a1826 100%);}
+.site-banner .hb-bottom{position:absolute;left:0;right:0;bottom:0;padding:0 1.5rem 14px;
+  display:flex;flex-direction:column;gap:clamp(8px,1.4vw,18px);}
+.site-banner .hb-h1{margin:0;font-family:var(--font-d);font-weight:600;
+  font-size:clamp(28px,3.4vw,64px);line-height:1;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.4);}
+.site-banner .hb-h1 span{color:#7cc6e4;font-style:italic;}
+.site-banner .hb-tag{display:flex;align-items:center;gap:10px;}
+.site-banner .hb-tag i{display:inline-block;width:26px;height:1px;background:rgba(124,198,228,.8);}
+.site-banner .hb-tag span{font:500 9px/1 var(--font-b);letter-spacing:.26em;text-transform:uppercase;
+  color:rgba(207,230,241,.8);white-space:nowrap;}
+.site-banner .hb-rule{height:1px;width:100%;
+  background:linear-gradient(90deg,rgba(79,163,199,.55) 0%,rgba(79,163,199,.12) 55%,rgba(79,163,199,0) 100%);}
+.site-banner .hb-cond{position:absolute;right:1.5rem;bottom:14px;width:244px;
+  max-height:calc(100% - 28px);
+  background:rgba(8,19,30,.66);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+  border:1px solid rgba(160,200,225,.18);border-radius:14px;box-shadow:0 18px 40px rgba(3,10,18,.45);
+  padding:11px 16px;display:flex;flex-direction:column;gap:5px;overflow:hidden;}
+.site-banner .hb-cond-hide{display:none!important;}
+.site-banner .hb-cond-hd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-shrink:0;}
+.site-banner .hb-cond-hd-label{font:700 10px/1.2 var(--font-b);color:#c2d6e2;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.site-banner .hb-cond-live{display:flex;align-items:center;gap:5px;font:700 10px/1 var(--font-b);
+  letter-spacing:.1em;text-transform:uppercase;color:#4fd6a0;flex-shrink:0;}
+.site-banner .hb-cond-live i{display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:#4fd6a0;box-shadow:0 0 0 2.5px rgba(79,214,160,.22);}
+.site-banner .hb-cond-sec{flex-shrink:1;min-height:0;}
+.site-banner .hb-cond-sec+.hb-cond-sec{border-top:1px solid rgba(160,200,225,.22);padding-top:5px;}
+.site-banner .hb-cond-lbl{font:700 9px/1.3 var(--font-b);letter-spacing:.18em;text-transform:uppercase;
+  color:#7e9aad;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.site-banner .hb-cond-lbl .src{font-weight:600;letter-spacing:0;text-transform:none;color:#5c7686;}
+.site-banner .hc-main{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
+.site-banner .hc-val{display:inline-flex;align-items:baseline;gap:5px;min-width:0;}
+.site-banner .hc-val svg{width:13px;height:13px;flex-shrink:0;position:relative;top:1px;}
+.site-banner .hc-main b{color:#fff;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;
+  letter-spacing:-.01em;font-size:clamp(11px,11cqh,22px);}
+.site-banner .hc-main-vent b{font-size:clamp(11px,9.5cqh,19px);}
+.site-banner .hc-unit{color:#c2d6e2;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;
+  font-size:clamp(11px,6cqh,12px);}
+.site-banner .hc-per{color:#9fb8c8;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;
+  flex-shrink:0;margin-left:auto;font-size:clamp(11px,6cqh,12px);}
+.site-banner .hc-sub{color:#a7bece;font-variant-numeric:tabular-nums;
+  margin-top:2px;font-size:clamp(11px,6cqh,12px);line-height:1.5;}
+.site-banner .hc-sub svg{width:9px;height:9px;flex-shrink:0;vertical-align:-1px;}
+.site-banner .hc-sub span{white-space:nowrap;margin-right:9px;display:inline-block;}
+.site-banner .hc-tide{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  font-variant-numeric:tabular-nums;}
+.site-banner .hc-tide span{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap;min-width:0;}
+.site-banner .hc-tide b{color:#fff;font-weight:700;white-space:nowrap;font-size:clamp(11px,7cqh,14px);}
+.site-banner .hc-tide i{font-style:normal;color:#a7bece;font-weight:400;white-space:nowrap;font-size:11px;}
+.site-banner .hc-tide .tri{font-size:11px;line-height:1;flex-shrink:0;}
+/* Mode resserré : posé par condFit() quand le contenu déborde du panneau à
+   hauteur contrainte. Tout au plancher 11 px plutôt que de couper une ligne. */
+.site-banner .hb-cond-tight .hc-main b,
+.site-banner .hb-cond-tight .hc-unit,
+.site-banner .hb-cond-tight .hc-per,
+.site-banner .hb-cond-tight .hc-sub,
+.site-banner .hb-cond-tight .hc-tide b,
+.site-banner .hb-cond-tight .hc-tide i{font-size:11px!important;}
+.site-banner .hb-cond-tight{gap:2px!important;padding:7px 12px!important;}
+.site-banner .hb-cond-tight .hb-cond-sec+.hb-cond-sec{padding-top:2px!important;}
+.site-banner .hb-cond-tight .hb-cond-lbl{margin-bottom:1px!important;}
+@media(max-width:680px){
+  .site-banner .hb-tag{display:none;}
+  .site-banner .hb-toolbar{padding:6px .7rem;min-height:44px;}
+  .site-banner .hb-stage{height:auto;container-type:normal;}
+  .site-banner .hb-photo{position:relative;height:clamp(130px,34vw,230px);}
+  .site-banner .hb-bottom{position:static;padding:14px .9rem 2px;}
+  .site-banner .hb-cond{position:static;width:auto;margin:10px .9rem 16px;max-height:none;
+    background:rgba(255,255,255,.055);padding:11px 14px;}
+  .site-banner .hc-main b{font-size:16px;}
+  .site-banner .hc-main-vent b{font-size:15px;}
+  .site-banner .hc-unit,.site-banner .hc-per,.site-banner .hc-sub{font-size:12px;}
+  .site-banner .hc-tide b{font-size:14px;}
+}
+
+/* ── Corps ─────────────────────────────────────────────────────────────────── */
+.wrap{max-width:980px;margin:0 auto;padding:16px;}
+.card{background:var(--deep);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;margin-bottom:14px;}
+.section-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:8px;}
+.note{font-size:11px;color:var(--faint);line-height:1.5;}
+.btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 11px;
+  border-radius:16px;cursor:pointer;font-size:12px;font-family:var(--font-b);white-space:nowrap;}
+.btn:hover{border-color:var(--border-h);color:var(--text);}
+.btn.on{background:rgba(79,163,199,.18);border-color:rgba(79,163,199,.5);color:#9fd4ea;font-weight:600;}
+select.btn{padding:5px 9px;border-radius:var(--rs);background:var(--surface);color:var(--text);}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.loading{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:12px;padding:10px 0;}
+.spin{width:13px;height:13px;border:2px solid var(--border-h);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .8s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg);}}
+
+/* Verdict */
+.vd{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.vd-stars{font-size:26px;line-height:1;letter-spacing:2px;}
+.vd-lbl{font-family:var(--font-d);font-size:clamp(22px,4vw,32px);line-height:1.1;font-weight:600;}
+.vd-when{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.14em;}
+.vd-nums{display:flex;gap:18px;flex-wrap:wrap;margin-left:auto;}
+.vd-num{min-width:68px;}
+.vd-num u{display:block;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);text-decoration:none;margin-bottom:1px;}
+.vd-num b{font-size:18px;font-variant-numeric:tabular-nums;}
+.vd-num s{display:block;font-size:11px;color:var(--muted);text-decoration:none;}
+
+/* Tableau */
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+table.t{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums;}
+table.t th,table.t td{padding:5px 7px;text-align:center;white-space:nowrap;
+  border-bottom:1px solid var(--border);}
+table.t th{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--faint);background:var(--deep);position:sticky;top:0;z-index:2;}
+table.t td.h{position:sticky;left:0;background:var(--deep);font-weight:700;text-align:left;z-index:1;}
+table.t th.h{position:sticky;left:0;z-index:3;text-align:left;}
+table.t tr.night td{opacity:.42;}
+table.t tr.now td{background:rgba(79,163,199,.13);}
+table.t tr.now td.h{background:rgba(79,163,199,.2);}
+.arw{display:inline-block;font-size:11px;color:var(--accent);}
+.g2{display:block;font-size:10px;color:var(--muted);}
+footer{padding:4px 16px 34px;max-width:980px;margin:0 auto;}
+footer .row{gap:14px;font-size:12px;}
+</style>
+</head>
+<body>
+
+<header class="site-banner" id="site-banner">
+  <div class="hb-toolbar">
+    <label for="sp" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.14em;">Spot</label>
+    <select id="sp" class="btn" aria-label="Choisir le spot"><option>…</option></select>
+    <div class="hb-tools">
+      <span id="stamp" class="note"></span>
+      <a class="btn" href="previsions.html" title="Toutes les prévisions : comparatif des 8 modèles, cartes, isofronts, marée &amp; pêche">Tout voir ↗</a>
+    </div>
+  </div>
+  <div class="hb-stage">
+    <div class="hb-photo">
+      <img src="assets/hero-banniere.jpg" alt="Vague creuse et surfeur, Nouvelle-Calédonie" loading="eager" fetchpriority="high" decoding="async">
+      <div class="hb-scrim"></div>
+    </div>
+    <div class="hb-bottom">
+      <h1 class="hb-h1">Coups <span>de surf</span></h1>
+      <div class="hb-tag"><i></i><span>L'essentiel · houle, vent, marée</span></div>
+    </div>
+    <!-- Encart « Maintenant » : même structure et même CSS que celui de
+         previsions.html, mais peuplé ici par UN seul point d'entrée (fillNow),
+         puisque cette page n'a qu'une source de houle à la fois. Démarre masqué
+         pour ne jamais montrer de coquille vide sur la photo. -->
+    <div class="hb-cond hb-cond-hide" id="hb-cond">
+      <div class="hb-cond-hd">
+        <span class="hb-cond-hd-label" id="nw-spot"></span>
+        <span class="hb-cond-live"><i></i>Maintenant</span>
+      </div>
+      <div class="hb-cond-sec hb-cond-hide" id="nw-sw-sec">
+        <div class="hb-cond-lbl">Houle <span class="src" id="nw-sw-src"></span></div>
+        <div id="nw-sw"></div>
+      </div>
+      <div class="hb-cond-sec hb-cond-hide" id="nw-wd-sec">
+        <div class="hb-cond-lbl">Vent <span class="src" id="nw-wd-src"></span></div>
+        <div id="nw-wd"></div>
+      </div>
+      <div class="hb-cond-sec hb-cond-hide" id="nw-td-sec">
+        <div class="hb-cond-lbl">Marée <span class="src" id="nw-td-src"></span></div>
+        <div id="nw-td"></div>
+      </div>
+    </div>
+  </div>
+  <div class="hb-rule"></div>
+</header>
+
+<div class="wrap">
+
+  <div class="card" id="verdict-card">
+    <div class="section-label">Verdict du créneau</div>
+    <div id="verdict"><div class="loading"><div class="spin"></div> Lecture des prévisions…</div></div>
+    <details id="vd-det" style="margin-top:10px;display:none;">
+      <summary style="cursor:pointer;font-size:11px;color:var(--muted);">Comment cette note est calculée</summary>
+      <div id="vd-break" style="margin-top:8px;"></div>
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <div class="section-label" style="margin:0;">Marée — <span id="td-port" style="text-transform:none;letter-spacing:0;font-weight:400;"></span></div>
+      <span id="td-src" class="note"></span>
+    </div>
+    <div style="position:relative;height:118px;margin-top:6px;"><canvas id="td-cv"></canvas></div>
+    <div id="td-ext" class="note" style="margin-top:4px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+      <div class="section-label" style="margin:0;">Détail horaire — directions, vent, marée</div>
+      <div class="row" id="src-pick"></div>
+    </div>
+    <div class="row" id="day-pick" style="margin-bottom:8px;"></div>
+    <div class="tscroll" id="tbl"><div class="loading"><div class="spin"></div> Chargement…</div></div>
+    <div class="note" id="tbl-note" style="margin-top:7px;"></div>
+  </div>
+
+</div>
+
+<footer>
+  <div class="row">
+    <a href="previsions.html">Prévisions complètes</a>
+    <a href="semaine.html">La semaine</a>
+    <a href="windguru.html">Vent passes</a>
+    <a href="https://thibsurf.github.io/surf-journal/">Journal des sessions</a>
+  </div>
+  <div class="note" style="margin-top:8px;">
+    Page allégée : une seule source de houle à la fois, lue dans la même archive que
+    les prévisions complètes. Pour le comparatif des 8 modèles, les cartes, les
+    isofronts et l'onglet Marée &amp; Pêche, passer par « Tout voir ».
+  </div>
+</footer>
+
+<script src="assets/nc-token.js"></script>
+<script src="assets/score-core.js"></script>
+<script src="assets/tide-harmonics.js"></script>
+<script src="assets/settings-utils.js"></script>
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+// accueil.html — ES5 volontaire (cf. CLAUDE.md : ~2800 var, 0 let, compat iOS
+// ancien). Aucun bundler, aucun module ES.
+//
+// POURQUOI cette page : previsions.html pèse 362 Ko compressés sur le réseau et
+// empile une vingtaine de sections. Elle répond très bien à « pourquoi », mais
+// mal à « j'y vais ou pas, là, maintenant ». Celle-ci ne répond qu'à la seconde
+// question, sur un écran, et renvoie vers l'autre pour le reste.
+//
+// PRINCIPE ANTI-DIVERGENCE : tout ce qui CALCULE est importé, jamais recopié —
+// score-core.js (calcSurfScore/surfPower/powerBand), tide-harmonics.js (le
+// modèle harmonique Nouméa ajusté SHOM + l'arbitrage du suffixe Z de meteo.nc),
+// settings-utils.js (compass/hsCol/windCol/pwrCol/scoreBreakdownHtml).
+// Les données viennent de la MÊME table `model_forecast_cache` que
+// previsions.html. Deux pages qui afficheraient deux chiffres pour le même spot
+// à la même heure, c'est le bug du 19/08/2026 : il ne doit pas revenir par une
+// porte de service.
+// ════════════════════════════════════════════════════════════════════════════
+
+var SB = _NCT_SB_URL, SBK = _NCT_SB_KEY;
+TIDE_API.base = _NC_WORKER;   // tide-harmonics.js fetche /tide par lui-même
+
+// Sources de houle proposées. Volontairement RESTREINT aux modèles qui publient
+// une vraie houle primaire partitionnée : ECMWF et AIFS n'en ont pas (ce qu'ils
+// publient est la mer totale, cf. CLAUDE.md), les montrer ici sous l'étiquette
+// « Houle » serait exactement l'erreur corrigée le 19/08/2026. LOTUS est écarté
+// pour une autre raison : sa source est éteinte depuis le 19/10/2026.
+var SRCS = [
+  { k:'nc',   model:'nc',   kind:'swell_primary', label:'meteo.nc', res:'',        wind:'nc'   },
+  { k:'gfs',  model:'gfs',  kind:'swell_primary', label:'GFS',      res:'28 km',   wind:'gfs'  },
+  { k:'bom',  model:'bom',  kind:'swell_primary', label:'BOM',      res:'14 km',   wind:'bom'  },
+  { k:'mf',   model:'mf',   kind:'wave',          label:'MF global',res:'9 km',    wind:null   },
+  { k:'marc', model:'marc', kind:'wave',          label:'MARC',     res:'5,5 km',  wind:'marc' }
+];
+var LS_SRC = 'accueil-src';
+var srcKey = (function(){ try { return localStorage.getItem(LS_SRC) || 'nc'; } catch(e){ return 'nc'; } })();
+if (!srcOf(srcKey)) srcKey = 'nc';
+function srcOf(k){ for (var i=0;i<SRCS.length;i++) if (SRCS[i].k===k) return SRCS[i]; return null; }
+
+var spots = [], spot = null, dayIdx = 0, slots = [], gustByMs = {}, aroRun = null;
+
+// ── Fuseau : NC = UTC+11 fixe, sans heure d'été (convention du projet) ───────
+function nc(ms){ return new Date(ms + 11*3600000); }           // à lire en getUTC*
+function ncDs(ms){ var d=nc(ms);
+  return d.getUTCFullYear()+'-'+p2(d.getUTCMonth()+1)+'-'+p2(d.getUTCDate()); }
+function p2(n){ return (n<10?'0':'')+n; }
+function ncHour(ms){ var d=nc(ms); return d.getUTCHours()+d.getUTCMinutes()/60; }
+// Minuit NC d'une date, en ms RÉELLES (cf. CLAUDE.md).
+function midnightNc(ds){ var p=ds.split('-'); return Date.UTC(+p[0],+p[1]-1,+p[2]) - 11*3600000; }
+var DAYS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+
+// Flèche de direction. Reprise de _hbCondArrow() (previsions.html) plutôt que
+// de svgArrow() (settings-utils.js) : cette dernière trace un TRAIT de 2 px sur
+// une boîte de 24, qui devient un cheveu illisible une fois réduite à 12-13 px
+// (constaté en capture le 20/11/2026). Ici une aiguille PLEINE, qui garde sa
+// silhouette à n'importe quelle taille. Même convention : deg = provenance
+// météo, la flèche montre où ça VA.
+function dirArrow(deg, col, size){
+  if (deg == null) return '';
+  var rot = (deg + 180) % 360;
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 20 20" '
+    + 'style="transform:rotate(' + rot + 'deg);flex-shrink:0;vertical-align:middle;">'
+    + '<path d="M10 1 L14.5 19 L10 15 L5.5 19 Z" fill="' + col + '"/></svg>';
+}
+// Hauteur d'eau : TOUJOURS une décimale. Math.round(x*10)/10 affiche « 1 m »
+// pour 0,96 et « 0.9 m » pour 0,94 : deux formats à une minute d'intervalle.
+function t1(v){ return (v == null || !isFinite(v)) ? '—' : v.toFixed(1); }
+function esc(s){ return String(s==null?'':s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function n1(v){ return (v==null||!isFinite(v))?null:v; }
+function r1(v){ return Math.round(v*10)/10; }
+
+// ── Supabase REST (clé anon publique du site, comme windguru.html) ──────────
+function sbGet(path, cb){
+  var x = new XMLHttpRequest();
+  x.open('GET', SB + '/rest/v1/' + path, true);
+  x.setRequestHeader('apikey', SBK);
+  x.setRequestHeader('Authorization', 'Bearer ' + SBK);
+  x.timeout = 20000;
+  x.onloadend = function(){
+    var j = null; try { j = JSON.parse(x.responseText); } catch(e){ j = null; }
+    cb(x.status === 200 ? j : null);
+  };
+  x.send();
+}
+
+// ── Lecture de l'archive ────────────────────────────────────────────────────
+// Fenêtre de dates TOUJOURS bornée (règle CLAUDE.md : `model_forecast_cache`
+// n'est jamais purgée, une requête sans borne ramène des semaines de périmé),
+// et déduplication « ligne la plus récente par date » comme tous les lecteurs
+// de previsions.html.
+function datesWindow(back, fwd){
+  var out = [], now = Date.now(), k;
+  for (k = back; k <= fwd; k++) out.push(ncDs(now + k*864e5));
+  return out;
+}
+function archive(model, kind, lat, lon, back, fwd, cb){
+  var ds = datesWindow(back, fwd), tol = 0.06;
+  sbGet('model_forecast_cache?select=date,lat,lon,hours,issued_at'
+    + '&model=eq.' + model + '&kind=eq.' + kind
+    + '&date=in.(' + ds.join(',') + ')'
+    + '&lat=gte.' + (lat-tol).toFixed(4) + '&lat=lte.' + (lat+tol).toFixed(4)
+    + '&lon=gte.' + (lon-tol).toFixed(4) + '&lon=lte.' + (lon+tol).toFixed(4)
+    + '&order=issued_at.desc', function(rows){
+    if (!rows || !rows.length) { cb(null); return; }
+    // La boîte ±0,06° peut contenir DEUX points archivés (le spot et une station
+    // voisine) : ne garder que le plus proche, pour ne jamais entrelacer deux
+    // séries — même garde que fromArchive() de windguru.html.
+    var best = null, bd = 1e9, i, d2, seen = {}, out = [], run = null;
+    for (i=0;i<rows.length;i++){
+      d2 = Math.pow(rows[i].lat-lat,2) + Math.pow(rows[i].lon-lon,2);
+      if (d2 < bd) { bd = d2; best = rows[i].lat + '_' + rows[i].lon; }
+    }
+    for (i=0;i<rows.length;i++){
+      var r = rows[i];
+      if (r.lat + '_' + r.lon !== best || seen[r.date]) continue;
+      seen[r.date] = 1;
+      if (!run || (r.issued_at && r.issued_at > run)) run = r.issued_at;
+      var hrs = r.hours;
+      if (typeof hrs === 'string') { try { hrs = JSON.parse(hrs); } catch(e){ hrs = []; } }
+      for (var j=0;j<(hrs||[]).length;j++){
+        var hh = hrs[j];
+        if (!hh) continue;
+        // DEUX schémas d'heure coexistent dans cette table (cf. CLAUDE.md) :
+        // les jobs Python écrivent `hour`, les autres `h`. Un lecteur qui n'en
+        // connaît qu'un renvoie silencieusement zéro point.
+        var hv = (hh.h != null) ? hh.h : hh.hour;
+        if (hv == null) continue;
+        out.push({ ms: midnightNc(r.date) + hv*3600000, raw: hh });
+      }
+    }
+    out.sort(function(a,b){ return a.ms - b.ms; });
+    cb({ pts: out, run: run });
+  });
+}
+
+// Houle d'un point d'archive, SELON le modèle. C'est le seul endroit de la page
+// qui sait que les schémas diffèrent, et il applique les mêmes conventions que
+// previsions.html :
+//  · nc/gfs/bom écrivent val/period/dir = houle primaire native ;
+//  · mf expose des partitions AVEC direction — la houle primaire est
+//    partitions[1] (SW1), jamais totH/totT qui sont la MER TOTALE ;
+//  · marc n'a pas de partition numérotée de façon stable chez Ifremer : on
+//    retient le train le plus énergétique de période >= 8 s, exactement comme
+//    _marcPrimarySwell(). Prendre hs/t02 donnerait la mer totale (t02 ~6,5 s
+//    contre un pic réel à ~13 s) — c'est le piège documenté du projet.
+function swellOf(src, raw){
+  if (!raw) return null;
+  var h, t, d, tot = null;
+  if (src.k === 'mf') {
+    var ps = raw.partitions || [], pr = ps[1] || null;
+    if (!pr) return null;
+    h = n1(pr.h); t = n1(pr.t); d = n1(pr.dir); tot = n1(raw.totH);
+  } else if (src.k === 'marc') {
+    var list = (raw.partitions || []).filter(function(p){ return p && p.h != null && p.t != null; });
+    var dom = null;
+    for (var i=0;i<list.length;i++){
+      if (list[i].t < 8) continue;
+      if (!dom || list[i].h*list[i].h*list[i].t > dom.h*dom.h*dom.t) dom = list[i];
+    }
+    if (!dom) return null;
+    h = n1(dom.h); t = n1(dom.t); d = n1(dom.dir); tot = n1(raw.hs);
+  } else {
+    h = n1(raw.val); t = n1(raw.period); d = n1(raw.dir);
+  }
+  if (h == null) return null;
+  return { h:h, t:t, dir:d, tot:tot };
+}
+
+// ── Marée : tout passe par tide-harmonics.js ────────────────────────────────
+// tideHeightAt() rend la vraie marée meteo.nc de la station quand elle a été
+// chargée (tideEnsureDay), sinon le modèle harmonique — jamais rien d'inventé,
+// et tideHasRealData() dit laquelle des deux on regarde. L'arbitrage du suffixe
+// Z abusif de meteo.nc (tantôt UTC vrai, tantôt heure déjà locale NC — 11 h
+// d'écart sur un cycle de 12 h 25, soit une marée quasi inversée) est fait DANS
+// ce module par coût de phase contre le modèle. C'est précisément le bug qui est
+// revenu trois fois dans ce projet : ne JAMAIS reparser /tide à la main ici.
+function tidePort(){ return (spot && spot.tidePort) || 'noumea'; }
+function tideAt(ms){
+  var ds = ncDs(ms);
+  var v = tideHeightAt(ds, ncHour(ms), tidePort());
+  return (v == null || !isFinite(v)) ? null : v;
+}
+function tideStateAt(ms){
+  var ds = ncDs(ms), rg = tideDayRange(ds, tidePort()), h = tideAt(ms);
+  if (h == null || !rg || rg.max - rg.min < 1e-6) return null;
+  var nxt = tideAt(ms + 15*60000);
+  return { h:h, level01: (h - rg.min) / (rg.max - rg.min),
+           rising: (nxt != null && nxt > h), rg:rg };
+}
+// Bonus/malus de marée du score. RECOPIE de `_tideAdj()` de previsions.html
+// (mêmes seuils, mêmes poids) parce que la fonction y est encore inline et non
+// dans un asset partagé. ⚠ Si l'une des deux bouge, l'autre DOIT suivre, sinon
+// les deux pages donneront deux notes pour le même créneau.
+function tideAdjOf(sp, st){
+  var tp = (sp && sp.scoreParams && sp.scoreParams.tidePref) || (sp && sp.tidePref) || null;
+  if (!tp) return 0;
+  if ((tp.state === 'any' || !tp.state) && (tp.phase === 'any' || !tp.phase)) return 0;
+  if (!st) return 0;
+  var adj = 0;
+  if (tp.state === 'mid')       adj += (st.level01 > 0.35 && st.level01 < 0.65) ? 0.5 : -0.3;
+  else if (tp.state === 'low')  adj += (st.level01 < 0.4) ? 0.5 : -0.3;
+  else if (tp.state === 'high') adj += (st.level01 > 0.6) ? 0.5 : -0.3;
+  if (tp.phase && tp.phase !== 'any') adj += ((st.rising ? 'rising' : 'falling') === tp.phase) ? 0.3 : -0.2;
+  return adj;
+}
+
+// ── Soleil (pour griser la nuit dans le tableau) ────────────────────────────
+// Meeus simplifié, même approche que previsions.html. Précision ~5-11 min :
+// largement assez pour décider si une ligne du tableau est « de nuit ».
+function sunHours(ms, lat, lon){
+  var d = new Date(ms), N = Math.floor((d - Date.UTC(d.getUTCFullYear(),0,0)) / 864e5);
+  var lngHour = lon / 15, out = [];
+  for (var k=0;k<2;k++){
+    var tt = N + ((k ? 18 : 6) - lngHour) / 24;
+    var M = 0.9856*tt - 3.289;
+    var L = M + 1.916*Math.sin(M*Math.PI/180) + 0.020*Math.sin(2*M*Math.PI/180) + 282.634;
+    L = (L+360)%360;
+    var RA = Math.atan(0.91764*Math.tan(L*Math.PI/180))*180/Math.PI; RA=(RA+360)%360;
+    RA += (Math.floor(L/90)*90) - (Math.floor(RA/90)*90); RA /= 15;
+    var sinDec = 0.39782*Math.sin(L*Math.PI/180), cosDec = Math.cos(Math.asin(sinDec));
+    var cosH = (Math.cos(90.833*Math.PI/180) - sinDec*Math.sin(lat*Math.PI/180))
+             / (cosDec*Math.cos(lat*Math.PI/180));
+    if (cosH > 1 || cosH < -1) return null;
+    var H = k ? Math.acos(cosH)*180/Math.PI/15 : 360 - Math.acos(cosH)*180/Math.PI;
+    if (!k) H /= 15;
+    var T = H + RA - 0.06571*tt - 6.622;
+    out.push(((T - lngHour) % 24 + 24) % 24 + 11);   // -> heure NC
+  }
+  return { rise: out[0] % 24, set: out[1] % 24 };
+}
+
+// ── Chargement ──────────────────────────────────────────────────────────────
+function boot(){
+  sbGet('shared_spots?id=eq.default&select=spots', function(rows){
+    var sp = [];
+    try { sp = rows && rows[0]
+      ? (typeof rows[0].spots === 'string' ? JSON.parse(rows[0].spots) : rows[0].spots)
+      : []; } catch(e){ sp = []; }
+    spots = (sp || []).filter(function(s){
+      return s && typeof s.lat === 'number' && typeof s.lon === 'number';
+    });
+    if (!spots.length) {
+      document.getElementById('verdict').innerHTML =
+        '<div class="note">Aucun spot partagé n\'a pu être lu. '
+        + '<a href="previsions.html">Ouvrir les prévisions complètes</a>.</div>';
+      return;
+    }
+    // Le spot actif est PARTAGÉ avec previsions.html via localStorage
+    // (`surf-active-spot`, écrit par elle) : ouvrir l'une puis l'autre montre le
+    // même spot, au lieu de repartir du premier de la liste.
+    var want = null;
+    try { want = localStorage.getItem('surf-active-spot'); } catch(e){}
+    var idx = 0, i;
+    for (i=0;i<spots.length;i++) if (want && spots[i].name === want) idx = i;
+    var sel = document.getElementById('sp'), html = '';
+    for (i=0;i<spots.length;i++)
+      html += '<option value="' + i + '"' + (i===idx?' selected':'') + '>' + esc(spots[i].short || spots[i].name) + '</option>';
+    sel.innerHTML = html;
+    sel.onchange = function(){ pickSpot(+this.value); };
+    renderSrcPick();
+    pickSpot(idx);
+  });
+}
+
+function pickSpot(i){
+  spot = spots[i];
+  try { localStorage.setItem('surf-active-spot', spot.name); } catch(e){}
+  // Paramètres de score DU SPOT, comme previsions.html (loadScoreParams) :
+  // spot.scoreParams par-dessus _DEFAULT_SCORE. Sans ça la note afficherait le
+  // barème générique pour un spot calibré, et contredirait l'autre page.
+  SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE, spot.scoreParams || {});
+  document.getElementById('nw-spot').textContent = spot.short || spot.name;
+  document.getElementById('td-port').textContent =
+    tidePortName(tidePort()) + (tidePortIsExact(tidePort()) ? '' : ' (décalage appliqué)');
+  load();
+}
+
+function load(){
+  var src = srcOf(srcKey);
+  slots = []; gustByMs = {}; aroRun = null;
+  document.getElementById('tbl').innerHTML = '<div class="loading"><div class="spin"></div> Chargement…</div>';
+  document.getElementById('verdict').innerHTML = '<div class="loading"><div class="spin"></div> Lecture des prévisions…</div>';
+
+  var pend = 4, swell = null, wind = null, gust = null;
+  function done(){ if (--pend === 0) assemble(src, swell, wind, gust); }
+
+  archive(src.model, src.kind, spot.lat, spot.lon, -1, 6, function(r){ swell = r; done(); });
+  if (src.wind) archive(src.model, 'wind', spot.lat, spot.lon, -1, 6, function(r){ wind = r; done(); });
+  else { wind = null; done(); }
+  // Rafales : AROME 2,5 km. C'est le seul flux du site qui porte une rafale
+  // fiable au point du spot — meteo.nc laisse `wind_speed_gust` absent ou à 0
+  // sur la majorité des créneaux (cf. CLAUDE.md), et aucun des modèles de vague
+  // n'en publie. L'en-tête du tableau le dit explicitement, plutôt que de
+  // laisser croire que la rafale vient du modèle choisi.
+  archive('aro', 'wind', spot.lat, spot.lon, -1, 2, function(r){ gust = r; done(); });
+  // Marée : J-1 à J+6, chargée en parallèle. tideEnsureDay charge déjà J-1/J/J+1
+  // pour pouvoir interpoler jusqu'à minuit sans extrapoler.
+  var ds = datesWindow(0, 6), left = ds.length;
+  for (var k=0;k<ds.length;k++) tideEnsureDay(ds[k], tidePort()).then(function(){
+    if (--left === 0) { redraw(); }
+  });
+  done();   // le 4e « pend » est le déclencheur de l'assemblage marée-indépendant
+}
+
+function assemble(src, swell, wind, gust){
+  if (!swell || !swell.pts.length) {
+    var why = 'Aucune ligne de houle archivée pour <b>' + esc(src.label) + '</b> près de ce spot '
+      + 'sur la fenêtre J-1 à J+6.';
+    document.getElementById('verdict').innerHTML = '<div class="note">' + why
+      + ' Essaie une autre source ci-dessous, ou ouvre les <a href="previsions.html">prévisions complètes</a>.</div>';
+    document.getElementById('tbl').innerHTML = '<div class="note">' + why + '</div>';
+    document.getElementById('tbl-note').textContent = '';
+    renderDayPick();
+    return;
+  }
+  // Vent indexé par instant, pour apparier sans supposer la même cadence que la
+  // houle (meteo.nc dégrade sa cadence avec l'horizon : 3 h puis 6 h).
+  var wByMs = {}, i;
+  if (wind) for (i=0;i<wind.pts.length;i++) wByMs[wind.pts[i].ms] = wind.pts[i].raw;
+  if (gust) for (i=0;i<gust.pts.length;i++) gustByMs[gust.pts[i].ms] = gust.pts[i].raw;
+  if (gust) aroRun = gust.run;
+
+  slots = [];
+  for (i=0;i<swell.pts.length;i++){
+    var ms = swell.pts[i].ms, sw = swellOf(src, swell.pts[i].raw);
+    if (!sw) continue;
+    var wr = wByMs[ms] || null;
+    var gr = nearest(gustByMs, ms, 90*60000);
+    var ws = wr ? n1(wr.val) : null, wdir = wr ? n1(wr.dir) : null;
+    // Pas de vent dans le flux du modèle (MF global) : prendre celui d'AROME,
+    // qui est au même point et plus fin — et le DIRE dans la colonne.
+    var wSrcArome = false;
+    if (ws == null && gr) { ws = n1(gr.val); wdir = n1(gr.dir); wSrcArome = true; }
+    var gv = gr ? n1(gr.gust) : null;
+    var pwr = surfPower(sw.h, sw.t);
+    var st = tideStateAt(ms);
+    var surf = calcSurfScore(sw.h, sw.t, sw.dir, ws, gv, wdir, pwr, tideAdjOf(spot, st));
+    slots.push({ ms:ms, sw:sw, ws:ws, wdir:wdir, gust:gv, aromeWind:wSrcArome,
+                 pwr:pwr, tide:st, surf:surf });
+  }
+  document.getElementById('stamp').textContent = swell.run
+    ? 'run ' + fmtRun(swell.run) : '';
+  renderDayPick();
+  redraw();
+}
+
+// Valeur la plus proche dans un index ms -> raw, dans une tolérance donnée.
+// ±90 min : c'est l'appariement déjà retenu ailleurs dans le projet entre deux
+// produits de cadences différentes (flux marine 3 h vs terrestre 6 h).
+function nearest(idx, ms, tol){
+  var best = null, bd = tol + 1;
+  for (var k in idx) {
+    if (!Object.prototype.hasOwnProperty.call(idx, k)) continue;
+    var d = Math.abs(+k - ms);
+    if (d <= tol && d < bd) { bd = d; best = idx[k]; }
+  }
+  return best;
+}
+function fmtRun(iso){
+  var t = Date.parse(iso); if (!t) return '';
+  var d = nc(t);
+  return p2(d.getUTCDate()) + '/' + p2(d.getUTCMonth()+1) + ' ' + p2(d.getUTCHours()) + 'h';
+}
+
+// ── Rendus ──────────────────────────────────────────────────────────────────
+function renderSrcPick(){
+  var h = '<span class="note" style="margin-right:2px;">Source</span>', i;
+  for (i=0;i<SRCS.length;i++){
+    var s = SRCS[i];
+    h += '<button type="button" class="btn' + (s.k===srcKey?' on':'') + '" data-src="' + s.k + '">'
+      + esc(s.label) + (s.res ? '<span style="color:var(--faint);font-size:10px;"> ' + s.res + '</span>' : '')
+      + '</button>';
+  }
+  var el = document.getElementById('src-pick');
+  el.innerHTML = h;
+  var bs = el.getElementsByTagName('button');
+  for (i=0;i<bs.length;i++) bs[i].onclick = function(){
+    srcKey = this.getAttribute('data-src');
+    try { localStorage.setItem(LS_SRC, srcKey); } catch(e){}
+    renderSrcPick(); load();
+  };
+}
+
+function daysAvailable(){
+  var seen = {}, out = [], i;
+  for (i=0;i<slots.length;i++){
+    var ds = ncDs(slots[i].ms);
+    if (ds < ncDs(Date.now())) continue;     // on ne propose pas le passé
+    if (seen[ds]) continue;
+    seen[ds] = 1; out.push(ds);
+  }
+  return out;
+}
+function renderDayPick(){
+  var ds = daysAvailable(), h = '', i, today = ncDs(Date.now());
+  if (dayIdx >= ds.length) dayIdx = 0;
+  for (i=0;i<ds.length;i++){
+    var m = midnightNc(ds[i]), d = nc(m);
+    h += '<button type="button" class="btn' + (i===dayIdx?' on':'') + '" data-d="' + i + '">'
+      + DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth()+1)
+      + (ds[i]===today ? ' · auj.' : '') + '</button>';
+  }
+  var el = document.getElementById('day-pick');
+  el.innerHTML = h;
+  var bs = el.getElementsByTagName('button');
+  for (i=0;i<bs.length;i++) bs[i].onclick = function(){
+    dayIdx = +this.getAttribute('data-d'); renderDayPick(); redraw();
+  };
+}
+
+function redraw(){ if (!spot) return; fillNow(); drawTide(); drawTable(); }
+
+// Créneau de référence = le plus proche de maintenant (passé ou à venir), dans
+// une tolérance de 3 h. Au-delà, on ne prétend pas décrire « maintenant ».
+function nowSlot(){
+  var now = Date.now(), best = null, bd = 3*3600000 + 1;
+  for (var i=0;i<slots.length;i++){
+    var d = Math.abs(slots[i].ms - now);
+    if (d < bd) { bd = d; best = slots[i]; }
+  }
+  return best;
+}
+
+function fillNow(){
+  var s = nowSlot(), src = srcOf(srcKey);
+  var box = document.getElementById('hb-cond');
+  if (!s) { box.className = 'hb-cond hb-cond-hide'; renderVerdict(null); return; }
+  box.className = 'hb-cond';
+  function show(id, on){ document.getElementById(id).className = 'hb-cond-sec' + (on?'':' hb-cond-hide'); }
+
+  document.getElementById('nw-sw-src').textContent = src.label;
+  document.getElementById('nw-sw').innerHTML =
+    '<div class="hc-main"><span class="hc-val"><b>' + t1(s.sw.h) + '</b><span class="hc-unit">m</span>'
+    + dirArrow(s.sw.dir, '#9fd4ea', 13) + '</span>'
+    + (s.sw.t != null ? '<span class="hc-per">' + Math.round(s.sw.t) + ' s</span>' : '') + '</div>'
+    + '<div class="hc-sub"><span>' + (s.sw.dir != null ? compass(s.sw.dir) : '—') + '</span>'
+    + (s.pwr != null ? '<span>' + s.pwr + ' kW/m</span>' : '') + '</div>';
+  show('nw-sw-sec', true);
+
+  if (s.ws != null) {
+    document.getElementById('nw-wd-src').textContent = s.aromeWind ? 'AROME' : src.label;
+    document.getElementById('nw-wd').innerHTML =
+      '<div class="hc-main hc-main-vent"><span class="hc-val"><b>' + Math.round(s.ws) + '</b>'
+      + '<span class="hc-unit">nds</span>'
+      + dirArrow(s.wdir, '#c2d6e2', 12) + '</span>'
+      + (s.gust != null ? '<span class="hc-per">raf. ' + Math.round(s.gust) + '</span>' : '') + '</div>'
+      + '<div class="hc-sub"><span>' + (s.wdir != null ? compass(s.wdir) : '—') + '</span></div>';
+  }
+  show('nw-wd-sec', s.ws != null);
+
+  if (s.tide) {
+    var real = tideHasRealData(ncDs(s.ms), tidePort());
+    document.getElementById('nw-td-src').textContent = real ? 'meteo.nc' : 'modèle';
+    document.getElementById('nw-td').innerHTML =
+      '<div class="hc-tide"><span><b>' + t1(s.tide.h) + ' m</b>'
+      + '<i class="tri">' + (s.tide.rising ? '▲' : '▼') + '</i>'
+      + '<i>' + (s.tide.rising ? 'montante' : 'descendante') + '</i></span></div>';
+  }
+  show('nw-td-sec', !!s.tide);
+  condFit();
+  renderVerdict(s);
+}
+// Filet de sécurité repris de _hbCondFit() (previsions.html) : si les trois
+// sections débordent du panneau à hauteur contrainte, tout passe au plancher
+// 11 px plutôt que de laisser une ligne se faire couper. Sans lui, mesuré en
+// capture le 20/11/2026 : « VENT » et « MARÉE » se superposaient aux valeurs
+// du dessus. rAF pour mesurer APRÈS que la mise en page se soit posée.
+function condFit(){
+  var card = document.getElementById('hb-cond');
+  if (!card || card.className.indexOf('hb-cond-hide') >= 0) return;
+  var go = function(){
+    card.className = card.className.replace(/ ?hb-cond-tight/, '');
+    if (card.scrollHeight > card.clientHeight + 1) card.className += ' hb-cond-tight';
+  };
+  if (window.requestAnimationFrame) requestAnimationFrame(go); else setTimeout(go, 32);
+}
+
+function renderVerdict(s){
+  var el = document.getElementById('verdict'), det = document.getElementById('vd-det');
+  if (!s) {
+    el.innerHTML = '<div class="note">Pas de créneau archivé à moins de 3 h de maintenant. '
+      + 'Le tableau ci-dessous reste utilisable pour les jours à venir.</div>';
+    det.style.display = 'none';
+    return;
+  }
+  var d = nc(s.ms), surf = s.surf;
+  var stars = '';
+  for (var i=0;i<5;i++) stars += '<span style="color:' + (i < surf.score ? surf.col : 'rgba(255,255,255,.14)') + ';">●</span>';
+  el.innerHTML =
+    '<div class="vd">'
+    + '<div>'
+    +   '<div class="vd-when">' + DAYS[d.getUTCDay()] + ' ' + p2(d.getUTCHours()) + 'h · ' + esc(spot.short || spot.name) + '</div>'
+    +   '<div class="vd-stars">' + stars + '</div>'
+    +   '<div class="vd-lbl" style="color:' + surf.col + ';">' + esc(surf.label) + '</div>'
+    + '</div>'
+    + '<div class="vd-nums">'
+    +   num('Houle', t1(s.sw.h) + ' m', (s.sw.t != null ? Math.round(s.sw.t) + ' s · ' : '') + (s.sw.dir != null ? compass(s.sw.dir) : '—'))
+    +   num('Vent', (s.ws != null ? Math.round(s.ws) + ' nds' : '—'), (s.wdir != null ? compass(s.wdir) : '') + (s.gust != null ? ' · raf. ' + Math.round(s.gust) : ''))
+    +   num('Puissance', (s.pwr != null ? s.pwr + ' kW/m' : '—'), s.pwr != null ? powerBand(s.pwr).label : '')
+    +   num('Marée', (s.tide ? t1(s.tide.h) + ' m' : '—'), s.tide ? (s.tide.rising ? 'montante' : 'descendante') : '')
+    + '</div></div>';
+  // Le détail du calcul est RENDU par scoreBreakdownHtml (settings-utils.js),
+  // la même fonction que previsions.html : l'explication est dérivée du calcul,
+  // jamais écrite en prose — règle posée au chantier du moteur de score.
+  var bh = (typeof scoreBreakdownHtml === 'function') ? scoreBreakdownHtml(surf) : '';
+  document.getElementById('vd-break').innerHTML = bh;
+  det.style.display = bh ? 'block' : 'none';
+}
+function num(lbl, big, sub){
+  return '<div class="vd-num"><u>' + lbl + '</u><b>' + big + '</b><s>' + (sub || '') + '</s></div>';
+}
+
+// ── Courbe de marée du jour affiché ─────────────────────────────────────────
+function drawTide(){
+  // Garde anti-course : le ResizeObserver se déclenche dès la mise en page, donc
+  // AVANT que boot() ait résolu shared_spots. Sans ce test, `spot.lat` levée une
+  // TypeError au chargement (mesurée en headless) — sans conséquence visible, mais
+  // une erreur au chargement est une erreur, et elle masquerait les suivantes.
+  if (!spot) return;
+  var cv = document.getElementById('td-cv'), box = cv.parentNode;
+  var ds = daysAvailable()[dayIdx] || ncDs(Date.now());
+  var w = box.clientWidth, h = box.clientHeight;
+  // clientWidth/Height valent 0 tant que l'élément n'a pas de layout : ne jamais
+  // calculer de géométrie dessus sans garde (piège documenté du projet).
+  if (!w || !h) { setTimeout(drawTide, 120); return; }
+  var dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  var g = cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+
+  var L = 34, R = 8, T = 10, B = 18, iw = w-L-R, ih = h-T-B;
+  var rg = tideDayRange(ds, tidePort());
+  if (!rg) { document.getElementById('td-ext').textContent = ''; return; }
+  var lo = rg.min - 0.12, hi = rg.max + 0.12;
+  function X(hour){ return L + iw * (hour/24); }
+  function Y(v){ return T + ih * (1 - (v-lo)/(hi-lo)); }
+
+  // Nuit en fond
+  var sun = sunHours(midnightNc(ds) + 12*3600000, spot.lat, spot.lon);
+  g.fillStyle = 'rgba(0,0,0,.22)';
+  if (sun) { g.fillRect(X(0),T,X(sun.rise)-X(0),ih); g.fillRect(X(sun.set),T,X(24)-X(sun.set),ih); }
+
+  // Axes
+  g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1;
+  g.fillStyle = '#728aa1'; g.font = '10px DM Sans, sans-serif'; g.textAlign = 'center';
+  for (var hh=0; hh<=24; hh+=3){
+    g.beginPath(); g.moveTo(X(hh),T); g.lineTo(X(hh),T+ih); g.stroke();
+    g.fillText(hh + 'h', X(hh), h-5);
+  }
+  g.textAlign = 'right';
+  for (var k=0;k<3;k++){
+    var vv = lo + (hi-lo)*k/2;
+    g.fillText(r1(vv) + 'm', L-5, Y(vv)+3);
+  }
+
+  // Courbe
+  g.beginPath();
+  for (var q=0;q<=240;q++){
+    var hr = q/10, v = tideHeightAt(ds, hr, tidePort());
+    if (v == null) continue;
+    if (q===0) g.moveTo(X(hr),Y(v)); else g.lineTo(X(hr),Y(v));
+  }
+  g.strokeStyle = '#4fa3c7'; g.lineWidth = 2; g.stroke();
+  g.lineTo(X(24),T+ih); g.lineTo(X(0),T+ih); g.closePath();
+  g.fillStyle = 'rgba(79,163,199,.14)'; g.fill();
+
+  // Maintenant
+  if (ds === ncDs(Date.now())) {
+    var hn = ncHour(Date.now());
+    g.beginPath(); g.moveTo(X(hn),T); g.lineTo(X(hn),T+ih);
+    g.strokeStyle = '#4fd6a0'; g.lineWidth = 1.5; g.stroke();
+  }
+
+  // Extrema du jour, lus sur la courbe effectivement tracée (donc cohérents
+  // avec elle par construction, plutôt que relus d'une autre source).
+  // Balayage grossier au pas de 5 min, puis AFFINAGE au pas de 6 s dans la
+  // fenêtre encadrante. Sans l'affinage, l'heure annoncée tombait à 2 min de
+  // celle de meteo.nc (mesuré le 20/11/2026 : 04h15 affiché contre 04h13 réel)
+  // — un écart sans importance pour surfer, mais qui aurait fait douter de la
+  // page à la première comparaison avec un annuaire de marée. L'interpolation
+  // étant une demi-cosinusoïde entre deux extrema RÉELS, son extremum tombe
+  // exactement sur l'extremum réel : affiner converge vers la vraie heure.
+  var ext = [], prev = null, prev2 = null;
+  for (var r=0;r<=288;r++){
+    var hr2 = r/12, v2 = tideHeightAt(ds, hr2, tidePort());
+    if (v2 == null) continue;
+    if (prev != null && prev2 != null) {
+      if ((prev > prev2 && prev > v2) || (prev < prev2 && prev < v2)) {
+        var hi = prev > v2, c = hr2 - 1/12, bh = c, bv = prev;
+        for (var f = c - 1/12; f <= c + 1/12; f += 1/600) {
+          if (f < 0 || f > 24) continue;
+          var vf = tideHeightAt(ds, f, tidePort());
+          if (vf == null) continue;
+          if (hi ? vf > bv : vf < bv) { bv = vf; bh = f; }
+        }
+        ext.push({ h: bh, v: bv, hi: hi });
+      }
+    }
+    prev2 = prev; prev = v2;
+  }
+  var txt = [];
+  for (var e=0;e<ext.length;e++){
+    var E = ext[e], hm = Math.floor(E.h), mn = Math.round((E.h-hm)*60);
+    if (mn === 60) { hm++; mn = 0; }
+    txt.push((E.hi ? 'PM' : 'BM') + ' ' + p2(hm) + 'h' + p2(mn) + ' · ' + t1(E.v) + ' m');
+    g.beginPath(); g.arc(X(E.h), Y(E.v), 2.6, 0, 6.3);
+    g.fillStyle = E.hi ? '#9fd4ea' : '#7a94aa'; g.fill();
+  }
+  document.getElementById('td-ext').innerHTML = txt.join(' &nbsp;·&nbsp; ');
+  var real = tideHasRealData(ds, tidePort());
+  document.getElementById('td-src').innerHTML = real
+    ? 'extrema meteo.nc, interpolés en douzièmes'
+    : 'modèle harmonique Nouméa (pas de donnée meteo.nc pour ce jour)';
+}
+
+// ── Le tableau détaillé : directions, vent, marée ──────────────────────────
+function drawTable(){
+  if (!spot) return;
+  var ds = daysAvailable()[dayIdx], src = srcOf(srcKey);
+  if (!ds) { document.getElementById('tbl').innerHTML = '<div class="note">Rien à afficher.</div>'; return; }
+  var rows = [], i;
+  for (i=0;i<slots.length;i++) if (ncDs(slots[i].ms) === ds) rows.push(slots[i]);
+  if (!rows.length) { document.getElementById('tbl').innerHTML = '<div class="note">Pas de créneau ce jour-là pour cette source.</div>'; return; }
+
+  var sun = sunHours(midnightNc(ds) + 12*3600000, spot.lat, spot.lon);
+  var now = Date.now(), nearestMs = null, nd = 1e15;
+  for (i=0;i<rows.length;i++){ var dd = Math.abs(rows[i].ms-now); if (dd<nd){ nd=dd; nearestMs=rows[i].ms; } }
+
+  var h = '<table class="t"><thead><tr>'
+    + '<th class="h">Heure</th>'
+    + '<th>Houle</th><th>Pér.</th><th>Dir. houle</th>'
+    + '<th>Vent</th><th title="Rafales AROME 2,5 km : c\'est le seul flux du site qui en publie une fiable au point du spot">Raf.</th><th>Dir. vent</th>'
+    + '<th>Marée</th><th>kW/m</th><th>Note</th></tr></thead><tbody>';
+  for (i=0;i<rows.length;i++){
+    var s = rows[i], d = nc(s.ms), hr = d.getUTCHours() + d.getUTCMinutes()/60;
+    var night = sun && (hr < sun.rise - 0.5 || hr > sun.set + 0.5);
+    var cls = (night ? ' class="night"' : '') ;
+    if (s.ms === nearestMs && ds === ncDs(now)) cls = ' class="now' + (night?' night':'') + '"';
+    h += '<tr' + cls + '>'
+      + '<td class="h">' + p2(d.getUTCHours()) + 'h' + (d.getUTCMinutes() ? p2(d.getUTCMinutes()) : '') + '</td>'
+      + '<td style="color:' + hsCol(s.sw.h) + ';font-weight:700;">' + t1(s.sw.h) + '</td>'
+      + '<td>' + (s.sw.t != null ? Math.round(s.sw.t) : '—') + '</td>'
+      + '<td>' + dirCell(s.sw.dir, '#9fd4ea') + '</td>'
+      + '<td style="color:' + (s.ws != null ? windCol(s.ws) : 'var(--muted)') + ';font-weight:700;">'
+        + (s.ws != null ? Math.round(s.ws) : '—') + '</td>'
+      + '<td>' + (s.gust != null ? Math.round(s.gust) : '—') + '</td>'
+      + '<td>' + dirCell(s.wdir, '#c2d6e2') + '</td>'
+      + '<td>' + (s.tide ? t1(s.tide.h) + ' <span class="arw">' + (s.tide.rising?'▲':'▼') + '</span>' : '—') + '</td>'
+      + '<td style="color:' + (s.pwr != null ? pwrCol(s.pwr) : 'var(--muted)') + ';">' + (s.pwr != null ? s.pwr : '—') + '</td>'
+      + '<td style="color:' + s.surf.col + ';font-weight:700;" title="' + esc(s.surf.label) + '">' + s.surf.score + '</td>'
+      + '</tr>';
+  }
+  h += '</tbody></table>';
+  document.getElementById('tbl').innerHTML = h;
+
+  var notes = ['Houle, période et direction : <b>' + esc(src.label) + '</b>'
+    + (src.res ? ' (' + src.res + ')' : '') + '.'];
+  notes.push(rows[0].aromeWind
+    ? 'Vent et rafales : <b>AROME 2,5 km</b> (ce modèle de vague ne publie pas de vent).'
+    : 'Vent : <b>' + esc(src.label) + '</b>. Rafales : <b>AROME 2,5 km</b>, appariées au créneau le plus proche à ±90 min.');
+  notes.push('Directions en convention météo : <b>d\'où vient</b> le vent ou la houle, la flèche montre où ça va.');
+  notes.push('Marée : station ' + esc(tidePortName(tidePort())) + '. Lignes grisées = nuit.');
+  if (aroRun) notes.push('Run AROME ' + fmtRun(aroRun) + '.');
+  document.getElementById('tbl-note').innerHTML = notes.join(' ');
+}
+// Direction : flèche + secteur + degrés. La flèche pointe vers où ça VA (dir +
+// 180°), ce que l'œil attend d'une flèche ; le secteur et les degrés disent la
+// PROVENANCE, convention météo du site. Les trois ensemble pour qu'aucune des
+// deux lectures ne puisse être prise pour l'autre.
+function dirCell(d, col){
+  if (d == null) return '—';
+  return '<span style="display:inline-flex;align-items:center;gap:3px;">'
+    + dirArrow(d, col, 12) + '<span>' + compass(d) + '</span>'
+    + '<span style="color:var(--faint);font-size:10px;">' + Math.round(d) + '°</span></span>';
+}
+
+// Redessiner la courbe quand la largeur change (rotation, redimensionnement).
+if (window.ResizeObserver) {
+  try { new ResizeObserver(function(){ drawTide(); })
+    .observe(document.getElementById('td-cv').parentNode); } catch(e){}
+} else { window.onresize = function(){ drawTide(); }; }
+
+// Service worker : même enregistrement que les autres pages.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+
+boot();
+</script>
+</body>
+</html>

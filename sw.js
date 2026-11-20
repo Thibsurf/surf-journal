@@ -1,8 +1,12 @@
-const CACHE_NAME = 'surf-nc-v110';
+const CACHE_NAME = 'surf-nc-v111';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
   '/surf-journal/previsions.html',
+  // accueil.html : la version « un écran ». Précachée justement parce que c'est la
+  // page qu'on ouvre en premier, souvent avec du réseau médiocre — l'inverse de
+  // semaine.html, volontairement laissée au stale-while-revalidate.
+  '/surf-journal/accueil.html',
   '/surf-journal/sorties.html',
   '/surf-journal/marine_fuel_pro.html',
   '/surf-journal/manifest.json',
