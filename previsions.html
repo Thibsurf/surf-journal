@@ -6377,7 +6377,23 @@ var BOM_WW3_BASE = 'https://ocean-thredds01.spc.int/thredds/dodsC/POP/model/regi
 // voulu : une alerte qui crie pour rien n'est plus lue.
 var _modelIssuedMs = {};
 var MODEL_STALE_H = 36;
+// Modèles dont le lecteur d'archive n'a ramené AUCUNE ligne dans sa fenêtre de
+// dates. Complète _modelStaleInfo, qui ne couvrait que la péremption : il se
+// nourrit d'`issued_at`, donc il lui faut au moins une ligne pour parler. Un
+// modèle dont la source s'ARRÊTE franchement finit par n'avoir plus aucune
+// ligne dans la fenêtre -1..+7 j, et là _noteModelIssued sortait sans rien
+// dire : le modèle disparaissait du comparatif en silence, indistinguable d'un
+// bug d'affichage. C'est exactement l'état de LOTUS mesuré le 20/11/2026 —
+// l'API privée Surfline renvoie 403 sur tous les appels depuis le 19/10/2026,
+// le job d'ingestion écrit 0 ligne, et la page n'en disait rien pendant un mois.
+// `why` est une phrase prête à afficher, pas un code.
+var _modelNoData = {};
+function _noteModelNoData(key, why) { _modelNoData[key] = why || true; }
+function _modelNoDataWhy(key) { var w = _modelNoData[key]; return (typeof w === 'string') ? w : (w ? '' : null); }
 function _noteModelIssued(key, rows) {
+  // Une seule ligne suffit à prouver que la source répond : on efface le drapeau
+  // ici plutôt qu'à l'appel, pour qu'aucun lecteur ne puisse l'oublier.
+  if (rows && rows.length) delete _modelNoData[key];
   if (!rows || !rows.length) return;
   var mx = 0;
   rows.forEach(function(r) { var t = Date.parse(r && r.issued_at || ''); if (t && t > mx) mx = t; });
@@ -6623,7 +6639,12 @@ async function _fetchMfArchive(spot) {
     // `issued_at` demandé depuis le 20/08/2026 : sans lui, ce lecteur ne pouvait
     // pas savoir de quand datent les lignes qu'il sert (cf. _noteModelIssued).
     var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at').in('id', ids);
-    if (!r || !r.data || !r.data.length) return null;
+    if (!r || !r.data || !r.data.length) {
+      // Grille GLOBALE : elle couvre toute la NC. Zéro ligne sur 8 jours ne peut
+      // donc pas être un trou de couverture — c'est l'ingestion qui n'écrit plus.
+      _noteModelNoData('mf', 'aucune ligne archivée sur la fenêtre -1..+6 j : le job Copernicus Marine (3×/jour) n\'écrit plus');
+      return null;
+    }
     _noteModelIssued('mf', r.data);
     var primary = [], secondary = [];
     r.data.forEach(function(row) {
@@ -6811,7 +6832,11 @@ function _fetchOpenDataArchive(cacheKey, spot) {
         .gte('lat', spot.lat - 0.05).lte('lat', spot.lat + 0.05)
         .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05)
         .order('issued_at', { ascending: false });
-      if (!r || !r.data || !r.data.length) return null;
+      if (!r || !r.data || !r.data.length) {
+        // Grille 0,25° globale : zéro ligne = le job ECMWF Open Data n'écrit plus.
+        _noteModelNoData(cacheKey, 'aucune ligne archivée sur la fenêtre -1..+6 j : le job ECMWF Open Data (3×/jour) n\'écrit plus');
+        return null;
+      }
       _noteModelIssued(cacheKey, r.data);
       var seenDate = {}, rows = [];
       r.data.forEach(function(row) { if (!seenDate[row.date]) { seenDate[row.date] = true; rows.push(row); } });
@@ -7090,7 +7115,13 @@ async function _fetchMarcArchive(spot) {
       ids.push(d0.getUTCFullYear() + '-' + String(d0.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d0.getUTCDate()).padStart(2, '0') + '_' + la + '_' + lo + '_marc_wave');
     }
     var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,issued_at').in('id', ids);
-    if (!r || !r.data || !r.data.length) return null;
+    if (!r || !r.data || !r.data.length) {
+      // Grille RÉGIONALE NC : tout spot du site tombe dedans (les cases terre/lagon
+      // masquées sont gérées par le repli de voisinage côté fetch_marc.py, qui écrit
+      // quand même une ligne). Zéro ligne = OPeNDAP Ifremer muet, pas un trou local.
+      _noteModelNoData('marc', 'aucune ligne archivée sur la fenêtre lue : le job OPeNDAP Ifremer n\'écrit plus');
+      return null;
+    }
     _noteModelIssued('marc', r.data);
     var primary = [];
     r.data.forEach(function(row) {
@@ -7179,7 +7210,24 @@ async function _fetchLotusArchive(spot) {
       .gte('lat', spot.lat - tol).lte('lat', spot.lat + tol)
       .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol)
       .order('issued_at', { ascending: false });
-    if (!r || !r.data || !r.data.length) return null;
+    if (!r || !r.data || !r.data.length) {
+      // LOTUS est le SEUL modèle d'ici à ne pas être une grille : 5 zones
+      // Surfline en NC, et rien ailleurs. « Zéro ligne près de ce spot » est donc
+      // ambigu — ça peut être la couverture (normal, la plupart des spots) ou la
+      // source (anormal). Les confondre a coûté un mois de silence : l'API privée
+      // Surfline renvoie 403 depuis le 19/10/2026, plus une seule ligne écrite, et
+      // le desc figé continuait d'expliquer l'absence par la couverture.
+      // On tranche avec une sonde : les MÊMES dates, sans borne géographique. Une
+      // seule ligne suffit (limit 1) — si LOTUS existe quelque part en NC, alors
+      // ce spot est simplement hors zone et il n'y a rien à signaler.
+      try {
+        var rAny = await _tokenSbClient.from('model_forecast_cache').select('id')
+          .eq('model', 'lotus').eq('kind', 'wave').in('date', dates).limit(1);
+        if (!rAny || !rAny.data || !rAny.data.length)
+          _noteModelNoData('lotus', 'aucune ligne archivée NULLE PART en NC sur la fenêtre -1..+7 j : ce n\'est pas la couverture à 5 zones, c\'est l\'ingestion Surfline qui n\'écrit plus');
+      } catch (eAny) {}
+      return null;
+    }
     _noteModelIssued('lotus', r.data);
     var primary = [], seenDateL = {};
     // Une seule ligne par date, la plus récemment émise — même déduplication que
@@ -7352,6 +7400,15 @@ function _swellModelDesc(key) {
   // contrairement à BOM, dont la fenêtre de couverture elle-même était périmée :
   // ici la prévision reste valide, elle est juste vieille, et le lecteur a le
   // droit de savoir de combien pour en juger.
+  // « Aucune donnée » passe AVANT « donnée ancienne » : les deux s'excluent (le
+  // second a besoin d'une ligne pour exister), mais l'ordre rend l'intention
+  // explicite pour le prochain lecteur. Cas le plus grave en premier.
+  var _nd = _modelNoDataWhy(key);
+  if (_nd !== null) {
+    return m.desc + ' ⚠ PLUS AUCUNE DONNÉE : ' + (_nd || 'le lecteur d\'archive n\'a ramené aucune ligne')
+      + '. Ce modèle n\'est donc pas affiché — rien n\'est inventé ni extrapolé pour combler le trou. '
+      + 'Il reviendra tout seul dès que sa source se remettra à publier.';
+  }
   var _st = _modelStaleInfo(key);
   if (_st) {
     var _j = new Date(_st.issuedMs + 11 * 3600000);
@@ -9021,6 +9078,20 @@ function _drawSwellCompare() {
         + '<s>' + MODEL_STYLE.bom.label + '</s>'
         + '<span style="color:var(--faint);font-size:10px;"> source figée</span></span>';
     }
+    // MÊME pastille, généralisée à tout modèle dont l'archive ne ramène plus rien
+    // (cf. _modelNoData). BOM avait son garde-fou dès le 13/08/2026 parce que sa
+    // péremption se LIT dans le flux lui-même (epoch + horizon) ; les modèles
+    // servis par l'archive n'avaient aucun équivalent, et LOTUS a disparu du
+    // comparatif pendant un mois sans que la page le dise (mesuré le 20/11/2026).
+    // On exclut 'bom', déjà traité juste au-dessus avec son propre libellé.
+    SWELL_MODELS.forEach(function(m) {
+      if (m.key === 'bom' || _modelNoDataWhy(m.key) === null) return;
+      legEl.innerHTML += '<span title="' + _swellModelDesc(m.key).replace(/"/g, '&quot;')
+        + '" style="opacity:.55;cursor:help;">'
+        + '<span style="color:' + m.col + ';font-weight:700;">⊘</span> '
+        + '<s>' + m.label + '</s>'
+        + '<span style="color:var(--faint);font-size:10px;"> plus de données</span></span>';
+    });
   }
   // Molette + curseurs dupliqués ici (cf. commentaire HTML sur #cmp-dir-controls-graph) —
   // même état partagé que la copie du tableau, remplace l'ancien indicateur texte seul.
