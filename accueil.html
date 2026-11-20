@@ -22,9 +22,14 @@
    accueil.html — la version « un écran » des prévisions.
    Thème SOMBRE uniquement, comme index/sorties/fuel : le thème clair est
    volontairement exclusif à previsions.html (cf. mémoire projet).
-   Les règles .site-banner/.hb-*/.hc-* sont reprises TELLES QUELLES de
-   previsions.html pour que le haut de page soit identique au pixel. Si l'une
+   Les règles du bandeau (site-banner, hb- et hc-) sont reprises TELLES QUELLES
+   de previsions.html pour que le haut de page soit identique au pixel. Si l'une
    des deux bouge, l'autre doit suivre.
+   NE PAS écrire de préfixe suivi d'une étoile puis d'une barre oblique dans un
+   commentaire CSS : la séquence ferme le commentaire par accident. C'est ce qui
+   est arrivé ici le 20/11/2026, et ça a mangé la règle :root juste en dessous —
+   donc TOUTES les variables de thème, donc la page entière en blanc avec la
+   police par défaut, sans la moindre erreur signalée nulle part.
    ════════════════════════════════════════════════════════════════════════════ */
 :root {
   --ocean:#0a1628;--deep:#0d1f3c;--mid:#1a3a5c;--surface:#1e2d42;
@@ -172,6 +177,29 @@ table.t tr.now td{background:rgba(79,163,199,.13);}
 table.t tr.now td.h{background:rgba(79,163,199,.2);}
 .arw{display:inline-block;font-size:11px;color:var(--accent);}
 .g2{display:block;font-size:10px;color:var(--muted);}
+/* Trouver un créneau */
+#cr-card summary::-webkit-details-marker{display:none;}
+.cr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:13px;}
+.cr-f{position:relative;}
+.cr-f>label{display:block;font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:5px;}
+.cr-f>label b{float:right;color:var(--accent);font-variant-numeric:tabular-nums;
+  letter-spacing:0;text-transform:none;font-size:12px;}
+.cr-f input[type=range]{width:100%;accent-color:var(--accent);margin:1px 0;}
+.cr-duo input[type=range]{display:block;}
+.cr-chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
+  margin-top:7px;text-transform:none;letter-spacing:0;font-weight:400;cursor:pointer;}
+.cr-chk input{accent-color:var(--accent);width:15px;height:15px;}
+/* La rose est posée en absolu dans sa case : réserver sa largeur sur les
+   curseurs du même bloc, sinon elle leur passe dessus (constaté en capture). */
+.cr-rose{position:absolute;right:0;top:14px;opacity:.95;pointer-events:none;
+  width:92px;height:92px;}
+.cr-f--rose .cr-duo{padding-right:100px;}
+.cr-f--rose>label b{margin-right:100px;}
+.cr-chk{line-height:1.35;}
+#cr-res table.t td.sp{text-align:left;font-weight:600;}
+.cr-day{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);padding:9px 2px 3px;}
 footer{padding:4px 16px 34px;max-width:980px;margin:0 auto;}
 footer .row{gap:14px;font-size:12px;}
 </style>
@@ -251,6 +279,71 @@ footer .row{gap:14px;font-size:12px;}
     <div class="tscroll" id="tbl"><div class="loading"><div class="spin"></div> Chargement…</div></div>
     <div class="note" id="tbl-note" style="margin-top:7px;"></div>
   </div>
+
+  <!-- ═══ TROUVER UN CRÉNEAU ═══
+       Les critères sont persistés : on ne ressaisit pas « entre 180 et 270 » à
+       chaque visite. Le panneau se replie, mais la recherche tourne quand même
+       et le résumé reste visible dans le titre. -->
+  <details class="card" id="cr-card" open>
+    <summary style="cursor:pointer;list-style:none;">
+      <div class="row" style="justify-content:space-between;gap:10px;">
+        <div class="section-label" style="margin:0;">Trouver un créneau — tous les spots</div>
+        <span id="cr-resume" class="note"></span>
+      </div>
+    </summary>
+
+    <div id="cr-form" style="margin-top:10px;">
+      <div class="cr-grid">
+        <div class="cr-f">
+          <label>Hauteur de houle<b id="cr-hs-v"></b></label>
+          <div class="cr-duo">
+            <input type="range" id="cr-hsMin" min="0" max="5" step="0.1">
+            <input type="range" id="cr-hsMax" min="0" max="5" step="0.1">
+          </div>
+        </div>
+        <div class="cr-f">
+          <label>Période minimum<b id="cr-per-v"></b></label>
+          <input type="range" id="cr-perMin" min="4" max="20" step="1">
+        </div>
+        <div class="cr-f cr-f--rose">
+          <label>D'où vient la houle<b id="cr-sw-v"></b></label>
+          <div class="cr-duo">
+            <input type="range" id="cr-swFrom" min="0" max="355" step="5">
+            <input type="range" id="cr-swTo" min="0" max="355" step="5">
+          </div>
+          <canvas id="cr-rose" width="92" height="92" class="cr-rose"
+            title="Secteur de houle retenu, vu d'en haut (nord en haut)"></canvas>
+        </div>
+        <div class="cr-f">
+          <label>Vent maximum<b id="cr-wind-v"></b></label>
+          <input type="range" id="cr-windMax" min="0" max="35" step="1">
+          <label class="cr-chk"><input type="checkbox" id="cr-windDirOn"> Filtrer aussi la direction du vent</label>
+          <div id="cr-windDirBox" style="display:none;">
+            <label>D'où vient le vent<b id="cr-wd-v"></b></label>
+            <div class="cr-duo">
+              <input type="range" id="cr-wdFrom" min="0" max="355" step="5">
+              <input type="range" id="cr-wdTo" min="0" max="355" step="5">
+            </div>
+          </div>
+        </div>
+        <div class="cr-f">
+          <label>Marée</label>
+          <select id="cr-tide" class="btn"><option value="any">N'importe laquelle</option>
+            <option value="low">Basse</option><option value="mid">Mi-marée</option>
+            <option value="high">Haute</option></select>
+          <label class="cr-chk"><input type="checkbox" id="cr-dayOnly"> Seulement de jour</label>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;gap:8px;">
+        <button type="button" class="btn on" id="cr-go">Chercher</button>
+        <button type="button" class="btn" id="cr-reset">Valeurs par défaut</button>
+        <button type="button" class="btn" id="cr-notif" style="display:none;"></button>
+        <span id="cr-state" class="note"></span>
+      </div>
+    </div>
+
+    <div id="cr-res" style="margin-top:12px;"></div>
+  </details>
 
 </div>
 
@@ -450,7 +543,25 @@ function swellOf(src, raw){
 // d'écart sur un cycle de 12 h 25, soit une marée quasi inversée) est fait DANS
 // ce module par coût de phase contre le modèle. C'est précisément le bug qui est
 // revenu trois fois dans ce projet : ne JAMAIS reparser /tide à la main ici.
-function tidePort(){ return (spot && spot.tidePort) || 'noumea'; }
+// Station de marée DU SPOT. Corrigé le 20/11/2026 : la première version lisait
+// `spot.tidePort`, un champ qui n'existe PAS dans shared_spots — tous les spots
+// retombaient donc sur Nouméa. Sans conséquence pour les six spots du Grand
+// Nouméa, mais faux pour Ouano et Gouaro, qui dépendent de Bourail (station
+// 9880352) : deux marées différentes affichées sous le même nom.
+// Le vrai champ est `tideId`, un identifiant de station meteo.nc ; les fonctions
+// de tide-harmonics.js prennent une clé de PORT, d'où ce renversement.
+function portForSpot(sp){
+  var id = sp && sp.tideId;
+  if (!id || typeof TIDE_PORT_REF === 'undefined') return 'noumea';
+  for (var k in TIDE_PORT_REF) {
+    if (!Object.prototype.hasOwnProperty.call(TIDE_PORT_REF, k)) continue;
+    // `sameStation` d'abord : plusieurs clés partagent un même id (tomo emprunte
+    // celui de Nouméa), et on veut la clé qui NOMME la station, pas l'emprunteuse.
+    if (TIDE_PORT_REF[k].id === String(id) && TIDE_PORT_REF[k].sameStation) return k;
+  }
+  return 'noumea';
+}
+function tidePort(){ return portForSpot(spot); }
 function tideAt(ms){
   var ds = ncDs(ms);
   var v = tideHeightAt(ds, ncHour(ms), tidePort());
@@ -527,6 +638,11 @@ function boot(){
     sel.onchange = function(){ pickSpot(+this.value); };
     renderSrcPick();
     pickSpot(idx);
+    // Le chercheur se branche APRÈS que les spots soient connus : il les lit
+    // tous. Il part tout seul, avec les critères sauvegardés — c'est l'intérêt
+    // de les persister, on retrouve ses créneaux sans toucher à un curseur.
+    critBind();
+    critRun();
   });
 }
 
@@ -940,6 +1056,343 @@ function dirCell(d, col){
   return '<span style="display:inline-flex;align-items:center;gap:3px;">'
     + dirArrow(d, col, 12) + '<span>' + compass(d) + '</span>'
     + '<span style="color:var(--faint);font-size:10px;">' + Math.round(d) + '°</span></span>';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TROUVER UN CRÉNEAU — mêmes critères, tous les spots, et ça reste réglé
+// ════════════════════════════════════════════════════════════════════════════
+// Reprend l'idée des curseurs du comparatif de previsions.html (secteur de houle,
+// période et hauteur minimales), avec DEUX ajouts demandés : les conditions de
+// vent, et une sortie qui ne montre plus une courbe mais la LISTE des créneaux
+// qui passent, spot par spot, avec le jour, l'heure et la marée.
+//
+// Les critères sont PERSISTÉS. C'est le point qui change tout à l'usage : on ne
+// re-saisit pas « entre 180 et 270 » à chaque visite.
+var LS_CRIT = 'accueil-criteres-v1';
+var CRIT_DEF = { hsMin:0.8, hsMax:3.5, perMin:11, swFrom:180, swTo:250,
+                 windMax:14, windDirOn:false, wdFrom:90, wdTo:200,
+                 tide:'any', dayOnly:true };
+var crit = (function(){
+  var o = {};
+  try { o = JSON.parse(localStorage.getItem(LS_CRIT) || '{}') || {}; } catch(e){ o = {}; }
+  var out = {}, k;
+  for (k in CRIT_DEF) out[k] = (o[k] === undefined) ? CRIT_DEF[k] : o[k];
+  return out;
+})();
+function saveCrit(){ try { localStorage.setItem(LS_CRIT, JSON.stringify(crit)); } catch(e){} }
+
+// Appartenance à un secteur angulaire, en gérant le passage par le nord : un
+// secteur « de 330° à 30° » est parfaitement légitime (houle de nord) et un test
+// naïf from <= d <= to le rejetterait.
+function inSector(d, from, to){
+  if (d == null) return false;
+  var a = ((d % 360) + 360) % 360, f = ((from % 360) + 360) % 360, t = ((to % 360) + 360) % 360;
+  return (f <= t) ? (a >= f && a <= t) : (a >= f || a <= t);
+}
+function sectorWidth(from, to){
+  var f = ((from % 360) + 360) % 360, t = ((to % 360) + 360) % 360;
+  return (f <= t) ? (t - f) : (360 - f + t);
+}
+
+// ── Données de TOUS les spots ───────────────────────────────────────────────
+// Une lecture par spot et par grandeur, en parallèle. Volontairement PAS une
+// seule grande requête sur une boîte englobante : mesuré le 20/11/2026, cette
+// requête ramène 1068 lignes pour nc/wind et 1150 pour gfs/swell_primary, donc
+// au-delà du plafond PostgREST de 1000 — le piège déjà consigné deux fois dans
+// ce projet. Borner par spot garde chaque réponse à ~100 lignes.
+var allSlots = null, allLoading = false, allSrcKey = null;
+
+function loadAllSpots(cb){
+  var src = srcOf(srcKey);
+  if (allSlots && allSrcKey === srcKey) { cb(allSlots); return; }
+  if (allLoading) return;
+  allLoading = true;
+  var out = [], pend = spots.length * 2, byKey = {};
+  function note(){ var el = document.getElementById('cr-state');
+    if (el) el.textContent = 'Lecture des ' + spots.length + ' spots… ' + Math.max(0, spots.length * 2 - pend) + '/' + (spots.length * 2); }
+  note();
+  function fin(){
+    if (--pend > 0) { note(); return; }
+    allLoading = false; allSrcKey = srcKey; allSlots = out;
+    var el = document.getElementById('cr-state'); if (el) el.textContent = '';
+    cb(out);
+  }
+  spots.forEach(function(sp){
+    var key = sp.name;
+    byKey[key] = { spot: sp, swell: null, wind: null };
+    archive(src.model, src.kind, sp.lat, sp.lon, 0, 6, function(r){
+      byKey[key].swell = r; maybe(key); fin();
+    });
+    if (src.wind) archive(src.model, 'wind', sp.lat, sp.lon, 0, 6, function(r){ byKey[key].wind = r; maybe(key); fin(); });
+    // MF global ne publie pas de vent : AROME au même point, le plus fin qu'on ait.
+    else archive('aro', 'wind', sp.lat, sp.lon, 0, 6, function(r){ byKey[key].wind = r; maybe(key); fin(); });
+  });
+  function maybe(key){
+    var e = byKey[key];
+    if (!e.swell || e.done) return;
+    if (e.wind === null && pend > 0) return;   // attendre le vent du même spot
+    e.done = true;
+    var wByMs = {}, i;
+    if (e.wind) for (i = 0; i < e.wind.pts.length; i++) wByMs[e.wind.pts[i].ms] = e.wind.pts[i].raw;
+    var port = portForSpot(e.spot);
+    for (i = 0; i < e.swell.pts.length; i++){
+      var ms = e.swell.pts[i].ms, sw = swellOf(src, e.swell.pts[i].raw);
+      if (!sw) continue;
+      var wr = wByMs[ms] || null;
+      out.push({ spot: e.spot, port: port, ms: ms, sw: sw,
+                 ws: wr ? n1(wr.val) : null, wdir: wr ? n1(wr.dir) : null,
+                 pwr: surfPower(sw.h, sw.t) });
+    }
+  }
+}
+
+// La marée de CHAQUE spot doit être chargée avant de pouvoir filtrer dessus :
+// Ouano et Gouaro dépendent de Bourail, pas de Nouméa.
+function ensureTides(list, cb){
+  var ports = {}, days = {};
+  list.forEach(function(s){ ports[s.port] = 1; days[ncDs(s.ms)] = 1; });
+  var jobs = [];
+  Object.keys(ports).forEach(function(p){
+    Object.keys(days).forEach(function(d){ jobs.push(tideEnsureDay(d, p)); });
+  });
+  if (!jobs.length) { cb(); return; }
+  Promise.all(jobs).then(function(){ cb(); }).catch(function(){ cb(); });
+}
+
+// ── Le filtre ───────────────────────────────────────────────────────────────
+// Renvoie les créneaux retenus ET le compte des rejets par critère : dire
+// « aucun créneau » sans dire QUEL réglage bloque oblige l'utilisateur à les
+// bouger un par un au hasard. Le diagnostic est dérivé du filtrage lui-même.
+function filtrer(list){
+  var keep = [], rej = { hs:0, per:0, dir:0, vent:0, ventDir:0, maree:0, nuit:0 };
+  var now = Date.now();
+  for (var i = 0; i < list.length; i++){
+    var s = list[i];
+    if (s.ms < now - 3600000) continue;              // le passé n'est pas un créneau
+    if (s.sw.h == null || s.sw.h < crit.hsMin || s.sw.h > crit.hsMax) { rej.hs++; continue; }
+    if (crit.perMin > 0 && (s.sw.t == null || s.sw.t < crit.perMin)) { rej.per++; continue; }
+    if (!inSector(s.sw.dir, crit.swFrom, crit.swTo)) { rej.dir++; continue; }
+    if (s.ws != null && s.ws > crit.windMax) { rej.vent++; continue; }
+    if (crit.windDirOn && !inSector(s.wdir, crit.wdFrom, crit.wdTo)) { rej.ventDir++; continue; }
+    var st = tideStateAtPort(s.ms, s.port);
+    if (crit.tide !== 'any'){
+      if (!st) { rej.maree++; continue; }
+      var okT = crit.tide === 'mid' ? (st.level01 > 0.35 && st.level01 < 0.65)
+              : crit.tide === 'low' ? (st.level01 < 0.4) : (st.level01 > 0.6);
+      if (!okT) { rej.maree++; continue; }
+    }
+    if (crit.dayOnly){
+      var sun = sunHours(s.ms, s.spot.lat, s.spot.lon), h = ncHour(s.ms);
+      if (sun && (h < sun.rise - 0.5 || h > sun.set + 0.5)) { rej.nuit++; continue; }
+    }
+    s.tide = st;
+    keep.push(s);
+  }
+  // Noter APRÈS le tri, spot par spot, en installant les réglages DU SPOT avant
+  // chaque lot. calcSurfScore lit le global SCORE_PARAMS : sans ça, tous les
+  // créneaux étaient notés avec le barème du spot SÉLECTIONNÉ, et la légende
+  // « la note est celle du spot concerné » mentait. Mesuré le 20/11/2026 :
+  // trois spots différents sortaient la même note, celle de Dumbéa.
+  keep.sort(function(a, b){ return a.ms - b.ms; });
+  var sauve = SCORE_PARAMS, j;
+  var parSpot = {};
+  for (j = 0; j < keep.length; j++){
+    var nom = keep[j].spot.name;
+    if (!parSpot[nom]) parSpot[nom] = Object.assign({}, _DEFAULT_SCORE, keep[j].spot.scoreParams || {});
+    SCORE_PARAMS = parSpot[nom];
+    keep[j].surf = calcSurfScore(keep[j].sw.h, keep[j].sw.t, keep[j].sw.dir,
+                                 keep[j].ws, null, keep[j].wdir, keep[j].pwr,
+                                 tideAdjOf(keep[j].spot, keep[j].tide));
+  }
+  SCORE_PARAMS = sauve;   // le reste de la page score le spot affiché
+  return { keep: keep, rej: rej };
+}
+// Variante de tideStateAt() prenant un port explicite : le chercheur mélange
+// des spots de deux stations différentes dans une même liste.
+function tideStateAtPort(ms, port){
+  var ds = ncDs(ms), rg = tideDayRange(ds, port), h = tideHeightAt(ds, ncHour(ms), port);
+  if (h == null || !rg || rg.max - rg.min < 1e-6) return null;
+  var nxt = tideHeightAt(ds, ncHour(ms + 15 * 60000), port);
+  return { h: h, level01: (h - rg.min) / (rg.max - rg.min), rising: (nxt != null && nxt > h) };
+}
+
+// ── Interface ───────────────────────────────────────────────────────────────
+function critBind(){
+  function el(id){ return document.getElementById(id); }
+  var map = { 'cr-hsMin':'hsMin', 'cr-hsMax':'hsMax', 'cr-perMin':'perMin',
+              'cr-swFrom':'swFrom', 'cr-swTo':'swTo', 'cr-windMax':'windMax',
+              'cr-wdFrom':'wdFrom', 'cr-wdTo':'wdTo' };
+  Object.keys(map).forEach(function(id){
+    var e = el(id); if (!e) return;
+    e.value = crit[map[id]];
+    e.oninput = function(){ crit[map[id]] = +this.value; critSync(); saveCrit(); critRunSoon(); };
+  });
+  el('cr-windDirOn').checked = !!crit.windDirOn;
+  el('cr-windDirOn').onchange = function(){ crit.windDirOn = this.checked; critSync(); saveCrit(); critRunSoon(); };
+  el('cr-dayOnly').checked = !!crit.dayOnly;
+  el('cr-dayOnly').onchange = function(){ crit.dayOnly = this.checked; saveCrit(); critRunSoon(); };
+  el('cr-tide').value = crit.tide;
+  el('cr-tide').onchange = function(){ crit.tide = this.value; saveCrit(); critRunSoon(); };
+  el('cr-go').onclick = function(){ critRun(); };
+  el('cr-reset').onclick = function(){
+    var k; for (k in CRIT_DEF) crit[k] = CRIT_DEF[k];
+    saveCrit(); critBind(); critSync(); critRun();
+  };
+  critSync();
+}
+function critSync(){
+  // Un min au-dessus du max ne veut rien dire : on les réordonne plutôt que de
+  // laisser l'utilisateur produire un filtre vide sans comprendre pourquoi.
+  if (crit.hsMin > crit.hsMax){ var t = crit.hsMin; crit.hsMin = crit.hsMax; crit.hsMax = t;
+    document.getElementById('cr-hsMin').value = crit.hsMin;
+    document.getElementById('cr-hsMax').value = crit.hsMax; }
+  document.getElementById('cr-hs-v').textContent = crit.hsMin.toFixed(1) + ' à ' + crit.hsMax.toFixed(1) + ' m';
+  document.getElementById('cr-per-v').textContent = '≥ ' + crit.perMin + ' s';
+  document.getElementById('cr-sw-v').textContent = crit.swFrom + '° → ' + crit.swTo + '°  ('
+    + compass(crit.swFrom) + '–' + compass(crit.swTo) + ')';
+  document.getElementById('cr-wind-v').textContent = '≤ ' + crit.windMax + ' nds';
+  document.getElementById('cr-wd-v').textContent = crit.wdFrom + '° → ' + crit.wdTo + '°';
+  document.getElementById('cr-windDirBox').style.display = crit.windDirOn ? '' : 'none';
+  document.getElementById('cr-resume').textContent =
+    crit.hsMin.toFixed(1) + '–' + crit.hsMax.toFixed(1) + ' m · ≥' + crit.perMin + ' s · '
+    + compass(crit.swFrom) + '–' + compass(crit.swTo) + ' · vent ≤' + crit.windMax;
+  drawRose();
+}
+// Rose : montre le secteur retenu plutôt que deux nombres. Le secteur de houle
+// est ce qu'on règle le plus souvent, et deux angles ne se visualisent pas.
+function drawRose(){
+  var cv = document.getElementById('cr-rose'); if (!cv || !cv.getContext) return;
+  var g = cv.getContext('2d'), w = cv.width, h = cv.height, cx = w/2, cy = h/2, R = Math.min(cx, cy) - 9;
+  g.clearRect(0, 0, w, h);
+  g.beginPath(); g.arc(cx, cy, R, 0, 6.2832);
+  g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1; g.stroke();
+  // Secteur : angles météo (0 = nord, sens horaire) → angles canvas.
+  var a0 = (crit.swFrom - 90) * Math.PI / 180, a1 = (crit.swTo - 90) * Math.PI / 180;
+  g.beginPath(); g.moveTo(cx, cy);
+  g.arc(cx, cy, R, a0, a1, sectorWidth(crit.swFrom, crit.swTo) > 180 ? false : false);
+  g.closePath();
+  g.fillStyle = 'rgba(79,163,199,.33)'; g.fill();
+  g.strokeStyle = 'rgba(79,163,199,.9)'; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = '#728aa1'; g.font = '9px DM Sans, sans-serif'; g.textAlign = 'center';
+  g.fillText('N', cx, 9); g.fillText('S', cx, h - 2);
+  g.textAlign = 'left'; g.fillText('E', w - 8, cy + 3);
+  g.textAlign = 'right'; g.fillText('O', 8, cy + 3);
+}
+
+var _critTimer = null;
+function critRunSoon(){ clearTimeout(_critTimer); _critTimer = setTimeout(critRun, 420); }
+
+function critRun(){
+  if (!spots.length) return;
+  var box = document.getElementById('cr-res');
+  box.innerHTML = '<div class="loading"><div class="spin"></div> Recherche…</div>';
+  loadAllSpots(function(list){
+    ensureTides(list, function(){
+      var r = filtrer(list);
+      critRender(r);
+      critNotify(r.keep);
+    });
+  });
+}
+
+function critRender(r){
+  var box = document.getElementById('cr-res'), keep = r.keep, i;
+  if (!keep.length){
+    // Nommer le critère qui rejette le PLUS : sans ça, « aucun créneau » oblige à
+    // bouger les réglages au hasard.
+    var lbl = { hs:'la hauteur de houle', per:'la période minimum', dir:'le secteur de houle',
+                vent:'le vent maximum', ventDir:'la direction du vent',
+                maree:'la marée', nuit:'« seulement de jour »' };
+    var top = null, k;
+    for (k in r.rej) if (r.rej[k] > 0 && (!top || r.rej[k] > r.rej[top])) top = k;
+    box.innerHTML = '<div class="note">Aucun créneau ne remplit ces critères sur les 7 prochains jours, '
+      + 'tous spots confondus.' + (top ? ' Le réglage qui écarte le plus de créneaux est <b>' + lbl[top]
+      + '</b> (' + r.rej[top] + ' créneaux).' : '') + '</div>';
+    return;
+  }
+  var html = '<div class="note" style="margin-bottom:6px;"><b style="color:var(--accent);">'
+    + keep.length + ' créneau' + (keep.length > 1 ? 'x' : '') + '</b> sur les 7 prochains jours, '
+    + 'tous spots confondus. Source de houle : ' + esc(srcOf(srcKey).label) + '.</div>';
+  html += '<div class="tscroll"><table class="t"><thead><tr><th class="h">Quand</th><th>Spot</th>'
+    + '<th>Houle</th><th>Pér.</th><th>Dir.</th><th>Vent</th><th>Marée</th><th>Note</th></tr></thead><tbody>';
+  var lastDay = null, shown = 0;
+  for (i = 0; i < keep.length && shown < 60; i++){
+    var s = keep[i], d = nc(s.ms), ds = ncDs(s.ms);
+    if (ds !== lastDay){
+      lastDay = ds;
+      html += '<tr><td colspan="8" class="cr-day">' + DAYS[d.getUTCDay()] + ' '
+        + d.getUTCDate() + '/' + (d.getUTCMonth() + 1) + '</td></tr>';
+    }
+    html += '<tr><td class="h">' + p2(d.getUTCHours()) + 'h</td>'
+      + '<td class="sp">' + esc(s.spot.short || s.spot.name) + '</td>'
+      + '<td style="color:' + hsCol(s.sw.h) + ';font-weight:700;">' + t1(s.sw.h) + '</td>'
+      + '<td>' + (s.sw.t != null ? Math.round(s.sw.t) : '—') + '</td>'
+      + '<td>' + dirCell(s.sw.dir, '#9fd4ea') + '</td>'
+      + '<td style="color:' + (s.ws != null ? windCol(s.ws) : 'var(--muted)') + ';">'
+        + (s.ws != null ? Math.round(s.ws) : '—') + (s.wdir != null ? ' ' + compass(s.wdir) : '') + '</td>'
+      + '<td>' + (s.tide ? t1(s.tide.h) + ' <span class="arw">' + (s.tide.rising ? '▲' : '▼') + '</span>' : '—') + '</td>'
+      + '<td style="color:' + s.surf.col + ';font-weight:700;" title="' + esc(s.surf.label) + '">' + s.surf.score + '</td>'
+      + '</tr>';
+    shown++;
+  }
+  html += '</tbody></table></div>';
+  if (keep.length > shown) html += '<div class="note" style="margin-top:6px;">'
+    + (keep.length - shown) + ' créneaux de plus, non affichés : resserre les critères pour les trier.</div>';
+  html += '<div class="note" style="margin-top:6px;">La note est celle du spot concerné, '
+    + 'avec SES réglages à lui — un même créneau ne vaut pas la même chose partout. '
+    + 'Marée : station du spot.</div>';
+  box.innerHTML = html;
+}
+
+// ── Prévenir quand ça match ─────────────────────────────────────────────────
+// Même mécanisme que les alertes BMS du site (assets/alerts.js) : permission
+// navigateur puis showNotification via le service worker. LIMITE ASSUMÉE et
+// écrite à l'écran : sans serveur de push, ça ne peut se déclencher qu'à
+// l'ouverture de la page. On ne prétend donc pas réveiller le téléphone tout
+// seul — on signale ce qui est apparu DEPUIS la dernière visite.
+var LS_SEEN = 'accueil-creneaux-vus';
+function critNotifBtn(){
+  var b = document.getElementById('cr-notif'); if (!b) return;
+  if (!('Notification' in window)) { b.style.display = 'none'; return; }
+  b.style.display = '';
+  if (Notification.permission === 'granted'){
+    b.textContent = '🔔 Prévenu à l\'ouverture'; b.className = 'btn on';
+    b.title = 'Sans serveur de push, l\'alerte ne peut partir qu\'au moment où tu ouvres la page : elle liste alors les créneaux apparus depuis ta dernière visite.';
+    b.onclick = null;
+  } else if (Notification.permission === 'denied'){
+    b.textContent = '🔕 Notifications bloquées'; b.className = 'btn';
+    b.title = 'À réautoriser dans les réglages du navigateur pour ce site.';
+  } else {
+    b.textContent = '🔔 Me prévenir'; b.className = 'btn';
+    b.onclick = function(){ Notification.requestPermission().then(function(){ critNotifBtn(); }); };
+  }
+}
+function critNotify(keep){
+  critNotifBtn();
+  if (!('Notification' in window) || Notification.permission !== 'granted' || !keep.length) return;
+  var seen = {};
+  try { seen = JSON.parse(localStorage.getItem(LS_SEEN) || '{}') || {}; } catch(e){ seen = {}; }
+  var neufs = [], ids = {};
+  keep.forEach(function(s){
+    var id = s.spot.name + '@' + s.ms;
+    ids[id] = 1;
+    if (!seen[id]) neufs.push(s);
+  });
+  try { localStorage.setItem(LS_SEEN, JSON.stringify(ids)); } catch(e){}
+  if (!neufs.length) return;
+  var s0 = neufs[0], d0 = nc(s0.ms);
+  var titre = neufs.length + ' nouveau' + (neufs.length > 1 ? 'x créneaux' : ' créneau') + ' pour tes critères';
+  var corps = (s0.spot.short || s0.spot.name) + ' — ' + DAYS[d0.getUTCDay()] + ' '
+    + p2(d0.getUTCHours()) + 'h · ' + t1(s0.sw.h) + ' m / ' + Math.round(s0.sw.t) + ' s'
+    + (s0.ws != null ? ' · vent ' + Math.round(s0.ws) + ' nds' : '');
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready.then(function(reg){
+        reg.showNotification(titre, { body: corps, icon: 'icons/vent-192.png',
+          tag: 'creneaux', renotify: true });
+      }).catch(function(){ new Notification(titre, { body: corps }); });
+    } else new Notification(titre, { body: corps });
+  } catch(e){}
 }
 
 // Redessiner la courbe quand la largeur change (rotation, redimensionnement).
