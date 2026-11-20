@@ -9889,3 +9889,112 @@ renversement explicite.
 
 Page en ligne vérifiée : fond sombre confirmé au pixel, chercheur peuplé,
 0 erreur JS. **25 Ko transférés** contre 362 Ko pour `previsions.html`.
+
+---
+
+# 2026-11-20 (6) — Relecture indépendante du chercheur : sept défauts
+
+Une relecture ciblée a été lancée sur le code écrit le jour même, avec une
+consigne stricte : aucun avis de style, aucun refactoring, uniquement des
+défauts produisant un comportement **faux ou trompeur**, avec un scénario qui
+les déclenche. Elle en a trouvé sept, tous vérifiés avant correction. C'est le
+meilleur rendement de la journée, et la leçon tient en une phrase : **le code
+qu'on vient d'écrire est celui qu'on relit le plus mal.**
+
+## 1. ✗ Des spots disparaissaient en silence
+
+`loadAllSpots` déclenchait l'agrégation d'un spot sur un compteur **global** de
+requêtes (`pend`). Or `maybe()` était appelé avant `fin()`, donc `pend` valait
+toujours au moins 1 à l'instant du test : la garde ne se relâchait jamais. Tout
+spot dont la requête vent revenait `null` — ligne absente, HTTP ≠ 200, timeout —
+n'était **jamais** poussé dans la liste, sans un mot.
+
+Le commentaire disait « attendre le vent du même spot ». Le code ne le faisait
+pas : le compteur était global. Un commentaire qui décrit une intention
+non réalisée est pire qu'un commentaire absent.
+
+→ Déclenchement **par spot**, sur ses trois réponses. Vérifié : **8/8 spots**.
+
+## 2. ✗ Changement de source : liste périmée, et cache empoisonné
+
+Cliquer une autre source n'appelait que `load()`, pas `critRun()` : la liste
+restait celle du modèle précédent pendant que son en-tête annonçait le nouveau.
+Pire, une réponse tardive de l'ancienne source pouvait écrire le cache sous le
+nom de la nouvelle, puisque `allSrcKey = srcKey` relisait la globale **après**
+coup. L'en-tête aurait annoncé « GFS » sur des chiffres meteo.nc — le bug du
+19/08/2026 par une porte de service.
+
+→ Numéro de séquence : seule la dernière demande écrit. Et un chargement
+concurrent faisait `return` **sans rappeler le callback**, laissant
+« Recherche… » à l'écran indéfiniment.
+
+## 3. ✗ Deux notes pour le même créneau sur la même page
+
+Le chercheur passait `null` en 5ᵉ argument de `calcSurfScore` (la rafale) là où
+le tableau horaire passe la vraie valeur. Le barème applique −2 au-delà de
+`gustMalusKt` : le même spot à la même heure sortait donc une note **plus
+clémente** dans la liste que dans le tableau juste au-dessus.
+
+→ AROME est lu pour tous les spots (3ᵉ requête par spot). 112 créneaux sur 240
+portent une rafale — AROME ne couvre que ~48 h, le reste est honnêtement vide.
+
+## 4. ✗ La notification contredisait son propre libellé
+
+Le bouton promet « ça ne peut partir qu'à l'ouverture de la page ». En réalité
+`critRunSoon` rappelait `critRun` à **chaque mouvement de curseur**, et chaque
+passage réécrivait la liste des créneaux déjà vus. Resserrer puis relâcher un
+critère suffisait à faire repasser les mêmes créneaux pour des nouveautés.
+
+→ Seul le passage automatique du chargement notifie (`critRun(true)`). Et le
+corps affichait « NaN s » quand la période manquait.
+
+## 5. ✗ Le diagnostic accusait le mauvais réglage
+
+Les `continue` en cascade ne comptaient que le **premier** critère en échec,
+pendant que l'écran affirmait nommer celui qui écarte **le plus** de créneaux.
+Sur une semaine plate avec un secteur absurde, la page accusait la hauteur alors
+que le secteur rejetait tout autant.
+
+→ Tous les critères sont évalués pour chaque créneau, et le texte précise
+« tous critères comptés séparément ». Coût nul, ce sont des comparaisons.
+
+## 6. ✗ Vent manquant : laissez-passer d'un côté, rejet de l'autre
+
+`s.ws != null && s.ws > crit.windMax` **laissait passer** un créneau sans vent,
+tandis que le filtre de direction le rejetait. Deux réponses opposées à la même
+question, et rien à l'écran ne le disait.
+
+→ Un créneau dont le vent est inconnu ne peut pas être certifié conforme :
+traitement unique, compteur dédié, et un message qui dit que ce n'est **pas** un
+réglage trop sévère — sans quoi on desserre des critères sans aucun effet.
+
+## 7. ✗ La flèche de marée pouvait s'inverser au changement de jour
+
+`tideStateAtPort` réutilisait la date du créneau pour le point « dans 15 min » :
+pour un créneau du dernier quart d'heure d'une journée NC, cela demandait
+l'heure 24,1 h du jour courant au lieu de 0,1 h du lendemain. Latent à la cadence
+horaire actuelle, réel dès qu'un modèle sort du demi-heure.
+
+## Deux honnêtetés ajoutées au passage
+
+- La légende signale les créneaux dont la marée vient du **modèle harmonique** et
+  non de la station du spot. Elle affirmait « station du spot » sans réserve,
+  alors que `tideHeightAt` retombe sur le modèle quand la journée n'est pas
+  chargée.
+- La restauration de `SCORE_PARAMS` passe en `try/finally`. Une exception y
+  laisserait **toute la page** notée au barème du dernier spot traité — une
+  panne qui ne se voit pas, elle se lit en chiffres plausibles mais faux.
+
+## Ce que la relecture a confirmé comme CORRECT
+
+À noter aussi, pour ne pas y revenir : `inSector` gère bien le passage par le
+nord (un secteur 330°→30° est légitime pour une houle de nord), `portForSpot`
+est juste, et le tracé de la rose est correct dans tous les cas y compris le
+wrap — un ternaire y rendait la même valeur des deux côtés, code mort depuis
+remplacé par la constante.
+
+Un seul faux positif dans toute la relecture : elle supposait que le contrôle
+`:root` de `test_pages.js` se désactive dans le mode de panne qu'il vise. La
+mutation montre le contraire — le texte `:root {` reste présent, l'assertion
+tourne et passe. Le commentaire du fichier le disait déjà ; seul le libellé de
+l'assertion a été rendu plus modeste.
