@@ -47,7 +47,7 @@
 <body>
 <header>
   <h1>💨 Vent AROME 2.5 km — les passes</h1>
-  <div class="sub">Tableaux officiels Windguru (widget « Add to your website »), empilés avec les mêmes heures et les mêmes lignes pour comparer d'un coup d'œil. En haut, un comparatif résumé avec la date du run ; en dessous, les tableaux Windguru tels quels.</div>
+  <div class="sub">En haut, un comparatif maison des passes entre elles, servi par l'<b>archive GRIB2 Météo-France</b> du site (même modèle AROME 2,5 km, lu en direct à la source 3×/jour). En dessous, les tableaux officiels Windguru (widget « Add to your website ») empilés sur les mêmes heures : ce sont eux qui font foi en cas d'écart.</div>
 </header>
 
 <div class="bar">
@@ -55,12 +55,13 @@
   <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:8px 4px;"><input id="b-sync" type="checkbox" checked style="width:18px;height:18px;"> Faire défiler tous les tableaux ensemble</label>
   <button id="b-reload" type="button">↻ Recharger</button>
   <button id="b-cfg" type="button">⚙ Spots</button>
+  <a href="previsions.html" style="padding:8px 4px;font-size:13px;color:var(--accent);text-decoration:none;" title="Retour aux prévisions">← Prévisions</a>
 </div>
 
 <div id="cfg"></div>
 
 <div id="cmp">
-  <h2>Comparatif vent (nœuds)</h2>
+  <h2>Comparatif vent (nœuds) — AROME 2,5 km</h2>
   <div class="bar" style="padding:0 12px 8px;">
     <select id="c-day" aria-label="Jour"></select>
     <select id="c-thr" aria-label="Seuil de vent">
@@ -73,8 +74,13 @@
 <div id="cards"></div>
 
 <footer>
-  Source : <a href="https://www.windguru.cz" target="_blank" rel="noopener">windguru.cz</a> — modèle demandé : AROME 2.5 km (m=94).
-  Le nom du modèle et la date de son run sont ceux que Windguru affiche dans l'en-tête de chaque tableau : si Windguru n'a pas AROME pour un spot, c'est lui qui décide quoi afficher.
+  <b>Deux sources, un seul modèle.</b> Les tableaux empilés viennent de
+  <a href="https://www.windguru.cz" target="_blank" rel="noopener">windguru.cz</a> (modèle AROME 2.5 km, m=94) : le nom du modèle et la date du run
+  sont ceux que Windguru affiche lui-même, et si Windguru n'a pas AROME pour un spot, c'est lui qui décide quoi afficher.
+  Le comparatif du haut vient de l'archive GRIB2 que ce site télécharge directement chez Météo-France
+  (<code>ingestion/fetch_arome.py</code>, 3×/jour) : même modèle, même donnée amont, un relais en moins.
+  Le relais Windguru du Worker a cessé de répondre (HTTP 403 sur l'egress Cloudflare, mesuré le 20/11/2026) — c'est pourquoi
+  il n'est plus la source par défaut du comparatif. <a href="previsions.html">← Prévisions</a>
 </footer>
 
 <script src="assets/nc-token.js"></script>
@@ -230,7 +236,7 @@ document.getElementById('b-cfg').onclick = function () {
 var H0 = 5, H1 = 18;            // heures NC affichées dans le comparatif
 var cmpData = {};               // key spot → { pts:[{ms,w,g}], runMs, src } ou { err }
 var cmpDay = null;              // jour NC sélectionné ('AAAA-M-J')
-var useArchive = false;         // true = l'utilisateur a accepté l'archive Météo-France à défaut de Windguru
+var tryWindguru = false;        // true = l'utilisateur demande d'essayer QUAND MÊME le relais Windguru (bloqué côté Cloudflare, cf. loadCmp)
 var sharedSpots = null;         // spots de l'app (shared_spots) → lat/lon réellement archivés
 
 // Convention projet : NC = UTC+11 fixe → new Date(ms + 11h) lu en getUTC*.
@@ -245,6 +251,13 @@ function windBg(kt) { // mêmes seuils que WIND_COL_THRESHOLDS du site : 7/12/17
   return kt < 7 ? 'rgba(61,186,138,.30)' : kt < 12 ? 'rgba(232,196,74,.28)' : kt < 17 ? 'rgba(232,168,87,.38)' : kt < 23 ? 'rgba(232,110,70,.45)' : 'rgba(220,60,60,.55)';
 }
 function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+// Direction METEO : d'où vient le vent (même convention que tout le site).
+// La flèche montre où il VA (d + 180°), c'est ce que l'œil attend d'une flèche.
+var _DIR_CARD = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+var _DIR_ARROW = ['↓','↙','↙','↙','←','↖','↖','↖','↑','↗','↗','↗','→','↘','↘','↘'];
+function dirIdx(d) { return ((Math.round(d / 22.5) % 16) + 16) % 16; }
+function dirCard(d) { return _DIR_CARD[dirIdx(d)]; }
+function dirArrow(d) { return _DIR_ARROW[dirIdx(d)]; }
 function norm(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
 function sbGet(path, cb) { // GET REST Supabase (clé anon publique du site, cf. assets/nc-token.js)
@@ -302,12 +315,17 @@ function fromArchive(s, cb) {
       for (k = 0; k < (hrs || []).length; k++) {
         hh = hrs[k];
         if (!hh || hh.h == null) continue;
-        pts.push({ ms: Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.h)) - 11 * 3600000, w: num(hh.val), g: num(hh.gust), run: hh.run || null });
+        pts.push({ ms: Date.UTC(+p[0], +p[1] - 1, +p[2], Math.floor(hh.h)) - 11 * 3600000, w: num(hh.val), g: num(hh.gust), d: num(hh.dir), run: hh.run || null });
         if (hh.run && (!runIso || hh.run > runIso)) runIso = hh.run;
       }
     }
     if (!pts.length) { cb(null); return; }
-    cb({ pts: pts, runMs: null, src: 'Météo-France (archive du site)' });
+    // runMs = run le plus récent toutes dates confondues. Repli quand le jour
+    // affiché n'a aucun `run` par point (lignes écrites avant que fetch_arome.py
+    // ne l'embarque) ; drawCmp préfère toujours le run DU JOUR quand il existe.
+    // Avant le 20/11/2026 cette valeur était figée à null alors que runIso était
+    // bien calculé juste au-dessus : variable morte, colonne « run » = « inconnu ».
+    cb({ pts: pts, runMs: runIso ? new Date(runIso).getTime() : null, src: 'Météo-France (archive GRIB2 du site)' });
   });
 }
 
@@ -338,15 +356,33 @@ function loadCmp() {
   document.getElementById('c-body').innerHTML = 'Chargement…';
   function done() { pending--; if (pending === 0 && seq === loadSeq) drawCmp(); }
   function one(s) {
-    // Windguru D'ABORD et, par défaut, SEULEMENT (demande explicite de
-    // l'utilisateur le 10/11/2026 : « je veux être sûr que ça vienne de
-    // Windguru »). L'archive Météo-France n'est lue que s'il la demande lui-même
-    // (useArchive), jamais en repli silencieux — et la colonne « source » le dit.
+    // ORDRE INVERSÉ le 20/11/2026. L'ordre précédent (Windguru d'abord et SEUL)
+    // répondait à « je veux être sûr que ça vienne de Windguru » (10/11/2026) ;
+    // il est devenu intenable. MESURÉ ce jour : le relais /arome du Worker renvoie
+    // HTTP 502 « spot fetch 403 » pour TOUS les spots, chemin caché comme fresh=1.
+    // Ce n'est ni passager ni un problème d'en-têtes — les MÊMES en-têtes (Referer
+    // windguru.cz + User-Agent) obtiennent un 200 depuis une connexion
+    // résidentielle, et le modèle 94 est toujours publié pour ces spots. C'est
+    // l'egress Cloudflare que windguru.cz refuse : rien que le Worker puisse
+    // corriger. À l'écran avant ce correctif : « Comparatif indisponible » plus
+    // trois lignes d'erreur, en permanence.
+    // On sert donc l'archive GRIB2 Météo-France : MÊME modèle AROME 2,5 km, et
+    // même donnée amont que Windguru, mais lue en direct chez Météo-France par
+    // ingestion/fetch_arome.py (3×/jour) au lieu d'être relayée. Windguru reste
+    // essayable à la demande, et les widgets officiels ci-dessous (iframes
+    // chargées par le navigateur, pas par le Worker) continuent de faire foi.
+    if (!tryWindguru) {
+      fromArchive(s, function (a) {
+        cmpData[s.key] = a || { err: 'aucun point AROME archivé près de ce spot (le job tourne 3×/jour)' };
+        done();
+      });
+      return;
+    }
     fromWorker(s, function (w, why) {
       if (w) { cmpData[s.key] = w; done(); return; }
-      if (!useArchive) { cmpData[s.key] = { err: 'Windguru indisponible — ' + why }; done(); return; }
       fromArchive(s, function (a) {
-        cmpData[s.key] = a || { err: 'Windguru indisponible (' + why + ') et pas de point archivé près de ce spot' };
+        if (a) { a.wgFailed = why; cmpData[s.key] = a; }
+        else cmpData[s.key] = { err: 'Windguru indisponible (' + why + ') et pas de point archivé près de ce spot' };
         done();
       });
     });
@@ -401,7 +437,7 @@ function drawCmp() {
   var rows = [], bestRise = -1, bestMean = 1e9, runs = [];
   for (i = 0; i < spots.length; i++) {
     s = spots[i]; d = cmpData[s.key];
-    var row = { s: s, d: d, err: d && d.err, w: {}, g: {}, rise: null, mean: null, n: 0, riseRank: -1 };
+    var row = { s: s, d: d, err: d && d.err, w: {}, g: {}, dir: {}, rise: null, mean: null, n: 0, riseRank: -1 };
     if (d && d.pts) {
       // Run DU JOUR AFFICHÉ, pas du spot en général : dans l'archive, chaque
       // date garde sa ligne la plus fraîche, donc deux jours peuvent venir de deux
@@ -411,7 +447,7 @@ function drawCmp() {
       for (k = 0; k < d.pts.length; k++) {
         p = ncParts(d.pts[k].ms);
         if (p.key !== cmpDay || p.h < H0 || p.h > H1) continue;
-        row.w[p.h] = d.pts[k].w; row.g[p.h] = d.pts[k].g;
+        row.w[p.h] = d.pts[k].w; row.g[p.h] = d.pts[k].g; row.dir[p.h] = (d.pts[k].d == null ? null : d.pts[k].d);
         if (d.pts[k].run) { if (dayRun && d.pts[k].run !== dayRun) dayMixed = true; if (!dayRun || d.pts[k].run > dayRun) dayRun = d.pts[k].run; }
       }
       row.runMs = dayRun ? new Date(dayRun).getTime() : (d.fixedRun ? d.runMs : null);
@@ -446,9 +482,11 @@ function drawCmp() {
     html += '<td class="k' + (r.riseRank === bestRise && bestRise >= 0 ? ' best' : '') + '">' + riseTxt + '</td>';
     html += '<td class="k' + (r.mean !== null && r.mean === bestMean ? ' best' : '') + '">' + (r.mean === null ? '?' : (Math.round(r.mean * 10) / 10)) + '</td>';
     for (h = H0; h <= H1; h++) {
-      var w = r.w[h], g = r.g[h];
+      var w = r.w[h], g = r.g[h], dgr = r.dir[h];
       if (w === null || w === undefined) html += '<td style="color:var(--muted);">–</td>';
-      else html += '<td style="background:' + windBg(w) + ';">' + Math.round(w) + (g !== null && g !== undefined ? '<span class="g">' + Math.round(g) + '</span>' : '') + '</td>';
+      else html += '<td style="background:' + windBg(w) + ';" title="' + (dgr == null ? '' : 'vent de ' + Math.round(dgr) + '°') + '">' + Math.round(w)
+        + (g !== null && g !== undefined ? '<span class="g">' + Math.round(g) + '</span>' : '')
+        + (dgr == null ? '' : '<span class="g" style="color:var(--accent);">' + dirArrow(dgr) + ' ' + dirCard(dgr) + '</span>') + '</td>';
     }
     html += '<td>' + (r.runMs ? fmtRun(r.runMs) + (r.mixed ? ' *' : '') : 'inconnu') + '</td><td>' + (!r.d.viaWg ? '–' : r.d.fetchedMs ? 'il y a ' + Math.max(0, Math.round((Date.now() - r.d.fetchedMs) / 60000)) + ' min' : 'inconnu (cache)') + '</td><td style="color:var(--muted);">' + r.d.src + '</td></tr>';
   }
@@ -468,31 +506,43 @@ function drawCmp() {
   // décalage de colonnes : signature de deux runs voisins du même modèle, pas
   // d'une erreur de conversion. D'où fresh=1 côté Worker. Tant que le Worker
   // sert un cache d'âge inconnu, on l'écrit en clair au-dessus du tableau.
-  var stale = false, oldest = 0;
-  for (i = 0; i < rows.length; i++) if (rows[i].d && rows[i].d.viaWg && rows[i].n) {
-    if (!rows[i].d.fetchedMs) stale = true;
-    else oldest = Math.max(oldest, Date.now() - rows[i].d.fetchedMs);
+  // Provenance : l'en-tête doit dire laquelle des deux sources a répondu, sans
+  // jamais laisser croire à du Windguru quand c'est l'archive (le piège du
+  // 10/11/2026, où un cache d'âge inconnu passait pour du direct).
+  var stale = false, oldest = 0, nWg = 0, nArch = 0, wgWhy = null;
+  for (i = 0; i < rows.length; i++) {
+    if (!rows[i].n || !rows[i].d) continue;
+    if (rows[i].d.viaWg) {
+      nWg++;
+      if (!rows[i].d.fetchedMs) stale = true;
+      else oldest = Math.max(oldest, Date.now() - rows[i].d.fetchedMs);
+    } else { nArch++; if (rows[i].d.wgFailed && !wgWhy) wgWhy = rows[i].d.wgFailed; }
   }
-  html = '<div class="note" style="padding-bottom:8px;color:var(--accent);">' + (stale
-      ? '⚠ Ces chiffres sortent du cache du worker (jusqu\'à 4 h 30 de retard, donc peut-être le run précédent) : ils peuvent différer des tableaux Windguru du dessous, qui font foi.'
-      : 'Chiffres lus chez Windguru il y a ' + Math.round(oldest / 60000) + ' min au plus. En cas d\'écart, les tableaux Windguru du dessous font foi.') + '</div>'
+  var prov;
+  if (nWg && !nArch) prov = stale
+    ? '⚠ Ces chiffres sortent du cache du worker (jusqu\'à 4 h 30 de retard, donc peut-être le run précédent) : ils peuvent différer des tableaux Windguru du dessous, qui font foi.'
+    : 'Chiffres lus chez Windguru il y a ' + Math.round(oldest / 60000) + ' min au plus. En cas d\'écart, les tableaux Windguru du dessous font foi.';
+  else if (nWg && nArch) prov = '⚠ Lignes de sources différentes (Windguru et archive Météo-France) : lis la colonne « source » avant de comparer deux spots entre eux.';
+  else prov = 'Source : <b>archive GRIB2 Météo-France</b> du site — même modèle AROME 2,5 km que les tableaux Windguru ci-dessous, lu en direct chez Météo-France (3×/jour) plutôt que relayé.'
+    + (wgWhy ? ' Windguru a été essayé et n\'a pas répondu : ' + wgWhy + '.' : '');
+  html = '<div class="note" style="padding-bottom:8px;color:var(--accent);">' + prov + '</div>'
     + '<div class="note" style="padding-bottom:8px;color:var(--text);">' + banner + '</div>' + html
-    + '<div class="note">Grand chiffre = vent moyen (nds), petit = rafales. En jaune : le spot où le vent atteint le seuil le plus tard, et celui au matin le plus calme.'
+    + '<div class="note">Grand chiffre = vent moyen (nds), petit = rafales, puis la direction d\'où vient le vent (la flèche montre où il va). En jaune : le spot où le vent atteint le seuil le plus tard, et celui au matin le plus calme.'
     + (anyMixed ? ' * = les heures de ce jour viennent de deux runs différents.' : '')
     + ' Les tableaux Windguru ci-dessous affichent leur propre date de run dans leur en-tête : elle peut différer de celle-ci.</div>';
-  var anyErr = false;
-  for (i = 0; i < rows.length; i++) if (rows[i].err) anyErr = true;
-  body.className = ''; body.innerHTML = html + ((anyErr || useArchive) ? '<div class="note">' + archBtn() + '</div>' : '');
+  // Bouton toujours proposé : la source par défaut n'est plus Windguru, donc
+  // l'offre « essayer Windguru » ne dépend plus d'une erreur préalable.
+  body.className = ''; body.innerHTML = html + '<div class="note">' + archBtn() + '</div>';
   bindArch();
 }
 function archBtn() {
-  return '<br><button id="c-arch" type="button" style="margin-top:8px;">' + (useArchive
-    ? 'Revenir à Windguru uniquement'
-    : 'Afficher à la place l\'archive Météo-France du site (même modèle AROME, pas les chiffres Windguru)') + '</button>';
+  return '<br><button id="c-arch" type="button" style="margin-top:8px;">' + (tryWindguru
+    ? 'Revenir à l\'archive Météo-France (celle qui marche)'
+    : 'Essayer quand même de lire les chiffres chez Windguru') + '</button>';
 }
 function bindArch() {
   var b = document.getElementById('c-arch');
-  if (b) b.onclick = function () { useArchive = !useArchive; loadSeq++; loadCmp(); };
+  if (b) b.onclick = function () { tryWindguru = !tryWindguru; loadSeq++; loadCmp(); };
 }
 document.getElementById('c-day').onchange = function () { cmpDay = this.value; drawCmp(); };
 document.getElementById('c-thr').onchange = function () { drawCmp(); };
