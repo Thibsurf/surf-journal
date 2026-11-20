@@ -197,6 +197,20 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 .cr-f--rose .cr-duo{padding-right:100px;}
 .cr-f--rose>label b{margin-right:100px;}
 .cr-chk{line-height:1.35;}
+/* Sous 620 px : UNE seule colonne, et la rose repasse dans le flux sous ses
+   curseurs au lieu d'être calée en absolu à droite.
+   Pourquoi en dur et pas « ça devrait aller » : la vérification headless de ce
+   poste ne descend pas sous 518 px de large (mesuré — Edge ignore toute fenêtre
+   plus étroite), donc le rendu d'un vrai téléphone à 390 px n'est PAS
+   observable ici. Une grille à deux colonnes y serrerait les curseurs de
+   direction à ~130 px sous une rose de 92 px. Plutôt que de parier sur un
+   calcul d'auto-fit qu'on ne peut pas voir, on impose la colonne unique. */
+@media(max-width:620px){
+  .cr-grid{grid-template-columns:1fr;}
+  .cr-f--rose .cr-duo{padding-right:0;}
+  .cr-f--rose>label b{margin-right:0;}
+  .cr-rose{position:static;display:block;margin:6px auto 0;}
+}
 #cr-res table.t td.sp{text-align:left;font-weight:600;}
 .cr-day{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--accent);padding:9px 2px 3px;}

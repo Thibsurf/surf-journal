@@ -19,6 +19,7 @@
 // D'où ces contrôles, bêtes mais imparables, sur TOUTES les pages à la fois.
 
 import { readFileSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -186,6 +187,67 @@ for (const page of PAGES) {
   // signalerait deux usages corrects et finirait ignoré.
   const lazyWx = /<img[^>]*assets\/wx\/[^>]*loading="lazy"|<img[^>]*loading="lazy"[^>]*assets\/wx\//.test(html);
   ok(!lazyWx, 'aucun loading="lazy" sur les icônes assets/wx/ (règle du projet)');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 6. LE PRÉCACHE N'EST PAS PÉRIMÉ
+// ════════════════════════════════════════════════════════════════════════════
+// LE CONTRÔLE QUI MANQUAIT LE PLUS. Le 20/11/2026, le chercheur de créneaux a
+// été déployé sans toucher à CACHE_NAME : la page était bien servie par GitHub
+// Pages, mais le téléphone de l'utilisateur continuait à servir la copie
+// PRÉCACHÉE de deux commits plus tôt. Résultat : « je ne vois pas le curseur du
+// vent », sur une fonctionnalité pourtant en ligne. Mesuré après coup —
+// accueil.html modifiée à 23h36, dernier bump à 21h43.
+//
+// Le `fetch` de sw.js sert le cache d'abord pour TOUT, navigations comprises.
+// Une page précachée n'est donc rafraîchie en un seul rechargement QUE si
+// CACHE_NAME a changé : c'est le bump qui force `install` à tout re-télécharger.
+// La règle est écrite dans CLAUDE.md depuis la veille, et elle a quand même été
+// oubliée — d'où ce contrôle automatique plutôt qu'une ligne de documentation
+// de plus.
+//
+// Principe : tout fichier listé dans ASSETS dont le DERNIER COMMIT est plus
+// récent que le dernier commit ayant touché CACHE_NAME est périmé dans le cache
+// des visiteurs. Comparaison sur les dates de commit, donc un commit qui change
+// la page ET le CACHE_NAME ensemble est correct (dates égales).
+section('précache à jour (sw.js)');
+try {
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  const git = (args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', timeout: 20000 }).trim();
+  // Le dernier commit ayant touché la ligne CACHE_NAME. `-G` (regex sur le
+  // diff) et non `-S` : `-S` compte les occurrences, or passer de v112 à v113
+  // n'en change pas le nombre, donc `-S` ne verrait jamais un bump.
+  const bump = git(['log', '-1', '--format=%ct', '-G', 'const CACHE_NAME', '--', 'sw.js']);
+  if (!bump) throw new Error('aucun commit trouvé pour CACHE_NAME');
+  const tBump = parseInt(bump, 10);
+
+  const precaches = [];
+  let ma; const reAsset = /'\/surf-journal\/([^']*)'/g;
+  while ((ma = reAsset.exec(sw)) !== null) {
+    const rel = ma[1];
+    if (!rel) continue;                                  // la racine '/surf-journal/'
+    if (!existsSync(join(ROOT, rel))) continue;          // fichier hors dépôt
+    if (!precaches.includes(rel)) precaches.push(rel);
+  }
+  ok(precaches.length > 0, 'des fichiers précachés ont été trouvés dans sw.js');
+
+  const perimes = [];
+  for (const rel of precaches) {
+    const t = git(['log', '-1', '--format=%ct', '--', rel]);
+    if (t && parseInt(t, 10) > tBump) perimes.push(rel);
+  }
+  ok(perimes.length === 0,
+     'aucun fichier précaché modifié depuis le dernier bump de CACHE_NAME',
+     perimes.length
+       ? perimes.join(', ') + '\n      → ces fichiers sont EN LIGNE mais les visiteurs qui ont '
+         + 'déjà la PWA continueront de servir l\'ancienne copie.\n      → corriger en incrémentant '
+         + 'CACHE_NAME dans sw.js AVANT de pousser.'
+       : '');
+} catch (e) {
+  // Pas de git (archive téléchargée, clone superficiel…) : on ne peut pas
+  // conclure. On le DIT, plutôt que de compter une assertion qui passerait par
+  // défaut et donnerait une fausse assurance.
+  console.log('  … contrôle ignoré, git indisponible ici : ' + String(e.message).split('\n')[0].slice(0, 90));
 }
 
 console.log('\n' + '═'.repeat(64));
