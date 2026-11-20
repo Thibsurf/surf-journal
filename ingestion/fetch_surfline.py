@@ -228,7 +228,34 @@ def run(dry_run=False):
             upsert(wind_rows)
         total += len(wave_rows) + len(wind_rows)
     logger.info("=== Terminé — %d ligne(s) %s ===", total, "(dry-run, rien écrit)" if dry_run else "upsert")
+    return total
 
 
 if __name__ == "__main__":
-    run(dry_run="--dry-run" in sys.argv)
+    # Sortie NON NULLE quand ce job n'archive RIEN DU TOUT.
+    #
+    # Avant le 20/11/2026 il finissait toujours "success", même en n'écrivant
+    # pas une ligne : les échecs par spot sont des logger.warning et la boucle
+    # les avale. Résultat mesuré : l'API Surfline renvoie 403 sur tous les
+    # appels depuis le 19/10/2026, le job a tourné vert 3×/jour pendant un
+    # mois, et personne n'a pu voir que LOTUS était mort. Un onglet Actions
+    # tout vert qui cache une source éteinte est pire que pas de CI du tout.
+    #
+    # Le seuil est "zéro ligne", pas "un spot en échec" : Surfline ne couvre que
+    # 5 spots NC et peut légitimement en rater un sans que le modèle soit perdu.
+    #
+    # DIAGNOSTIC du 20/11/2026, à lire avant de "réparer" les en-têtes : les
+    # endpoints forecasts/swells et forecasts/wind répondent 200 depuis une
+    # connexion résidentielle, avec ces paramètres exacts, et le 403 est
+    # systématique depuis les runners GitHub. C'est un blocage d'IP datacenter
+    # côté Surfline, pas un problème de requête — même symptôme que windguru.cz
+    # qui refuse l'egress Cloudflare du Worker. Aucun jeu d'en-têtes n'y changera
+    # quoi que ce soit ; il faudrait un chemin depuis une IP résidentielle.
+    n = run(dry_run="--dry-run" in sys.argv)
+    if not n:
+        # Annotation GitHub Actions : visible sur la page du run, pas seulement
+        # noyée dans 200 lignes de log.
+        print("::error title=LOTUS non archivé::Aucune ligne écrite — "
+              "l'API Surfline a refusé tous les appels (403 attendu depuis un runner GitHub). "
+              "La page le signale désormais d'elle-même (pastille « ⊘ LOTUS plus de données »).")
+        sys.exit(1)

@@ -91,6 +91,17 @@ jobs:
   # dans model_forecast_cache. Aucun secret. Usage strictement personnel (CGU).
   surfline:
     runs-on: ubuntu-latest
+    # continue-on-error depuis le 20/11/2026. fetch_surfline.py sort désormais en
+    # erreur quand il n'archive rien (il finissait "success" à vide, et LOTUS est
+    # resté mort un mois sans que ça se voie). Mais le blocage est côté Surfline,
+    # qui refuse les IP des runners GitHub : la panne est permanente et rien ici ne
+    # peut la corriger. Sans ce drapeau, le workflow entier serait rouge 3×/jour
+    # pour toujours, et un rouge permanent n'alerte plus de rien — il masquerait la
+    # prochaine vraie panne d'AROME, MFWAM, ECMWF ou MARC.
+    # Compromis retenu : le job porte sa croix et son annotation ::error:: sur la
+    # page du run (donc visible), la conclusion du workflow reste exploitable.
+    # Si LOTUS est abandonné pour de bon, supprimer ce job plutôt que ce drapeau.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

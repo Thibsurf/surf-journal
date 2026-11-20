@@ -307,6 +307,15 @@ def run():
 
     upsert(all_rows)
     logger.info("=== Terminé: %d ligne(s) au total ===", len(all_rows))
+    # Sortie non nulle sur échec TOTAL, comme fetch_mfwam / fetch_marc /
+    # fetch_ecmwf le font déjà. Ce job était le seul des cinq à ne pas le faire
+    # (repéré le 20/11/2026), et c'est devenu le plus sensible des cinq : depuis
+    # que le relais Windguru est bloqué, cette archive est la SEULE source AROME
+    # du site — carte AROME de previsions.html ET comparatif de windguru.html.
+    # Une panne silencieuse ici ne laisserait aucun repli.
+    if not all_rows:
+        print("::error title=AROME non archivé::Aucune ligne écrite — run Météo-France introuvable, décodage GRIB2 en échec, ou upsert refusé.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
