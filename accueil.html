@@ -463,21 +463,13 @@ function tideStateAt(ms){
   return { h:h, level01: (h - rg.min) / (rg.max - rg.min),
            rising: (nxt != null && nxt > h), rg:rg };
 }
-// Bonus/malus de marée du score. RECOPIE de `_tideAdj()` de previsions.html
-// (mêmes seuils, mêmes poids) parce que la fonction y est encore inline et non
-// dans un asset partagé. ⚠ Si l'une des deux bouge, l'autre DOIT suivre, sinon
-// les deux pages donneront deux notes pour le même créneau.
+// Bonus/malus de marée du score. Les seuils étaient recopiés ici à la création
+// de la page, faute d'asset partagé. Ils sont descendus dans score-core.js le
+// 20/11/2026 (tideScoreAdj) : plus AUCUNE duplication entre les deux pages, donc
+// plus de risque qu'elles donnent deux notes pour le même créneau.
 function tideAdjOf(sp, st){
-  var tp = (sp && sp.scoreParams && sp.scoreParams.tidePref) || (sp && sp.tidePref) || null;
-  if (!tp) return 0;
-  if ((tp.state === 'any' || !tp.state) && (tp.phase === 'any' || !tp.phase)) return 0;
-  if (!st) return 0;
-  var adj = 0;
-  if (tp.state === 'mid')       adj += (st.level01 > 0.35 && st.level01 < 0.65) ? 0.5 : -0.3;
-  else if (tp.state === 'low')  adj += (st.level01 < 0.4) ? 0.5 : -0.3;
-  else if (tp.state === 'high') adj += (st.level01 > 0.6) ? 0.5 : -0.3;
-  if (tp.phase && tp.phase !== 'any') adj += ((st.rising ? 'rising' : 'falling') === tp.phase) ? 0.3 : -0.2;
-  return adj;
+  if (!st || typeof tideScoreAdj !== 'function') return 0;
+  return tideScoreAdj(sp, { level01: st.level01, phase: st.rising ? 'rising' : 'falling' });
 }
 
 // ── Soleil (pour griser la nuit dans le tableau) ────────────────────────────

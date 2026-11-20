@@ -502,10 +502,52 @@ function powerBand(p) {
 }
 
 // Pont d'export : côté navigateur `module` n'existe pas, tout reste global.
+// ─── Préférence de marée d'un spot, et son poids dans la note ───────────────
+// Descendu ici le 20/11/2026. Ces deux fonctions vivaient inline dans
+// previsions.html (`_spotTidePref` / `_tideAdj`), donc toute autre page voulant
+// la MÊME note devait les recopier — ce qu'accueil.html a dû faire à sa
+// création, avec un avertissement « si l'une bouge, l'autre doit suivre ». Deux
+// jeux de seuils pour une seule notion, c'est précisément la forme du bug du
+// 19/08/2026 (trois blocs, trois chiffres). Une seule définition désormais.
+//
+// `tide` = { level01, phase } où level01 est la position dans le MARNAGE DU JOUR
+// (0 = basse mer, 1 = pleine mer) et phase vaut 'rising' ou 'falling'.
+function spotTidePref(spot) {
+  var tp = (spot && spot.scoreParams && spot.scoreParams.tidePref) || (spot && spot.tidePref) || null;
+  if (!tp) return null;
+  if ((tp.state === 'any' || !tp.state) && (tp.phase === 'any' || !tp.phase)) return null;
+  return tp;
+}
+function tideScoreAdj(spot, tide) {
+  var p = spotTidePref(spot);
+  if (!tide || !p) return 0;
+  var adj = 0;
+  if (p.state === 'mid')       adj += (tide.level01 > 0.35 && tide.level01 < 0.65) ? 0.5 : -0.3;
+  else if (p.state === 'low')  adj += (tide.level01 < 0.4) ? 0.5 : -0.3;
+  else if (p.state === 'high') adj += (tide.level01 > 0.6) ? 0.5 : -0.3;
+  if (p.phase && p.phase !== 'any') adj += (tide.phase === p.phase) ? 0.3 : -0.2;
+  return adj;
+}
+// Un créneau est-il DANS la fenêtre de marée voulue ? Sert au surlignage des
+// panneaux autant qu'au score : une seule définition, sinon le graphe finirait
+// par surligner autre chose que ce que la note récompense.
+function tideMatchesPref(pref, level01, phase) {
+  if (!pref) return false;
+  var okState = true;
+  if (pref.state === 'mid')       okState = level01 > 0.35 && level01 < 0.65;
+  else if (pref.state === 'low')  okState = level01 < 0.4;
+  else if (pref.state === 'high') okState = level01 > 0.6;
+  var okPhase = (!pref.phase || pref.phase === 'any') ? true : (phase === pref.phase);
+  return okState && okPhase;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DEFAULT_SCORE: _DEFAULT_SCORE,
     calcSurfScore: calcSurfScore,
+    spotTidePref: spotTidePref,
+    tideScoreAdj: tideScoreAdj,
+    tideMatchesPref: tideMatchesPref,
     periodClass: periodClass,
     periodBonus: periodBonus,
     windSector: windSector,

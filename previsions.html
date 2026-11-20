@@ -7274,11 +7274,34 @@ async function _fetchLotusWind(spot) {
   try {
     if (!spot || typeof _ensureSupabaseClient !== 'function' || !_ensureSupabaseClient()) return [];
     var tol = 0.05;
-    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,lat,lon')
-      .eq('model', 'lotus').eq('kind', 'wind')
+    // Fenêtre de dates BORNÉE, ajoutée le 20/11/2026. Cette requête était la
+    // dernière du fichier à n'avoir AUCUNE borne de date, alors que la règle est
+    // posée depuis le 19/08 : `model_forecast_cache` n'est jamais purgée, donc
+    // sans borne on ramène tout l'historique de la zone — exactement ce qui avait
+    // été mesuré sur _fetchLotusArchive (200 points sur 25 jours pour ~64 utiles).
+    // Même fenêtre que la houle LOTUS, qui va à ~J+6.
+    var datesW = [], nowW = Date.now();
+    for (var dw = -1; dw <= 7; dw++) {
+      var dW = new Date(nowW + dw * 864e5 + 11 * 3600000);
+      datesW.push(dW.getUTCFullYear() + '-' + String(dW.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dW.getUTCDate()).padStart(2, '0'));
+    }
+    var r = await _tokenSbClient.from('model_forecast_cache').select('date,hours,lat,lon,issued_at')
+      .eq('model', 'lotus').eq('kind', 'wind').in('date', datesW)
       .gte('lat', spot.lat - tol).lte('lat', spot.lat + tol)
       .gte('lon', spot.lon - tol).lte('lon', spot.lon + tol);
-    if (!r || !r.data || !r.data.length) return [];
+    if (!r || !r.data || !r.data.length) {
+      // Même raisonnement que _fetchLotusArchive : « rien près d'ici » est ambigu
+      // pour LOTUS (5 zones, pas une grille). La sonde sans borne géographique
+      // tranche entre couverture et source éteinte.
+      try {
+        var rAnyW = await _tokenSbClient.from('model_forecast_cache').select('id')
+          .eq('model', 'lotus').eq('kind', 'wind').in('date', datesW).limit(1);
+        if (!rAnyW || !rAnyW.data || !rAnyW.data.length)
+          _noteModelNoData('wind:lotus', 'aucune ligne de vent archivée nulle part en NC sur la fenêtre -1..+7 j : l\'ingestion Surfline n\'écrit plus');
+      } catch (eAnyW) {}
+      return [];
+    }
+    _noteModelIssued('wind:lotus', r.data);
     var pts = [];
     _lotusNearestZoneRows(r.data, spot).forEach(function(row) {
       var p = row.date.split('-');
@@ -10031,7 +10054,11 @@ function _tideStateAtFc(fcDateMs, tideSeries, tMin, tMax) {
 // Préférence de marée effective d'un spot. Lue d'abord dans scoreParams (où le
 // dialogue ⚙ l'écrit désormais), avec repli sur l'ancien emplacement
 // `spot.tidePref` au cas où un spot stocké l'aurait.
+// Délègue à score-core.js depuis le 20/11/2026 : ces seuils étaient recopiés
+// dans accueil.html, et deux jeux de seuils pour une seule notion finissent
+// toujours par diverger. Le repli local ne sert que si l'asset n'a pas chargé.
 function _spotTidePref(spot) {
+  if (typeof spotTidePref === 'function') return spotTidePref(spot);
   var tp = (spot && spot.scoreParams && spot.scoreParams.tidePref) || (spot && spot.tidePref) || null;
   if (!tp) return null;
   if ((tp.state === 'any' || !tp.state) && (tp.phase === 'any' || !tp.phase)) return null;
@@ -10049,7 +10076,10 @@ function _tideMatches(pref, level01, phase) {
   var okPhase = (!pref.phase || pref.phase === 'any') ? true : (phase === pref.phase);
   return okState && okPhase;
 }
+// Idem : définition unique dans score-core.js (tideScoreAdj), repli local
+// seulement si l'asset n'a pas chargé.
 function _tideAdj(spot, tide) {
+  if (typeof tideScoreAdj === 'function') return tideScoreAdj(spot, tide);
   var p = _spotTidePref(spot);
   if (!tide || !p) return 0;
   var adj = 0;
@@ -12738,7 +12768,18 @@ function _updateWindCmpControls(atStation, hasStation, stName, stDistKm) {
     var unavailable = atStation && WIND_UNRESAMPLABLE[k];
     var hidden = !!_windCmpHidden[k];
     if (hidden) anyHidden = true;
-    if (unavailable) {
+    // Source de vent ÉTEINTE (cf. _modelNoData, clés préfixées 'wind:'). Même
+    // encodage visuel que l'indisponibilité au point de mesure juste en dessous,
+    // mais pour une raison différente, et le titre le dit. Ajouté le 20/11/2026 :
+    // la légende du comparatif vent était le dernier endroit où un modèle pouvait
+    // disparaître sans un mot, alors que la houle le signalait déjà.
+    var gone = (typeof _modelNoDataWhy === 'function') ? _modelNoDataWhy('wind:' + k) : null;
+    if (gone !== null && !unavailable) {
+      sp.style.opacity = '.3'; sp.style.cursor = 'help';
+      sp.title = 'PLUS DE DONNÉES : ' + (gone || 'archive vide pour ce modèle')
+        + '. Ce modèle n\'est donc pas tracé — rien n\'est inventé pour combler le trou. '
+        + 'Il reviendra seul dès que sa source se remettra à publier.';
+    } else if (unavailable) {
       sp.style.opacity = '.28'; sp.style.cursor = 'not-allowed';
       sp.title = 'Indisponible en mode « au point de mesure » : Surfline ne modélise que ses 5 zones fixes, il n\'y a pas de point libre à demander';
     } else {
@@ -13299,7 +13340,15 @@ function _fetchOpenDataWind(cacheKey, spot) {
         .gte('lat', spot.lat - 0.05).lte('lat', spot.lat + 0.05)
         .gte('lon', spot.lon - 0.05).lte('lon', spot.lon + 0.05)
         .order('issued_at', { ascending: false });
-      if (!r || !r.data || !r.data.length) return [];
+      if (!r || !r.data || !r.data.length) {
+        // Grille 0,25° globale : zéro ligne sur 8 jours n'est pas un trou de
+        // couverture, c'est le job ECMWF Open Data qui n'écrit plus. Sans ce
+        // drapeau, le modèle disparaissait du comparatif VENT en silence — le
+        // pendant exact du trou corrigé côté houle ce matin.
+        _noteModelNoData('wind:' + cacheKey, 'aucune ligne de vent archivée sur la fenêtre -1..+6 j : le job ECMWF Open Data n\'écrit plus');
+        return [];
+      }
+      _noteModelIssued('wind:' + cacheKey, r.data);
       var seenDate = {}, rows = [];
       r.data.forEach(function(row) { if (!seenDate[row.date]) { seenDate[row.date] = true; rows.push(row); } });
       var pts = [];
@@ -13539,6 +13588,17 @@ async function _renderAromeCompare(j) {
             .catch(function() { return { mk: mk, data: null }; });
         }));
         mResAll.forEach(function(entry) {
+          // Drapeau « plus de données » par modèle de VENT (20/11/2026). Ces cinq
+          // lectures renvoyaient silencieusement une série vide quand l'archive
+          // était muette, et la légende du comparatif vent n'avait aucun moyen de
+          // le dire — contrairement à la houle, traitée le matin même. MARC, GFS
+          // et BOM sont des grilles qui couvrent toute la NC : zéro ligne ici ne
+          // peut pas être un trou de couverture.
+          if (!entry.data || !entry.data.length) {
+            _noteModelNoData('wind:' + entry.mk, 'aucune ligne de vent archivée sur la fenêtre lue');
+          } else {
+            _noteModelIssued('wind:' + entry.mk, entry.data);
+          }
           if (!entry.data) return;
           var dst = entry.mk === 'gfs' ? gfsCachePts : entry.mk === 'bom' ? bomCachePts : entry.mk === 'ecmwf' ? ecmwfCachePts : entry.mk === 'aifs' ? aifsCachePts : marcCachePts;
           var seenDate = {};

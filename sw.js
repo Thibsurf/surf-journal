@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v111';
+const CACHE_NAME = 'surf-nc-v112';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -7,6 +7,14 @@ const ASSETS = [
   // page qu'on ouvre en premier, souvent avec du réseau médiocre — l'inverse de
   // semaine.html, volontairement laissée au stale-while-revalidate.
   '/surf-journal/accueil.html',
+  // windguru.html : ajoutée au précache le 20/11/2026. Le fetch ci-dessous est
+  // un stale-while-revalidate pour TOUT, y compris les navigations : une page
+  // non précachée est donc servie depuis le cache au premier rechargement après
+  // un déploiement, et la nouvelle version n'apparaît qu'au SECOND. Pour une
+  // page qu'on vient de corriger, c'est un rechargement de trop passé à regarder
+  // le bug qu'on croyait réglé. Le bump de CACHE_NAME ci-dessus règle le cas des
+  // pages précachées en une fois, puisque `install` les re-télécharge toutes.
+  '/surf-journal/windguru.html',
   '/surf-journal/sorties.html',
   '/surf-journal/marine_fuel_pro.html',
   '/surf-journal/manifest.json',
