@@ -502,6 +502,82 @@ export default {
         });
       }
 
+      // ── /surfline — relais vers l'API privée Surfline (modèle LOTUS) ───────
+      //
+      // POURQUOI. ingestion/fetch_surfline.py reçoit 403 sur TOUS ses appels
+      // depuis un runner GitHub, et cela depuis le 19/10/2026 : LOTUS est resté
+      // mort un mois. Mesuré le 20/11/2026, à la même minute : le même code, avec
+      // les mêmes en-têtes, obtient 200 depuis une connexion résidentielle et 403
+      // depuis le runner, en 0,14 s, dès la première tentative. Ce n'est donc ni
+      // un rythme de requêtes ni un en-tête : c'est l'IP du runner qui est refusée.
+      //
+      // Deux autres pistes ont été mesurées et ÉCARTÉES, ne pas les refaire :
+      //  · appel direct depuis le navigateur : impossible. Surfline renvoie 403
+      //    dès que l'en-tête Origin n'est pas le sien (bissection, deux passes :
+      //    sans Origin → 200, Origin surfline.com → 200, Origin thibsurf.github.io
+      //    → 403). Un navigateur ne peut pas mentir sur Origin.
+      //  · kbyg/spots/batch comme repli : répond 200 mais ne porte plus que les
+      //    métadonnées du spot, Surfline ayant changé son API.
+      //
+      // D'où ce relais. Ce n'est PAS un proxy ouvert : l'endpoint est validé
+      // contre une liste blanche, l'id de spot contre sa forme, et seuls les
+      // paramètres connus sont retransmis — rien de ce que l'appelant envoie ne
+      // traverse sans avoir été reconstruit ici.
+      //
+      // ⚠ NON VÉRIFIÉ à l'écriture : windguru.cz refuse déjà l'egress Cloudflare
+      // (cf. /arome plus haut), donc Surfline pourrait le refuser aussi. Si ce
+      // relais renvoie 403 à son tour, c'est que Cloudflare est bloqué pareil, et
+      // il faudra un chemin résidentiel — surtout pas un autre User-Agent.
+      if (url.pathname === "/surfline") {
+        const SL_EP = {
+          "forecasts/swells": 1, "forecasts/wind": 1, "forecasts/tides": 1,
+          "forecasts/weather": 1, "forecasts/conditions": 1, "forecasts/sunlight": 1,
+        };
+        const ep = url.searchParams.get("ep") || "";
+        if (!SL_EP[ep]) return json({ error: "endpoint non autorisé" }, 400);
+        const spotId = url.searchParams.get("spotId") || "";
+        if (!/^[0-9a-f]{24}$/.test(spotId)) return json({ error: "spotId invalide" }, 400);
+
+        // Paramètres reconstruits un par un, jamais recopiés en bloc.
+        const up = new URL("https://services.surfline.com/kbyg/spots/" + ep);
+        up.searchParams.set("spotId", spotId);
+        const days = parseInt(url.searchParams.get("days") || "6", 10);
+        up.searchParams.set("days", String(Math.max(1, Math.min(6, isNaN(days) ? 6 : days))));
+        const iv = parseInt(url.searchParams.get("intervalHours") || "3", 10);
+        if (!isNaN(iv) && iv >= 1 && iv <= 24) up.searchParams.set("intervalHours", String(iv));
+        // Unités métriques en dur : c'est le seul jeu que le client attend, et
+        // laisser l'appelant les choisir ouvrirait la porte à des réponses que
+        // fetch_surfline.py lirait en silence comme des mètres.
+        up.searchParams.set("units[swellHeight]", "M");
+        up.searchParams.set("units[waveHeight]", "M");
+        up.searchParams.set("units[tideHeight]", "M");
+        up.searchParams.set("units[windSpeed]", "KPH");
+        up.searchParams.set("units[temperature]", "C");
+
+        // Origin/Referer surfline.com : combinaison MESURÉE comme acceptée. Ne
+        // jamais la remplacer par l'origine de l'appelant.
+        const slRes = await fetch(up.toString(), {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Origin": "https://www.surfline.com",
+            "Referer": "https://www.surfline.com/",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+          // Cache edge 1 h : le run LOTUS ne bouge que quelques fois par jour, et
+          // ça borne les allers-retours même si un client boucle.
+          cf: { cacheTtl: 3600, cacheEverything: true },
+        });
+        if (!slRes.ok) {
+          const body = await slRes.text().catch(() => "");
+          return json({ error: "surfline " + slRes.status, detail: body.slice(0, 200) }, 502);
+        }
+        return new Response(slRes.body, {
+          status: 200,
+          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600", ...cors },
+        });
+      }
+
       // ── /proxy — proxy HTML meteo.nc (scraping rafales) ────────────────────
       if (url.pathname === "/proxy") {
         const target = url.searchParams.get("url");
@@ -521,7 +597,17 @@ export default {
         });
       }
 
-      return json({ ok: true, status: "worker ready" });
+      // Route inconnue → 404, et NON un 200 « worker ready ».
+      //
+      // Ce 200 était un piège actif, mesuré le 20/11/2026 : un client qui appelle
+      // une route pas encore déployée recevait un JSON valide avec le code du
+      // succès, repartait avec un objet vide, et terminait sans erreur. C'est la
+      // même famille de panne silencieuse que le job LOTUS « success » à zéro
+      // ligne. Une racine exacte reste en 200 : c'est le ping de vivacité.
+      if (url.pathname === "/" || url.pathname === "") {
+        return json({ ok: true, status: "worker ready" });
+      }
+      return json({ error: "route inconnue", path: url.pathname }, 404);
     } catch (e) {
       return json({ error: String(e) }, 502);
     }

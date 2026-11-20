@@ -257,5 +257,10 @@ if __name__ == "__main__":
         # noyée dans 200 lignes de log.
         print("::error title=LOTUS non archivé::Aucune ligne écrite — "
               "l'API Surfline a refusé tous les appels (403 attendu depuis un runner GitHub). "
-              "La page le signale désormais d'elle-même (pastille « ⊘ LOTUS plus de données »).")
+              "La page le signale desormais d'elle-meme : LOTUS apparait barre, "
+              "avec la raison, dans la legende du comparatif.")
+        # Volontairement SANS accent ni symbole : cette ligne part sur stdout, et
+        # la console Windows (cp1252) fait planter le script sur un caractere
+        # qu'elle ne sait pas encoder. Mesure le 20/11/2026 : un UnicodeEncodeError
+        # ici masquait le code de sortie qu'on venait justement d'ajouter.
         sys.exit(1)

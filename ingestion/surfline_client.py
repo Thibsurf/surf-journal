@@ -43,6 +43,7 @@ alignés avec ce que ce module normalise) :
 
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,12 +121,90 @@ def _log_raw(endpoint, params, payload_text):
         logger.warning("Impossible d'écrire debug_raw pour %s: %s", endpoint, e)
 
 
+# Relais optionnel (variable d'environnement SURFLINE_PROXY, ex. la route
+# /surfline du Worker Cloudflare). AJOUTÉ LE 20/11/2026 pour une raison précise :
+# Surfline refuse l'IP des runners GitHub. Mesuré le même jour, à la même minute,
+# avec le MÊME code et les MÊMES en-têtes : 200 depuis une connexion
+# résidentielle, 403 en 0,14 s depuis le runner, dès la première tentative. Ce
+# n'est donc ni le rythme des requêtes ni un en-tête — inutile d'aller modifier
+# DEFAULT_HEADERS, ça a déjà été essayé.
+#
+# Quand la variable est absente (exécution locale), RIEN ne change : appel direct,
+# exactement comme avant. C'est ce qui permet de garder un chemin qui marche à la
+# main pendant que le relais est en place pour le cron.
+SURFLINE_PROXY = os.environ.get("SURFLINE_PROXY", "").strip()
+
+# Endpoints que le relais accepte (même liste blanche que la route du Worker).
+# Un endpoint hors liste repart en direct plutôt que de recevoir un 400 du relais.
+PROXYABLE = {
+    "forecasts/swells", "forecasts/wind", "forecasts/tides",
+    "forecasts/weather", "forecasts/conditions", "forecasts/sunlight",
+}
+
+
+def _proxy_target(endpoint, params):
+    """URL + params à envoyer au relais, ou None s'il faut passer en direct.
+
+    Le relais reconstruit lui-même les unités et ne garde que spotId/days/
+    intervalHours : on ne lui transmet donc que ça, le reste serait ignoré."""
+    if not SURFLINE_PROXY or endpoint.strip("/") not in PROXYABLE:
+        return None
+    spot_id = params.get("spotId")
+    if not spot_id:
+        return None
+    out = {"ep": endpoint.strip("/"), "spotId": spot_id}
+    for k in ("days", "intervalHours"):
+        if params.get(k) is not None:
+            out[k] = params[k]
+    return SURFLINE_PROXY, out
+
+
 def _request(endpoint, params, timeout=REQUEST_TIMEOUT, retries=MAX_RETRIES):
     """GET défensif vers un endpoint kbyg/spots/... Retourne le JSON décodé, ou
     None si tout a échoué (jamais d'exception propagée à l'appelant — API non
-    documentée, tout peut arriver : timeout, 403, JSON invalide, 5xx)."""
+    documentée, tout peut arriver : timeout, 403, JSON invalide, 5xx).
+
+    Si SURFLINE_PROXY est défini, le relais est tenté EN PREMIER, puis l'appel
+    direct en repli. Cet ordre est volontaire : là où le relais est utile (un
+    runner GitHub), le direct échoue de toute façon, et l'essayer d'abord ne
+    ferait que perdre six secondes à chaque spot. Là où le direct marche (un
+    poste perso), la variable n'est pas définie et ce code ne s'exécute pas."""
     url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+    proxy = _proxy_target(endpoint, params)
+    if proxy:
+        j = _try_get(proxy[0], proxy[1], endpoint + " via relais", timeout, retries)
+        if _is_worker_envelope(j):
+            # Un Worker qui n'a PAS encore la route /surfline répond 200 avec son
+            # enveloppe par défaut ({"ok":true,"status":"worker ready"}) ou une
+            # erreur applicative. Sans ce test, le client prenait ce 200 pour un
+            # succès, repartait avec un objet vide, et le job finissait « 0 ligne »
+            # sans un mot sur la cause — exactement le travers qu'on vient de
+            # corriger ailleurs. Mesuré le 20/11/2026 avant déploiement du Worker.
+            logger.warning("[%s] le relais a répondu, mais ce n'est pas du Surfline "
+                           "(route /surfline absente ou en erreur) : %s",
+                           endpoint, str(j)[:120])
+            j = None
+        if j is not None:
+            return j
+        logger.warning("[%s] relais inutilisable, tentative en direct", endpoint)
+    return _try_get(url, params, endpoint, timeout, retries)
+
+
+def _is_worker_envelope(j):
+    """Vrai si la réponse vient du Worker lui-même et non de Surfline.
+
+    Deux formes possibles : l'enveloppe de route inconnue ({"ok":true,"status":
+    "worker ready"}) et les erreurs applicatives ({"error": ...}). Aucune réponse
+    Surfline légitime ne porte ces clés à la racine."""
+    if not isinstance(j, dict):
+        return False
+    return "error" in j or j.get("status") == "worker ready" or "ok" in j
+
+
+def _try_get(url, params, label, timeout, retries):
+    """Boucle de requête + retry commune au relais et à l'appel direct."""
     last_err = None
+    endpoint = label
     for attempt in range(1, retries + 1):
         try:
             r = requests.get(url, params=params, headers=DEFAULT_HEADERS, timeout=timeout)

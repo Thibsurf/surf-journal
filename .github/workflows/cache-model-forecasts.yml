@@ -110,4 +110,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r ingestion/requirements.txt
       - name: Fetch + archive Surfline LOTUS NC
+        env:
+          # Relais Cloudflare. Surfline refuse l'IP des runners GitHub : mesuré le
+          # 20/11/2026 à la même minute, le même code obtient 200 depuis une
+          # connexion résidentielle et 403 en 0,14 s depuis le runner. Le client
+          # tente donc le relais D'ABORD ici, et retombe en direct si besoin — en
+          # local la variable n'existe pas et rien ne change.
+          # ⚠ Suppose la route /surfline déployée sur le Worker (wrangler deploy).
+          SURFLINE_PROXY: https://meteo-proxy-worker.thibault-dlh.workers.dev/surfline
         run: python ingestion/fetch_surfline.py
