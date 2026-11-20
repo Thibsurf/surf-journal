@@ -642,7 +642,7 @@ function boot(){
     // tous. Il part tout seul, avec les critères sauvegardés — c'est l'intérêt
     // de les persister, on retrouve ses créneaux sans toucher à un curseur.
     critBind();
-    critRun();
+    critRun(true);
   });
 }
 
@@ -762,6 +762,9 @@ function renderSrcPick(){
     srcKey = this.getAttribute('data-src');
     try { localStorage.setItem(LS_SRC, srcKey); } catch(e){}
     renderSrcPick(); load();
+    // Relancer AUSSI la recherche : sans ça la liste restait celle du modèle
+    // précédent pendant que son en-tête annonçait le nouveau.
+    critRun();
   };
 }
 
@@ -1100,50 +1103,73 @@ function sectorWidth(from, to){
 // requête ramène 1068 lignes pour nc/wind et 1150 pour gfs/swell_primary, donc
 // au-delà du plafond PostgREST de 1000 — le piège déjà consigné deux fois dans
 // ce projet. Borner par spot garde chaque réponse à ~100 lignes.
-var allSlots = null, allLoading = false, allSrcKey = null;
+var allSlots = null, allSrcKey = null, allSeq = 0, allPending = 0;
 
+// TROIS lectures par spot : la houle du modèle choisi, son vent, et le vent
+// AROME pour la RAFALE. AROME est le seul flux du site à publier une rafale
+// fiable au point du spot, et calcSurfScore applique un malus dessus : sans
+// elle, un même créneau sortait une note plus clémente ici que dans le tableau
+// horaire du dessus, qui l'a. Deux notes pour un même spot à une même heure sur
+// la même page, c'est précisément ce que ce projet a déjà corrigé une fois.
 function loadAllSpots(cb){
-  var src = srcOf(srcKey);
-  if (allSlots && allSrcKey === srcKey) { cb(allSlots); return; }
-  if (allLoading) return;
-  allLoading = true;
-  var out = [], pend = spots.length * 2, byKey = {};
-  function note(){ var el = document.getElementById('cr-state');
-    if (el) el.textContent = 'Lecture des ' + spots.length + ' spots… ' + Math.max(0, spots.length * 2 - pend) + '/' + (spots.length * 2); }
+  var srcKeyFige = srcKey, src = srcOf(srcKeyFige);
+  if (allSlots && allSrcKey === srcKeyFige) { cb(allSlots); return; }
+  // Un chargement déjà en cours est ABANDONNÉ plutôt qu'ignoré : l'ancien code
+  // faisait `return` sans rappeler cb, donc un changement de source pendant le
+  // chargement laissait « Recherche… » à l'écran pour toujours. Le numéro de
+  // séquence fait que seule la dernière demande écrit le cache — sans lui, une
+  // réponse tardive de l'ancienne source écrasait la nouvelle, et l'en-tête
+  // annonçait un modèle qui n'était pas celui des chiffres affichés.
+  var seq = ++allSeq;
+  var out = [], byKey = {}, nTot = spots.length * 3, nFait = 0;
+  allPending++;
+  function note(){
+    var el = document.getElementById('cr-state');
+    if (el && seq === allSeq) el.textContent = 'Lecture des ' + spots.length + ' spots… ' + nFait + '/' + nTot;
+  }
   note();
-  function fin(){
-    if (--pend > 0) { note(); return; }
-    allLoading = false; allSrcKey = srcKey; allSlots = out;
+  function arrive(key, champ, r){
+    var e = byKey[key];
+    e[champ] = r; e.recus++; nFait++; note();
+    // Déclenchement PAR SPOT : les trois réponses de CE spot sont arrivées.
+    // L'ancien code testait un compteur GLOBAL, si bien qu'un spot dont le vent
+    // revenait vide (`null`) n'était jamais ajouté et disparaissait sans un mot.
+    if (e.recus === 3) agreger(e);
+    if (nFait === nTot) termine();
+  }
+  function agreger(e){
+    var wByMs = {}, gByMs = {}, i;
+    if (e.wind) for (i = 0; i < e.wind.pts.length; i++) wByMs[e.wind.pts[i].ms] = e.wind.pts[i].raw;
+    if (e.gust) for (i = 0; i < e.gust.pts.length; i++) gByMs[e.gust.pts[i].ms] = e.gust.pts[i].raw;
+    if (!e.swell) return;              // pas de houle = rien à proposer ici
+    var port = portForSpot(e.spot);
+    for (i = 0; i < e.swell.pts.length; i++){
+      var ms = e.swell.pts[i].ms, sw = swellOf(src, e.swell.pts[i].raw);
+      if (!sw) continue;
+      var wr = wByMs[ms] || null, gr = nearest(gByMs, ms, 90 * 60000);
+      var ws = wr ? n1(wr.val) : null, wdir = wr ? n1(wr.dir) : null;
+      // Modèle sans vent (MF global) : AROME au même point, le plus fin qu'on ait.
+      if (ws == null && gr) { ws = n1(gr.val); wdir = n1(gr.dir); }
+      out.push({ spot: e.spot, port: port, ms: ms, sw: sw,
+                 ws: ws, wdir: wdir, gust: gr ? n1(gr.gust) : null,
+                 pwr: surfPower(sw.h, sw.t) });
+    }
+  }
+  function termine(){
+    allPending--;
+    if (seq !== allSeq) return;        // demande périmée : ne rien écrire
+    allSrcKey = srcKeyFige; allSlots = out;
     var el = document.getElementById('cr-state'); if (el) el.textContent = '';
     cb(out);
   }
   spots.forEach(function(sp){
     var key = sp.name;
-    byKey[key] = { spot: sp, swell: null, wind: null };
-    archive(src.model, src.kind, sp.lat, sp.lon, 0, 6, function(r){
-      byKey[key].swell = r; maybe(key); fin();
-    });
-    if (src.wind) archive(src.model, 'wind', sp.lat, sp.lon, 0, 6, function(r){ byKey[key].wind = r; maybe(key); fin(); });
-    // MF global ne publie pas de vent : AROME au même point, le plus fin qu'on ait.
-    else archive('aro', 'wind', sp.lat, sp.lon, 0, 6, function(r){ byKey[key].wind = r; maybe(key); fin(); });
+    byKey[key] = { spot: sp, swell: null, wind: null, gust: null, recus: 0 };
+    archive(src.model, src.kind, sp.lat, sp.lon, 0, 6, function(r){ arrive(key, 'swell', r); });
+    if (src.wind) archive(src.model, 'wind', sp.lat, sp.lon, 0, 6, function(r){ arrive(key, 'wind', r); });
+    else arrive(key, 'wind', null);
+    archive('aro', 'wind', sp.lat, sp.lon, 0, 6, function(r){ arrive(key, 'gust', r); });
   });
-  function maybe(key){
-    var e = byKey[key];
-    if (!e.swell || e.done) return;
-    if (e.wind === null && pend > 0) return;   // attendre le vent du même spot
-    e.done = true;
-    var wByMs = {}, i;
-    if (e.wind) for (i = 0; i < e.wind.pts.length; i++) wByMs[e.wind.pts[i].ms] = e.wind.pts[i].raw;
-    var port = portForSpot(e.spot);
-    for (i = 0; i < e.swell.pts.length; i++){
-      var ms = e.swell.pts[i].ms, sw = swellOf(src, e.swell.pts[i].raw);
-      if (!sw) continue;
-      var wr = wByMs[ms] || null;
-      out.push({ spot: e.spot, port: port, ms: ms, sw: sw,
-                 ws: wr ? n1(wr.val) : null, wdir: wr ? n1(wr.dir) : null,
-                 pwr: surfPower(sw.h, sw.t) });
-    }
-  }
 }
 
 // La marée de CHAQUE spot doit être chargée avant de pouvoir filtrer dessus :
@@ -1164,28 +1190,44 @@ function ensureTides(list, cb){
 // « aucun créneau » sans dire QUEL réglage bloque oblige l'utilisateur à les
 // bouger un par un au hasard. Le diagnostic est dérivé du filtrage lui-même.
 function filtrer(list){
-  var keep = [], rej = { hs:0, per:0, dir:0, vent:0, ventDir:0, maree:0, nuit:0 };
+  var keep = [], rej = { hs:0, per:0, dir:0, vent:0, ventInconnu:0, ventDir:0, maree:0, nuit:0 };
   var now = Date.now();
   for (var i = 0; i < list.length; i++){
     var s = list[i];
     if (s.ms < now - 3600000) continue;              // le passé n'est pas un créneau
-    if (s.sw.h == null || s.sw.h < crit.hsMin || s.sw.h > crit.hsMax) { rej.hs++; continue; }
-    if (crit.perMin > 0 && (s.sw.t == null || s.sw.t < crit.perMin)) { rej.per++; continue; }
-    if (!inSector(s.sw.dir, crit.swFrom, crit.swTo)) { rej.dir++; continue; }
-    if (s.ws != null && s.ws > crit.windMax) { rej.vent++; continue; }
-    if (crit.windDirOn && !inSector(s.wdir, crit.wdFrom, crit.wdTo)) { rej.ventDir++; continue; }
+    // TOUS les critères sont évalués, PAS d'arrêt au premier qui échoue : le
+    // compteur sert à dire « voilà le réglage qui écarte le plus de créneaux »,
+    // et avec des `continue` en cascade il n'aurait compté que le premier de la
+    // liste. La page accusait alors la hauteur de houle là où le secteur
+    // rejetait tout autant. Le coût est nul, ce sont des comparaisons.
+    var ko = false;
+    if (s.sw.h == null || s.sw.h < crit.hsMin || s.sw.h > crit.hsMax) { rej.hs++; ko = true; }
+    if (crit.perMin > 0 && (s.sw.t == null || s.sw.t < crit.perMin)) { rej.per++; ko = true; }
+    if (!inSector(s.sw.dir, crit.swFrom, crit.swTo)) { rej.dir++; ko = true; }
+    // Vent ABSENT : on ne peut pas certifier qu'un créneau respecte un critère
+    // de vent qu'on n'a pas mesuré. L'ancienne version le laissait passer sur la
+    // vitesse tout en le rejetant sur la direction — deux réponses opposées à la
+    // même question. Désormais un seul traitement, et un compteur à part pour
+    // que la page puisse le DIRE au lieu de laisser croire à un filtre trop dur.
+    if (s.ws == null) { rej.ventInconnu++; ko = true; }
+    else if (s.ws > crit.windMax) { rej.vent++; ko = true; }
+    if (crit.windDirOn && !inSector(s.wdir, crit.wdFrom, crit.wdTo)) { rej.ventDir++; ko = true; }
     var st = tideStateAtPort(s.ms, s.port);
     if (crit.tide !== 'any'){
-      if (!st) { rej.maree++; continue; }
-      var okT = crit.tide === 'mid' ? (st.level01 > 0.35 && st.level01 < 0.65)
-              : crit.tide === 'low' ? (st.level01 < 0.4) : (st.level01 > 0.6);
-      if (!okT) { rej.maree++; continue; }
+      var okT = st && (crit.tide === 'mid' ? (st.level01 > 0.35 && st.level01 < 0.65)
+                     : crit.tide === 'low' ? (st.level01 < 0.4) : (st.level01 > 0.6));
+      if (!okT) { rej.maree++; ko = true; }
     }
     if (crit.dayOnly){
       var sun = sunHours(s.ms, s.spot.lat, s.spot.lon), h = ncHour(s.ms);
-      if (sun && (h < sun.rise - 0.5 || h > sun.set + 0.5)) { rej.nuit++; continue; }
+      if (sun && (h < sun.rise - 0.5 || h > sun.set + 0.5)) { rej.nuit++; ko = true; }
     }
+    if (ko) continue;
     s.tide = st;
+    // La marée vient-elle VRAIMENT de la station du spot, ou du modèle
+    // harmonique de Nouméa en repli ? La légende l'affirme, autant le vérifier
+    // par créneau plutôt que de l'espérer.
+    s.tideReelle = tideHasRealData(ncDs(s.ms), s.port);
     keep.push(s);
   }
   // Noter APRÈS le tri, spot par spot, en installant les réglages DU SPOT avant
@@ -1196,15 +1238,26 @@ function filtrer(list){
   keep.sort(function(a, b){ return a.ms - b.ms; });
   var sauve = SCORE_PARAMS, j;
   var parSpot = {};
-  for (j = 0; j < keep.length; j++){
-    var nom = keep[j].spot.name;
-    if (!parSpot[nom]) parSpot[nom] = Object.assign({}, _DEFAULT_SCORE, keep[j].spot.scoreParams || {});
-    SCORE_PARAMS = parSpot[nom];
-    keep[j].surf = calcSurfScore(keep[j].sw.h, keep[j].sw.t, keep[j].sw.dir,
-                                 keep[j].ws, null, keep[j].wdir, keep[j].pwr,
-                                 tideAdjOf(keep[j].spot, keep[j].tide));
+  // try/finally : la boucle est synchrone, donc en marche normale la
+  // restauration ne peut pas être sautée — mais une exception y laisserait TOUTE
+  // la page notée au barème du dernier spot traité, et ce genre de panne ne se
+  // voit pas, elle se lit en chiffres plausibles mais faux.
+  try {
+    for (j = 0; j < keep.length; j++){
+      var nom = keep[j].spot.name;
+      if (!parSpot[nom]) parSpot[nom] = Object.assign({}, _DEFAULT_SCORE, keep[j].spot.scoreParams || {});
+      SCORE_PARAMS = parSpot[nom];
+      // La RAFALE est passée ici comme elle l'est dans le tableau horaire
+      // (5e argument). calcSurfScore applique un malus au-delà de gustMalusKt :
+      // l'omettre donnait une note plus clémente dans cette liste que dans le
+      // tableau du dessus, pour le même spot à la même heure.
+      keep[j].surf = calcSurfScore(keep[j].sw.h, keep[j].sw.t, keep[j].sw.dir,
+                                   keep[j].ws, keep[j].gust, keep[j].wdir, keep[j].pwr,
+                                   tideAdjOf(keep[j].spot, keep[j].tide));
+    }
+  } finally {
+    SCORE_PARAMS = sauve;   // le reste de la page score le spot affiché
   }
-  SCORE_PARAMS = sauve;   // le reste de la page score le spot affiché
   return { keep: keep, rej: rej };
 }
 // Variante de tideStateAt() prenant un port explicite : le chercheur mélange
@@ -1212,7 +1265,13 @@ function filtrer(list){
 function tideStateAtPort(ms, port){
   var ds = ncDs(ms), rg = tideDayRange(ds, port), h = tideHeightAt(ds, ncHour(ms), port);
   if (h == null || !rg || rg.max - rg.min < 1e-6) return null;
-  var nxt = tideHeightAt(ds, ncHour(ms + 15 * 60000), port);
+  // Le point « dans 15 min » doit être daté SELON SA PROPRE DATE : pour un
+  // créneau du dernier quart d'heure d'une journée NC, réutiliser `ds` demandait
+  // l'heure 24,1 h du jour courant au lieu de 0,1 h du lendemain, et la flèche
+  // montante/descendante s'inversait. Latent à la cadence horaire actuelle,
+  // réel dès qu'un modèle sort du demi-heure.
+  var ms2 = ms + 15 * 60000;
+  var nxt = tideHeightAt(ncDs(ms2), ncHour(ms2), port);
   return { h: h, level01: (h - rg.min) / (rg.max - rg.min), rising: (nxt != null && nxt > h) };
 }
 
@@ -1269,7 +1328,11 @@ function drawRose(){
   // Secteur : angles météo (0 = nord, sens horaire) → angles canvas.
   var a0 = (crit.swFrom - 90) * Math.PI / 180, a1 = (crit.swTo - 90) * Math.PI / 180;
   g.beginPath(); g.moveTo(cx, cy);
-  g.arc(cx, cy, R, a0, a1, sectorWidth(crit.swFrom, crit.swTo) > 180 ? false : false);
+  // Toujours dans le sens horaire : les angles météo croissent dans ce sens une
+  // fois convertis, y compris quand le secteur passe par le nord. Un ternaire
+  // rendait ici la même valeur des deux côtés — code mort, traçé juste par
+  // chance autant que par raisonnement, donc remplacé par la constante.
+  g.arc(cx, cy, R, a0, a1, false);
   g.closePath();
   g.fillStyle = 'rgba(79,163,199,.33)'; g.fill();
   g.strokeStyle = 'rgba(79,163,199,.9)'; g.lineWidth = 1.5; g.stroke();
@@ -1280,9 +1343,18 @@ function drawRose(){
 }
 
 var _critTimer = null;
-function critRunSoon(){ clearTimeout(_critTimer); _critTimer = setTimeout(critRun, 420); }
+function critRunSoon(){ clearTimeout(_critTimer);
+  // Appel EXPLICITE plutôt que `setTimeout(critRun, …)` : on ne veut surtout
+  // pas qu'un moteur passe l'identifiant du minuteur en premier argument et
+  // le fasse passer pour `auto === true`, donc pour une notification.
+  _critTimer = setTimeout(function(){ critRun(false); }, 420); }
 
-function critRun(){
+// `auto` = passage automatique du chargement de page. SEUL ce passage-là peut
+// notifier. Sans cette distinction, critRunSoon() rappelait critRun() à chaque
+// mouvement de curseur : resserrer puis relâcher un critère réécrivait la liste
+// des créneaux déjà vus avec un ensemble plus petit, donc les mêmes créneaux
+// repassaient pour des nouveautés et une notification partait à chaque réglage.
+function critRun(auto){
   if (!spots.length) return;
   var box = document.getElementById('cr-res');
   box.innerHTML = '<div class="loading"><div class="spin"></div> Recherche…</div>';
@@ -1290,7 +1362,7 @@ function critRun(){
     ensureTides(list, function(){
       var r = filtrer(list);
       critRender(r);
-      critNotify(r.keep);
+      if (auto === true) critNotify(r.keep); else critNotifBtn();
     });
   });
 }
@@ -1301,13 +1373,24 @@ function critRender(r){
     // Nommer le critère qui rejette le PLUS : sans ça, « aucun créneau » oblige à
     // bouger les réglages au hasard.
     var lbl = { hs:'la hauteur de houle', per:'la période minimum', dir:'le secteur de houle',
-                vent:'le vent maximum', ventDir:'la direction du vent',
+                vent:'le vent maximum', ventInconnu:'l\'absence de donnée de vent',
+                ventDir:'la direction du vent',
                 maree:'la marée', nuit:'« seulement de jour »' };
     var top = null, k;
     for (k in r.rej) if (r.rej[k] > 0 && (!top || r.rej[k] > r.rej[top])) top = k;
+    var fin = '';
+    if (top === 'ventInconnu') {
+      // Ce n'est PAS un réglage trop dur : c'est une donnée qui manque. Le dire
+      // autrement, sinon l'utilisateur desserre des critères sans effet.
+      fin = ' Ce n'+String.fromCharCode(39)+'est pas un réglage trop sévère : <b>le vent manque</b> sur '
+          + r.rej[top] + ' créneaux, et un créneau dont le vent est inconnu ne peut pas être '
+          + 'certifié conforme. Essaie une autre source de houle.';
+    } else if (top) {
+      fin = ' Le réglage qui écarte le plus de créneaux est <b>' + lbl[top] + '</b> ('
+          + r.rej[top] + ' créneaux écartés, tous critères comptés séparément).';
+    }
     box.innerHTML = '<div class="note">Aucun créneau ne remplit ces critères sur les 7 prochains jours, '
-      + 'tous spots confondus.' + (top ? ' Le réglage qui écarte le plus de créneaux est <b>' + lbl[top]
-      + '</b> (' + r.rej[top] + ' créneaux).' : '') + '</div>';
+      + 'tous spots confondus.' + fin + '</div>';
     return;
   }
   var html = '<div class="note" style="margin-bottom:6px;"><b style="color:var(--accent);">'
@@ -1338,9 +1421,15 @@ function critRender(r){
   html += '</tbody></table></div>';
   if (keep.length > shown) html += '<div class="note" style="margin-top:6px;">'
     + (keep.length - shown) + ' créneaux de plus, non affichés : resserre les critères pour les trier.</div>';
+  var modele = 0;
+  for (i = 0; i < keep.length; i++) if (keep[i].tideReelle === false) modele++;
   html += '<div class="note" style="margin-top:6px;">La note est celle du spot concerné, '
     + 'avec SES réglages à lui — un même créneau ne vaut pas la même chose partout. '
-    + 'Marée : station du spot.</div>';
+    + 'Rafales AROME 2,5 km, comme dans le tableau ci-dessus. '
+    + (modele
+        ? 'Marée : station du spot, sauf ' + modele + ' créneau(x) où meteo.nc n'+String.fromCharCode(39)+'a rien donné '
+          + 'et où c'+String.fromCharCode(39)+'est le modèle harmonique qui répond.'
+        : 'Marée : station du spot.') + '</div>';
   box.innerHTML = html;
 }
 
@@ -1382,8 +1471,12 @@ function critNotify(keep){
   if (!neufs.length) return;
   var s0 = neufs[0], d0 = nc(s0.ms);
   var titre = neufs.length + ' nouveau' + (neufs.length > 1 ? 'x créneaux' : ' créneau') + ' pour tes critères';
+  // `sw.t` peut être absent (période min à 0, ou modèle sans période sur ce
+  // créneau) : Math.round(null) donne 0 et Math.round(undefined) donne NaN, donc
+  // une notification qui annonce « NaN s ». Le champ est omis quand il manque.
   var corps = (s0.spot.short || s0.spot.name) + ' — ' + DAYS[d0.getUTCDay()] + ' '
-    + p2(d0.getUTCHours()) + 'h · ' + t1(s0.sw.h) + ' m / ' + Math.round(s0.sw.t) + ' s'
+    + p2(d0.getUTCHours()) + 'h · ' + t1(s0.sw.h) + ' m'
+    + (s0.sw.t != null && isFinite(s0.sw.t) ? ' / ' + Math.round(s0.sw.t) + ' s' : '')
     + (s0.ws != null ? ' · vent ' + Math.round(s0.ws) + ' nds' : '');
   try {
     if (navigator.serviceWorker && navigator.serviceWorker.ready){
