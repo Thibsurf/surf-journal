@@ -181,21 +181,59 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 #cr-card summary::-webkit-details-marker{display:none;}
 .cr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:13px;}
 .cr-f{position:relative;}
-.cr-f>label{display:block;font-size:11px;font-weight:700;letter-spacing:.07em;
-  text-transform:uppercase;color:var(--faint);margin-bottom:5px;}
-.cr-f>label b{float:right;color:var(--accent);font-variant-numeric:tabular-nums;
-  letter-spacing:0;text-transform:none;font-size:12px;}
-.cr-f input[type=range]{width:100%;accent-color:var(--accent);margin:1px 0;}
+/* Libellé et valeur sur UNE ligne, en flex et non en `float`.
+   Avec `float:right`, dès que le libellé était long (« D'où vient la houle »)
+   la valeur passait à la ligne et venait se coller sous le texte, sans espace —
+   signalé en capture : « D'où vient le vent115° → 200° ». Le flex garde les
+   deux bouts alignés, laisse la valeur insécable, et n'a aucun débordement. */
+.cr-f>label,
+.cr-f .cr-sub-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:6px;}
+.cr-f>label b,
+.cr-f .cr-sub-lbl b{color:var(--accent);font-variant-numeric:tabular-nums;
+  letter-spacing:0;text-transform:none;font-size:12px;white-space:nowrap;flex-shrink:0;}
+
+/* ── Curseurs ───────────────────────────────────────────────────────────────
+   Entièrement dessinés à la main. `accent-color` seul ne suffit PAS : il teinte
+   la partie remplie mais laisse au navigateur un rail clair, conçu pour un fond
+   blanc. Sur ce fond sombre ça donnait des barres blanches coupées par une
+   encoche — retour utilisateur en capture : « on dirait des bugs ». Et le rendu
+   variait d'un navigateur à l'autre, donc invisible depuis la vérification
+   headless d'ici. Les pseudo-éléments -webkit- et -moz- couvrent tout ce que le
+   projet vise ; `appearance:none` est indispensable avant eux, sinon le rail
+   natif reste dessous. */
+.cr-f input[type=range]{-webkit-appearance:none;-moz-appearance:none;appearance:none;
+  width:100%;height:22px;margin:0;padding:0;background:transparent;cursor:pointer;
+  display:block;}
+.cr-f input[type=range]:focus{outline:none;}
+.cr-f input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(79,163,199,.45);}
+.cr-f input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 3px rgba(79,163,199,.45);}
+.cr-f input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:3px;
+  background:rgba(255,255,255,.13);border:none;}
+.cr-f input[type=range]::-moz-range-track{height:5px;border-radius:3px;
+  background:rgba(255,255,255,.13);border:none;}
+.cr-f input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:16px;height:16px;border-radius:50%;background:var(--accent);
+  border:2px solid #0d1f3c;box-shadow:0 1px 4px rgba(0,0,0,.5);
+  margin-top:-6px;/* (piste 5px - pouce 16px)/2 : -webkit ne centre pas seul */}
+.cr-f input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;
+  background:var(--accent);border:2px solid #0d1f3c;box-shadow:0 1px 4px rgba(0,0,0,.5);}
+/* Deux curseurs qui bornent un intervalle : resserrés, et le second décalé
+   d'un demi-pouce pour qu'on voie tout de suite qu'ils vont par paire. */
 .cr-duo input[type=range]{display:block;}
+.cr-duo input[type=range]+input[type=range]{margin-top:-4px;}
 .cr-chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
   margin-top:7px;text-transform:none;letter-spacing:0;font-weight:400;cursor:pointer;}
 .cr-chk input{accent-color:var(--accent);width:15px;height:15px;}
-/* La rose est posée en absolu dans sa case : réserver sa largeur sur les
-   curseurs du même bloc, sinon elle leur passe dessus (constaté en capture). */
-.cr-rose{position:absolute;right:0;top:14px;opacity:.95;pointer-events:none;
-  width:92px;height:92px;}
-.cr-f--rose .cr-duo{padding-right:100px;}
-.cr-f--rose>label b{margin-right:100px;}
+/* La rose était posée en ABSOLU, ce qui obligeait à lui réserver 100 px à la
+   main sur les curseurs ET sur la valeur. Résultat mesuré en capture : il ne
+   restait plus assez de place au libellé, et « D'où vient la houle » se cassait
+   sur quatre lignes. Elle est maintenant la colonne droite d'une simple rangée
+   flex — aucune réservation, aucune collision possible, et le libellé garde
+   toute la largeur de la case. */
+.cr-rose-row{display:flex;align-items:center;gap:10px;}
+.cr-rose{flex-shrink:0;opacity:.95;pointer-events:none;width:92px;height:92px;}
 .cr-chk{line-height:1.35;}
 /* Sous 620 px : UNE seule colonne, et la rose repasse dans le flux sous ses
    curseurs au lieu d'être calée en absolu à droite.
@@ -207,13 +245,84 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
    calcul d'auto-fit qu'on ne peut pas voir, on impose la colonne unique. */
 @media(max-width:620px){
   .cr-grid{grid-template-columns:1fr;}
-  .cr-f--rose .cr-duo{padding-right:0;}
-  .cr-f--rose>label b{margin-right:0;}
-  .cr-rose{position:static;display:block;margin:6px auto 0;}
 }
-#cr-res table.t td.sp{text-align:left;font-weight:600;}
-.cr-day{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--accent);padding:9px 2px 3px;}
+/* Liste des créneaux trouvés */
+.cr-list{display:flex;flex-direction:column;}
+.cr-dayhd{display:flex;align-items:baseline;gap:9px;margin:13px 0 5px;}
+.cr-dayhd:first-child{margin-top:2px;}
+.cr-dayname{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--accent);white-space:nowrap;}
+.cr-daydate{font-size:11px;color:var(--faint);white-space:nowrap;}
+.cr-dayline{flex:1;height:1px;background:linear-gradient(90deg,var(--border-h),transparent);}
+.cr-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:var(--glass);border:1px solid var(--border);border-radius:10px;
+  padding:9px 11px;margin-bottom:5px;cursor:pointer;color:var(--text);
+  font-family:var(--font-b);font-variant-numeric:tabular-nums;
+  transition:border-color .15s,background .15s;}
+.cr-item:hover,.cr-item:focus-visible{border-color:rgba(79,163,199,.55);
+  background:rgba(79,163,199,.09);outline:none;}
+.cr-h{font-size:14px;font-weight:700;width:38px;flex-shrink:0;}
+.cr-spot{font-size:13px;font-weight:600;width:132px;flex-shrink:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cr-vals{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;}
+.cr-v{white-space:nowrap;font-weight:700;display:inline-flex;align-items:center;gap:3px;}
+.cr-v small{font-size:10px;font-weight:600;color:var(--muted);margin-left:1px;}
+.cr-dim{color:var(--muted);font-weight:500;}
+.cr-score{font-size:12px;letter-spacing:1.5px;white-space:nowrap;flex-shrink:0;}
+.cr-go{color:var(--faint);font-size:17px;line-height:1;flex-shrink:0;}
+@media(max-width:620px){
+  /* Sur téléphone, l'heure et le spot passent au-dessus des valeurs : six
+     colonnes sur une ligne ne tiennent pas, et tronquer le nom du spot est la
+     pire chose à faire dans une liste qui sert justement à comparer les spots. */
+  .cr-item{flex-wrap:wrap;gap:4px 10px;}
+  .cr-h{width:auto;}
+  .cr-spot{width:auto;flex:1;}
+  .cr-vals{flex-basis:100%;order:3;}
+}
+/* ── Fiche d'un créneau ───────────────────────────────────────────────────── */
+.fc-back{position:fixed;inset:0;z-index:60;background:rgba(4,10,18,.78);
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  display:flex;align-items:flex-start;justify-content:center;padding:20px 14px 40px;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.fc-back[hidden]{display:none;}
+.fc-modal{position:relative;width:100%;max-width:560px;}
+.fc-x{position:absolute;top:-6px;right:-4px;z-index:2;background:rgba(8,19,30,.9);
+  border:1px solid var(--border-h);color:var(--text);width:34px;height:34px;
+  border-radius:50%;cursor:pointer;font-size:15px;line-height:1;}
+/* #fc-card est ce que html2canvas capture : tout ce qui doit figurer sur
+   l'image partagée vit DEDANS, les boutons restent dehors. */
+#fc-card{background:var(--deep);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;overflow:hidden;}
+.fc-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  margin-bottom:11px;}
+.fc-spot{font-family:var(--font-d);font-size:21px;font-weight:600;line-height:1.15;}
+.fc-when{font-size:12px;color:var(--muted);margin-top:2px;}
+.fc-note{text-align:right;flex-shrink:0;}
+.fc-note u{display:block;font-size:19px;letter-spacing:2px;text-decoration:none;line-height:1;}
+.fc-note s{display:block;font-size:12px;font-weight:700;text-decoration:none;margin-top:3px;}
+.fc-body{display:flex;gap:12px;align-items:stretch;}
+.fc-sat{position:relative;width:188px;height:188px;flex-shrink:0;border-radius:10px;
+  overflow:hidden;background:#07121d;border:1px solid var(--border);}
+.fc-sat img{width:100%;height:100%;object-fit:cover;display:block;}
+.fc-sat canvas{position:absolute;inset:0;width:100%;height:100%;}
+.fc-data{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:1px;}
+.fc-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  padding:5px 0;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
+.fc-row:last-child{border-bottom:none;}
+.fc-row i{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);}
+.fc-row b{font-size:15px;font-weight:700;white-space:nowrap;}
+.fc-row b small{font-size:11px;font-weight:600;color:var(--muted);margin-left:3px;}
+.fc-tide{margin-top:11px;}
+.fc-tide-lbl{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:3px;}
+.fc-tide canvas{width:100%;height:74px;display:block;}
+.fc-foot{margin-top:9px;padding-top:8px;border-top:1px solid var(--border);
+  font-size:10.5px;color:var(--faint);line-height:1.5;}
+@media(max-width:560px){
+  .fc-body{flex-direction:column;}
+  .fc-sat{width:100%;height:200px;}
+}
 footer{padding:4px 16px 34px;max-width:980px;margin:0 auto;}
 footer .row{gap:14px;font-size:12px;}
 </style>
@@ -321,19 +430,21 @@ footer .row{gap:14px;font-size:12px;}
         </div>
         <div class="cr-f cr-f--rose">
           <label>D'où vient la houle<b id="cr-sw-v"></b></label>
-          <div class="cr-duo">
-            <input type="range" id="cr-swFrom" min="0" max="355" step="5">
-            <input type="range" id="cr-swTo" min="0" max="355" step="5">
+          <div class="cr-rose-row">
+            <div class="cr-duo" style="flex:1;min-width:0;">
+              <input type="range" id="cr-swFrom" min="0" max="355" step="5">
+              <input type="range" id="cr-swTo" min="0" max="355" step="5">
+            </div>
+            <canvas id="cr-rose" width="92" height="92" class="cr-rose"
+              title="Secteur de houle retenu, vu d'en haut (nord en haut)"></canvas>
           </div>
-          <canvas id="cr-rose" width="92" height="92" class="cr-rose"
-            title="Secteur de houle retenu, vu d'en haut (nord en haut)"></canvas>
         </div>
         <div class="cr-f">
           <label>Vent maximum<b id="cr-wind-v"></b></label>
           <input type="range" id="cr-windMax" min="0" max="35" step="1">
-          <label class="cr-chk"><input type="checkbox" id="cr-windDirOn"> Filtrer aussi la direction du vent</label>
+          <label class="cr-chk"><input type="checkbox" id="cr-windDirOn"> Filtrer aussi sa direction</label>
           <div id="cr-windDirBox" style="display:none;">
-            <label>D'où vient le vent<b id="cr-wd-v"></b></label>
+            <label class="cr-sub-lbl" style="margin-top:9px;">D'où vient le vent<b id="cr-wd-v"></b></label>
             <div class="cr-duo">
               <input type="range" id="cr-wdFrom" min="0" max="355" step="5">
               <input type="range" id="cr-wdTo" min="0" max="355" step="5">
@@ -375,9 +486,46 @@ footer .row{gap:14px;font-size:12px;}
   </div>
 </footer>
 
+<!-- Fiche d'un créneau. Reste dans le DOM, masquée : html2canvas capture un
+     élément RÉEL déjà mis en page, jamais un dessin refait à la main. C'est la
+     leçon inscrite dans previsions.html après une carte de partage où « les
+     courbes sortaient du cadre ». -->
+<div class="fc-back" id="fc-back" hidden>
+  <div class="fc-modal" role="dialog" aria-modal="true" aria-labelledby="fc-spot">
+    <button type="button" class="fc-x" id="fc-x" aria-label="Fermer">✕</button>
+    <div id="fc-card">
+      <div class="fc-hd">
+        <div>
+          <div class="fc-spot" id="fc-spot"></div>
+          <div class="fc-when" id="fc-when"></div>
+        </div>
+        <div class="fc-note" id="fc-note"></div>
+      </div>
+      <div class="fc-body">
+        <div class="fc-sat">
+          <img id="fc-sat-img" alt="Vue satellite du spot">
+          <canvas id="fc-sat-vec"></canvas>
+        </div>
+        <div class="fc-data" id="fc-data"></div>
+      </div>
+      <div class="fc-tide">
+        <div class="fc-tide-lbl" id="fc-tide-lbl"></div>
+        <canvas id="fc-tide-cv"></canvas>
+      </div>
+      <div class="fc-foot" id="fc-foot"></div>
+    </div>
+    <div class="row" style="margin-top:12px;gap:8px;">
+      <button type="button" class="btn on" id="fc-share">Partager l'image</button>
+      <a class="btn" id="fc-full" href="previsions.html">Ouvrir dans les prévisions ↗</a>
+      <span class="note" id="fc-state"></span>
+    </div>
+  </div>
+</div>
+
 <script src="assets/nc-token.js"></script>
 <script src="assets/score-core.js"></script>
 <script src="assets/tide-harmonics.js"></script>
+<script src="assets/sat-tiles.js"></script>
 <script src="assets/settings-utils.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════════
@@ -434,6 +582,13 @@ function ncHour(ms){ var d=nc(ms); return d.getUTCHours()+d.getUTCMinutes()/60; 
 // Minuit NC d'une date, en ms RÉELLES (cf. CLAUDE.md).
 function midnightNc(ds){ var p=ds.split('-'); return Date.UTC(+p[0],+p[1]-1,+p[2]) - 11*3600000; }
 var DAYS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+var JOURS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+var MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août',
+            'septembre','octobre','novembre','décembre'];
+// Créneaux RÉELLEMENT affichés, dans l'ordre affiché : c'est l'index de ce
+// tableau que porte chaque ligne cliquable. Repasser par `keep` après coup
+// ouvrirait la fiche d'un autre créneau dès que la liste est tronquée.
+var critDerniers = [];
 
 // Flèche de direction. Reprise de _hbCondArrow() (previsions.html) plutôt que
 // de svgArrow() (settings-utils.js) : cette dernière trace un TRAIT de 2 px sur
@@ -1311,6 +1466,14 @@ function critBind(){
   el('cr-tide').value = crit.tide;
   el('cr-tide').onchange = function(){ crit.tide = this.value; saveCrit(); critRunSoon(); };
   el('cr-go').onclick = function(){ critRun(); };
+  // Fermeture de la fiche : la croix, le fond, et Échap.
+  var bk = document.getElementById('fc-back');
+  document.getElementById('fc-x').onclick = closeSlot;
+  bk.onclick = function(e){ if (e.target === bk) closeSlot(); };
+  document.getElementById('fc-share').onclick = shareSlot;
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && !bk.hidden) closeSlot();
+  });
   el('cr-reset').onclick = function(){
     var k; for (k in CRIT_DEF) crit[k] = CRIT_DEF[k];
     saveCrit(); critBind(); critSync(); critRun();
@@ -1414,29 +1577,46 @@ function critRender(r){
   var html = '<div class="note" style="margin-bottom:6px;"><b style="color:var(--accent);">'
     + keep.length + ' créneau' + (keep.length > 1 ? 'x' : '') + '</b> sur les 7 prochains jours, '
     + 'tous spots confondus. Source de houle : ' + esc(srcOf(srcKey).label) + '.</div>';
-  html += '<div class="tscroll"><table class="t"><thead><tr><th class="h">Quand</th><th>Spot</th>'
-    + '<th>Houle</th><th>Pér.</th><th>Dir.</th><th>Vent</th><th>Marée</th><th>Note</th></tr></thead><tbody>';
-  var lastDay = null, shown = 0;
+  // Liste de CARTES et non un tableau : le jour devient un vrai intertitre, la
+  // note se lit en pastilles plutôt qu'en chiffre nu, et chaque créneau est une
+  // cible cliquable qui ouvre sa fiche. Le tableau précédent était juste mais
+  // se lisait comme un relevé comptable — retour utilisateur.
+  critDerniers = [];
+  var lastDay = null, shown = 0, auj = ncDs(Date.now()), demain = ncDs(Date.now() + 864e5);
+  html += '<div class="cr-list">';
   for (i = 0; i < keep.length && shown < 60; i++){
     var s = keep[i], d = nc(s.ms), ds = ncDs(s.ms);
     if (ds !== lastDay){
       lastDay = ds;
-      html += '<tr><td colspan="8" class="cr-day">' + DAYS[d.getUTCDay()] + ' '
-        + d.getUTCDate() + '/' + (d.getUTCMonth() + 1) + '</td></tr>';
+      var quand = ds === auj ? "Aujourd'hui" : ds === demain ? 'Demain' : JOURS[d.getUTCDay()];
+      html += '<div class="cr-dayhd"><span class="cr-dayname">' + quand + '</span>'
+        + '<span class="cr-daydate">' + d.getUTCDate() + ' ' + MOIS[d.getUTCMonth()] + '</span>'
+        + '<span class="cr-dayline"></span></div>';
     }
-    html += '<tr><td class="h">' + p2(d.getUTCHours()) + 'h</td>'
-      + '<td class="sp">' + esc(s.spot.short || s.spot.name) + '</td>'
-      + '<td style="color:' + hsCol(s.sw.h) + ';font-weight:700;">' + t1(s.sw.h) + '</td>'
-      + '<td>' + (s.sw.t != null ? Math.round(s.sw.t) : '—') + '</td>'
-      + '<td>' + dirCell(s.sw.dir, '#9fd4ea') + '</td>'
-      + '<td style="color:' + (s.ws != null ? windCol(s.ws) : 'var(--muted)') + ';">'
-        + (s.ws != null ? Math.round(s.ws) : '—') + (s.wdir != null ? ' ' + compass(s.wdir) : '') + '</td>'
-      + '<td>' + (s.tide ? t1(s.tide.h) + ' <span class="arw">' + (s.tide.rising ? '▲' : '▼') + '</span>' : '—') + '</td>'
-      + '<td style="color:' + s.surf.col + ';font-weight:700;" title="' + esc(s.surf.label) + '">' + s.surf.score + '</td>'
-      + '</tr>';
+    var idx = critDerniers.length;
+    critDerniers.push(s);
+    var pastilles = '';
+    for (var z = 0; z < 5; z++)
+      pastilles += '<span style="color:' + (z < s.surf.score ? s.surf.col : 'rgba(255,255,255,.13)') + ';">●</span>';
+    html += '<button type="button" class="cr-item" data-i="' + idx + '" '
+      + 'title="Voir la fiche de ce créneau et la partager">'
+      + '<span class="cr-h">' + p2(d.getUTCHours()) + 'h</span>'
+      + '<span class="cr-spot">' + esc(s.spot.short || s.spot.name) + '</span>'
+      + '<span class="cr-vals">'
+      +   '<span class="cr-v" style="color:' + hsCol(s.sw.h) + ';">' + t1(s.sw.h) + '<small>m</small></span>'
+      +   '<span class="cr-v cr-dim">' + (s.sw.t != null ? Math.round(s.sw.t) + '<small>s</small>' : '—') + '</span>'
+      +   '<span class="cr-v cr-dim">' + dirArrow(s.sw.dir, '#9fd4ea', 11) + ' ' + (s.sw.dir != null ? compass(s.sw.dir) : '—') + '</span>'
+      +   '<span class="cr-v" style="color:' + (s.ws != null ? windCol(s.ws) : 'var(--muted)') + ';">'
+      +     (s.ws != null ? Math.round(s.ws) + '<small>nds</small>' : '—')
+      +     (s.wdir != null ? ' <span class="cr-dim">' + compass(s.wdir) + '</span>' : '') + '</span>'
+      +   '<span class="cr-v cr-dim">' + (s.tide ? t1(s.tide.h) + '<small>m</small> ' + (s.tide.rising ? '▲' : '▼') : '—') + '</span>'
+      + '</span>'
+      + '<span class="cr-score">' + pastilles + '</span>'
+      + '<span class="cr-go">›</span>'
+      + '</button>';
     shown++;
   }
-  html += '</tbody></table></div>';
+  html += '</div>';
   if (keep.length > shown) html += '<div class="note" style="margin-top:6px;">'
     + (keep.length - shown) + ' créneaux de plus, non affichés : resserre les critères pour les trier.</div>';
   var modele = 0;
@@ -1449,6 +1629,230 @@ function critRender(r){
           + 'et où c'+String.fromCharCode(39)+'est le modèle harmonique qui répond.'
         : 'Marée : station du spot.') + '</div>';
   box.innerHTML = html;
+  // Branchement APRèS l'écriture du HTML : les boutons n'existent pas avant.
+  var items = box.getElementsByClassName('cr-item');
+  for (i = 0; i < items.length; i++) items[i].onclick = function(){
+    openSlot(+this.getAttribute('data-i'));
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FICHE D'UN CRÉNEAU — satellite, vecteurs, marée, et partage en image
+// ════════════════════════════════════════════════════════════════════════════
+// On capture un élément RÉEL du DOM (#fc-card) avec html2canvas, jamais un
+// canvas redessiné à la main. C'est la leçon déjà payée dans previsions.html :
+// la première carte de partage y était redessinée, et sortait des courbes hors
+// du cadre et un jour ambigu. Ce qu'on partage est littéralement ce qu'on voit.
+var fcSlot = null;
+
+function openSlot(i){
+  var s = (critDerniers || [])[i];
+  if (!s) return;
+  fcSlot = s;
+  var d = nc(s.ms), sp = s.spot;
+  document.getElementById('fc-spot').textContent = sp.short || sp.name;
+  document.getElementById('fc-when').textContent =
+    JOURS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MOIS[d.getUTCMonth()]
+    + ' · ' + p2(d.getUTCHours()) + 'h';
+  var etoiles = '';
+  for (var k = 0; k < 5; k++)
+    etoiles += '<span style="color:' + (k < s.surf.score ? s.surf.col : 'rgba(255,255,255,.14)') + ';">●</span>';
+  document.getElementById('fc-note').innerHTML =
+    '<u>' + etoiles + '</u><s style="color:' + s.surf.col + ';">' + esc(s.surf.label) + '</s>';
+
+  function ligne(lbl, val, sub){
+    return '<div class="fc-row"><i>' + lbl + '</i><b>' + val
+      + (sub ? '<small>' + sub + '</small>' : '') + '</b></div>';
+  }
+  document.getElementById('fc-data').innerHTML =
+      ligne('Houle', t1(s.sw.h) + ' m', s.sw.dir != null ? compass(s.sw.dir) + ' ' + Math.round(s.sw.dir) + '°' : '')
+    + ligne('Période', (s.sw.t != null ? Math.round(s.sw.t) + ' s' : '—'), '')
+    + ligne('Vent', (s.ws != null ? Math.round(s.ws) + ' nds' : '—'),
+            (s.wdir != null ? compass(s.wdir) : '') + (s.gust != null ? ' · raf. ' + Math.round(s.gust) : ''))
+    + ligne('Marée', (s.tide ? t1(s.tide.h) + ' m' : '—'),
+            s.tide ? (s.tide.rising ? 'montante' : 'descendante') : '')
+    + ligne('Puissance', (s.pwr != null ? s.pwr + ' kW/m' : '—'),
+            s.pwr != null ? powerBand(s.pwr).label : '');
+
+  var src = srcOf(srcKey);
+  document.getElementById('fc-foot').innerHTML =
+    'coups-de-surf.nc · Houle et vent : <b>' + esc(src.label) + '</b>'
+    + (s.gust != null ? ' · Rafale : AROME 2,5 km' : '')
+    + ' · Marée : ' + esc(tidePortName(s.port))
+    + (s.tideReelle === false ? ' (modèle harmonique, meteo.nc n\'a rien donné ce jour-là)' : '')
+    + '<br>Note calculée avec les réglages de ce spot.';
+
+  var lien = document.getElementById('fc-full');
+  if (lien) lien.href = 'previsions.html';
+
+  document.getElementById('fc-state').textContent = '';
+  var back = document.getElementById('fc-back');
+  back.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  // Satellite : même mosaïque que previsions.html (assets/sat-tiles.js), donc
+  // le même centrage exact. Les tuiles arrivent en différé, d'où le dessin des
+  // vecteurs dans un rAF plutôt qu'immédiatement.
+  if (typeof updateRoseSatBg === 'function') updateRoseSatBg(sp.lat, sp.lon, 'fc-sat-img');
+  requestAnimationFrame(function(){ drawSatVec(s); drawMiniTide(s); });
+  setTimeout(function(){ drawSatVec(s); drawMiniTide(s); }, 260);
+}
+
+function closeSlot(){
+  document.getElementById('fc-back').hidden = true;
+  document.body.style.overflow = '';
+  fcSlot = null;
+}
+
+// Vecteurs sur la vue satellite. Volontairement PLUS SIMPLE que _gwDrawVectors
+// de widget-global.js : celui-là dessine jusqu'à six cônes spectraux et dépend
+// de _gwActiveData/_swellCache, tout le modèle de données de previsions.html.
+// Ici on a une houle primaire et un vent, et c'est tout ce qu'on prétend
+// montrer. Les flèches pointent vers où ça VA, comme partout sur le site.
+function drawSatVec(s){
+  var cv = document.getElementById('fc-sat-vec');
+  if (!cv || !cv.getContext) return;
+  var box = cv.parentNode, W = box.clientWidth, H = box.clientHeight;
+  if (!W || !H) return;                       // pas encore de layout
+  var dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  // Cercle PLEINEMENT centré, avec la légende rejetée en haut à gauche (seul
+  // coin libre : le nord est au centre haut, l'ouest au milieu gauche).
+  // Deux essais ont été mesurés avant : légende en bas → elle percutait le
+  // repère « S » ; cercle remonté pour la fuir → le « N » se faisait couper en
+  // haut. Déplacer la légende plutôt que rétrécir le cercle garde la rose
+  // lisible, qui est tout l'intérêt de l'image.
+  var cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 18;
+
+  // Cercle + points cardinaux, pour que les angles se lisent.
+  g.beginPath(); g.arc(cx, cy, R, 0, 6.2832);
+  g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 1; g.stroke();
+  g.font = '700 10px DM Sans, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(255,255,255,.85)'; g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 3;
+  g.fillText('N', cx, cy - R - 8); g.fillText('S', cx, cy + R + 8);
+  g.fillText('E', cx + R + 8, cy); g.fillText('O', cx - R - 8, cy);
+
+  function fleche(deg, col, lw, frac){
+    if (deg == null) return;
+    var r = ((deg + 180) % 360 - 90) * Math.PI / 180;   // +180 = où ça VA
+    var L = R * frac;
+    var x0 = cx - Math.cos(r) * L * 0.55, y0 = cy - Math.sin(r) * L * 0.55;
+    var x1 = cx + Math.cos(r) * L, y1 = cy + Math.sin(r) * L;
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1);
+    g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.stroke();
+    var a = 8;
+    g.beginPath(); g.moveTo(x1, y1);
+    g.lineTo(x1 - a * Math.cos(r - 0.42), y1 - a * Math.sin(r - 0.42));
+    g.lineTo(x1 - a * Math.cos(r + 0.42), y1 - a * Math.sin(r + 0.42));
+    g.closePath(); g.fillStyle = col; g.fill();
+  }
+  // Longueur proportionnelle à l'intensité, bornée : une flèche qui sort du
+  // cadre ne dit rien de plus qu'une flèche longue.
+  fleche(s.sw.dir, '#4fc3e8', 3.2, Math.max(0.45, Math.min(1, (s.sw.h || 0) / 3)));
+  fleche(s.wdir, '#e8a057', 2.6, Math.max(0.35, Math.min(1, (s.ws || 0) / 25)));
+
+  // Légende, dans l'image : sans elle on ne sait pas quelle flèche est laquelle.
+  // Légende en TEXTE, pas en emoji : un canvas ne rend pas les emoji de façon
+  // fiable (carrés vides mesurés en capture ici), et cette image part en partage.
+  // Une pastille de couleur + un mot disent la même chose partout.
+  g.shadowBlur = 4; g.textAlign = 'left'; g.font = '700 10px DM Sans, sans-serif';
+  var y = 15;
+  function legende(col, txt){
+    g.fillStyle = col;
+    g.beginPath(); g.arc(11, y - 3, 3.5, 0, 6.3); g.fill();
+    g.fillText(txt, 20, y);
+    y += 14;
+  }
+  // Pas de secteur dans la légende : la flèche montre déjà le sens et le panneau
+  // de droite donne le degré exact. Ça évitait en prime de frôler le repère « N ».
+  if (s.sw.dir != null) legende('#4fc3e8', 'Houle ' + t1(s.sw.h) + ' m');
+  if (s.wdir != null && s.ws != null) legende('#e8a057', 'Vent ' + Math.round(s.ws) + ' nds');
+  g.shadowBlur = 0;
+}
+
+// Courbe de marée du jour du créneau, avec un repère sur SON heure.
+function drawMiniTide(s){
+  var cv = document.getElementById('fc-tide-cv');
+  if (!cv || !cv.getContext) return;
+  var W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  var dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  var ds = ncDs(s.ms), port = s.port;
+  var rg = tideDayRange(ds, port);
+  if (!rg) return;
+  var T = 6, B = 14, ih = H - T - B, lo = rg.min - .1, hi = rg.max + .1;
+  function X(h){ return (h / 24) * W; }
+  function Y(v){ return T + ih * (1 - (v - lo) / (hi - lo)); }
+  g.beginPath();
+  for (var q = 0; q <= 240; q++){
+    var hr = q / 10, v = tideHeightAt(ds, hr, port);
+    if (v == null) continue;
+    if (q === 0) g.moveTo(X(hr), Y(v)); else g.lineTo(X(hr), Y(v));
+  }
+  g.strokeStyle = '#4fa3c7'; g.lineWidth = 1.8; g.stroke();
+  g.lineTo(X(24), T + ih); g.lineTo(0, T + ih); g.closePath();
+  g.fillStyle = 'rgba(79,163,199,.15)'; g.fill();
+  // Repère du créneau
+  var hNow = ncHour(s.ms), vNow = tideHeightAt(ds, hNow, port);
+  g.beginPath(); g.moveTo(X(hNow), T); g.lineTo(X(hNow), T + ih);
+  g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1; g.stroke();
+  if (vNow != null){
+    g.beginPath(); g.arc(X(hNow), Y(vNow), 4, 0, 6.3);
+    g.fillStyle = '#4fd6a0'; g.fill();
+    g.strokeStyle = '#0d1f3c'; g.lineWidth = 2; g.stroke();
+  }
+  g.fillStyle = '#728aa1'; g.font = '9px DM Sans, sans-serif'; g.textAlign = 'center';
+  for (var h2 = 0; h2 <= 24; h2 += 6) g.fillText(h2 + 'h', Math.min(W - 10, Math.max(10, X(h2))), H - 3);
+  document.getElementById('fc-tide-lbl').textContent =
+    'Marée — ' + tidePortName(port) + (s.tideReelle === false ? ' (modèle)' : '');
+}
+
+// Partage : charge html2canvas à la demande, capture #fc-card, puis partage
+// natif sur mobile ou téléchargement ailleurs. Même chaîne que previsions.html.
+function shareSlot(){
+  var etat = document.getElementById('fc-state');
+  etat.textContent = 'Préparation de l\'image…';
+  var charge = (typeof html2canvas !== 'undefined') ? Promise.resolve() : new Promise(function(ok, ko){
+    var sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    sc.onload = function(){ ok(); };
+    sc.onerror = function(){ ko(new Error('module de capture indisponible')); };
+    document.head.appendChild(sc);
+  });
+  charge.then(function(){
+    return html2canvas(document.getElementById('fc-card'), {
+      backgroundColor: '#0d1f3c', scale: 2, useCORS: true, logging: false
+    });
+  }).then(function(canvas){
+    return new Promise(function(res){ canvas.toBlob(res, 'image/png', 0.95); });
+  }).then(function(blob){
+    if (!blob) throw new Error('image vide');
+    var s = fcSlot, d = s ? nc(s.ms) : new Date();
+    var nom = 'creneau-' + (s ? String(s.spot.short || s.spot.name).toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-') : 'surf') + '.png';
+    var resume = s ? ((s.spot.short || s.spot.name) + ' — ' + JOURS[d.getUTCDay()] + ' '
+      + p2(d.getUTCHours()) + 'h · ' + t1(s.sw.h) + ' m'
+      + (s.sw.t != null ? '/' + Math.round(s.sw.t) + 's' : '')
+      + (s.ws != null ? ' · vent ' + Math.round(s.ws) + ' nds' : '')) : 'Créneau de surf';
+    var f = new File([blob], nom, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) {
+      return navigator.share({ files: [f], text: resume }).then(function(){ etat.textContent = ''; });
+    }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = nom;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    etat.textContent = 'Image téléchargée.';
+  }).catch(function(e){
+    // Dire ce qui a échoué. Une capture qui ne part pas sans un mot, c'est la
+    // panne silencieuse que ce projet traque partout ailleurs.
+    etat.textContent = 'Échec : ' + (e && e.message ? e.message : 'inconnu');
+  });
 }
 
 // ── Prévenir quand ça match ─────────────────────────────────────────────────

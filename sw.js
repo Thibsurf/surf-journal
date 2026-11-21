@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v114';
+const CACHE_NAME = 'surf-nc-v115';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -26,6 +26,8 @@ const ASSETS = [
   '/surf-journal/assets/enso.js',
   '/surf-journal/assets/widget-global.js',
   '/surf-journal/assets/settings-utils.js',
+  // sat-tiles.js : mosaïque satellite partagée previsions/accueil (21/11/2026).
+  '/surf-journal/assets/sat-tiles.js',
   // score-core.js : calcSurfScore/SCORE_PARAMS en sont sortis le 05/08/2026 pour
   // être partagés avec le générateur de semaine.html. Sans précache, previsions.html
   // lèverait un ReferenceError au 1er lancement hors-ligne — la page entière.
