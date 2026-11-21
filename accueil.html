@@ -1245,8 +1245,16 @@ function dirCell(d, col){
 // Les critères sont PERSISTÉS. C'est le point qui change tout à l'usage : on ne
 // re-saisit pas « entre 180 et 270 » à chaque visite.
 var LS_CRIT = 'accueil-criteres-v1';
-var CRIT_DEF = { hsMin:0.8, hsMax:3.5, perMin:11, swFrom:180, swTo:250,
-                 windMax:14, windDirOn:false, wdFrom:90, wdTo:200,
+// Valeurs de départ VOLONTAIREMENT larges. Les précédentes (période ≥ 11 s,
+// vent ≤ 14 nds, secteur 180-250°) décrivaient une bonne session plutôt qu'un
+// point de départ : un premier visiteur tombait sur « aucun créneau » un jour
+// ordinaire, et une fonction qui ne montre rien à l'ouverture ne se fait pas
+// essayer. Le secteur couvre la fenêtre de houle NC du moteur de score
+// (170-270°), la période écarte la seule mer de vent, le vent reste surfable.
+// Ces valeurs ne servent QU'AU premier passage : dès qu'on touche un curseur,
+// ce sont les réglages de l'utilisateur qui sont mémorisés.
+var CRIT_DEF = { hsMin:0.6, hsMax:4.0, perMin:9, swFrom:170, swTo:270,
+                 windMax:18, windDirOn:false, wdFrom:90, wdTo:200,
                  tide:'any', dayOnly:true };
 var crit = (function(){
   var o = {};
