@@ -110,12 +110,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r ingestion/requirements.txt
       - name: Fetch + archive Surfline LOTUS NC
-        env:
-          # Relais Cloudflare. Surfline refuse l'IP des runners GitHub : mesuré le
-          # 20/11/2026 à la même minute, le même code obtient 200 depuis une
-          # connexion résidentielle et 403 en 0,14 s depuis le runner. Le client
-          # tente donc le relais D'ABORD ici, et retombe en direct si besoin — en
-          # local la variable n'existe pas et rien ne change.
-          # ⚠ Suppose la route /surfline déployée sur le Worker (wrangler deploy).
-          SURFLINE_PROXY: https://meteo-proxy-worker.thibault-dlh.workers.dev/surfline
+        # RELAIS CLOUDFLARE : ESSAYÉ, MESURÉ, ABANDONNÉ (21/11/2026).
+        #
+        # La route /surfline du Worker a bien été déployée, et testée aussitôt :
+        # elle renvoie 502, Surfline répondant 403 à l'egress Cloudflare —
+        # exactement comme windguru.cz le fait déjà pour /arome. Le relais ne
+        # peut donc PAS servir, et laisser SURFLINE_PROXY posée ne ferait que
+        # gaspiller 3 tentatives avec backoff sur chacun des 10 appels avant de
+        # retomber en direct, qui échoue lui aussi depuis un runner.
+        #
+        # La variable est donc RETIRÉE plutôt que commentée à moitié : le client
+        # sans elle appelle directement, comme avant. La route reste en place
+        # dans le Worker (inoffensive, documentée) : si Surfline cesse un jour de
+        # bloquer Cloudflare, il suffira de remettre cette ligne :
+        #   SURFLINE_PROXY: https://meteo-proxy-worker.thibault-dlh.workers.dev/surfline
+        #
+        # État réel : LOTUS ne peut être alimenté que depuis une IP
+        # résidentielle. ingestion/lotus-local.cmd fait exactement ça.
         run: python ingestion/fetch_surfline.py

@@ -405,8 +405,12 @@ TIDE_API.base = _NC_WORKER;   // tide-harmonics.js fetche /tide par lui-même
 // Sources de houle proposées. Volontairement RESTREINT aux modèles qui publient
 // une vraie houle primaire partitionnée : ECMWF et AIFS n'en ont pas (ce qu'ils
 // publient est la mer totale, cf. CLAUDE.md), les montrer ici sous l'étiquette
-// « Houle » serait exactement l'erreur corrigée le 19/08/2026. LOTUS est écarté
-// pour une autre raison : sa source est éteinte depuis le 19/10/2026.
+// « Houle » serait exactement l'erreur corrigée le 19/08/2026.
+// LOTUS est écarté pour une raison différente, et qui tient même depuis qu'il est
+// réalimenté (21/11/2026) : sa couverture se limite à 5 zones autour de Nouméa,
+// alors que le chercheur de créneaux interroge les 8 spots. Le proposer ici
+// viderait la liste pour la plupart d'entre eux sans dire pourquoi. Il reste
+// disponible dans le tableau de previsions.html, spot par spot.
 var SRCS = [
   { k:'nc',   model:'nc',   kind:'swell_primary', label:'meteo.nc', res:'',        wind:'nc'   },
   { k:'gfs',  model:'gfs',  kind:'swell_primary', label:'GFS',      res:'28 km',   wind:'gfs'  },
