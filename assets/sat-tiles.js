@@ -74,6 +74,33 @@ function updateRoseSatBg(lat, lon, targetId) {
     var ptY = tileSize + offsetY; // 256..512
     var S = tileSize * cols; // 768, source carrée
 
+    // ── RECADRAGE CENTRÉ SUR LE SPOT ────────────────────────────────────────
+    // Mesuré le 22/11/2026, et c'est pourquoi ce bloc existe : le spot n'était
+    // PAS au centre de l'image. object-fit:cover sur un conteneur carré et une
+    // source carrée ne recadre rien, donc object-position retombe sur 50 %/50 %
+    // — ce qui centre la MOSAÏQUE, c'est-à-dire le milieu de la tuile centrale,
+    // et non le point demandé. Écart mesuré aux quatre passes : 319 m à Ténia,
+    // 357 m à Gouaro, 401 m à Boulari, 558 m à la passe de Dumbéa, sur une vue
+    // qui en fait 3 400. Le centre de la rose des houles, qui représente le
+    // spot, tombait donc à côté du récif.
+    //
+    // On découpe une fenêtre carrée CENTRÉE sur le point. Elle tient toujours :
+    // le point est par construction entre 256 et 512 dans la source de 768, donc
+    // une demi-fenêtre de 256 ne sort jamais du cadre. Après ça le point est au
+    // centre exact de l'image, et object-position vaut 50 %/50 % pour n'importe
+    // quel conteneur — y compris rectangulaire, la formule générale ci-dessous
+    // le redonne d'elle-même.
+    var SC = tileSize * 2; // 512 : la plus grande fenêtre centrable sans déborder
+    var crop = document.createElement('canvas');
+    crop.width = SC; crop.height = SC;
+    crop.getContext('2d').drawImage(cv2, ptX - SC / 2, ptY - SC / 2, SC, SC, 0, 0, SC, SC);
+    // Variable DISTINCTE plutôt que réassignation de cv2 : les neuf gestionnaires
+    // de chargement de tuiles tiennent encore `ctx`, pris sur cv2. Réutiliser le
+    // nom pour autre chose est le genre de détail qui se paie à la prochaine
+    // modification.
+    var sortie = crop;
+    ptX = SC / 2; ptY = SC / 2; S = SC;
+
     // Formule CSS object-position correcte pour object-fit:cover — la formule
     // naïve « ptX/S*100 » ne centre le point QUE si le conteneur affiché est
     // CARRÉ comme la source (cas historique de la rose 240×240, où ça marchait
@@ -98,7 +125,7 @@ function updateRoseSatBg(lat, lon, targetId) {
       img._satRO = new ResizeObserver(function() { _applySatObjectPosition(img); });
       img._satRO.observe(img);
     }
-    img.src = cv2.toDataURL('image/jpeg', 0.9);
+    img.src = sortie.toDataURL('image/jpeg', 0.9);
   }
 
   for (var dy = -1; dy <= 1; dy++) {
