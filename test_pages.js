@@ -231,8 +231,32 @@ try {
   }
   ok(precaches.length > 0, 'des fichiers précachés ont été trouvés dans sw.js');
 
+  // Modifications NON ENCORE COMMITÉES. Sans elles, ce contrôle ne voyait le
+  // problème qu'APRÈS le commit — c'est-à-dire trop tard pour l'éviter, et il
+  // l'a laissé passer une fois de plus le 22/11/2026 : previsions.html commitée
+  // et poussée sans bump, l'échec n'apparaissant qu'au passage suivant. Un
+  // fichier modifié dans l'arbre de travail alors que sw.js ne l'est pas est
+  // exactement la même faute, une minute plus tôt.
+  const sales = new Set();
+  for (const l of git(['status', '--porcelain']).split('\n')) {
+    const f = l.slice(3).trim().replace(/^"|"$/g, '');
+    if (f) sales.add(f);
+  }
+  // Un bump EN ATTENTE dans l'arbre de travail couvre tout ce qui sera commité
+  // avec lui. On compare les valeurs, pas la simple présence de sw.js dans les
+  // modifications : sw.js peut être touché pour une autre raison, et ce serait
+  // alors un laissez-passer imaginaire.
+  const nomCourant = (sw.match(/const CACHE_NAME = '([^']+)'/) || [])[1];
+  let nomCommite = null;
+  try {
+    nomCommite = (git(['show', 'HEAD:sw.js']).match(/const CACHE_NAME = '([^']+)'/) || [])[1];
+  } catch (e) { /* sw.js absent de HEAD : premier commit, rien à comparer */ }
+  const bumpEnAttente = !!(nomCourant && nomCommite && nomCourant !== nomCommite);
+
   const perimes = [];
   for (const rel of precaches) {
+    if (bumpEnAttente) continue;                    // le bump à venir les couvre tous
+    if (sales.has(rel)) { perimes.push(rel + ' (modifié, pas encore commité)'); continue; }
     const t = git(['log', '-1', '--format=%ct', '--', rel]);
     if (t && parseInt(t, 10) > tBump) perimes.push(rel);
   }

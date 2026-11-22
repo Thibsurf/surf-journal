@@ -10509,6 +10509,19 @@ function renderBestSessions(sessions) {
     + '<div style="font-size:11px;color:var(--faint);margin-top:5px;line-height:1.5;">'
     + 'Classement sur <b style="color:var(--muted);">meteo.nc</b> pour tous les spots (les autres modèles ne sont chargés que pour le spot affiché) · '
     + 'houle et vent = ceux du <b style="color:var(--muted);">meilleur créneau</b> du bloc, pas de son heure de début'
+    // TROISIÈME chose à dire, ajoutée le 22/11/2026 : accueil.html classe AUSSI
+    // les créneaux de tous les spots, et peut donc désigner un autre créneau que
+    // ce bloc. Retour utilisateur : « les deux pages se recoupent, et c'est
+    // compliqué de savoir laquelle donne la meilleure session ». Deux classements
+    // qui se contredisent sans qu'on sache pourquoi, c'est le défaut déjà corrigé
+    // le 19/08/2026 au sein de cette page. Ici on ne peut pas fusionner — ce bloc
+    // lit le cache de la page, l'autre lit l'archive de tous les spots — alors on
+    // DIT ce qui les sépare, et on envoie vers celui qui se règle.
+    + '<br>Ce bloc raisonne en <b style="color:var(--muted);">créneaux de plusieurs heures</b> et sur meteo.nc seul. '
+    + 'Pour choisir ta source (MARC, GFS, BOM…), fixer tes critères de houle, de vent et de marée, '
+    + 'et obtenir la fiche partageable d’un créneau : '
+    + '<a href="accueil.html#cr-card" style="color:var(--accent);">le chercheur de L’essentiel</a>. '
+    + 'Les deux ne désignent pas toujours le même créneau — ils ne répondent pas tout à fait à la même question.'
     + '</div>';
 }
 
