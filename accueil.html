@@ -840,6 +840,34 @@ var spots = [], spot = null, dayIdx = 0, slots = [], gustByMs = {};
 var RUNS = {};    // dernier issued_at vu
 var HORIZ = {};   // ms du dernier créneau vu, donc jusqu'où va la prévision
 
+// Fraîcheur des sources qu'on n'a PAS chargées. Une ligne chacune : on ne veut
+// que l'issued_at le plus récent près du spot, pas la prévision.
+var _sondeRunsFaite = false;
+function sonderAutresRuns(cb){
+  if (!spot) { cb(); return; }
+  var reste = 0, lance = false;
+  function fini(){ if (--reste <= 0) cb(); }
+  var tol = 0.06, i;
+  for (i = 0; i < SRCS.length; i++){
+    var src = SRCS[i];
+    if (RUNS[src.model + '/' + src.kind]) continue;     // déjà connue
+    reste++; lance = true;
+    (function(sc){
+      sbGet('model_forecast_cache?select=issued_at'
+        + '&model=eq.' + sc.model + '&kind=eq.' + sc.kind
+        + '&date=gte.' + ncDs(Date.now())
+        + '&lat=gte.' + (spot.lat-tol).toFixed(4) + '&lat=lte.' + (spot.lat+tol).toFixed(4)
+        + '&lon=gte.' + (spot.lon-tol).toFixed(4) + '&lon=lte.' + (spot.lon+tol).toFixed(4)
+        + '&order=issued_at.desc&limit=1', function(rows){
+        if (rows && rows.length && rows[0].issued_at)
+          RUNS[sc.model + '/' + sc.kind] = rows[0].issued_at;
+        fini();
+      });
+    })(SRCS[i]);
+  }
+  if (!lance) cb();
+}
+
 function runInfo(model, kind, everyH){
   var k = model + '/' + kind, iso = RUNS[k];
   if (!iso) return null;
@@ -1392,21 +1420,43 @@ function renderSrcBar(){
   if (!w) return;
   var alerts = [];
   if (iSw && iSw.vieux)
-    alerts.push('Le run de <b>' + esc(src.label) + '</b> date de ' + iSw.mot
-      + ' (run ' + iSw.run + '). Son rafraîchissement a donc été manqué : ce que tu vois '
-      + 'est la prévision d\'avant, pas une prévision fausse.');
+    alerts.push('Le dernier run de <b>' + esc(src.label) + '</b> date du ' + iSw.run
+      + ', soit ' + iSw.mot + '. Son rafraîchissement a été manqué : ce que tu vois est '
+      + 'la prévision d\'avant, pas une prévision fausse.');
   if (iSw && iSw.horizon && iSw.horizon < Date.now() + 2*864e5)
     alerts.push('<b>' + esc(src.label) + '</b> ne va que jusqu\'à ' + jour(iSw.horizon)
       + ' : le chercheur de créneaux ne peut rien proposer au-delà avec cette source.');
   if (iWd && iWd.vieux)
     alerts.push('Le vent <b>' + esc(wp.prim.label) + '</b> date de ' + iWd.mot + '.');
   if (!alerts.length) { w.innerHTML = ''; return; }
+
   // Un bouton qui BASCULE sur la source la plus fraîche, plutôt qu'un conseil.
+  // Encore faut-il connaître la fraîcheur des AUTRES sources : la page ne lit
+  // que celle qu'on lui demande, donc RUNS ne contenait que la source courante
+  // et le bouton ne pouvait JAMAIS apparaître. Vérifié en forçant un run vieux
+  // de 40 h : l'avertissement s'affichait, le bouton restait absent.
+  //
+  // On sonde donc les autres sources, mais SEULEMENT ici, c'est-à-dire
+  // uniquement quand il y a un problème à résoudre, et une seule fois par
+  // chargement. Chaque sonde est une ligne (`limit=1`, tri par run), pas une
+  // fenêtre de prévision.
+  if (!_sondeRunsFaite){
+    _sondeRunsFaite = true;
+    sonderAutresRuns(function(){ renderSrcBar(); });
+  }
+  // Le choix se fait par TRANCHES de 3 h d'âge, puis par l'ordre de SRCS.
+  // Comparer les âges à la seconde près désignait BOM parce que son run était
+  // antérieur de quelques millisecondes à ceux de meteo.nc et de GFS, écrits par
+  // le même job : trois sources également fraîches, et c'est le hasard de
+  // l'ordre d'écriture qui tranchait. L'ordre de SRCS, lui, est un classement
+  // assumé — la maille la plus fine d'abord.
   var frais = null, fi;
   for (fi = 0; fi < SRCS.length; fi++){
     var cand = runInfo(SRCS[fi].model, SRCS[fi].kind, SRCS[fi].everyH);
     if (SRCS[fi].k === srcKey || !cand || cand.vieux) continue;
-    if (!frais || cand.h < frais.h) frais = { k:SRCS[fi].k, label:SRCS[fi].label, h:cand.h };
+    var tranche = Math.floor(cand.h / 3);
+    if (!frais || tranche < frais.tranche)
+      frais = { k:SRCS[fi].k, label:SRCS[fi].label, h:cand.h, tranche:tranche };
   }
   w.innerHTML = '<div class="sb-warn">' + alerts.join(' ')
     + (frais ? ' <button type="button" class="btn" id="sb-swap" data-k="' + frais.k + '">'
