@@ -1094,6 +1094,20 @@ function heureTxt(ms){
   return p2(d.getUTCHours()) + 'h' + (d.getUTCMinutes() ? p2(d.getUTCMinutes()) : '');
 }
 function quandTxt(ms, style){ return jourTxt(ms, style) + ' ' + heureTxt(ms); }
+// « Demain 05h » ne dit pas si c'est dans trois heures ou dans trente. Pour un
+// créneau qu'on envisage d'aller surfer, le délai est l'information qui décide.
+// Rendu seulement en deçà de 30 h : ça couvre aujourd'hui et demain matin, là
+// où le délai décide vraiment. Au-delà, « dans 47 h » est moins parlant que
+// « mercredi », que le titre affiche déjà.
+function delaiTxt(ms){
+  var d = ms - Date.now();
+  if (d < 0 || d > 30 * 3600000) return '';
+  var h = Math.floor(d / 3600000), mn = Math.round((d % 3600000) / 60000);
+  if (mn === 60) { h++; mn = 0; }
+  if (h === 0) return mn <= 5 ? 'maintenant' : 'dans ' + mn + ' min';
+  if (h < 6 && mn >= 15) return 'dans ' + h + ' h ' + p2(mn);
+  return 'dans ' + h + ' h';
+}
 function majuscule(t){ return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; }
 var JOURS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août',
@@ -2772,6 +2786,7 @@ function renderPodium(r){
     +   '<div class="pod-when">' + quand + '</div>'
     +   '<div class="pod-spot">' + esc(b.spot.short || b.spot.name) + '</div>'
     +   '<div class="pod-hour">vers ' + heureTxt(b.ms)
+    +     (function(){ var dl = delaiTxt(b.ms); return dl ? ' · <b style="color:var(--accent);font-weight:600;">' + dl + '</b>' : ''; })()
     +     (b.tide ? ' · marée ' + t1(b.tide.h) + ' m ' + (b.tide.rising ? 'montante' : 'descendante') : '')
     +   '</div>'
     +   '<div class="pod-vals">'
