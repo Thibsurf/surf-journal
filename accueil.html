@@ -76,11 +76,16 @@ a{color:var(--accent);}
   border:1px solid rgba(160,200,225,.18);border-radius:14px;box-shadow:0 18px 40px rgba(3,10,18,.45);
   padding:11px 16px;display:flex;flex-direction:column;gap:5px;overflow:hidden;}
 .site-banner .hb-cond-hide{display:none!important;}
-.site-banner .hb-cond-hd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-shrink:0;}
-.site-banner .hb-cond-hd-label{font:700 10px/1.2 var(--font-b);color:#c2d6e2;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;min-width:0;}
-.site-banner .hb-cond-live{display:flex;align-items:center;gap:5px;font:700 10px/1 var(--font-b);
-  letter-spacing:.1em;text-transform:uppercase;color:#4fd6a0;flex-shrink:0;}
+/* Le badge passe AU-DESSUS, le nom du spot prend toute la largeur en dessous.
+   Sur une seule ligne, « LE MIEUX MAINTENANT » mangeait la place et le nom
+   sortait en « Passe de Go… ». Depuis que l'encart désigne le meilleur spot du
+   moment et non celui qu'on a choisi soi-même, ce nom EST l'information. */
+.site-banner .hb-cond-hd{display:flex;flex-direction:column;align-items:flex-start;
+  gap:2px;flex-shrink:0;}
+.site-banner .hb-cond-hd-label{font:700 12px/1.25 var(--font-b);color:#eaf2f8;
+  white-space:normal;overflow:visible;min-width:0;}
+.site-banner .hb-cond-live{display:flex;align-items:center;gap:5px;font:700 9px/1 var(--font-b);
+  letter-spacing:.11em;text-transform:uppercase;color:#4fd6a0;flex-shrink:0;order:-1;}
 .site-banner .hb-cond-live i{display:inline-block;width:5px;height:5px;border-radius:50%;
   background:#4fd6a0;box-shadow:0 0 0 2.5px rgba(79,214,160,.22);}
 .site-banner .hb-cond-sec{flex-shrink:1;min-height:0;}
@@ -455,10 +460,18 @@ footer .row{gap:14px;font-size:12px;}
 <body>
 
 <header class="site-banner" id="site-banner">
+  <!-- Le sélecteur de spot a QUITTÉ le bandeau le 22/11/2026. Il y annonçait un
+       spot en haut de page alors que la première carte compare les huit et en
+       désigne un autre — retour utilisateur : « il y a un choix de spot en haut,
+       alors qu'on cherche des sessions tous spots confondus, c'est pas
+       cohérent ». Il vit désormais dans la section « Le spot choisi », la seule
+       qui parle d'un spot en particulier. -->
   <div class="hb-toolbar">
-    <label for="sp" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.14em;">Spot</label>
-    <select id="sp" class="btn" aria-label="Choisir le spot"><option>…</option></select>
-    <div class="hb-tools">
+    <div class="hb-tools" style="margin-left:0;">
+      <!-- `stamp` disait « run 22/11 18h » sans dire de QUOI. La barre « d'où
+           viennent ces chiffres » le dit maintenant pour chaque grandeur, avec
+           son âge et sa portée : garder les deux, c'est répéter la moitié de
+           l'information. Il reste comme rappel court du modèle de houle. -->
       <span id="stamp" class="note"></span>
       <a class="btn" href="previsions.html" title="Toutes les prévisions : comparatif des 8 modèles, cartes, isofronts, marée &amp; pêche">Tout voir ↗</a>
     </div>
@@ -479,7 +492,7 @@ footer .row{gap:14px;font-size:12px;}
     <div class="hb-cond hb-cond-hide" id="hb-cond">
       <div class="hb-cond-hd">
         <span class="hb-cond-hd-label" id="nw-spot"></span>
-        <span class="hb-cond-live"><i></i>Maintenant</span>
+        <span class="hb-cond-live"><i></i><span id="nw-live">Maintenant</span></span>
       </div>
       <div class="hb-cond-sec hb-cond-hide" id="nw-sw-sec">
         <div class="hb-cond-lbl">Houle <span class="src" id="nw-sw-src"></span></div>
@@ -616,12 +629,16 @@ footer .row{gap:14px;font-size:12px;}
        sur MON spot, ça donne quoi heure par heure »), mais il n'a plus à passer
        devant ce que cette page sait faire et que l'autre ne fait pas. -->
   <div class="sect">
-    <div class="row" style="justify-content:space-between;gap:10px;margin-bottom:4px;">
-      <div class="section-label" style="margin:0;">Le spot choisi, heure par heure</div>
+    <div class="row" style="justify-content:space-between;gap:10px;margin-bottom:8px;">
+      <div class="row" style="gap:9px;">
+        <div class="section-label" style="margin:0;">Le spot choisi</div>
+        <select id="sp" class="btn" aria-label="Choisir le spot"><option>…</option></select>
+      </div>
       <a href="previsions.html" class="note" style="white-space:nowrap;">Comparer les 8 modèles ↗</a>
     </div>
-    <div class="note" style="margin-bottom:10px;">Change de spot en haut de page. Pour les cartes,
-      les isofronts, le spectre de houle et l'onglet Marée &amp; Pêche, passe par les prévisions complètes.</div>
+    <div class="note" style="margin-bottom:10px;">Tout ce qui précède compare les huit spots.
+      Ici, un seul, heure par heure. Pour les cartes, les isofronts, le spectre de houle et
+      l'onglet Marée &amp; Pêche, passe par les prévisions complètes.</div>
   <div class="card" id="verdict-card">
     <div class="section-label">Verdict du créneau</div>
     <div id="verdict"><div class="loading"><div class="spin"></div> Lecture des prévisions…</div></div>
@@ -704,6 +721,9 @@ footer .row{gap:14px;font-size:12px;}
     </details>
     <div class="row" style="margin-top:12px;gap:8px;">
       <button type="button" class="btn on" id="fc-share">Partager l'image</button>
+      <!-- La VRAIE alarme. Une page web ne peut pas réveiller un téléphone sans
+           serveur de push ; l'agenda du téléphone, si. -->
+      <button type="button" class="btn" id="fc-ics">Mettre dans mon agenda</button>
       <a class="btn" id="fc-full" href="previsions.html">Ouvrir dans les prévisions ↗</a>
       <span class="note" id="fc-state"></span>
     </div>
@@ -892,6 +912,34 @@ function ncHour(ms){ var d=nc(ms); return d.getUTCHours()+d.getUTCMinutes()/60; 
 // Minuit NC d'une date, en ms RÉELLES (cf. CLAUDE.md).
 function midnightNc(ds){ var p=ds.split('-'); return Date.UTC(+p[0],+p[1]-1,+p[2]) - 11*3600000; }
 var DAYS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+// ── Dates : UN seul vocabulaire pour toute la page ──────────────────────────
+// Il y en avait cinq, écrits chacun à la main là où on en avait besoin :
+// « Demain », « demain 05h », « mer 25 05h », « Dim 22/11 · auj. » et
+// « ven 27 ». Sur un même écran. Retour utilisateur : « c'est pas très propre
+// pour les dates ». Trois styles, et plus un seul format improvisé :
+//   'nom'   -> Aujourd'hui | Demain | Lundi            (pour un intertitre)
+//   'long'  -> Aujourd'hui | Demain | Lundi 23 novembre
+//   'court' -> auj. | demain | lun. 23
+function jourTxt(ms, style){
+  var d = nc(ms), ds = ncDs(ms);
+  var auj = ncDs(Date.now()), dem = ncDs(Date.now() + 864e5);
+  if (style === 'court'){
+    if (ds === auj) return 'auj.';
+    if (ds === dem) return 'demain';
+    return DAYS[d.getUTCDay()].toLowerCase() + '. ' + d.getUTCDate();
+  }
+  if (ds === auj) return 'Aujourd' + String.fromCharCode(39) + 'hui';
+  if (ds === dem) return 'Demain';
+  if (style === 'nom') return JOURS[d.getUTCDay()];
+  return JOURS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MOIS[d.getUTCMonth()];
+}
+// L'heure s'écrit « 05h » et « 05h30 », jamais « 5:00 » ni « 5h0 ».
+function heureTxt(ms){
+  var d = nc(ms);
+  return p2(d.getUTCHours()) + 'h' + (d.getUTCMinutes() ? p2(d.getUTCMinutes()) : '');
+}
+function quandTxt(ms, style){ return jourTxt(ms, style) + ' ' + heureTxt(ms); }
+function majuscule(t){ return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; }
 var JOURS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août',
             'septembre','octobre','novembre','décembre'];
@@ -1209,7 +1257,6 @@ function pickSpot(i){
   // spot.scoreParams par-dessus _DEFAULT_SCORE. Sans ça la note afficherait le
   // barème générique pour un spot calibré, et contredirait l'autre page.
   SCORE_PARAMS = Object.assign({}, _DEFAULT_SCORE, spot.scoreParams || {});
-  document.getElementById('nw-spot').textContent = spot.short || spot.name;
   document.getElementById('td-port').textContent =
     tidePortName(tidePort()) + (tidePortIsExact(tidePort()) ? '' : ' (décalage appliqué)');
   load();
@@ -1277,7 +1324,7 @@ function assemble(src, wp, swell, wind, windFb, gust){
                  pwr:pwr, tide:st, surf:surf });
   }
   document.getElementById('stamp').textContent = swell.run
-    ? 'run ' + fmtRun(swell.run) : '';
+    ? src.label + ' · run ' + fmtRun(swell.run) : src.label;
   renderDayPick();
   renderSrcBar();
   redraw();
@@ -1366,14 +1413,7 @@ function renderSrcBar(){
   var src = srcOf(srcKey), wp = windPlan();
   var html = '';
 
-  function jour(ms){
-    if (!ms) return '';
-    var d = nc(ms), auj = ncDs(Date.now());
-    var ds = ncDs(ms);
-    if (ds === auj) return 'ce soir';
-    if (ds === ncDs(Date.now() + 864e5)) return 'demain';
-    return DAYS[d.getUTCDay()].toLowerCase() + ' ' + d.getUTCDate();
-  }
+  function jour(ms){ return ms ? jourTxt(ms, 'court') : ''; }
   function ligne(cle, info, nom, res, sup){
     var col = info ? info.col : 'var(--faint)';
     html += '<div class="sb-it"><span class="sb-dot" style="background:' + col + ';"></span>'
@@ -1484,10 +1524,11 @@ function renderDayPick(){
   var ds = daysAvailable(), h = '', i, today = ncDs(Date.now());
   if (dayIdx >= ds.length) dayIdx = 0;
   for (i=0;i<ds.length;i++){
-    var m = midnightNc(ds[i]), d = nc(m);
+    // Même vocabulaire que partout : « Auj. », « Demain », « Lun. 24 ». La
+    // version précédente écrivait « Dim 22/11 · auj. », un troisième format sur
+    // le même écran.
     h += '<button type="button" class="btn' + (i===dayIdx?' on':'') + '" data-d="' + i + '">'
-      + DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth()+1)
-      + (ds[i]===today ? ' · auj.' : '') + '</button>';
+      + majuscule(jourTxt(midnightNc(ds[i]), 'court')) + '</button>';
   }
   var el = document.getElementById('day-pick');
   el.innerHTML = h;
@@ -1510,11 +1551,37 @@ function nowSlot(){
   return best;
 }
 
+// Le meilleur spot À CET INSTANT, tous spots confondus. Le bandeau annonçait le
+// spot sélectionné pendant que la première carte en désignait un autre comme
+// meilleur : deux réponses à la même question sur le même écran.
+// Fenêtre ±90 min, la même tolérance d'appariement que partout dans ce projet.
+function bestNowSlot(){
+  if (!allSlots || !allSlots.length) return null;
+  var now = Date.now(), best = null, i;
+  for (i = 0; i < allSlots.length; i++){
+    var s = allSlots[i];
+    if (Math.abs(s.ms - now) > 90 * 60000) continue;
+    if (!s.surf) continue;                 // pas encore noté (filtrer() n'a pas tourné)
+    if (!best
+        || s.surf.score > best.surf.score
+        || (s.surf.score === best.surf.score && (s.pwr || 0) > (best.pwr || 0))) best = s;
+  }
+  return best;
+}
+
 function fillNow(){
-  var s = nowSlot(), src = srcOf(srcKey);
+  var src = srcOf(srcKey);
+  // Le meilleur de tous les spots s'il est connu, sinon le spot affiché — ce qui
+  // est le cas pendant les deux premières secondes, avant que les huit spots
+  // soient lus. critRun() rappelle fillNow() quand ils arrivent.
+  var best = bestNowSlot(), s = best || nowSlot();
   var box = document.getElementById('hb-cond');
-  if (!s) { box.className = 'hb-cond hb-cond-hide'; renderVerdict(null); return; }
+  if (!s) { box.className = 'hb-cond hb-cond-hide'; renderVerdict(nowSlot()); return; }
   box.className = 'hb-cond';
+  var live = document.getElementById('nw-live');
+  if (live) live.textContent = best ? 'Le mieux maintenant' : 'Maintenant';
+  document.getElementById('nw-spot').textContent =
+    (best ? (best.spot.short || best.spot.name) : (spot.short || spot.name));
   function show(id, on){ document.getElementById(id).className = 'hb-cond-sec' + (on?'':' hb-cond-hide'); }
 
   document.getElementById('nw-sw-src').textContent = src.label;
@@ -1538,7 +1605,10 @@ function fillNow(){
   show('nw-wd-sec', s.ws != null);
 
   if (s.tide) {
-    var real = tideHasRealData(ncDs(s.ms), tidePort());
+    // Port du spot MONTRÉ : quand le bandeau affiche Gouaro, sa marée est celle
+    // de Bourail, pas celle de Nouméa.
+    var portMontre = s.port || tidePort();
+    var real = tideHasRealData(ncDs(s.ms), portMontre);
     document.getElementById('nw-td-src').textContent = real ? 'meteo.nc' : 'modèle';
     document.getElementById('nw-td').innerHTML =
       '<div class="hc-tide"><span><b>' + t1(s.tide.h) + ' m</b>'
@@ -1547,7 +1617,10 @@ function fillNow(){
   }
   show('nw-td-sec', !!s.tide);
   condFit();
-  renderVerdict(s);
+  // Le verdict reste celui du SPOT CHOISI : il vit dans la section qui lui est
+  // consacrée, et y afficher le verdict d'un autre spot serait le défaut qu'on
+  // vient de corriger, à l'envers.
+  renderVerdict(nowSlot());
 }
 // Filet de sécurité repris de _hbCondFit() (previsions.html) : si les trois
 // sections débordent du panneau à hauteur contrainte, tout passe au plancher
@@ -1572,13 +1645,13 @@ function renderVerdict(s){
     det.style.display = 'none';
     return;
   }
-  var d = nc(s.ms), surf = s.surf;
+  var surf = s.surf;
   var stars = '';
   for (var i=0;i<5;i++) stars += '<span style="color:' + (i < surf.score ? surf.col : 'rgba(255,255,255,.14)') + ';">●</span>';
   el.innerHTML =
     '<div class="vd">'
     + '<div>'
-    +   '<div class="vd-when">' + DAYS[d.getUTCDay()] + ' ' + p2(d.getUTCHours()) + 'h · ' + esc(spot.short || spot.name) + '</div>'
+    +   '<div class="vd-when">' + quandTxt(s.ms, 'court') + ' · ' + esc(spot.short || spot.name) + '</div>'
     +   '<div class="vd-stars">' + stars + '</div>'
     +   '<div class="vd-lbl" style="color:' + surf.col + ';">' + esc(surf.label) + '</div>'
     + '</div>'
@@ -2037,9 +2110,18 @@ function filtrer(list){
   // dire « il y a plus de houle ailleurs, mais tes réglages l'écartent » — sans
   // ça la page laisse croire que la semaine plafonne au meilleur créneau RETENU,
   // ce qui est faux dès qu'un critère coupe.
+  // DE JOUR uniquement, comme le podium : le créneau le plus gros de la semaine
+  // tombait à 2 h du matin, et proposer d'aller voir ça n'est une réponse pour
+  // personne. On ne cache rien pour autant — un créneau de nuit reste dans la
+  // liste si « seulement de jour » est décoché.
   var gros = null;
-  for (i = 0; i < notes.length; i++)
-    if (notes[i].sw.h != null && (!gros || notes[i].sw.h > gros.sw.h)) gros = notes[i];
+  for (i = 0; i < notes.length; i++){
+    var sg = notes[i];
+    if (sg.sw.h == null) continue;
+    var hs2 = sunHours(sg.ms, sg.spot.lat, sg.spot.lon), hh2 = ncHour(sg.ms);
+    if (hs2 && (hh2 < hs2.rise - 0.5 || hh2 > hs2.set + 0.5)) continue;
+    if (!gros || sg.sw.h > gros.sw.h) gros = sg;
+  }
   return { keep: keep, rej: rej, tous: tousJour.length ? tousJour : tous,
            notes: notes.length, gros: gros };
 }
@@ -2095,6 +2177,18 @@ function critBind(){
   document.getElementById('fc-x').onclick = closeSlot;
   bk.onclick = function(e){ if (e.target === bk) closeSlot(); };
   document.getElementById('fc-share').onclick = shareSlot;
+  var bIcs = document.getElementById('fc-ics');
+  if (bIcs) bIcs.onclick = function(){
+    var etat = document.getElementById('fc-state');
+    if (!fcSlot) return;
+    var d = nc(fcSlot.ms);
+    var nom = 'surf-' + (fcSlot.spot.short || fcSlot.spot.name).replace(/[^a-zA-Z0-9]/g, '-')
+            + '-' + ncDs(fcSlot.ms) + '-' + p2(d.getUTCHours()) + 'h.ics';
+    if (telechargerIcs([fcSlot], nom))
+      etat.textContent = 'Fichier agenda créé — ouvre-le pour ajouter le rappel (45 min avant).';
+    else
+      etat.textContent = 'Ton navigateur a refusé le téléchargement.';
+  };
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape' && !bk.hidden) closeSlot();
   });
@@ -2322,6 +2416,9 @@ function critRun(auto){
       var r = filtrer(list);
       renderPodium(r);
       critRender(r);
+      // Les créneaux sont notés : le bandeau peut enfin désigner le meilleur
+      // spot de l'instant. Avant cet appel il montre le spot choisi.
+      if (spot) fillNow();
       if (auto === true) critNotify(r.keep); else critNotifBtn();
     });
   });
@@ -2360,10 +2457,8 @@ function renderPodium(r){
   }
 
   podDerniers = classe.slice(0, 4);
-  var b = podDerniers[0], d = nc(b.ms), ds = ncDs(b.ms);
-  var auj = ncDs(Date.now()), demain = ncDs(Date.now() + 864e5);
-  var quand = (ds === auj) ? "Aujourd'hui" : (ds === demain) ? 'Demain'
-            : JOURS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MOIS[d.getUTCMonth()];
+  var b = podDerniers[0];
+  var quand = jourTxt(b.ms, 'long');
   var dots = '', z;
   for (z = 0; z < 5; z++)
     dots += '<span style="color:' + (z < b.surf.score ? b.surf.col : 'rgba(255,255,255,.14)') + ';">●</span>';
@@ -2378,7 +2473,7 @@ function renderPodium(r){
     + '<div class="pod-main">'
     +   '<div class="pod-when">' + quand + '</div>'
     +   '<div class="pod-spot">' + esc(b.spot.short || b.spot.name) + '</div>'
-    +   '<div class="pod-hour">vers ' + p2(d.getUTCHours()) + 'h'
+    +   '<div class="pod-hour">vers ' + heureTxt(b.ms)
     +     (b.tide ? ' · marée ' + t1(b.tide.h) + ' m ' + (b.tide.rising ? 'montante' : 'descendante') : '')
     +   '</div>'
     +   '<div class="pod-vals">'
@@ -2412,12 +2507,10 @@ function renderPodium(r){
     html += '<div class="pod-next"><span class="note" style="align-self:center;">Puis</span>';
     var k;
     for (k = 1; k < podDerniers.length; k++){
-      var o = podDerniers[k], od = nc(o.ms), ods = ncDs(o.ms);
-      var oq = (ods === auj) ? 'auj.' : (ods === demain) ? 'demain'
-             : DAYS[od.getUTCDay()].toLowerCase() + ' ' + od.getUTCDate();
+      var o = podDerniers[k];
       html += '<button type="button" class="pod-chip" data-p="' + k + '">'
         + '<b>' + esc(o.spot.short || o.spot.name) + '</b>'
-        + '<i>' + oq + ' ' + p2(od.getUTCHours()) + 'h</i>'
+        + '<i>' + quandTxt(o.ms, 'court') + '</i>'
         + '<span style="color:' + o.surf.col + ';letter-spacing:1px;">' + _podDots(o.surf.score) + '</span>'
         + '</button>';
     }
@@ -2444,13 +2537,10 @@ function renderPodium(r){
   // c) Plus gros ailleurs ? Le dire, avec le créneau en question à portée de
   //    clic. Sinon la page laisse croire que la semaine plafonne à ce créneau.
   if (r.gros && b.sw.h != null && r.gros.sw.h > b.sw.h + 0.3){
-    var gd = nc(r.gros.ms), gds = ncDs(r.gros.ms);
-    var gq = (gds === auj) ? "aujourd'hui" : (gds === demain) ? 'demain'
-           : JOURS[gd.getUTCDay()].toLowerCase() + ' ' + gd.getUTCDate();
     podDerniers.push(r.gros);
     bas.push('La semaine monte plus haut : <b>' + t1(r.gros.sw.h) + ' m</b> à '
-      + esc(r.gros.spot.short || r.gros.spot.name) + ' ' + gq + ' à '
-      + p2(gd.getUTCHours()) + 'h, écarté par tes critères — '
+      + esc(r.gros.spot.short || r.gros.spot.name) + ' '
+      + quandTxt(r.gros.ms, 'court') + ', écarté par tes critères — '
       + '<button type="button" class="pod-chip" data-p="' + (podDerniers.length - 1)
       + '" style="padding:2px 8px;">voir quand même</button>');
   }
@@ -2514,7 +2604,7 @@ function critRender(r){
   // lisait comme un relevé comptable — retour utilisateur.
   critDerniers = [];
   var parNote = (crit.sort !== 'date');
-  var lastDay = null, shown = 0, auj = ncDs(Date.now()), demain = ncDs(Date.now() + 864e5);
+  var lastDay = null, shown = 0;
   html += '<div class="cr-list">';
   for (i = 0; i < keep.length && shown < 60; i++){
     var sl = keep[i], d = nc(sl.ms), ds = ncDs(sl.ms);
@@ -2523,8 +2613,7 @@ function critRender(r){
     // de mise en page, et c'est l'heure portée par chaque ligne qui situe.
     if (!parNote && ds !== lastDay){
       lastDay = ds;
-      var quand = ds === auj ? "Aujourd'hui" : ds === demain ? 'Demain' : JOURS[d.getUTCDay()];
-      html += '<div class="cr-dayhd"><span class="cr-dayname">' + quand + '</span>'
+      html += '<div class="cr-dayhd"><span class="cr-dayname">' + jourTxt(sl.ms, 'nom') + '</span>'
         + '<span class="cr-daydate">' + d.getUTCDate() + ' ' + MOIS[d.getUTCMonth()] + '</span>'
         + '<span class="cr-dayline"></span></div>';
     }
@@ -2533,10 +2622,9 @@ function critRender(r){
     var pastilles = '';
     for (var z = 0; z < 5; z++)
       pastilles += '<span style="color:' + (z < sl.surf.score ? sl.surf.col : 'rgba(255,255,255,.13)') + ';">●</span>';
-    var qd = parNote
-      ? (ds === auj ? 'auj.' : ds === demain ? 'demain' : DAYS[d.getUTCDay()].toLowerCase() + ' ' + d.getUTCDate())
-        + ' ' + p2(d.getUTCHours()) + 'h'
-      : p2(d.getUTCHours()) + 'h';
+    // En tri par note les lignes ne sont pas groupées : chacune porte son jour.
+    // En tri par date, l'intertitre le porte déjà — le répéter serait du bruit.
+    var qd = parNote ? quandTxt(sl.ms, 'court') : heureTxt(sl.ms);
     html += '<button type="button" class="cr-item" data-i="' + idx + '" '
       + 'title="Voir la fiche de ce créneau et la partager">'
       + '<span class="cr-h"' + (parNote ? ' style="width:auto;min-width:74px;"' : '') + '>' + qd + '</span>'
@@ -2599,11 +2687,10 @@ function openSlot(i){ openSlotFor((critDerniers || [])[i]); }
 function openSlotFor(s){
   if (!s) return;
   fcSlot = s;
-  var d = nc(s.ms), sp = s.spot;
+  var sp = s.spot;
   document.getElementById('fc-spot').textContent = sp.short || sp.name;
   document.getElementById('fc-when').textContent =
-    JOURS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MOIS[d.getUTCMonth()]
-    + ' · ' + p2(d.getUTCHours()) + 'h';
+    jourTxt(s.ms, 'long') + ' · ' + heureTxt(s.ms);
   var etoiles = '';
   for (var k = 0; k < 5; k++)
     etoiles += '<span style="color:' + (k < s.surf.score ? s.surf.col : 'rgba(255,255,255,.14)') + ';">●</span>';
@@ -2805,20 +2892,137 @@ function shareSlot(){
 // écrite à l'écran : sans serveur de push, ça ne peut se déclencher qu'à
 // l'ouverture de la page. On ne prétend donc pas réveiller le téléphone tout
 // seul — on signale ce qui est apparu DEPUIS la dernière visite.
+// ════════════════════════════════════════════════════════════════════════════
+// L'AGENDA — la seule alarme qui marche vraiment
+// ════════════════════════════════════════════════════════════════════════════
+// Une page web NE PEUT PAS réveiller un téléphone fermé. La Notification API ne
+// se déclenche que page ouverte ; faire mieux demanderait un serveur de push
+// (VAPID, abonnements, un service à maintenir) que ce site n'a pas et n'aura
+// pas. L'agenda du téléphone, lui, sonne tout seul : on lui donne donc
+// l'événement, avec son rappel, et le système s'occupe du reste. Aucun serveur,
+// aucune permission, et ça marche sur iOS comme sur Android.
+//
+// Rappel à 45 min : le temps de charger la planche et de rejoindre la mise à
+// l'eau pour les passes du Grand Nouméa. Durée 2 h, la longueur d'une session.
+function icsEchap(t){
+  return String(t == null ? '' : t)
+    .replace(/\\/g, '\\\\')
+    .replace(/([,;])/g, '\\$1')
+    .replace(/\r?\n/g, '\\n');
+}
+// Pliage des lignes : la RFC 5545 interdit les lignes de plus de 75 OCTETS, et
+// la continuation commence par une espace. Notre ligne DESCRIPTION en fait ~250.
+// Beaucoup d'agendas tolèrent, certains refusent le fichier entier — et un
+// fichier refusé ne dit pas pourquoi. On compte en octets et non en caractères :
+// « é » en pèse deux, « — » trois, et couper au milieu d'un caractère produirait
+// un fichier illisible.
+function icsPlier(ligne){
+  var out = '', octets = 0, i, c, n;
+  for (i = 0; i < ligne.length; i++){
+    c = ligne.charAt(i);
+    n = encodeURIComponent(c).replace(/%[0-9A-F]{2}/g, 'x').length;
+    if (octets + n > 73){ out += '\r\n '; octets = 1; }
+    out += c; octets += n;
+  }
+  return out;
+}
+function icsHorodate(ms){
+  var d = new Date(ms);
+  function q(n){ return (n < 10 ? '0' : '') + n; }
+  return d.getUTCFullYear() + q(d.getUTCMonth()+1) + q(d.getUTCDate())
+       + 'T' + q(d.getUTCHours()) + q(d.getUTCMinutes()) + '00Z';
+}
+function creneauVersIcs(s){
+  var sp = s.spot, nom = sp.short || sp.name;
+  var titre = 'Surf — ' + nom + ' ' + (s.surf ? s.surf.score + '/5' : '');
+  var desc = [];
+  desc.push('Houle ' + t1(s.sw.h) + ' m'
+    + (s.sw.t != null ? ' / ' + Math.round(s.sw.t) + ' s' : '')
+    + (s.sw.dir != null ? ' de ' + compass(s.sw.dir) + ' ' + Math.round(s.sw.dir) + '°' : ''));
+  if (s.ws != null) desc.push('Vent ' + Math.round(s.ws) + ' nds'
+    + (s.wdir != null ? ' ' + compass(s.wdir) : '')
+    + (s.wsrc ? ' (' + s.wsrc.label + ')' : ''));
+  if (s.gust != null) desc.push('Rafale ' + Math.round(s.gust) + ' nds');
+  if (s.tide) desc.push('Marée ' + t1(s.tide.h) + ' m ' + (s.tide.rising ? 'montante' : 'descendante'));
+  if (s.pwr != null) desc.push('Puissance ' + s.pwr + ' kW/m');
+  desc.push('Houle : ' + srcOf(srcKey).label + '. Prévision, pas une promesse —'
+    + ' revérifier la veille sur coups-de-surf.nc');
+  // Identifiant STABLE : réimporter le même créneau met à jour l'événement au
+  // lieu d'en créer un second. C'est la différence entre un agenda utilisable et
+  // un agenda qu'on finit par ignorer.
+  var uid = 'cds-' + s.ms + '-' + nom.replace(/[^a-zA-Z0-9]/g, '') + '@coups-de-surf.nc';
+  return [
+    'BEGIN:VEVENT',
+    'UID:' + uid,
+    'DTSTAMP:' + icsHorodate(Date.now()),
+    'DTSTART:' + icsHorodate(s.ms),
+    'DTEND:' + icsHorodate(s.ms + 2 * 3600000),
+    'SUMMARY:' + icsEchap(titre),
+    'LOCATION:' + icsEchap(nom + ', Nouvelle-Calédonie'),
+    'GEO:' + sp.lat.toFixed(5) + ';' + sp.lon.toFixed(5),
+    'DESCRIPTION:' + icsEchap(desc.join('\n')),
+    'BEGIN:VALARM',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:' + icsEchap('Session ' + nom + ' dans 45 min'),
+    'TRIGGER:-PT45M',
+    'END:VALARM',
+    'END:VEVENT'
+  ].join('\r\n');
+}
+function telechargerIcs(creneaux, nomFichier){
+  if (!creneaux || !creneaux.length) return false;
+  var corps = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+               'PRODID:-//coups-de-surf.nc//creneaux//FR',
+               'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (var i = 0; i < creneaux.length; i++) corps.push(creneauVersIcs(creneaux[i]));
+  corps.push('END:VCALENDAR');
+  // Pliage appliqué LIGNE PAR LIGNE, après coup : creneauVersIcs rend déjà un
+  // bloc joint par CRLF, il faut donc le redécouper avant de plier, sinon on
+  // plierait un bloc entier comme s'il n'était qu'une ligne.
+  var plies = [], k, bloc;
+  for (k = 0; k < corps.length; k++){
+    bloc = String(corps[k]).split('\r\n');
+    for (var m = 0; m < bloc.length; m++) plies.push(icsPlier(bloc[m]));
+  }
+  corps = plies;
+  // CRLF partout : la RFC 5545 l'impose, et des agendas réels refusent le
+  // fichier sans. Le BOM aide Outlook à reconnaître l'UTF-8.
+  var txt = '\uFEFF' + corps.join('\r\n') + '\r\n';
+  try {
+    var blob = new Blob([txt], { type: 'text/calendar;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = nomFichier || 'creneau-surf.ics';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+    return true;
+  } catch(e){ return false; }
+}
+
 var LS_SEEN = 'accueil-creneaux-vus';
 function critNotifBtn(){
   var b = document.getElementById('cr-notif'); if (!b) return;
   if (!('Notification' in window)) { b.style.display = 'none'; return; }
   b.style.display = '';
+  // Le libellé dit ce que ça FAIT, pas ce qu'on aimerait que ça fasse. « Me
+  // prévenir » avec une cloche laissait croire à une alarme : c'en est une
+  // uniquement si la page est ouverte, ce qui n'arrive jamais pendant qu'on
+  // dort. La vraie alarme est « Mettre dans mon agenda », sur la fiche d'un
+  // créneau — elle passe par l'agenda du téléphone, qui sonne tout seul.
   if (Notification.permission === 'granted'){
-    b.textContent = '🔔 Prévenu à l\'ouverture'; b.className = 'btn on';
-    b.title = 'Sans serveur de push, l\'alerte ne peut partir qu\'au moment où tu ouvres la page : elle liste alors les créneaux apparus depuis ta dernière visite.';
+    b.textContent = 'Nouveautés signalées'; b.className = 'btn on';
+    b.title = 'À chaque ouverture de cette page, les créneaux apparus depuis ta dernière '
+      + 'visite te sont signalés. Ça ne peut pas sonner page fermée : une page web n\'a pas '
+      + 'ce pouvoir sans serveur de push. Pour une vraie alarme, ouvre un créneau et choisis '
+      + '« Mettre dans mon agenda ».';
     b.onclick = null;
   } else if (Notification.permission === 'denied'){
-    b.textContent = '🔕 Notifications bloquées'; b.className = 'btn';
+    b.textContent = 'Signalement bloqué'; b.className = 'btn';
     b.title = 'À réautoriser dans les réglages du navigateur pour ce site.';
   } else {
-    b.textContent = '🔔 Me prévenir'; b.className = 'btn';
+    b.textContent = 'Signaler les nouveautés'; b.className = 'btn';
+    b.title = 'Au prochain chargement de cette page, les créneaux apparus depuis ta dernière '
+      + 'visite te seront signalés. Ça ne sonne pas page fermée.';
     b.onclick = function(){ Notification.requestPermission().then(function(){ critNotifBtn(); }); };
   }
 }
@@ -2835,13 +3039,13 @@ function critNotify(keep){
   });
   try { localStorage.setItem(LS_SEEN, JSON.stringify(ids)); } catch(e){}
   if (!neufs.length) return;
-  var s0 = neufs[0], d0 = nc(s0.ms);
+  var s0 = neufs[0];
   var titre = neufs.length + ' nouveau' + (neufs.length > 1 ? 'x créneaux' : ' créneau') + ' pour tes critères';
   // `sw.t` peut être absent (période min à 0, ou modèle sans période sur ce
   // créneau) : Math.round(null) donne 0 et Math.round(undefined) donne NaN, donc
   // une notification qui annonce « NaN s ». Le champ est omis quand il manque.
-  var corps = (s0.spot.short || s0.spot.name) + ' — ' + DAYS[d0.getUTCDay()] + ' '
-    + p2(d0.getUTCHours()) + 'h · ' + t1(s0.sw.h) + ' m'
+  var corps = (s0.spot.short || s0.spot.name) + ' — ' + quandTxt(s0.ms, 'court')
+    + ' · ' + t1(s0.sw.h) + ' m'
     + (s0.sw.t != null && isFinite(s0.sw.t) ? ' / ' + Math.round(s0.sw.t) + ' s' : '')
     + (s0.ws != null ? ' · vent ' + Math.round(s0.ws) + ' nds' : '');
   try {
