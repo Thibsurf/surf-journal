@@ -8687,14 +8687,67 @@ async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
     pts.forEach(function(p) {
       var d = new Date(p.ms + 11 * 3600000);
       var ds = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
-      if (!byDate[ds]) byDate[ds] = [];
-      byDate[ds].push({ h: d.getUTCHours(), val: p[valKey], period: periodKey ? p[periodKey] : null, dir: p.dir });
+      if (!byDate[ds]) byDate[ds] = {};
+      // Indexé PAR HEURE et non empilé : deux points sur la même heure (un
+      // ré-échantillonnage, une fenêtre qui se recouvre) écrivaient deux entrées
+      // pour la même heure dans la ligne archivée.
+      byDate[ds][d.getUTCHours()] = { h: d.getUTCHours(), val: p[valKey],
+                                      period: periodKey ? p[periodKey] : null, dir: p.dir };
     });
-    var rows = Object.keys(byDate).map(function(ds) {
+    var dates = Object.keys(byDate);
+
+    // ── Ne JAMAIS appauvrir une ligne déjà archivée ──────────────────────────
+    // MESURÉ le 22/11/2026 sur gfs/wind à la passe de Dumbéa : la ligne la plus
+    // récente du jour ne portait que QUATRE heures (12, 15, 18, 21) là où celle
+    // du run précédent en portait vingt-quatre. Cette écriture-ci en était la
+    // cause : elle archive ce que la PAGE tient à cet instant — une série déjà
+    // découpée pour l'affichage — avec issued_at = maintenant, donc toujours
+    // gagnante au tri « ligne la plus récente par date » de tous les lecteurs.
+    // Vingt heures de prévision disparaissaient ainsi à chaque visite, et le
+    // tableau d'accueil.html affichait « — » pour le vent de minuit à 11 h.
+    //
+    // On relit donc ce qui existe déjà pour ces dates et on écrit l'UNION : les
+    // heures qu'on apporte gagnent (elles sont les plus fraîches), les autres
+    // sont conservées. Une écriture ne peut plus que compléter.
+    //
+    // On ne remonte pas au-delà de 30 h derrière le run le plus récent de la
+    // date : la table n'est jamais purgée, on y trouve des runs vieux de dix
+    // jours, et recoller une prévision de la semaine dernière ne serait pas
+    // conserver une donnée mais en inventer une.
+    try {
+      var anc = await _ensureSupabaseClient().from('model_forecast_cache')
+        .select('date,hours,issued_at')
+        .eq('model', modelKey).eq('kind', kind).in('date', dates)
+        .eq('lat', spot.lat).eq('lon', spot.lon)
+        .order('issued_at', { ascending: false });
+      if (anc && anc.data && anc.data.length) {
+        var MAX_RECUL_MS = 30 * 3600000, neuf = {};
+        anc.data.forEach(function(row) {
+          var t = row.issued_at ? Date.parse(row.issued_at) : 0;
+          if (neuf[row.date] === undefined) neuf[row.date] = t || 0;
+          if (t && neuf[row.date] - t > MAX_RECUL_MS) return;
+          var cible = byDate[row.date];
+          if (!cible) return;
+          (row.hours || []).forEach(function(hh) {
+            if (!hh) return;
+            // Les deux schémas d'heure de la table (cf. CLAUDE.md) : `h` ici,
+            // `hour` chez les jobs Python.
+            var hv = (hh.h != null) ? hh.h : hh.hour;
+            if (hv == null) return;
+            // `undefined` et pas `!cible[hv]` : l'heure 0 est une heure.
+            if (cible[hv] === undefined) cible[hv] = hh;
+          });
+        });
+      }
+    } catch (e) { /* relecture impossible : on écrit au moins ce qu'on a */ }
+
+    var rows = dates.map(function(ds) {
+      var hs = Object.keys(byDate[ds]).map(Number).sort(function(a, b){ return a - b; })
+                 .map(function(hv){ return byDate[ds][hv]; });
       return {
         id: ds + '_' + spot.lat.toFixed(3) + '_' + spot.lon.toFixed(3) + '_' + modelKey + '_' + kind + '_' + runTag,
         date: ds, spot_name: spot.name, lat: spot.lat, lon: spot.lon,
-        model: modelKey, kind: kind, hours: byDate[ds], updated_at: issuedAt, issued_at: issuedAt
+        model: modelKey, kind: kind, hours: hs, updated_at: issuedAt, issued_at: issuedAt
       };
     });
     if (rows.length) await _ensureSupabaseClient().from('model_forecast_cache').upsert(rows);
