@@ -22,7 +22,23 @@ Pages autonomes, CSS/JS **inline** dans de gros fichiers HTML :
 `sorties.html`, `marine_fuel_pro.html`.
 
 Modules déjà extraits dans `assets/` : `nc-token.js`, `app-cache.js`, `share-card.js`,
-`charts-core.js`, `enso.js`, `widget-global.js`, `settings-utils.js`.
+`charts-core.js`, `enso.js`, `widget-global.js`, `settings-utils.js`, `score-core.js`,
+`tide-harmonics.js`, `sat-tiles.js`, `wind-rose.js`.
+
+**`wind-rose.js` = LA rose des houles et du vent** (previsions.html ET la fiche de
+créneau d'accueil.html). Convention, écrite une fois : `deg` est la direction de
+PROVENANCE, la flèche occupe ce rayon et sa pointe est au CENTRE. Ne jamais en
+redessiner une autre ailleurs — avant l'extraction il y en avait deux, qui ne
+racontaient pas la même chose. `sat-tiles.js` recadre la mosaïque satellite CENTRÉE
+sur le point : sans ce recadrage, `object-fit:cover` sur un conteneur carré laisse
+le spot jusqu'à 560 m à côté du centre.
+
+**`accueil.html` est la page « où aller, et quand »** : elle compare les 8 spots sur
+7 jours et classe les créneaux, ce que previsions.html ne fait pas. previsions.html
+reste la page du « pourquoi ». Les deux lisent la MÊME archive et le même moteur de
+note. Le bloc « Meilleurs créneaux » de previsions.html tourne, lui, sur meteo.nc
+seul et en blocs de plusieurs heures : il peut désigner un autre créneau, et il le
+dit désormais.
 Chargement par `<script>` classiques, **pas de bundler, pas de modules ES**.
 `charts-core.js` est chargé SANS `defer`, avant le bloc inline : `PANEL_GEOM` doit
 exister quel que soit le moment du premier dessin.
@@ -137,6 +153,16 @@ ne relire qu'elle-même.
 ## Règles de travail
 
 1. Un chantier = un commit. Vérifier qu'aucun `ReferenceError` n'apparaît.
+1ter. **Ne JAMAIS lire `model_forecast_cache` en gardant « la ligne la plus récente
+   par date ».** L'archivage navigateur (`_cacheModelPoints`) réécrit nc/gfs/bom/marc
+   avec `issued_at = now` et seulement les heures que la page tient : mesuré le
+   22/11/2026, la ligne du jour portait 4 heures et masquait une ligne de 24. Il faut
+   **fusionner heure par heure**, le plus récent gagnant à l'heure près, en bornant à
+   30 h derrière le run le plus récent — et chaque point doit porter son propre `run`,
+   sinon une valeur d'avant-hier se re-date indéfiniment à chaque écriture. Corrigé
+   des deux côtés (lecture dans accueil.html, écriture dans previsions.html) ;
+   `_fetchOpenDataArchive`, `_lookupModelCache` et `fromArchive` gardent l'ancien
+   motif, l'écriture ne les appauvrit simplement plus.
 1bis. **Trois harnais à relancer avant de pousser**, aucun n'a besoin du réseau :
    - `node test_score.js` (48 assertions) — moteur de score.
    - `node test_tide.js` (44) — marée + fuseau. Il se relance seul dans 3 fuseaux
@@ -144,6 +170,11 @@ ne relire qu'elle-même.
    - `node test_pages.js` (59, sur 8 pages) — invariants STRUCTURELS : commentaires
      CSS équilibrés, accolades, `var(--x)` jamais utilisée sans définition, id lus
      en JS présents dans le balisage.
+   `test_pages.js` refuse aussi un fichier précaché **modifié et non commité** quand
+   aucun bump n'est en attente : il ne voyait le problème qu'après le commit, donc
+   trop tard, et l'a laissé passer une fois de plus le 22/11. ⚠ Ne pas `.trim()` la
+   sortie de `git status --porcelain` : ça mange l'espace de tête de la PREMIÈRE
+   ligne, et le premier fichier modifié échappe au contrôle.
    **Pourquoi le troisième existe** : le 20/11/2026, `accueil.html` est partie en
    production avec un fond blanc et les polices par défaut, parce qu'un `*` suivi
    d'un `/` dans un commentaire CSS le fermait par accident et avalait la règle
