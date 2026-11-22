@@ -5715,6 +5715,338 @@ async function loadStats(mode) {
   renderStats(sessions, el);
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// CE QUE TON JOURNAL T'APPREND — 23/11/2026
+// ════════════════════════════════════════════════════════════════════════════
+// La page Stats comptait des sessions, des heures et des tubes. Utile, mais elle
+// ne répondait pas à la seule question qui change une décision : « dans quelles
+// conditions MES sessions sont-elles bonnes ». Demande utilisateur : « pouvoir
+// vraiment en tirer des informations intéressantes ».
+//
+// Ce bloc croise la note de chaque session avec les conditions saisies. Trois
+// règles qu'il ne faut pas lâcher :
+//   1. l'effectif est TOUJOURS affiché. Sur 85 sessions, une tranche de 3 n'est
+//      pas un résultat, et une page qui le cache fait prendre des décisions sur
+//      du bruit. Une tranche de moins de 5 est grisée et marquée « peu » ;
+//   2. aucune valeur n'est inventée : une session sans vent saisi ne compte dans
+//      aucune tranche de vent, et le pied du bloc dit combien manquent ;
+//   3. on ne décrit que ce qui est OBSERVÉ. « Tes bonnes sessions sont sous
+//      10 nds » décrit le journal, pas une loi — le texte le formule ainsi, et
+//      rappelle le biais évident : on surfe surtout quand c'est surfable.
+//
+// Mesuré sur le journal au 23/11/2026 (85 sessions notées) : le vent discrimine
+// plus que la houle — 40 % de sessions à 4-5 étoiles sous 5 nds contre 0 %
+// au-dessus de 15 — et la période 13-15 s sort en tête à 43 %.
+
+// Échelle FIXE des barres : 60 % de sessions réussies = barre pleine. Une
+// échelle relative à la meilleure tranche rendrait la meilleure toujours pleine,
+// y compris à 12 %, et les quatre sections ne seraient plus comparables entre
+// elles. Le pourcentage est écrit à côté de toute façon.
+var _INS_ECHELLE = 0.60;
+
+// Nombre à la française, sans décimale inutile : 1,5 et non 1.5 ni 2,0.
+function _insNb(x) {
+  var s = (Math.round(x * 10) / 10).toFixed(1);
+  if (s.slice(-2) === '.0') s = s.slice(0, -2);
+  return s.replace('.', ',');
+}
+
+// Normalise un nom de planche : « Pyzel - Power Tiger » et « Pyzel – Power
+// Tiger » (tiret court contre tiret long) comptaient pour DEUX planches, 26
+// sessions d'un côté et 15 de l'autre, pour la même planche.
+function _insNormPlanche(b) {
+  return String(b || '').replace(/[‐-―]/g, '-').replace(/\s+/g, ' ').trim();
+}
+
+// Découpe en tranches. `bornes` sont les coupures ; les libellés ne portent PAS
+// l'unité, elle est dans le titre de la section.
+function _insTranches(sessions, lire, bornes) {
+  var out = [], i;
+  for (i = 0; i <= bornes.length; i++) {
+    out.push({
+      bas: i === 0 ? -Infinity : bornes[i - 1],
+      haut: i === bornes.length ? Infinity : bornes[i],
+      notes: [],
+      // Entité HTML et non « < » : « < 5</span> » est du HTML invalide, qu'un
+      // analyseur strict lit comme une balise ouvrante. Repéré au banc d'essai,
+      // où le libellé de la première tranche disparaissait purement et simplement.
+      lbl: i === 0 ? ('&lt; ' + _insNb(bornes[0]))
+         : i === bornes.length ? ('≥ ' + _insNb(bornes[bornes.length - 1]))
+         : (_insNb(bornes[i - 1]) + '–' + _insNb(bornes[i]))
+    });
+  }
+  sessions.forEach(function (s) {
+    var v = lire(s);
+    if (v == null || !isFinite(v)) return;
+    for (var k = 0; k < out.length; k++) {
+      if (v >= out[k].bas && v < out[k].haut) { out[k].notes.push(s.quality); return; }
+    }
+  });
+  return out.filter(function (t) { return t.notes.length > 0; });
+}
+
+function _insPart(notes) {
+  if (!notes || !notes.length) return 0;
+  var n = 0;
+  notes.forEach(function (q) { if (q >= 4) n++; });
+  return n / notes.length;
+}
+
+function _insQuantile(v, p) {
+  if (!v.length) return null;
+  var t = v.slice().sort(function (a, b) { return a - b; });
+  var i = Math.max(0, Math.min(t.length - 1, Math.round(p * (t.length - 1))));
+  return t[i];
+}
+
+// Une barre = la part de sessions à 4-5 étoiles dans cette tranche. Une tranche
+// trop maigre est grisée plutôt que masquée : la masquer laisserait croire que
+// la variable ne prend jamais ces valeurs.
+function _insBarre(lbl, notes, largeurLbl) {
+  var part = _insPart(notes), maigre = notes.length < 5;
+  var largeur = Math.min(100, Math.round(part / _INS_ECHELLE * 100));
+  if (part > 0 && largeur < 3) largeur = 3;
+  var col = maigre ? 'rgba(122,148,170,.45)'
+          : part >= 0.35 ? '#3dba8a' : part >= 0.20 ? '#4fa3c7' : '#e8a057';
+  return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+    + '<span style="width:' + (largeurLbl || 70) + 'px;flex-shrink:0;font-size:11px;color:var(--text-muted);'
+    + 'text-align:right;font-variant-numeric:tabular-nums;">' + lbl + '</span>'
+    + '<span style="flex:1;min-width:40px;height:13px;background:rgba(255,255,255,.05);'
+    + 'border-radius:7px;overflow:hidden;display:block;"><span style="display:block;height:100%;'
+    + 'width:' + largeur + '%;background:' + col + ';border-radius:7px;"></span></span>'
+    + '<span style="width:92px;flex-shrink:0;font-size:10.5px;text-align:right;'
+    + 'font-variant-numeric:tabular-nums;color:' + (maigre ? 'var(--text-muted)' : 'var(--text)') + ';">'
+    + Math.round(part * 100) + ' % · n=' + notes.length
+    + (maigre ? ' <span style="opacity:.6;">peu</span>' : '') + '</span>'
+    + '</div>';
+}
+
+function _insLevier(titre, tr, note, largeurLbl) {
+  if (!tr || !tr.length) return '';
+  var h = '<div style="margin-bottom:15px;">'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;'
+    + 'color:var(--text-muted);margin-bottom:6px;">' + titre + '</div>';
+  tr.forEach(function (t) { h += _insBarre(t.lbl, t.notes, largeurLbl); });
+  if (note) h += '<div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">' + note + '</div>';
+  return h + '</div>';
+}
+
+// Écart entre la meilleure et la pire tranche SUFFISAMMENT peuplée : c'est lui
+// qui dit quelle variable sépare le plus les bonnes sessions des autres. Les
+// tranches de moins de 5 sessions sont exclues du calcul — sinon une tranche de
+// 2 sessions dont une bonne afficherait 50 % et emporterait la décision.
+function _insEcart(tr) {
+  var solides = (tr || []).filter(function (t) { return t.notes.length >= 5; });
+  if (solides.length < 2) return null;
+  var hi = null, lo = null, meilleure = null;
+  solides.forEach(function (t) {
+    var p = _insPart(t.notes);
+    if (hi === null || p > hi) { hi = p; meilleure = t; }
+    if (lo === null || p < lo) { lo = p; }
+  });
+  return { ecart: hi - lo, hi: hi, lo: lo, meilleure: meilleure, n: solides.length };
+}
+
+function _journalInsightsHtml(sessions) {
+  var notees = (sessions || []).filter(function (s) { return s.quality; });
+  var cadre = function (corps) {
+    return '<div class="card" style="margin-top:14px;">'
+      + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:9px;">'
+      + '<div class="section-title" style="margin-bottom:0;">🔎 Ce que ton journal t\'apprend</div>'
+      + '<a href="previsions.html" style="font-size:10.5px;color:var(--accent);white-space:nowrap;">'
+      + 'Régler le barème d\'un spot ↗</a></div>' + corps + '</div>';
+  };
+
+  if (notees.length < 12) {
+    return cadre('<div style="font-size:11.5px;color:var(--text-muted);line-height:1.6;">'
+      + 'Il faut une douzaine de sessions notées pour que ces croisements veuillent dire '
+      + 'quelque chose. Tu en as <b>' + notees.length + '</b>. Continue à noter tes sorties : '
+      + 'ce bloc se remplira tout seul.</div>');
+  }
+
+  var trHs = _insTranches(notees, function (s) { return s.hs; }, [1, 1.5, 2, 2.5]);
+  var trPer = _insTranches(notees, function (s) { return s.period; }, [11, 13, 15]);
+  var trVent = _insTranches(notees, function (s) { return s.wind_kts; }, [5, 10, 15]);
+
+  // Secteur de houle via dirToDeg, le parseur déjà durci du projet : il rejette
+  // « 0,79m » et « 5nds », qui se sont réellement retrouvés dans ce champ.
+  var SECTS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+  var parSect = {};
+  notees.forEach(function (s) {
+    var d = (typeof dirToDeg === 'function') ? dirToDeg(s.swell_dir) : null;
+    if (d == null || !isFinite(d)) return;
+    var k = SECTS[Math.floor(((((d % 360) + 360) % 360) + 22.5) / 45) % 8];
+    if (!parSect[k]) parSect[k] = [];
+    parSect[k].push(s.quality);
+  });
+  var trSect = [];
+  SECTS.forEach(function (k) { if (parSect[k]) trSect.push({ lbl: k, notes: parSect[k] }); });
+
+  // Planches. La normalisation n'est PAS cosmétique : « Pyzel - Power Tiger » et
+  // « Pyzel – Power Tiger » (tiret court contre tiret long) comptaient pour deux
+  // planches, 26 sessions d'un côté et 15 de l'autre, pour la même planche — donc
+  // deux lignes faibles là où il y en avait une solide.
+  var parPlanche = {};
+  notees.forEach(function (s) {
+    var b = _insNormPlanche(s.board);
+    if (!b) return;
+    if (!parPlanche[b]) parPlanche[b] = [];
+    parPlanche[b].push(s.quality);
+  });
+  var trPlanche = [];
+  Object.keys(parPlanche).forEach(function (k) {
+    if (parPlanche[k].length >= 8)
+      trPlanche.push({ lbl: escapeHtml(k.length > 20 ? k.slice(0, 19) + '\u2026' : k),
+                       notes: parPlanche[k] });
+  });
+  trPlanche.sort(function (a, b) { return _insPart(b.notes) - _insPart(a.notes); });
+
+  // ── Le levier dominant ───────────────────────────────────────────────────
+  var leviers = [];
+  [['le vent', trVent], ['la période', trPer], ['la hauteur de houle', trHs]]
+    .forEach(function (p) {
+      var e = _insEcart(p[1]);
+      if (e) leviers.push({ nom: p[0], e: e });
+    });
+  leviers.sort(function (a, b) { return b.e.ecart - a.e.ecart; });
+
+  var verdict = '';
+  if (leviers.length) {
+    var top = leviers[0];
+    verdict = '<div style="background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.25);'
+      + 'border-radius:8px;padding:10px 12px;margin-bottom:15px;font-size:12px;line-height:1.6;">'
+      + 'Sur tes <b>' + notees.length + '</b> sessions notées, c\'est <b>' + top.nom
+      + '</b> qui sépare le plus nettement les bonnes des autres : <b>'
+      + Math.round(top.e.hi * 100) + ' %</b> de sessions à 4-5 étoiles dans sa meilleure tranche ('
+      + top.e.meilleure.lbl + '), contre <b>' + Math.round(top.e.lo * 100) + ' %</b> dans la pire.'
+      + '</div>';
+  }
+
+  // ── Ta fenêtre ───────────────────────────────────────────────────────────
+  var bonnes = notees.filter(function (s) { return s.quality >= 4; });
+  var fen = '';
+  if (bonnes.length >= 6) {
+    var bouts = [];
+    [['hs', 'houle', 'm'], ['period', 'période', 's'], ['wind_kts', 'vent', 'nds']]
+      .forEach(function (p) {
+        var v = [];
+        bonnes.forEach(function (s) {
+          var x = s[p[0]];
+          if (x != null && isFinite(x)) v.push(x);
+        });
+        if (v.length < 5) return;
+        bouts.push(p[1] + ' <b>' + _insNb(_insQuantile(v, 0.25)) + '–'
+          + _insNb(_insQuantile(v, 0.75)) + ' ' + p[2] + '</b>');
+      });
+    if (bouts.length) {
+      fen = '<div style="font-size:12px;line-height:1.65;margin-bottom:15px;">'
+        + '<b>Ta fenêtre</b> — la moitié centrale de tes <b>' + bonnes.length
+        + '</b> sessions à 4-5 étoiles : ' + bouts.join(' · ') + '.'
+        + '<div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">'
+        + 'Un quart de tes bonnes sessions est sous ces valeurs, un quart au-dessus. '
+        + 'C\'est une description de ton journal, pas une limite : on surfe surtout quand '
+        + 'c\'est surfable, donc ces plages reflètent aussi ce que tu as eu l\'occasion de surfer.'
+        + '</div></div>';
+    }
+  }
+
+  // ── Par spot ─────────────────────────────────────────────────────────────
+  var parSpot = {};
+  notees.forEach(function (s) {
+    var liste = (s.spots && s.spots.length) ? s.spots : (s.spot ? [s.spot] : []);
+    liste.forEach(function (brut) {
+      String(brut).split(',').forEach(function (nom) {
+        nom = nom.trim();
+        if (!nom) return;
+        if (!parSpot[nom]) parSpot[nom] = [];
+        parSpot[nom].push(s);
+      });
+    });
+  });
+  var spots = [];
+  Object.keys(parSpot).forEach(function (k) {
+    if (parSpot[k].length >= 5) spots.push({ nom: k, ss: parSpot[k] });
+  });
+  spots.sort(function (a, b) {
+    var pa = _insPart(a.ss.map(function (s) { return s.quality; }));
+    var pb = _insPart(b.ss.map(function (s) { return s.quality; }));
+    return (pb - pa) || (b.ss.length - a.ss.length);
+  });
+
+  var tblSpot = '';
+  if (spots.length) {
+    tblSpot = '<div style="font-size:11px;font-weight:600;letter-spacing:.06em;'
+      + 'text-transform:uppercase;color:var(--text-muted);margin:2px 0 7px;">'
+      + 'Par spot — à partir de 5 sessions</div>'
+      + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;'
+      + 'font-variant-numeric:tabular-nums;min-width:400px;">'
+      + '<thead><tr style="border-bottom:1px solid var(--border);">';
+    ['Spot', 'Sessions', '4-5 ★', 'Houle méd.', 'Période', 'Vent'].forEach(function (h, i) {
+      tblSpot += '<th style="text-align:' + (i ? 'right' : 'left') + ';font-size:10px;'
+        + 'color:var(--text-muted);padding:4px;font-weight:500;white-space:nowrap;">' + h + '</th>';
+    });
+    tblSpot += '</tr></thead><tbody>';
+    spots.forEach(function (sp) {
+      function medi(cle) {
+        var v = [];
+        sp.ss.forEach(function (s) {
+          var x = s[cle];
+          if (x != null && isFinite(x)) v.push(x);
+        });
+        return v.length ? _insQuantile(v, 0.5) : null;
+      }
+      var part = _insPart(sp.ss.map(function (s) { return s.quality; }));
+      var mh = medi('hs'), mp = medi('period'), mv = medi('wind_kts');
+      var cell = function (t) {
+        return '<td style="padding:6px 4px;font-size:11px;text-align:right;white-space:nowrap;">' + t + '</td>';
+      };
+      tblSpot += '<tr style="border-bottom:1px solid var(--border);">'
+        + '<td style="padding:6px 4px;font-size:11.5px;font-weight:500;">' + escapeHtml(sp.nom) + '</td>'
+        + '<td style="padding:6px 4px;font-size:11px;text-align:right;color:var(--text-muted);">' + sp.ss.length + '</td>'
+        + '<td style="padding:6px 4px;font-size:11.5px;text-align:right;font-weight:600;color:'
+        + (part >= 0.35 ? '#3dba8a' : part >= 0.20 ? '#4fa3c7' : 'var(--text-muted)') + ';">'
+        + Math.round(part * 100) + ' %</td>'
+        + cell(mh != null ? _insNb(mh) + ' m' : '—')
+        + cell(mp != null ? Math.round(mp) + ' s' : '—')
+        + cell(mv != null ? Math.round(mv) + ' nds' : '—')
+        + '</tr>';
+    });
+    tblSpot += '</tbody></table></div>';
+  }
+
+  // ── Ce qui manque ────────────────────────────────────────────────────────
+  // Une statistique construite sur un champ rempli une fois sur cinq n'est pas
+  // une statistique. On le DIT, au lieu de laisser croire au contraire.
+  var trous = [];
+  [['wind_kts', 'le vent'], ['period', 'la période'], ['swell_dir', 'la direction de houle'],
+   ['session_hour', 'l\'heure']].forEach(function (p) {
+    var n = 0;
+    notees.forEach(function (s) { if (s[p[0]] == null || s[p[0]] === '') n++; });
+    if (n > 0) trous.push('<b>' + n + '</b> sans ' + p[1]);
+  });
+  var piedTrous = trous.length
+    ? '<div style="font-size:10.5px;color:var(--text-muted);margin-top:12px;padding-top:8px;'
+      + 'border-top:1px solid var(--border);line-height:1.6;">'
+      + 'Sur ' + notees.length + ' sessions notées : ' + trous.join(', ')
+      + '. Elles ne comptent que dans les tranches où la valeur existe — rien n\'est '
+      + 'complété à ta place. Les barres grises portent moins de 5 sessions : à lire '
+      + 'comme une indication, pas comme un résultat.</div>'
+    : '';
+
+  return cadre(verdict + fen
+    + _insLevier('Vent (nds) — part de sessions à 4-5 étoiles', trVent,
+        'Le vent est celui que tu as noté sur place, pas une prévision.')
+    + _insLevier('Période (s)', trPer, '')
+    + _insLevier('Hauteur de houle (m)', trHs, '')
+    + (trSect.length > 1 ? _insLevier('Secteur de houle', trSect, '') : '')
+    + (trPlanche.length > 1
+        ? _insLevier('Planche \u2014 à partir de 8 sessions', trPlanche,
+            'Croisement indicatif : on ne prend pas la même planche selon les conditions, '
+            + 'donc une partie de l\'écart vient des vagues et non de la planche.', 150)
+        : '')
+    + tblSpot + piedTrous);
+}
+
 function renderStats(sessions, el) {
   if (!sessions.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Pas encore de données</div></div>'; return; }
   const spotMap = {};
@@ -5741,6 +6073,7 @@ function renderStats(sessions, el) {
       <div class="stat-card"><div class="stat-label">Qualité moy.</div><div class="stat-value">${avgQ.toFixed(1)} <span style="color:var(--star);font-size:1rem;">★</span></div></div>
       <div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">${tubes.length}</div><div class="stat-sub">${Math.round(tubes.length/sessions.length*100)}%</div></div>
     </div>
+    ${_journalInsightsHtml(sessions)}
     <div class="stats-2col">
       <div class="card">
         <div class="section-title" style="margin-bottom:10px;">Sessions par mois</div>
