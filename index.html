@@ -48,6 +48,11 @@
 <!-- Modèle harmonique de marée (SHOM) — chargé SANS defer : tideHeightAt() doit
      exister au premier renderTideWidget(), qui part d'un setTimeout de 50 ms. -->
 <script src="assets/tide-harmonics.js"></script>
+<!-- Chargé pour la page Stats (23/11/2026) : le bloc « le barème contre ton
+     journal » confronte les sessions aux SEUILS RÉELS du moteur de score
+     (_DEFAULT_SCORE). Les recopier ici aurait créé deux vérités qui divergent
+     au premier réglage — c'est la règle du projet : importer, jamais recopier. -->
+<script src="assets/score-core.js"></script>
 <style>
 :root {
   --ocean: #0a1628;
@@ -6047,6 +6052,373 @@ function _journalInsightsHtml(sessions) {
     + tblSpot + piedTrous);
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// LE BARÈME CONTRE TON JOURNAL — 23/11/2026
+// ════════════════════════════════════════════════════════════════════════════
+// Le bloc précédent décrit les sessions. Celui-ci les CONFRONTE aux seuils que
+// le moteur de score utilise réellement, et dit, seuil par seuil, si le journal
+// les soutient. Demande utilisateur : « améliore les stats de retour de session
+// pour voir des graphes et guider les scores, en expliquant ».
+//
+// Les seuils viennent de `_DEFAULT_SCORE` (assets/score-core.js), jamais d'une
+// copie : deux listes de seuils divergent au premier réglage.
+//
+// DEUX HONNÊTETÉS À NE PAS LÂCHER.
+//
+// 1. Ce sont les seuils PAR DÉFAUT. Chaque spot peut avoir les siens (⚙ dans
+//    les prévisions), et les noms de spots du journal (« Grand bac », « Gros
+//    nem ») ne correspondent pas à ceux des prévisions (« Passe de Dumbéa ») :
+//    aucun appariement fiable n'est possible, donc la confrontation est
+//    GLOBALE et le dit.
+// 2. Un seuil n'est pas « faux » parce que le journal ne le confirme pas. On
+//    surfe surtout quand c'est surfable : les conditions mauvaises sont
+//    sous-représentées, parfois à 3 sessions. Le verdict exige donc 8 sessions
+//    de chaque côté, sinon il répond « pas assez de données » — ce qui est une
+//    réponse, pas un échec.
+
+// Part de sessions à 4-5 étoiles de part et d'autre d'un seuil, avec effectifs.
+function _brmCoupe(sessions, cle, seuil) {
+  var dessous = [], dessus = [];
+  sessions.forEach(function (s) {
+    var v = s[cle];
+    if (v == null || !isFinite(v)) return;
+    (v < seuil ? dessous : dessus).push(s.quality);
+  });
+  return { dessous: dessous, dessus: dessus,
+           pDessous: _insPart(dessous), pDessus: _insPart(dessus) };
+}
+
+// Le verdict, DÉRIVÉ du calcul et jamais écrit en prose : c'est la règle posée
+// au chantier du moteur de score, elle vaut ici aussi.
+//   `sens` = 'basMieux' quand on attend que ce soit MEILLEUR sous le seuil
+//            (le vent), 'hautMieux' pour l'inverse (la période).
+function _brmVerdict(c, sens) {
+  var MINI = 8;
+  if (c.dessous.length < MINI || c.dessus.length < MINI)
+    return { cle: 'maigre', col: 'var(--text-muted)',
+             txt: 'pas assez de données de part et d\'autre ('
+                  + c.dessous.length + ' et ' + c.dessus.length + ' sessions)' };
+  var attendu = sens === 'basMieux' ? c.pDessous : c.pDessus;
+  var autre = sens === 'basMieux' ? c.pDessus : c.pDessous;
+  if (autre > attendu + 0.03)
+    return { cle: 'inverse', col: '#e05c5c',
+             txt: 'ton journal dit l\'inverse — à regarder de près' };
+  if (attendu >= autre * 1.5)
+    return { cle: 'net', col: '#3dba8a', txt: 'nettement confirmé par ton journal' };
+  if (attendu > autre + 0.03)
+    return { cle: 'leger', col: '#4fa3c7', txt: 'confirmé, mais sans grand écart' };
+  return { cle: 'plat', col: '#e8a057',
+           txt: 'ce seuil ne sépare rien dans ton journal' };
+}
+
+function _brmLigne(nom, valeur, c, verdict, lecture) {
+  return '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">'
+    + '<td style="padding:8px 6px 8px 0;font-size:11.5px;font-weight:500;white-space:nowrap;">'
+    + nom + '</td>'
+    + '<td style="padding:8px 6px;font-size:12px;font-weight:700;color:var(--accent);'
+    + 'white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">' + valeur + '</td>'
+    + '<td style="padding:8px 6px;font-size:11px;line-height:1.55;color:var(--text-muted);">'
+    + lecture
+    + '<div style="margin-top:3px;color:' + verdict.col + ';font-weight:600;">'
+    + verdict.txt + '</div></td></tr>';
+}
+
+function _journalBaremeHtml(sessions) {
+  if (typeof _DEFAULT_SCORE === 'undefined') return '';
+  var notees = (sessions || []).filter(function (s) { return s.quality; });
+  if (notees.length < 20) return '';
+  var P = _DEFAULT_SCORE;
+
+  function pc(x) { return Math.round(x * 100) + ' %'; }
+
+  // ── Vent calme ───────────────────────────────────────────────────────────
+  var cVent = _brmCoupe(notees, 'wind_kts', P.windCalmKt);
+  var vVent = _brmVerdict(cVent, 'basMieux');
+  var lVent = 'Sous ' + P.windCalmKt + ' nds : <b>' + pc(cVent.pDessous) + '</b> de sessions à '
+    + '4-5 étoiles (n=' + cVent.dessous.length + '). Au-dessus : <b>' + pc(cVent.pDessus)
+    + '</b> (n=' + cVent.dessus.length + ').';
+
+  // ── Vent fort ────────────────────────────────────────────────────────────
+  var cFort = _brmCoupe(notees, 'wind_kts', P.windMalusKt);
+  var vFort = _brmVerdict(cFort, 'basMieux');
+  var lFort = 'Sous ' + P.windMalusKt + ' nds : <b>' + pc(cFort.pDessous) + '</b> (n='
+    + cFort.dessous.length + '). Au-dessus : <b>' + pc(cFort.pDessus) + '</b> (n='
+    + cFort.dessus.length + ').';
+
+  // ── Période : mer de vent / houle longue ─────────────────────────────────
+  var cMdv = _brmCoupe(notees, 'period', P.windSeaT);
+  var vMdv = _brmVerdict(cMdv, 'hautMieux');
+  var lMdv = 'À ' + P.windSeaT + ' s ou moins, la mer est levée sur place par l\'alizé. '
+    + 'Dans ton journal : <b>' + pc(cMdv.pDessous) + '</b> de bonnes sous ce seuil (n='
+    + cMdv.dessous.length + '), <b>' + pc(cMdv.pDessus) + '</b> au-dessus (n='
+    + cMdv.dessus.length + ').';
+
+  var cHl = _brmCoupe(notees, 'period', P.groundSwellT);
+  var vHl = _brmVerdict(cHl, 'hautMieux');
+  var lHl = 'Au-delà de ' + P.groundSwellT + ' s, la houle a voyagé et s\'est triée. '
+    + 'Ton journal : <b>' + pc(cHl.pDessus) + '</b> de bonnes au-dessus (n='
+    + cHl.dessus.length + '), <b>' + pc(cHl.pDessous) + '</b> en dessous (n='
+    + cHl.dessous.length + ').';
+
+  // ── Hauteur minimale ─────────────────────────────────────────────────────
+  var cHs = _brmCoupe(notees, 'hs', P.minHs);
+  var lHs, vHs;
+  if (cHs.dessous.length < 3) {
+    vHs = { cle: 'maigre', col: 'var(--text-muted)',
+            txt: 'invérifiable : tu ne sors quasiment jamais en dessous' };
+    lHs = 'Sous ' + _insNb(P.minHs) + ' m le moteur annonce « trop petit ». '
+      + 'Ton journal ne compte que <b>' + cHs.dessous.length + '</b> session(s) sous ce seuil — '
+      + 'ce qui est en soi une confirmation : tu n\'y vas pas.';
+  } else {
+    vHs = _brmVerdict(cHs, 'hautMieux');
+    lHs = 'Sous ' + _insNb(P.minHs) + ' m : <b>' + pc(cHs.pDessous) + '</b> (n='
+      + cHs.dessous.length + '). Au-dessus : <b>' + pc(cHs.pDessus) + '</b> (n='
+      + cHs.dessus.length + ').';
+  }
+
+  // ── Puissance minimale ───────────────────────────────────────────────────
+  var avecPwr = [];
+  notees.forEach(function (s) {
+    if (s.hs != null && s.period != null && isFinite(s.hs) && isFinite(s.period))
+      avecPwr.push({ quality: s.quality, pwr: 0.5 * s.hs * s.hs * s.period });
+  });
+  var cPwr = _brmCoupe(avecPwr, 'pwr', P.minPwr);
+  var vPwr, lPwr;
+  if (cPwr.dessous.length < 3) {
+    vPwr = { cle: 'maigre', col: 'var(--text-muted)',
+             txt: 'invérifiable : presque aucune session sous ce seuil' };
+    lPwr = 'Sous ' + P.minPwr + ' kW/m le moteur annonce « plat ». Ton journal ne compte que <b>'
+      + cPwr.dessous.length + '</b> session(s) dans ce cas.';
+  } else {
+    vPwr = _brmVerdict(cPwr, 'hautMieux');
+    lPwr = 'Sous ' + P.minPwr + ' kW/m : <b>' + pc(cPwr.pDessous) + '</b> (n='
+      + cPwr.dessous.length + '). Au-dessus : <b>' + pc(cPwr.pDessus) + '</b>.';
+  }
+
+  var tbl = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:460px;">'
+    + '<thead><tr style="border-bottom:1px solid var(--border);">'
+    + '<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px 6px 4px 0;font-weight:500;">Réglage</th>'
+    + '<th style="text-align:right;font-size:10px;color:var(--text-muted);padding:4px 6px;font-weight:500;">Barème</th>'
+    + '<th style="text-align:left;font-size:10px;color:var(--text-muted);padding:4px 6px;font-weight:500;">Ce que dit ton journal</th>'
+    + '</tr></thead><tbody>'
+    + _brmLigne('Vent calme', P.windCalmKt + ' nds', cVent, vVent, lVent)
+    + _brmLigne('Vent fort', P.windMalusKt + ' nds', cFort, vFort, lFort)
+    + _brmLigne('Mer de vent', '≤ ' + P.windSeaT + ' s', cMdv, vMdv, lMdv)
+    + _brmLigne('Houle longue', '≥ ' + P.groundSwellT + ' s', cHl, vHl, lHl)
+    + _brmLigne('Hauteur mini', _insNb(P.minHs) + ' m', cHs, vHs, lHs)
+    + _brmLigne('Puissance mini', P.minPwr + ' kW/m', cPwr, vPwr, lPwr)
+    + '</tbody></table></div>';
+
+  return '<div class="card" style="margin-top:14px;">'
+    + '<div class="section-title" style="margin-bottom:6px;">⚖️ Le barème contre ton journal</div>'
+    + '<div style="font-size:11.5px;color:var(--text-muted);line-height:1.6;margin-bottom:12px;">'
+    + 'Le moteur de note repose sur des seuils. Voici ce que tes <b>' + notees.length
+    + '</b> sessions en disent. Ce sont les seuils <b>par défaut</b> : chaque spot peut avoir '
+    + 'les siens, réglables dans les prévisions. Et un seuil que ton journal ne confirme pas '
+    + 'n\'est pas forcément faux — on sort surtout quand c\'est surfable, donc les mauvaises '
+    + 'conditions y sont rares.'
+    + '</div>'
+    + '<div class="stats-2col" style="margin-bottom:14px;">'
+    + '<div><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;'
+    + 'color:var(--text-muted);margin-bottom:6px;">Où tombent tes sessions</div>'
+    + '<div class="chart-wrap" style="height:230px;"><canvas id="brm-scatter" role="img" '
+    + 'aria-label="Hauteur de houle en fonction de la période, chaque point coloré selon la note"></canvas></div>'
+    + '<div style="font-size:10.5px;color:var(--text-muted);margin-top:5px;line-height:1.55;">'
+    + 'Chaque point est une session, à la couleur de sa note. Les bandes verticales marquent '
+    + 'les frontières du moteur : à gauche la mer de vent (≤ ' + P.windSeaT + ' s), à droite '
+    + 'la houle longue (≥ ' + P.groundSwellT + ' s).</div></div>'
+    + '<div><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;'
+    + 'color:var(--text-muted);margin-bottom:6px;">Le vent, nœud par nœud</div>'
+    + '<div class="chart-wrap" style="height:230px;"><canvas id="brm-vent" role="img" '
+    + 'aria-label="Part de sessions réussies selon la force du vent"></canvas></div>'
+    + '<div style="font-size:10.5px;color:var(--text-muted);margin-top:5px;line-height:1.55;">'
+    + 'Part de sessions à 4-5 étoiles par tranche de 3 nds. Les traits verticaux sont les deux '
+    + 'seuils du moteur : ' + P.windCalmKt + ' et ' + P.windMalusKt + ' nds.</div></div>'
+    + '</div>'
+    + tbl
+    + '<div style="font-size:10.5px;color:var(--text-muted);margin-top:10px;padding-top:8px;'
+    + 'border-top:1px solid var(--border);line-height:1.6;">'
+    + 'Un verdict n\'est rendu qu\'avec au moins 8 sessions de chaque côté du seuil. '
+    + 'En dessous, la page répond « pas assez de données » plutôt que d\'inventer une tendance. '
+    + '<a href="previsions.html" style="color:var(--accent);">Régler le barème d\'un spot ↗</a>'
+    + '</div></div>';
+}
+
+// Les deux graphes, dessinés APRÈS l'écriture du HTML (les canvas n'existent pas
+// avant). Appelé depuis le même minuteur que les autres graphes de la page.
+function _journalBaremeCharts(sessions) {
+  if (typeof Chart === 'undefined' || typeof _DEFAULT_SCORE === 'undefined') return;
+  var P = _DEFAULT_SCORE;
+  var notees = (sessions || []).filter(function (s) { return s.quality; });
+  var cols = (typeof _SC_COLS !== 'undefined') ? _SC_COLS
+           : ['#5c4a52', '#c1654a', '#e8a057', '#e8c44a', '#3dba8a', '#7b6cf6'];
+
+  // ── Nuage hauteur × période ──────────────────────────────────────────────
+  var cv1 = document.getElementById('brm-scatter');
+  if (cv1) {
+    var pts = [];
+    notees.forEach(function (s) {
+      if (s.hs == null || s.period == null || !isFinite(s.hs) || !isFinite(s.period)) return;
+      pts.push({ x: s.period, y: s.hs, q: s.quality, d: s.date, sp: s.spot || '' });
+    });
+    try { var e1 = Chart.getChart(cv1); if (e1) e1.destroy(); } catch (e) {}
+    new Chart(cv1, {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          data: pts,
+          // PAS de `parsing:false` : mesuré le 23/11/2026, il ne traçait qu'une
+          // vingtaine des 84 points et l'axe des périodes s'arrêtait à 12,5 s
+          // alors que les données vont de 7 à 19 s. L'optimisation n'a aucun
+          // intérêt sur 84 points, et elle coûtait les trois quarts du nuage.
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          backgroundColor: pts.map(function (p) { return cols[p.q] + 'cc'; }),
+          borderColor: pts.map(function (p) { return cols[p.q]; }),
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function (c) {
+            var p = c.raw;
+            return (p.sp ? p.sp + ' · ' : '') + (p.d || '') + ' — '
+                 + _insNb(p.y) + ' m / ' + _insNb(p.x) + ' s · ' + p.q + '★';
+          } } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Période (s)', color: '#7a94aa', font: { size: 10 } },
+               ticks: { color: '#7a94aa', font: { size: 10 } },
+               grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { title: { display: true, text: 'Hauteur (m)', color: '#7a94aa', font: { size: 10 } },
+               ticks: { color: '#7a94aa', font: { size: 10 } },
+               grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+        }
+      },
+      // Les bandes des frontières de période sont peintes SOUS les points, par
+      // un greffon local : Chart.js n'a pas d'annotation sans son module, et on
+      // ne va pas charger une dépendance pour deux rectangles.
+      plugins: [{
+        id: 'bandesPeriode',
+        beforeDatasetsDraw: function (ch) {
+          var sx = ch.scales.x, a = ch.chartArea, g = ch.ctx;
+          if (!sx || !a) return;
+          function bande(x0, x1, couleur) {
+            var px0 = Math.max(a.left, sx.getPixelForValue(x0));
+            var px1 = Math.min(a.right, sx.getPixelForValue(x1));
+            if (px1 <= px0) return;
+            g.save(); g.fillStyle = couleur;
+            g.fillRect(px0, a.top, px1 - px0, a.bottom - a.top); g.restore();
+          }
+          bande(sx.min, P.windSeaT, 'rgba(224,92,92,.07)');
+          bande(P.groundSwellT, sx.max, 'rgba(61,186,138,.07)');
+          var g2 = ch.ctx;
+          [[P.windSeaT, 'rgba(224,92,92,.35)'], [P.groundSwellT, 'rgba(61,186,138,.35)']]
+            .forEach(function (pr) {
+              var px = sx.getPixelForValue(pr[0]);
+              if (px < a.left || px > a.right) return;
+              g2.save(); g2.strokeStyle = pr[1]; g2.lineWidth = 1; g2.setLineDash([4, 3]);
+              g2.beginPath(); g2.moveTo(px, a.top); g2.lineTo(px, a.bottom); g2.stroke(); g2.restore();
+            });
+        }
+      }]
+    });
+  }
+
+  // ── Le vent, par tranches de 3 nds ───────────────────────────────────────
+  var cv2 = document.getElementById('brm-vent');
+  if (cv2) {
+    var PAS = 3, seaux = {}, maxV = 0, bornes = [];
+    notees.forEach(function (s) {
+      var v = s.wind_kts;
+      if (v == null || !isFinite(v)) return;
+      var k = Math.floor(v / PAS) * PAS;
+      if (!seaux[k]) seaux[k] = [];
+      seaux[k].push(s.quality);
+      if (k > maxV) maxV = k;
+    });
+    var labels = [], parts = [], effectifs = [], k2;
+    for (k2 = 0; k2 <= maxV; k2 += PAS) {
+      var q = seaux[k2] || [];
+      // Une tranche VIDE n'est pas une tranche à 0 % : une barre nulle se lit
+      // comme « aucune session réussie » alors qu'il n'y a eu aucune session.
+      if (!q.length) continue;
+      labels.push(k2 + '–' + (k2 + PAS));
+      parts.push(Math.round(_insPart(q) * 100));
+      effectifs.push(q.length);
+      bornes.push(k2);
+    }
+    try { var e2 = Chart.getChart(cv2); if (e2) e2.destroy(); } catch (e) {}
+    new Chart(cv2, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: parts,
+          // Une tranche de moins de 5 sessions est GRISÉE, pas masquée : la même
+          // règle que les barres du bloc précédent.
+          backgroundColor: effectifs.map(function (n, i) {
+            return n < 5 ? 'rgba(122,148,170,.35)'
+                 : parts[i] >= 35 ? '#3dba8aaa' : parts[i] >= 20 ? '#4fa3c7aa' : '#e8a057aa';
+          }),
+          borderRadius: 4,
+          // Un sliver pour les tranches à 0 % : sans barre du tout, l'œil lit
+          // « pas de donnée » alors que la mesure dit « aucune session réussie ».
+          minBarLength: 2
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function (c) {
+            return c.parsed.y + ' % de sessions à 4-5★ · n=' + effectifs[c.dataIndex];
+          } } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Vent (nds)', color: '#7a94aa', font: { size: 10 } },
+               ticks: { color: '#7a94aa', font: { size: 10 } }, grid: { display: false } },
+          y: { beginAtZero: true, max: 100,
+               ticks: { color: '#7a94aa', font: { size: 10 }, callback: function (v) { return v + ' %'; } },
+               grid: { color: 'rgba(255,255,255,0.05)' } }
+        }
+      },
+      plugins: [{
+        id: 'seuilsVent',
+        afterDatasetsDraw: function (ch) {
+          var sx = ch.scales.x, a = ch.chartArea, g = ch.ctx;
+          if (!sx || !a) return;
+          [[P.windCalmKt, '#e8a057', 'calme'], [P.windMalusKt, '#e05c5c', 'fort']]
+            .forEach(function (pr) {
+              // Le seuil est une valeur CONTINUE posée sur un axe de catégories :
+              // on le place à la fraction exacte de sa tranche, sinon un seuil de
+              // 8 nds se retrouverait dessiné au bord de la tranche 6-9.
+              // Position cherchée dans les bornes RÉELLEMENT tracées : depuis que
+              // les tranches vides sautent, l'indice ne vaut plus valeur/PAS.
+              var iB = -1, bi;
+              for (bi = 0; bi < bornes.length; bi++)
+                if (pr[0] >= bornes[bi] && pr[0] < bornes[bi] + PAS) { iB = bi; break; }
+              if (iB < 0) return;
+              var frac = (pr[0] - bornes[iB]) / PAS;
+              var px = a.left + (a.right - a.left) * ((iB + frac) / labels.length);
+              if (px < a.left || px > a.right) return;
+              g.save();
+              g.strokeStyle = pr[1]; g.lineWidth = 1.5; g.setLineDash([5, 3]);
+              g.beginPath(); g.moveTo(px, a.top); g.lineTo(px, a.bottom); g.stroke();
+              g.setLineDash([]);
+              g.fillStyle = pr[1]; g.font = '600 9px DM Sans, sans-serif';
+              g.textAlign = 'center';
+              g.fillText(pr[2] + ' ' + pr[0], px, a.top - 2);
+              g.restore();
+            });
+        }
+      }]
+    });
+  }
+}
+
 function renderStats(sessions, el) {
   if (!sessions.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Pas encore de données</div></div>'; return; }
   const spotMap = {};
@@ -6074,6 +6446,7 @@ function renderStats(sessions, el) {
       <div class="stat-card"><div class="stat-label">Tubes</div><div class="stat-value">${tubes.length}</div><div class="stat-sub">${Math.round(tubes.length/sessions.length*100)}%</div></div>
     </div>
     ${_journalInsightsHtml(sessions)}
+    ${_journalBaremeHtml(sessions)}
     <div class="stats-2col">
       <div class="card">
         <div class="section-title" style="margin-bottom:10px;">Sessions par mois</div>
@@ -6503,6 +6876,10 @@ function renderStats(sessions, el) {
   _renderWindTruthBlock();
   clearTimeout(window._statsT);
   window._statsT=setTimeout(function() {
+    // Les deux graphes du bloc « barème contre journal ». Dans le MEME minuteur
+    // que les autres : les canvas n'existent qu'apres l'ecriture du innerHTML,
+    // et un second minuteur serait une course de plus a surveiller.
+    try { _journalBaremeCharts(sessions); } catch (e) { console.warn('[bareme]', e && e.message); }
     try{var _e=Chart.getChart(document.getElementById('stat-month-chart'));if(_e)_e.destroy();}catch(_){}
     new Chart(document.getElementById('stat-month-chart'), {
       type:'bar',
@@ -6581,7 +6958,14 @@ function _leadBucket(hours) {
 // Écart angulaire signé le plus court entre deux caps, dans [-180, 180].
 // Indispensable pour la direction : une prévision à 350° face à un vent mesuré à
 // 10° se trompe de 20°, pas de 340°.
-function _angDiff(a, b) {
+// RENOMMÉE le 23/11/2026. Elle s'appelait `_angDiff`, exactement comme la
+// fonction de assets/score-core.js — mais avec la sémantique INVERSE : celle-ci
+// rend un écart SIGNÉ (-180..180, pour dire de quel côté), celle du moteur de
+// score rend une VALEUR ABSOLUE (0..180). Le module étant désormais chargé ici,
+// la déclaration de ce bloc inline écrasait la sienne au chargement, et
+// swellFit()/windSector() se seraient mis à comparer des écarts négatifs à des
+// seuils positifs : des notes plausibles et fausses, le pire des cas.
+function _ecartAngleSigne(a, b) {
   var d = ((a - b) % 360 + 540) % 360 - 180;
   return d;
 }
@@ -6694,13 +7078,13 @@ async function _windTruthBuildPairs() {
         model: row.model, station: row.spot_name, lead: lead,
         slot: row.spot_name + '|' + row.date + '|' + h,
         dSpeed: (val != null && best.wind_kt != null) ? (val - best.wind_kt) : null,
-        dDir:   (mdir != null && best.wind_dir != null) ? Math.abs(_angDiff(mdir, best.wind_dir)) : null,
+        dDir:   (mdir != null && best.wind_dir != null) ? Math.abs(_ecartAngleSigne(mdir, best.wind_dir)) : null,
         // Écart SIGNÉ conservé à part : l'absolu dit de combien le modèle se trompe,
         // le signé dit s'il se trompe TOUJOURS DU MÊME CÔTÉ (+ = il fait tourner le
         // vent vers la droite / horaire par rapport au réel). Un modèle à ±40°
         // d'erreur mais sans biais est bruité ; à +40° systématiques, il est
         // corrigeable — l'absolu seul ne permettait pas de faire la différence.
-        dDirS:  (mdir != null && best.wind_dir != null) ? _angDiff(mdir, best.wind_dir) : null,
+        dDirS:  (mdir != null && best.wind_dir != null) ? _ecartAngleSigne(mdir, best.wind_dir) : null,
         dGust:  (mgust != null && best.gust_kt != null) ? (mgust - best.gust_kt) : null
       });
     });

@@ -183,8 +183,22 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 .arw{display:inline-block;font-size:11px;color:var(--accent);}
 .g2{display:block;font-size:10px;color:var(--muted);}
 /* Trouver un créneau */
-#cr-card summary::-webkit-details-marker{display:none;}
-.cr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:13px;}
+#cr-card summary::-webkit-details-marker,
+#src-card summary::-webkit-details-marker{display:none;}
+#src-card summary{list-style:none;}
+#src-card[open] #src-plus{opacity:.55;}
+/* Résumé d'une ligne quand la carte est repliée : les pastilles de fraîcheur
+   restent visibles, c'est ce qui permet de la laisser fermée sans rien rater. */
+.src-pin{display:inline-block;width:7px;height:7px;border-radius:50%;
+  margin-right:4px;vertical-align:middle;}
+#src-resume{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* `align-items:start` : sans ça les cases d'une même rangée s'étirent à la
+   hauteur de la plus haute, et leurs libellés ne sont plus alignés avec ceux de
+   la rangée suivante. Le pas vertical de 18 px remplace les 13 px précédents —
+   deux champs de réglage séparés par la même distance que deux lignes d'un même
+   champ se lisaient comme un seul bloc. */
+.cr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+  gap:18px 16px;align-items:start;}
 .cr-f{position:relative;}
 /* Libellé et valeur sur UNE ligne, en flex et non en `float`.
    Avec `float:right`, dès que le libellé était long (« D'où vient la houle »)
@@ -302,6 +316,12 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
    qui donne la meilleure session, tous spots confondus ». C'est donc devenu la
    PREMIÈRE carte, et elle répond même quand aucun créneau ne passe les
    critères — en le disant. */
+/* Le podium porte LA réponse de la page. Jusqu'ici il avait exactement le même
+   habillage que la carte des sources et que le tableau horaire : rien ne disait
+   à l'œil par où commencer. Un fond légèrement teinté et une bordure accentuée
+   suffisent — pas besoin d'un bloc criard pour établir une hiérarchie. */
+#pod-card{background:linear-gradient(140deg,rgba(79,163,199,.11),var(--deep) 58%);
+  border-color:rgba(79,163,199,.30);}
 .pod{display:flex;gap:14px;align-items:stretch;}
 .pod-main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;}
 .pod-when{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
@@ -314,9 +334,11 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 .pod-vals span{white-space:nowrap;font-weight:700;display:inline-flex;align-items:center;gap:3px;}
 .pod-vals small{font-size:10px;font-weight:600;color:var(--muted);}
 .pod-score{text-align:right;flex-shrink:0;display:flex;flex-direction:column;
-  align-items:flex-end;justify-content:center;gap:4px;min-width:84px;}
-.pod-dots{font-size:20px;letter-spacing:2.5px;line-height:1;}
-.pod-lbl{font-size:12px;font-weight:700;}
+  align-items:flex-end;justify-content:center;gap:5px;min-width:122px;}
+/* La note est le verdict : 20 px de pastilles à côté d'un nom de spot en 26 px
+   la faisaient passer pour une décoration. */
+.pod-dots{font-size:26px;letter-spacing:3px;line-height:1;}
+.pod-lbl{font-size:14px;font-weight:700;letter-spacing:.01em;}
 .pod-next{margin-top:10px;padding-top:9px;border-top:1px solid var(--border);
   display:flex;flex-wrap:wrap;gap:6px;}
 .pod-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;
@@ -344,7 +366,15 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 .cr-rose{flex-shrink:0;opacity:1;width:112px;height:112px;cursor:crosshair;
   touch-action:none;border-radius:50%;}
 .cr-rose:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-.cr-presets{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
+/* Les graduations sont posées en absolu dans une bande de 14 px : un flex avec
+   `justify-content:space-between` les répartirait à intervalles égaux, ce qui
+   serait FAUX — l'ouest est à 76 % de la course, pas à 75. */
+.cr-ticks{position:relative;height:14px;margin-top:2px;}
+.cr-ticks span{position:absolute;top:0;transform:translateX(-50%);
+  font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--faint);}
+.cr-ticks span::before{content:'';position:absolute;left:50%;top:-3px;
+  width:1px;height:4px;background:rgba(255,255,255,.18);}
+.cr-presets{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px;}
 .cr-pre{font-size:11px;padding:4px 8px;border-radius:99px;cursor:pointer;
   background:var(--glass);border:1px solid var(--border);color:var(--muted);
   font-family:var(--font-b);white-space:nowrap;}
@@ -543,16 +573,30 @@ footer .row{gap:14px;font-size:12px;}
        utilisateur : « quel vent j'utilise ? le vent du modèle de vague, le vent
        d'un modèle de vent, AROME ? c'est pas clair ». Deux sélecteurs séparés,
        donc, et l'âge du run de chacun. -->
-  <div class="card" id="src-card">
-    <div class="row" style="justify-content:space-between;gap:10px;margin-bottom:9px;">
-      <div class="section-label" style="margin:0;">D'où viennent ces chiffres</div>
-      <a href="previsions.html" class="note" style="white-space:nowrap;">Comparer les modèles ↗</a>
-    </div>
-    <div class="row" id="src-pick" style="margin-bottom:7px;"></div>
+  <!-- REPLIABLE depuis le 23/11/2026. Cette carte est une référence, pas une
+       décision : déployée en permanence elle poussait le chercheur de créneaux
+       — l'outil de la page — 300 px plus bas. Repliée, elle tient en une ligne
+       qui porte quand même l'essentiel : les deux modèles et une pastille de
+       fraîcheur par grandeur. Elle S'OUVRE TOUTE SEULE quand un run est périmé
+       ou qu'un horizon est trop court : on ne replie pas un avertissement. -->
+  <details class="card" id="src-card">
+    <summary style="cursor:pointer;list-style:none;">
+      <div class="row" style="justify-content:space-between;gap:10px;align-items:center;">
+        <div class="row" style="gap:9px;min-width:0;">
+          <div class="section-label" style="margin:0;">D'où viennent ces chiffres</div>
+          <span id="src-resume" class="note" style="min-width:0;"></span>
+        </div>
+        <span class="note" id="src-plus" style="white-space:nowrap;">détail ▾</span>
+      </div>
+    </summary>
+    <div class="row" id="src-pick" style="margin:11px 0 7px;"></div>
     <div class="row" id="wsrc-pick"></div>
     <div class="sbar" id="src-bar"></div>
     <div id="src-warn"></div>
-  </div>
+    <div class="row" style="margin-top:9px;">
+      <a href="previsions.html" class="note">Comparer les 8 modèles ↗</a>
+    </div>
+  </details>
 
   <details class="card" id="cr-card" open>
     <summary style="cursor:pointer;list-style:none;">
@@ -588,6 +632,18 @@ footer .row{gap:14px;font-size:12px;}
                   aria-label="Début du secteur de houle, en degrés">
                 <input type="range" id="cr-swTo" min="0" max="355" step="5"
                   aria-label="Fin du secteur de houle, en degrés">
+              </div>
+              <!-- Repères cardinaux. Deux barres de 800 px sans graduation ne
+                   disent rien : on ne sait pas si le milieu est le sud ou l'est.
+                   Les positions sont calculées sur la course réelle du curseur
+                   (0 à 355 par pas de 5), pas sur 360 — sans quoi l'ouest tombe
+                   à 75 % alors que la poignée s'y arrête à 76,1 %. -->
+              <div class="cr-ticks" aria-hidden="true">
+                <span style="left:0;">N</span>
+                <span style="left:25.4%;">E</span>
+                <span style="left:50.7%;">S</span>
+                <span style="left:76.1%;">O</span>
+                <span style="left:100%;">N</span>
               </div>
               <div class="cr-presets" id="cr-sw-pre"></div>
             </div>
@@ -876,6 +932,7 @@ var HORIZ = {};   // ms du dernier créneau vu, donc jusqu'où va la prévision
 // Fraîcheur des sources qu'on n'a PAS chargées. Une ligne chacune : on ne veut
 // que l'issued_at le plus récent près du spot, pas la prévision.
 var _sondeRunsFaite = false;
+var _srcOuvertAuto = false;
 function sonderAutresRuns(cb){
   if (!spot) { cb(); return; }
   var reste = 0, lance = false;
@@ -1508,6 +1565,22 @@ function renderSrcBar(){
 
   bar.innerHTML = html;
 
+  // ── Le résumé d'une ligne, pour la carte repliée ─────────────────────────
+  // Il porte les PASTILLES de fraîcheur en plus des noms : sans elles, replier
+  // la carte reviendrait à masquer l'état des sources, et on ne la replierait
+  // jamais. Avec elles, un coup d'œil suffit.
+  var res = document.getElementById('src-resume');
+  if (res){
+    function pastille(info){
+      return '<span class="src-pin" style="background:'
+        + (info ? info.col : 'var(--faint)') + ';"></span>';
+    }
+    res.innerHTML = pastille(iSw) + '<b>' + esc(src.label) + '</b>'
+      + ' <i style="font-style:normal;color:var(--faint);">·</i> '
+      + pastille(iWd) + '<b>' + esc(wp.prim.label) + '</b>'
+      + (iSw ? ' <span style="color:var(--faint);">· ' + iSw.mot + '</span>' : '');
+  }
+
   // ── L'avertissement, et seulement quand il est vrai ──────────────────────
   // « MARC a parfois un cache vieux » : c'est exactement ce que ce bloc attrape.
   // Il ne s'affiche pas en permanence, et il propose l'action plutôt que de
@@ -1524,7 +1597,15 @@ function renderSrcBar(){
       + ' : le chercheur de créneaux ne peut rien proposer au-delà avec cette source.');
   if (iWd && iWd.vieux)
     alerts.push('Le vent <b>' + esc(wp.prim.label) + '</b> date de ' + iWd.mot + '.');
-  if (!alerts.length) { w.innerHTML = ''; return; }
+  var carte = document.getElementById('src-card');
+  if (!alerts.length) {
+    w.innerHTML = '';
+    return;
+  }
+  // On ne replie pas un avertissement : la carte s'ouvre d'elle-même. Une seule
+  // fois (`_srcOuvertAuto`), pour ne pas rouvrir sous les doigts de quelqu'un
+  // qui vient de la refermer en connaissance de cause.
+  if (carte && !_srcOuvertAuto) { carte.open = true; _srcOuvertAuto = true; }
 
   // Un bouton qui BASCULE sur la source la plus fraîche, plutôt qu'un conseil.
   // Encore faut-il connaître la fraîcheur des AUTRES sources : la page ne lit
