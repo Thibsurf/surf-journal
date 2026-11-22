@@ -557,7 +557,11 @@ footer .row{gap:14px;font-size:12px;}
   <details class="card" id="cr-card" open>
     <summary style="cursor:pointer;list-style:none;">
       <div class="row" style="justify-content:space-between;gap:10px;">
-        <div class="section-label" style="margin:0;">Trouver un créneau — tous les spots</div>
+        <!-- Titre distinct de celui du podium : « Le meilleur créneau — tous les
+             spots » juste au-dessus et « Trouver un créneau — tous les spots »
+             ici se lisaient comme deux fois la même carte. L'un donne la
+             réponse, l'autre la liste complète et ses réglages. -->
+        <div class="section-label" style="margin:0;">Tous les créneaux — selon tes critères</div>
         <span id="cr-resume" class="note"></span>
       </div>
     </summary>
@@ -1322,7 +1326,15 @@ function load(){
   // pour pouvoir interpoler jusqu'à minuit sans extrapoler.
   var ds = datesWindow(0, 6), left = ds.length;
   for (var k=0;k<ds.length;k++) tideEnsureDay(ds[k], tidePort()).then(function(){
-    if (--left === 0) { redraw(); }
+    if (--left !== 0) return;
+    if (seq !== loadSeq) return;
+    redraw();
+    // La barre de sources dit si la marée est MESURÉE ou calculée. Elle était
+    // dessinée par assemble(), qui n'attend pas la marée : elle annonçait donc
+    // « modèle harmonique, meteo.nc est muet » à chaque chargement, le temps que
+    // les vraies marées arrivent — un reproche adressé à meteo.nc pour une
+    // course entre deux requêtes. On la redessine quand la réponse est là.
+    renderSrcBar();
   });
   done();   // le 4e « pend » est le déclencheur de l'assemblage marée-indépendant
 }
