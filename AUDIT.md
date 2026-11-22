@@ -9998,3 +9998,70 @@ Un seul faux positif dans toute la relecture : elle supposait que le contrôle
 mutation montre le contraire — le texte `:root {` reste présent, l'assertion
 tourne et passe. Le commentaire du fichier le disait déjà ; seul le libellé de
 l'assertion a été rendu plus modeste.
+
+---
+
+## 2026-11-22 / 23 — accueil.html : cohérence, sources nommées, alarme réelle ; journal : barème contre réalité
+
+Chantier de nuit, parti de trois retours : « les curseurs ressemblent à des
+bugs », « il y a un choix de spot en haut alors qu'on cherche tous spots
+confondus », « est-ce que le bouton me prévenir fonctionne vraiment ».
+
+### Défauts de DONNÉES (les plus graves, invisibles à l'écran)
+
+| Gravité | Défaut | Mesure |
+|---|---|---|
+| 🔴 | **L'archivage navigateur appauvrissait l'archive.** `_cacheModelPoints` écrivait ce que la page tenait, avec `issued_at = now`, donc toujours gagnant au tri « ligne la plus récente par date » de tous les lecteurs. | gfs/wind à Dumbéa : ligne du jour à **4 heures** (12,15,18,21) masquant celle du run précédent à **24 heures**. Le tableau d'accueil affichait « — » de minuit à 11 h. |
+| 🔴 | **La vue satellite n'était pas centrée sur le spot.** `object-fit:cover` sur conteneur carré + source carrée ne recadre rien → `object-position` à 50/50 centre la MOSAÏQUE, pas le point. | Écart : Ténia 319 m, Gouaro 357, Boulari 401, **Dumbéa 558** sur une vue de 3 400 m. Le centre de la rose tombait à côté du récif, sur les DEUX pages. |
+| 🟠 | **Le podium pouvait noter 5/5 un créneau au vent inconnu.** `windCeiling(null)` rend cap 5 et les §4/§5 du score sont sautées : un créneau non mesuré sort mieux noté qu'un créneau mesuré. | Vérifié dans score-core.js. |
+| 🟠 | **Les heures recopiées se re-dataient indéfiniment.** Le garde-fou des 30 h bornait l'âge de la LIGNE, pas de l'HEURE. | Chaque point porte désormais son propre `run`, comme le fait `fetch_arome.py`. |
+
+### Défauts d'INTERFACE
+
+- **Deux roses contradictoires** pour la même donnée : previsions.html fait partir
+  la flèche du bord vers le centre, la fiche de créneau partait du centre.
+  `assets/wind-rose.js` : une figure, deux appelants. L'étiquette d'une houle de
+  SUD — le régime dominant — débordait du cadre de 4 px sur la fiche (34 pixels
+  opaques mesurés sur les deux dernières rangées, 0 après correction).
+- **Cinq formats de date sur un même écran.** `jourTxt/heureTxt/quandTxt`.
+- **Le sélecteur de spot contredisait la page** : il annonçait un spot pendant
+  que la première carte en désignait un autre comme meilleur.
+- `.cr-f>label` (classe + élément) l'emporte sur `.cr-chk` (classe seule) : les
+  cases à cocher héritaient du « libellé à gauche, valeur à droite ».
+
+### Honnêteté
+
+- **« Me prévenir » ne prévenait pas** page fermée, et aucune page web ne le
+  peut sans serveur de push. Renommé « Signaler les nouveautés ». La vraie
+  alarme est l'export **.ics** (RFC 5545 : pliage à 75 octets vérifié, virgules
+  échappées, VALARM -PT45M, UID stable).
+- **Le guide envoyait installer une extension devenue inutile** (« indispensable »
+  en étape 2 sur 4). Vérifié sans extension : `/token` renvoie un jeton vivant,
+  `/forecast` 16 Ko de données meteo.nc.
+- **« La semaine » servait une semaine écoulée** sans le dire autrement qu'en
+  pied de page. Bandeau de péremption, posé dans le générateur ET dans la page.
+
+### Journal — deux blocs neufs sur la page Stats
+
+« Ce que ton journal t'apprend » (leviers, fenêtre, par spot, planche) et « Le
+barème contre ton journal » (seuils de `_DEFAULT_SCORE` confrontés aux sessions,
+nuage hauteur × période coloré par la note, histogramme du vent avec les seuils
+tracés). Effectif toujours affiché, verdict seulement à partir de 8 sessions de
+chaque côté, biais d'échantillonnage rappelé.
+
+⚠ `_angDiff` existait dans index.html ET dans score-core.js **avec la sémantique
+inverse** (signé / absolu) : charger le module sans renommer aurait fait comparer
+des écarts négatifs à des seuils positifs. Renommée `_ecartAngleSigne`.
+
+### Harnais
+
+`test_pages.js` voit désormais le bump de `CACHE_NAME` manquant AVANT le commit.
+⚠ Son helper `git()` trimmait la sortie entière, ce qui mangeait l'espace de tête
+de la première ligne de `git status --porcelain` : le premier fichier modifié
+échappait au contrôle. Validé par mutation, trois états.
+
+Relecture indépendante lancée sur les cinq premiers commits : neuf défauts réels
+corrigés, deux remarques écartées après vérification (une mosaïque 2×2 ne
+suffirait pas au recadrage ; le changement de cadrage est voulu).
+
+sw v116 → v129.
