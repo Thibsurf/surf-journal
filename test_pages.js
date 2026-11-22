@@ -237,9 +237,23 @@ try {
   // et poussée sans bump, l'échec n'apparaissant qu'au passage suivant. Un
   // fichier modifié dans l'arbre de travail alors que sw.js ne l'est pas est
   // exactement la même faute, une minute plus tôt.
+  // `git()` fait un .trim() GLOBAL sur sa sortie, ce qui mange l'espace de tête
+  // de la PREMIÈRE ligne seulement : « ␣M accueil.html » devenait
+  // « M accueil.html », et slice(3) rendait « ccueil.html ». Le premier fichier
+  // modifié échappait donc au contrôle — c'est-à-dire exactement le cas d'un
+  // seul fichier sale, le plus courant. Mesuré le 23/11/2026 sur l'arbre de
+  // travail : le harnais annonçait 61/61 avec accueil.html modifiée et sw.js
+  // intact. On relit donc la sortie SANS la trimmer.
+  const brut = execFileSync('git', ['status', '--porcelain'],
+                            { cwd: ROOT, encoding: 'utf8', timeout: 20000 });
   const sales = new Set();
-  for (const l of git(['status', '--porcelain']).split('\n')) {
-    const f = l.slice(3).trim().replace(/^"|"$/g, '');
+  for (const l of brut.split('\n')) {
+    if (!l.trim()) continue;
+    // Format : XY<espace>chemin, avec XY sur deux colonnes. Un renommage s'écrit
+    // « R  ancien -> nouveau » : c'est le NOUVEAU nom qui existe sur le disque.
+    let f = l.slice(2).trim().replace(/^"|"$/g, '');
+    const fleche = f.indexOf(' -> ');
+    if (fleche >= 0) f = f.slice(fleche + 4).trim().replace(/^"|"$/g, '');
     if (f) sales.add(f);
   }
   // Un bump EN ATTENTE dans l'arbre de travail couvre tout ce qui sera commité

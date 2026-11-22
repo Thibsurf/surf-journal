@@ -8691,8 +8691,17 @@ async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
       // Indexé PAR HEURE et non empilé : deux points sur la même heure (un
       // ré-échantillonnage, une fenêtre qui se recouvre) écrivaient deux entrées
       // pour la même heure dans la ligne archivée.
+      // `run` : l'heure du run D'OÙ VIENT CE POINT, portée par le point
+      // lui-même. Sans elle, une heure recopiée d'une ligne ancienne vers la
+      // nouvelle héritait de l'issued_at de l'écriture, c'est-à-dire de
+      // « maintenant » : à la visite suivante elle paraissait fraîche, était
+      // recopiée à nouveau, et pouvait traverser la table indéfiniment en se
+      // re-datant à chaque passage. Le garde-fou des 30 h bornait l'âge de la
+      // LIGNE, pas celui de l'heure qu'elle contient. Le job AROME écrit déjà
+      // ce champ, on adopte la même convention.
       byDate[ds][d.getUTCHours()] = { h: d.getUTCHours(), val: p[valKey],
-                                      period: periodKey ? p[periodKey] : null, dir: p.dir };
+                                      period: periodKey ? p[periodKey] : null, dir: p.dir,
+                                      run: issuedAt };
     });
     var dates = Object.keys(byDate);
 
@@ -8721,13 +8730,15 @@ async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
         .eq('lat', spot.lat).eq('lon', spot.lon)
         .order('issued_at', { ascending: false });
       if (anc && anc.data && anc.data.length) {
-        var MAX_RECUL_MS = 30 * 3600000, neuf = {};
+        // Le recul se mesure depuis MAINTENANT, et sur le run de CHAQUE HEURE
+        // quand elle le porte. C'est ce qui empêche une valeur de la semaine
+        // dernière de traverser la table en se re-datant à chaque visite : elle
+        // garde son `run` d'origine et sort de la fenêtre pour de bon.
+        var MAX_RECUL_MS = 30 * 3600000, maintenant = Date.parse(issuedAt);
         anc.data.forEach(function(row) {
-          var t = row.issued_at ? Date.parse(row.issued_at) : 0;
-          if (neuf[row.date] === undefined) neuf[row.date] = t || 0;
-          if (t && neuf[row.date] - t > MAX_RECUL_MS) return;
           var cible = byDate[row.date];
           if (!cible) return;
+          var tLigne = row.issued_at ? Date.parse(row.issued_at) : 0;
           (row.hours || []).forEach(function(hh) {
             if (!hh) return;
             // Les deux schémas d'heure de la table (cf. CLAUDE.md) : `h` ici,
@@ -8735,7 +8746,14 @@ async function _cacheModelPoints(spot, modelKey, kind, pts, valKey, periodKey) {
             var hv = (hh.h != null) ? hh.h : hh.hour;
             if (hv == null) return;
             // `undefined` et pas `!cible[hv]` : l'heure 0 est une heure.
-            if (cible[hv] === undefined) cible[hv] = hh;
+            if (cible[hv] !== undefined) return;
+            var tHeure = hh.run ? Date.parse(hh.run) : tLigne;
+            if (!tHeure || maintenant - tHeure > MAX_RECUL_MS) return;
+            // Copie, pour ne pas écrire `run` dans l'objet d'une autre ligne.
+            var copie = {}, k;
+            for (k in hh) if (Object.prototype.hasOwnProperty.call(hh, k)) copie[k] = hh[k];
+            copie.run = new Date(tHeure).toISOString();
+            cible[hv] = copie;
           });
         });
       }

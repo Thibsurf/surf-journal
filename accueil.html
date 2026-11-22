@@ -356,6 +356,10 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
    Les deux questions sont légitimes et n'ont pas le même ordre de réponse. */
 .cr-sort{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
 
+/* Note du tableau horaire : des pastilles serrées, lisibles dans une colonne
+   étroite sans élargir le tableau (qui a déjà dix colonnes). */
+.tnote{letter-spacing:.5px;font-size:9px;white-space:nowrap;}
+
 /* Marqueur de source de repli, dans la colonne vent. Volontairement discret :
    il ne doit se remarquer que là où il apparaît, c'est-à-dire à la frontière
    d'horizon de la source choisie. */
@@ -583,9 +587,14 @@ footer .row{gap:14px;font-size:12px;}
               </div>
               <div class="cr-presets" id="cr-sw-pre"></div>
             </div>
+            <!-- `role="group"` et non `role="img"` : l'élément est focalisable et
+                 MODIFIE un critère. Annoncé comme une image, un lecteur d'écran
+                 ne disait ni qu'il était réglable, ni quelle était la valeur. Son
+                 aria-label est réécrit à chaque dessin avec le secteur courant,
+                 et les deux curseurs juste à gauche restent le chemin principal. -->
             <canvas id="cr-rose" width="112" height="112" class="cr-rose" tabindex="0"
-              role="img"
-              title="Secteur de houle retenu. Touche la rose pour déplacer la poignée la plus proche."></canvas>
+              role="group"
+              title="Secteur de houle retenu. Touche la rose pour déplacer la poignée la plus proche, ou utilise les flèches du clavier."></canvas>
           </div>
         </div>
         <div class="cr-f">
@@ -640,7 +649,7 @@ footer .row{gap:14px;font-size:12px;}
       Ici, un seul, heure par heure. Pour les cartes, les isofronts, le spectre de houle et
       l'onglet Marée &amp; Pêche, passe par les prévisions complètes.</div>
   <div class="card" id="verdict-card">
-    <div class="section-label">Verdict du créneau</div>
+    <div class="section-label">Le créneau le plus proche de maintenant</div>
     <div id="verdict"><div class="loading"><div class="spin"></div> Lecture des prévisions…</div></div>
     <details id="vd-det" style="margin-top:10px;display:none;">
       <summary style="cursor:pointer;font-size:11px;color:var(--muted);">Comment cette note est calculée</summary>
@@ -1000,7 +1009,20 @@ function archive(model, kind, lat, lon, back, fwd, cb){
     + '&date=in.(' + ds.join(',') + ')'
     + '&lat=gte.' + (lat-tol).toFixed(4) + '&lat=lte.' + (lat+tol).toFixed(4)
     + '&lon=gte.' + (lon-tol).toFixed(4) + '&lon=lte.' + (lon+tol).toFixed(4)
-    + '&order=issued_at.desc', function(rows){
+    // `limit` EXPLICITE. Avant la fusion par heure, seule la ligne la plus
+    // récente de chaque date comptait ; désormais les lignes anciennes portent
+    // de l'information, donc le nombre de lignes rapatriées compte. Mesuré le
+    // 23/11/2026 au pire cas (gfs/wind, 8 dates, boîte ±0,06°) : 190 lignes,
+    // loin des 1000 du plafond PostgREST — mais la table n'est JAMAIS purgée et
+    // chaque visite de previsions.html y ajoute une ligne par date. Le plafond
+    // tronquerait en silence, et le point le plus proche serait alors élu sur un
+    // sous-ensemble : toute la série pourrait changer de point. C'est le piège
+    // déjà consigné deux fois dans ce projet.
+    // 600 et pas 1000 : les lignes arrivent du plus récent au plus ancien, donc
+    // une troncature ne peut retirer que les plus vieilles — celles que la règle
+    // des 30 h écarte de toute façon. La troncature devient inoffensive par
+    // construction au lieu d'être invisible.
+    + '&order=issued_at.desc&limit=600', function(rows){
     if (!rows || !rows.length) { cb(null); return; }
     // La boîte ±0,06° peut contenir DEUX points archivés (le spot et une station
     // voisine) : ne garder que le plus proche, pour ne jamais entrelacer deux
@@ -1262,14 +1284,29 @@ function pickSpot(i){
   load();
 }
 
+var loadSeq = 0;
 function load(){
   var src = srcOf(srcKey), wp = windPlan();
+  // Numéro de séquence : deux changements de source rapprochés lançaient deux
+  // séries de requêtes, et rien n'empêchait la PREMIÈRE de finir en dernier et
+  // de peindre les chiffres de l'ancienne source sous l'étiquette de la
+  // nouvelle. loadAllSpots avait déjà ce garde ; load() ne l'avait pas, et le
+  // nom de la source est désormais affiché à trois endroits.
+  var seq = ++loadSeq;
+  // La fraîcheur des autres sources est remesurée : sans cette remise à zéro,
+  // RUNS gardait des mesures prises bien plus tôt dans la session et le bouton
+  // « Passer à X » pouvait proposer une source devenue périmée entre-temps.
+  _sondeRunsFaite = false;
   slots = []; gustByMs = {};
   document.getElementById('tbl').innerHTML = '<div class="loading"><div class="spin"></div> Chargement…</div>';
   document.getElementById('verdict').innerHTML = '<div class="loading"><div class="spin"></div> Lecture des prévisions…</div>';
 
   var pend = 5, swell = null, wind = null, windFb = null, gust = null;
-  function done(){ if (--pend === 0) assemble(src, wp, swell, wind, windFb, gust); }
+  function done(){
+    if (--pend !== 0) return;
+    if (seq !== loadSeq) return;        // demande périmée : ne rien peindre
+    assemble(src, wp, swell, wind, windFb, gust);
+  }
 
   archive(src.model, src.kind, spot.lat, spot.lon, -1, 6, function(r){ swell = r; done(); });
   // Le vent choisi, puis le repli longue portée au-delà de son horizon.
@@ -1294,11 +1331,18 @@ function assemble(src, wp, swell, wind, windFb, gust){
   if (!swell || !swell.pts.length) {
     var why = 'Aucune ligne de houle archivée pour <b>' + esc(src.label) + '</b> près de ce spot '
       + 'sur la fenêtre J-1 à J+6.';
+    // « ci-dessus » : le sélecteur de source est passé AU-DESSUS du chercheur le
+    // 22/11/2026, et ce message continuait d'envoyer vers le bas.
     document.getElementById('verdict').innerHTML = '<div class="note">' + why
-      + ' Essaie une autre source ci-dessous, ou ouvre les <a href="previsions.html">prévisions complètes</a>.</div>';
+      + ' Essaie une autre source ci-dessus, ou ouvre les <a href="previsions.html">prévisions complètes</a>.</div>';
     document.getElementById('tbl').innerHTML = '<div class="note">' + why + '</div>';
     document.getElementById('tbl-note').textContent = '';
     renderDayPick();
+    // La barre de sources est TOUT ce qui reste d'utile dans ce cas : c'est elle
+    // qui porte l'âge des runs et le bouton « Passer à la source la plus
+    // fraîche ». Sortir avant de la dessiner la laissait vide précisément quand
+    // elle servait.
+    renderSrcBar();
     return;
   }
   // Vent indexé par instant, pour apparier sans supposer la même cadence que la
@@ -1554,13 +1598,18 @@ function nowSlot(){
 // Le meilleur spot À CET INSTANT, tous spots confondus. Le bandeau annonçait le
 // spot sélectionné pendant que la première carte en désignait un autre comme
 // meilleur : deux réponses à la même question sur le même écran.
-// Fenêtre ±90 min, la même tolérance d'appariement que partout dans ce projet.
+// Fenêtre ±3 h : EXACTEMENT celle de nowSlot(), et pas un autre chiffre. Avec
+// ±90 min, un modèle à la cadence de 3 h ne tombait dans la fenêtre qu'une fois
+// sur deux selon l'heure qu'il était : l'encart basculait silencieusement entre
+// « le mieux maintenant, tous spots » et « ton spot », deux sens différents sous
+// la même apparence. Observé à 00 h 30, où le créneau de 02 h était à 90 min
+// tout juste.
 function bestNowSlot(){
   if (!allSlots || !allSlots.length) return null;
   var now = Date.now(), best = null, i;
   for (i = 0; i < allSlots.length; i++){
     var s = allSlots[i];
-    if (Math.abs(s.ms - now) > 90 * 60000) continue;
+    if (Math.abs(s.ms - now) > 3 * 3600000) continue;
     if (!s.surf) continue;                 // pas encore noté (filtrer() n'a pas tourné)
     if (!best
         || s.surf.score > best.surf.score
@@ -1816,7 +1865,13 @@ function drawTable(){
       + '<td>' + dirCell(s.wdir, '#c2d6e2') + '</td>'
       + '<td>' + (s.tide ? t1(s.tide.h) + ' <span class="arw">' + (s.tide.rising?'▲':'▼') + '</span>' : '—') + '</td>'
       + '<td style="color:' + (s.pwr != null ? pwrCol(s.pwr) : 'var(--muted)') + ';">' + (s.pwr != null ? s.pwr : '—') + '</td>'
-      + '<td style="color:' + s.surf.col + ';font-weight:700;" title="' + esc(s.surf.label) + '">' + s.surf.score + '</td>'
+      // Pastilles et non un chiffre nu : c'est le langage visuel de la note sur
+      // tout le reste de la page (podium, liste, fiche), et surtout une colonne
+      // entière de « 0 » en orange terne se lit comme une donnée manquante
+      // alors qu'elle veut dire « conditions nulles ». Cinq pastilles grises
+      // disent la même chose sans faire douter.
+      + '<td title="' + esc(s.surf.label) + '"><span class="tnote" style="color:'
+        + s.surf.col + ';">' + _pastilles(s.surf.score) + '</span></td>'
       + '</tr>';
   }
   h += '</tbody></table>';
@@ -1838,6 +1893,16 @@ function drawTable(){
 // 180°), ce que l'œil attend d'une flèche ; le secteur et les degrés disent la
 // PROVENANCE, convention météo du site. Les trois ensemble pour qu'aucune des
 // deux lectures ne puisse être prise pour l'autre.
+// Pastilles de note. UNE définition : il y en avait trois, écrites à la main
+// dans le podium, la liste et la fiche, avec trois couleurs de « vide » un peu
+// différentes.
+function _pastilles(n, col){
+  var o = '', z;
+  for (z = 0; z < 5; z++)
+    o += '<span style="color:' + (z < n ? (col || 'inherit') : 'rgba(255,255,255,.14)') + ';">●</span>';
+  return o;
+}
+
 function dirCell(d, col){
   if (d == null) return '—';
   return '<span style="display:inline-flex;align-items:center;gap:3px;">'
@@ -2122,7 +2187,19 @@ function filtrer(list){
     if (hs2 && (hh2 < hs2.rise - 0.5 || hh2 > hs2.set + 0.5)) continue;
     if (!gros || sg.sw.h > gros.sw.h) gros = sg;
   }
-  return { keep: keep, rej: rej, tous: tousJour.length ? tousJour : tous,
+  // Un créneau dont le VENT est inconnu n'est pas notable : calcSurfScore saute
+  // alors la direction du vent (§4), sa force (§5), et windCeiling(null) rend un
+  // plafond de 5. Autrement dit il sort systématiquement MIEUX noté qu'un
+  // créneau mesuré — vérifié dans score-core.js. Il est déjà écarté de `keep`
+  // (rej.ventInconnu), mais `tous` sert de repli au podium quand rien ne passe
+  // les critères : sans ce tri, la page pouvait mettre « ●●●●● Excellent » en
+  // vitrine à côté d'un vent « — ».
+  var tousVent = [];
+  for (i = 0; i < tousJour.length; i++) if (tousJour[i].ws != null) tousVent.push(tousJour[i]);
+  var repli = tousVent.length ? tousVent : tousJour;
+  return { keep: keep, rej: rej,
+           tous: repli.length ? repli : tous,
+           tousSansVent: !tousVent.length,
            notes: notes.length, gros: gros };
 }
 // Variante de tideStateAt() prenant un port explicite : le chercheur mélange
@@ -2272,10 +2349,31 @@ function _angDist(a, b){
   var d = Math.abs(((a - b) % 360 + 360) % 360);
   return d > 180 ? 360 - d : d;
 }
+// La poignée déplacée a-t-elle FRANCHI l'autre ? Vrai si `t` se trouve sur le
+// plus court chemin de a0 à a1.
+function _franchit(a0, a1, t){
+  var d = ((a1 - a0 + 540) % 360) - 180;        // déplacement signé, -180..180
+  if (d === 0) return false;
+  var dt = ((t - a0 + 540) % 360) - 180;
+  return (d > 0) ? (dt > 0 && dt <= d) : (dt < 0 && dt >= d);
+}
 function _roseApply(deg){
   if (deg == null) return;
   var f = crit.swFrom, t = crit.swTo;
-  if (_roseGrab === 'f') f = deg; else t = deg;
+  // FRANCHISSEMENT : tester la seule largeur résultante ne suffit PAS. Partant
+  // d'un secteur 170→270, tirer la poignée « d » jusqu'à 285° donne une largeur
+  // de 345° — supérieure à 10, donc acceptée par l'ancien test — et le critère
+  // devenait « presque toutes les directions » d'un coup, la liste passant de 5
+  // à 60 créneaux sans un mot. On empêche donc la poignée de traverser l'autre,
+  // et on la colle à 10° d'elle. Le secteur ne peut plus s'inverser par
+  // accident ; pour le retourner volontairement, on déplace l'autre poignée.
+  if (_roseGrab === 'f'){
+    if (_franchit(f, deg, t)) deg = ((t - 10) % 360 + 360) % 360;
+    f = deg;
+  } else {
+    if (_franchit(t, deg, f)) deg = ((f + 10) % 360 + 360) % 360;
+    t = deg;
+  }
   // Un secteur de moins de 10° ne retient presque rien et ressemble à un bug :
   // on refuse le geste plutôt que de laisser une liste vide inexplicable.
   if (sectorWidth(f, t) < 10) return;
@@ -2393,6 +2491,13 @@ function drawRose(){
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText('N', cx, 5); g.fillText('S', cx, W - 5);
   g.fillText('E', W - 5, cy); g.fillText('O', 5, cy);
+
+  // L'étiquette accessible porte la VALEUR, et suit chaque redessin. Sans elle,
+  // un élément focalisable qui change un critère n'annonce rien.
+  cv.setAttribute('aria-label',
+    'Secteur de houle retenu, de ' + crit.swFrom + ' à ' + crit.swTo + ' degrés, '
+    + compass(crit.swFrom) + ' à ' + compass(crit.swTo)
+    + '. Flèches gauche et droite pour tourner le secteur, Maj plus flèches pour l’élargir.');
 }
 
 var _critTimer = null;
@@ -2459,15 +2564,18 @@ function renderPodium(r){
   podDerniers = classe.slice(0, 4);
   var b = podDerniers[0];
   var quand = jourTxt(b.ms, 'long');
-  var dots = '', z;
-  for (z = 0; z < 5; z++)
-    dots += '<span style="color:' + (z < b.surf.score ? b.surf.col : 'rgba(255,255,255,.14)') + ';">●</span>';
+  var dots = _pastilles(b.surf.score, b.surf.col);
 
   var html = '';
   if (horsCriteres)
     html += '<div class="pod-off"><b>Aucun créneau ne remplit tes critères</b> sur les 7 prochains jours. '
          + 'Voici quand même les meilleurs de la semaine, tous spots confondus — '
-         + 'desserre un réglage ci-dessous pour les faire entrer dans ta liste.</div>';
+         + 'desserre un réglage ci-dessous pour les faire entrer dans ta liste.'
+         + (r.tousSansVent
+             ? ' <b>Et le vent manque sur toute la fenêtre</b> : la note ci-dessous ne juge '
+               + 'donc que la houle, la période et la marée. Essaie une autre source de vent.'
+             : '')
+         + '</div>';
 
   html += '<div class="pod">'
     + '<div class="pod-main">'
@@ -2530,9 +2638,10 @@ function renderPodium(r){
   // b) Au-delà de l'horizon d'AROME il n'y a pas de rafale, donc le malus de
   //    rafale ne peut pas s'appliquer : deux créneaux ne sont alors pas notés
   //    sur la même information.
-  if (!b.aroOk)
-    bas.push('Ce créneau est au-delà de l\'horizon d\'AROME : aucune rafale disponible, '
-      + 'la note n\'en tient donc pas compte.');
+  if (b.gust == null)
+    bas.push('Aucune rafale disponible à cette échéance'
+      + (b.aroOk ? '' : ' (au-delà de l\'horizon d\'AROME)')
+      + ' : la note n\'en tient donc pas compte.');
 
   // c) Plus gros ailleurs ? Le dire, avec le créneau en question à portée de
   //    clic. Sinon la page laisse croire que la semaine plafonne à ce créneau.
@@ -2619,9 +2728,7 @@ function critRender(r){
     }
     var idx = critDerniers.length;
     critDerniers.push(sl);
-    var pastilles = '';
-    for (var z = 0; z < 5; z++)
-      pastilles += '<span style="color:' + (z < sl.surf.score ? sl.surf.col : 'rgba(255,255,255,.13)') + ';">●</span>';
+    var pastilles = _pastilles(sl.surf.score, sl.surf.col);
     // En tri par note les lignes ne sont pas groupées : chacune porte son jour.
     // En tri par date, l'intertitre le porte déjà — le répéter serait du bruit.
     var qd = parNote ? quandTxt(sl.ms, 'court') : heureTxt(sl.ms);
@@ -2652,12 +2759,12 @@ function critRender(r){
   var modele = 0, sansRafale = 0;
   for (i = 0; i < keep.length; i++){
     if (keep[i].tideReelle === false) modele++;
-    if (!keep[i].aroOk) sansRafale++;
+    if (keep[i].gust == null) sansRafale++;
   }
   html += '<div class="note" style="margin-top:6px;">La note est celle du spot concerné, '
     + 'avec SES réglages à lui — un même créneau ne vaut pas la même chose partout. '
-    + (sansRafale ? sansRafale + ' créneaux sont au-delà de l\'horizon d\'AROME : sans rafale, '
-        + 'leur note ne peut pas en tenir compte. ' : '')
+    + (sansRafale ? sansRafale + ' créneaux sont sans rafale publiée : leur note ne peut '
+        + 'pas en tenir compte. ' : '')
     + (modele
         ? 'Marée : station du spot, sauf ' + modele + ' créneau(x) où meteo.nc n\'a rien donné '
           + 'et où c\'est le modèle harmonique qui répond.'
@@ -2691,11 +2798,8 @@ function openSlotFor(s){
   document.getElementById('fc-spot').textContent = sp.short || sp.name;
   document.getElementById('fc-when').textContent =
     jourTxt(s.ms, 'long') + ' · ' + heureTxt(s.ms);
-  var etoiles = '';
-  for (var k = 0; k < 5; k++)
-    etoiles += '<span style="color:' + (k < s.surf.score ? s.surf.col : 'rgba(255,255,255,.14)') + ';">●</span>';
   document.getElementById('fc-note').innerHTML =
-    '<u>' + etoiles + '</u><s style="color:' + s.surf.col + ';">' + esc(s.surf.label) + '</s>';
+    '<u>' + _pastilles(s.surf.score, s.surf.col) + '</u><s style="color:' + s.surf.col + ';">' + esc(s.surf.label) + '</s>';
 
   function ligne(lbl, val, sub){
     return '<div class="fc-row"><i>' + lbl + '</i><b>' + val
@@ -2709,8 +2813,13 @@ function openSlotFor(s){
     // image partagée doit pouvoir être relue dans six mois.
     + ligne('Vent', (s.ws != null ? Math.round(s.ws) + ' nds' : '—'),
             (s.wdir != null ? compass(s.wdir) : '') + (s.wsrc ? ' · ' + esc(s.wsrc.label) : ''))
+    // Condition sur la RAFALE elle-même et non sur `aroOk` : AROME peut couvrir
+    // l'heure tout en n'ayant pas de rafale ce pas-là (fetch_arome.py écrit
+    // explicitement gust_kt: None quand la série fg10 manque — son docstring
+    // rappelle un épisode à 100 % de None). On écrivait alors « hors horizon
+    // AROME », ce qui est faux, et le malus de rafale était pourtant bien sauté.
     + ligne('Rafale', (s.gust != null ? Math.round(s.gust) + ' nds' : '—'),
-            s.gust != null ? 'AROME 2,5 km' : 'hors horizon AROME')
+            s.gust != null ? 'AROME 2,5 km' : 'non publiée à cette heure')
     + (s.temp != null
         ? ligne('Air', Math.round(s.temp) + ' °C',
                 (s.rain != null && s.rain > 0.05) ? 'pluie ' + t1(s.rain) + ' mm' : 'sans pluie')
@@ -2731,7 +2840,7 @@ function openSlotFor(s){
     + ' · Marée : ' + esc(tidePortName(s.port))
     + (s.tideReelle === false ? ' (modèle harmonique, meteo.nc n\'a rien donné ce jour-là)' : '')
     + '<br>Note calculée avec les réglages de ce spot.'
-    + (s.aroOk ? '' : ' Aucune rafale à cette échéance : la note n\'en tient pas compte.');
+    + (s.gust != null ? '' : ' Aucune rafale à cette échéance : la note n\'en tient pas compte.');
 
   // Détail du calcul, par la MÊME fonction que previsions.html et que le verdict
   // de cette page : l'explication est dérivée du calcul, jamais écrite en prose.

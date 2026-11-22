@@ -2,14 +2,22 @@
 // wind-rose.js — LA rose des houles et du vent, pour toutes les pages
 // ═══════════════════════════════════════════════════════════════════════════
 // Extraite de previsions.html le 22/11/2026, et pour une raison précise : la
-// fiche de créneau d'accueil.html dessinait ses propres flèches, avec la
-// convention INVERSE. previsions.html fait partir la flèche du bord du cercle,
-// là d'où vient la houle, et la fait pointer vers le centre (le spot reçoit) ;
-// la fiche la faisait partir du centre vers l'extérieur. Pour une houle de sud,
-// l'une montrait une flèche en bas du cercle, l'autre une flèche pointant vers
-// le haut. Deux figures contradictoires pour la même donnée sur le même site —
-// retour utilisateur : « les flèches ne sont pas bien mises, elles ne sont pas
-// comme sur la figure originale ».
+// fiche de créneau d'accueil.html dessinait ses propres flèches, autrement.
+// previsions.html fait partir la flèche du BORD du cercle, du côté d'où vient
+// la houle, et la fait pointer vers le CENTRE (le spot reçoit) ; la fiche la
+// faisait partir du centre et sortir vers l'extérieur.
+//
+// RECTIFICATION du 23/11/2026, après relecture : les deux flèches pointaient en
+// réalité du MÊME côté de l'écran (une houle de sud donne une flèche orientée
+// vers le nord dans les deux cas). Ce qui différait, c'est la moitié de cercle
+// occupée, la position de la pointe, et le fait que la fiche ne portait ni la
+// période ni les degrés. La première version de ce commentaire parlait de deux
+// flèches opposées : c'était faux, et une justification fausse égare la
+// prochaine lecture autant qu'un bug. Le correctif, lui, reste le bon — il n'y
+// a qu'une figure, et elle est identique sur les deux pages.
+//
+// Retour utilisateur à l'origine du chantier : « les flèches ne sont pas bien
+// mises, elles ne sont pas comme sur la figure originale ».
 //
 // Donc : UNE fonction, deux appelants. La convention n'est plus un choix local.
 //
@@ -155,6 +163,20 @@ function _wrArrow(g, cx, cy, R, arr, labelBg, subCol, perCol) {
   var labelDist = len + 18;
   var lx = cx + labelDist * Math.cos(rad), ly = cy + labelDist * Math.sin(rad);
   var labelW = 36, labelH = arr.period ? 36 : (arr.sub ? 26 : 16);
+  // L'étiquette RESTE dans le canvas. Calculé pour une fiche de 208 px : R = 76,
+  // len = 62,3, labelDist = 80,3 ; une houle de SUD (deg 180) posait donc son
+  // libellé à ly = 184,3 et sa troisième ligne (la période) à 207,3 sur 208 —
+  // coupée. Or le sud est le régime dominant en Nouvelle-Calédonie, et c'est
+  // l'image qu'on partage. À 240 px la rose de previsions.html débordait aussi,
+  // de 1,4 px. On ramène donc l'étiquette dans le cadre plutôt que de la laisser
+  // à l'extérieur : décalée de quelques pixels, elle reste sur son rayon, et
+  // c'est la flèche qui porte la direction.
+  // Marge de 4 px et non de 1 : à 1 px la boîte AFFLEURE le bord (mesuré, 34
+  // pixels opaques sur les deux dernières rangées), ce qui se lit comme une
+  // coupure même quand rien n'est coupé.
+  var marge = 4, demi = labelW / 2, W2 = 2 * cx, H2 = 2 * cy;
+  lx = Math.max(demi + marge, Math.min(W2 - demi - marge, lx));
+  ly = Math.max(8 + marge, Math.min(H2 - labelH + 8 - marge, ly));
   g.fillStyle = labelBg;
   g.beginPath(); _wrRoundRect(g, lx - labelW / 2, ly - 8, labelW, labelH, 4); g.fill();
 
