@@ -444,6 +444,10 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 /* Tri de la liste : par date (quand est-ce ?) ou par note (c'est où le mieux ?).
    Les deux questions sont légitimes et n'ont pas le même ordre de réponse. */
 .cr-sort{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
+/* Visible des seuls lecteurs d'écran. `clip-path` plutôt que `display:none`,
+   qui retirerait l'élément de l'arbre d'accessibilité et le rendrait muet. */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;border:0;}
 
 /* Note du tableau horaire : des pastilles serrées, lisibles dans une colonne
    étroite sans élargir le tableau (qui a déjà dix colonnes). */
@@ -759,6 +763,11 @@ footer .row{gap:14px;font-size:12px;}
       </div>
     </div>
 
+    <!-- Région vivante : la liste se met à jour toute seule à chaque mouvement
+         de curseur, et un lecteur d'écran n'en disait rien. Un élément DÉDIÉ et
+         court plutôt qu'un aria-live sur la liste entière — annoncer trente
+         lignes à chaque réglage serait pire que le silence. -->
+    <p id="cr-live" class="sr-only" aria-live="polite" role="status"></p>
     <div id="cr-res" style="margin-top:12px;"></div>
   </details>
 
@@ -2450,7 +2459,8 @@ function critBind(){
       etat.textContent = 'Ton navigateur a refusé le téléchargement.';
   };
   document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape' && !bk.hidden) closeSlot();
+    if (e.key === 'Escape' && !bk.hidden) { closeSlot(); return; }
+    _fcPiegeFocus(e);
   });
   el('cr-reset').onclick = function(){
     var k; for (k in CRIT_DEF) crit[k] = CRIT_DEF[k];
@@ -2855,6 +2865,13 @@ function _podDots(n){
   return o;
 }
 
+// Annonce vocale. Le texte est REMPLACÉ, jamais ajouté : une région vivante qui
+// s'allonge fait relire tout l'historique à chaque mise à jour.
+function _annonce(txt){
+  var el = document.getElementById('cr-live');
+  if (el) el.textContent = txt;
+}
+
 function critRender(r){
   var box = document.getElementById('cr-res'), keep = r.keep, i;
   if (!keep.length){
@@ -2880,6 +2897,7 @@ function critRender(r){
     }
     box.innerHTML = '<div class="note">Aucun créneau ne remplit ces critères sur les 7 prochains jours, '
       + 'tous spots confondus, sur ' + r.notes + ' créneaux examinés.' + fin + '</div>';
+    _annonce('Aucun créneau ne remplit ces critères.');
     return;
   }
 
@@ -2957,6 +2975,13 @@ function critRender(r){
           + 'et où c\'est le modèle harmonique qui répond.'
         : 'Marée : station du spot.') + '</div>';
   box.innerHTML = html;
+  // Annonce COURTE : le nombre et le premier de la liste. C'est ce qu'on
+  // regarde en premier des yeux, donc ce qu'il faut dire en premier.
+  var p0 = keep[0];
+  _annonce(keep.length + ' créneau' + (keep.length > 1 ? 'x' : '') + ' trouvé'
+    + (keep.length > 1 ? 's' : '') + '. En tête : '
+    + (p0.spot.short || p0.spot.name) + ', ' + quandTxt(p0.ms, 'court')
+    + ', note ' + p0.surf.score + ' sur 5.');
   // Branchement APRÈS l'écriture du HTML : les boutons n'existent pas avant.
   var items = box.getElementsByClassName('cr-item');
   for (i = 0; i < items.length; i++) items[i].onclick = function(){
@@ -3058,6 +3083,14 @@ function openSlotFor(s){
   var back = document.getElementById('fc-back');
   back.hidden = false;
   document.body.style.overflow = 'hidden';
+  // ── Focus ───────────────────────────────────────────────────────────────
+  // La fiche se déclare `role="dialog" aria-modal="true"` mais ne déplaçait
+  // pas le focus : au clavier, on ouvrait une boîte de dialogue en restant
+  // dans la liste derrière, et la touche Tab continuait de parcourir la page
+  // masquée. On entre donc dans la fiche, et on retiendra où revenir.
+  _fcRetour = document.activeElement;
+  var ferme = document.getElementById('fc-x');
+  if (ferme) ferme.focus();
 
   // Satellite : même mosaïque que previsions.html (assets/sat-tiles.js), donc
   // le même centrage exact. Les tuiles arrivent en différé, d'où le dessin des
@@ -3067,10 +3100,36 @@ function openSlotFor(s){
   setTimeout(function(){ drawSatVec(s); drawMiniTide(s); }, 260);
 }
 
+var _fcRetour = null;
 function closeSlot(){
   document.getElementById('fc-back').hidden = true;
   document.body.style.overflow = '';
   fcSlot = null;
+  // Rendre le focus à ce qui a ouvert la fiche : sans ça il retombe sur
+  // <body> et la navigation au clavier repart du haut de la page, c'est-à-dire
+  // très loin du créneau qu'on venait de consulter.
+  if (_fcRetour && typeof _fcRetour.focus === 'function'){
+    try { _fcRetour.focus(); } catch(e){}
+  }
+  _fcRetour = null;
+}
+
+// Tab reste DANS la fiche tant qu'elle est ouverte. Sans ce piège, la
+// tabulation sort par le bas et se promène dans une page qu'on ne voit pas —
+// le lecteur d'écran annonce alors des éléments cachés derrière un voile.
+function _fcPiegeFocus(e){
+  if (e.key !== 'Tab') return;
+  var back = document.getElementById('fc-back');
+  if (!back || back.hidden) return;
+  var cibles = back.querySelectorAll(
+    'button:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])');
+  if (!cibles.length) return;
+  var premier = cibles[0], dernier = cibles[cibles.length - 1];
+  if (e.shiftKey && document.activeElement === premier){
+    e.preventDefault(); dernier.focus();
+  } else if (!e.shiftKey && document.activeElement === dernier){
+    e.preventDefault(); premier.focus();
+  }
 }
 
 // Vecteurs sur la vue satellite — par assets/wind-rose.js, LA MÊME fonction que
