@@ -567,6 +567,17 @@ nav {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+/* ── « Réduire les animations » du système (ajouté le 23/11/2026) ───────────
+   Honoré au lieu d'être ignoré. On ne SUPPRIME pas les animations — un témoin
+   de chargement figé ne dit plus qu'il charge — on les ramène à une durée et
+   une amplitude qui ne déclenchent rien chez les personnes sensibles au
+   mouvement. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;}
+  .spin,.spinner,.loader{animation:none!important;opacity:.6;}
+}
 </style>
 <!-- Cloudflare Web Analytics. Script classique + defer, et non le type="module"
      proposé par défaut dans le dashboard : beacon.min.js ne contient aucune syntaxe

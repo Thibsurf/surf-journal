@@ -920,6 +920,20 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
   .cards{grid-template-columns:1fr}
   .hero-s{font-size:23px}
 }
+
+/* ── Focus clavier (ajouté le 23/11/2026) ───────────────────────────────────
+   Cette page n'avait AUCUN style de focus : en naviguant au clavier, rien
+   n'indiquait où l'on se trouvait. On vise focus-visible et non focus : le
+   second dessinerait aussi l'anneau au clic à la souris.
+   PAS D'ACCENT GRAVE ICI : ce fichier est un gabarit JS, un accent grave y
+   ferme le littéral et casse le générateur. */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible{outline:2px solid #4fa3c7;outline-offset:2px;border-radius:6px;}
 </style>
 </head>
 <body>

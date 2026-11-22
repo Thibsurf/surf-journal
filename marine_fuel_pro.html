@@ -255,6 +255,29 @@ select option{background:var(--s2)}
   .est-grid{grid-template-columns:1fr 1fr}
   .tabs .tab{font-size:.68rem;padding:8px 3px}
 }
+
+/* ── Focus clavier (ajouté le 23/11/2026) ───────────────────────────────────
+   Cette page n'avait AUCUN style de focus : en naviguant au clavier, rien
+   n'indiquait où l'on se trouvait. `:focus-visible` et non `:focus` — ce
+   dernier dessinerait aussi l'anneau au clic à la souris. */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible{outline:2px solid #4fa3c7;outline-offset:2px;border-radius:6px;}
+
+/* ── « Réduire les animations » du système (ajouté le 23/11/2026) ───────────
+   Honoré au lieu d'être ignoré. On ne SUPPRIME pas les animations — un témoin
+   de chargement figé ne dit plus qu'il charge — on les ramène à une durée et
+   une amplitude qui ne déclenchent rien chez les personnes sensibles au
+   mouvement. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;}
+  .spin,.spinner,.loader{animation:none!important;opacity:.6;}
+}
 </style>
 <!-- Cloudflare Web Analytics. Script classique + defer, et non le type="module"
      proposé par défaut dans le dashboard : beacon.min.js ne contient aucune syntaxe
