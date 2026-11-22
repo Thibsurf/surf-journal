@@ -745,12 +745,15 @@ footer .row{gap:14px;font-size:12px;}
           <label class="cr-chk"><input type="checkbox" id="cr-dayOnly"> Seulement de jour</label>
         </div>
       </div>
-      <div class="row" style="margin-top:10px;gap:8px;">
-        <button type="button" class="btn on" id="cr-go">Chercher</button>
-        <span class="note" style="margin-left:2px;">Trier</span>
-        <button type="button" class="btn" id="cr-sort-note" data-sort="note">Par note</button>
-        <button type="button" class="btn" id="cr-sort-date" data-sort="date">Par date</button>
-        <button type="button" class="btn" id="cr-reset">Valeurs par défaut</button>
+      <!-- Six commandes alignées ici mélangeaient trois natures : une action,
+           un choix de tri et un réglage de notification. Le TRI est remonté
+           au-dessus de la liste qu'il trie — une commande se place près de ce
+           qu'elle change. Il ne reste ici que ce qui concerne les critères.
+           « Chercher » perd son habillage principal : la recherche part toute
+           seule à chaque réglage, ce bouton n'est qu'une relance de confort. -->
+      <div class="row" style="margin-top:12px;gap:8px;">
+        <button type="button" class="btn" id="cr-go">Relancer la recherche</button>
+        <button type="button" class="btn" id="cr-reset">Réglages par défaut</button>
         <button type="button" class="btn" id="cr-notif" style="display:none;"></button>
         <span id="cr-state" class="note"></span>
       </div>
@@ -2424,17 +2427,9 @@ function critBind(){
   el('cr-tide').onchange = function(){ crit.tide = this.value; saveCrit(); critRunSoon(); };
   el('cr-go').onclick = function(){ critRun(); };
 
-  // Tri de la liste. Persisté comme le reste : c'est une préférence de lecture,
-  // pas un geste à refaire à chaque visite.
-  function bindTri(id){
-    var b = el(id); if (!b) return;
-    b.onclick = function(){
-      crit.sort = this.getAttribute('data-sort');
-      saveCrit(); critSync(); critRun();
-    };
-  }
-  bindTri('cr-sort-note'); bindTri('cr-sort-date');
-
+  // Le tri vit maintenant au-dessus de la liste et se rebranche dans
+  // critRender : rien à faire ici. Il reste persisté (`crit.sort`), c'est une
+  // préférence de lecture et pas un geste à refaire à chaque visite.
   renderSwPresets();
   bindRose();
   // Fermeture de la fiche : la croix, le fond, et Échap.
@@ -2479,9 +2474,6 @@ function critSync(){
   document.getElementById('cr-resume').textContent =
     crit.hsMin.toFixed(1) + '–' + crit.hsMax.toFixed(1) + ' m · ≥' + crit.perMin + ' s · '
     + compass(crit.swFrom) + '–' + compass(crit.swTo) + ' · vent ≤' + crit.windMax;
-  var bn = document.getElementById('cr-sort-note'), bd = document.getElementById('cr-sort-date');
-  if (bn) bn.className = 'btn' + (crit.sort !== 'date' ? ' on' : '');
-  if (bd) bd.className = 'btn' + (crit.sort === 'date' ? ' on' : '');
   renderSwPresets();
   drawRose();
 }
@@ -2893,7 +2885,14 @@ function critRender(r){
 
   var html = '<div class="cr-sort">'
     + '<span class="note">' + keep.length + ' créneau' + (keep.length > 1 ? 'x' : '')
-    + ' sur ' + r.notes + ' examinés</span></div>';
+    + ' sur ' + r.notes + ' examinés</span>'
+    + '<span style="flex:1;"></span>'
+    + '<span class="note">Trier</span>'
+    + '<button type="button" class="btn' + (crit.sort !== 'date' ? ' on' : '')
+    +   '" data-sort="note">Par note</button>'
+    + '<button type="button" class="btn' + (crit.sort === 'date' ? ' on' : '')
+    +   '" data-sort="date">Par date</button>'
+    + '</div>';
 
   // Liste de CARTES et non un tableau : le jour devient un vrai intertitre, la
   // note se lit en pastilles plutôt qu'en chiffre nu, et chaque créneau est une
@@ -2962,6 +2961,15 @@ function critRender(r){
   var items = box.getElementsByClassName('cr-item');
   for (i = 0; i < items.length; i++) items[i].onclick = function(){
     openSlot(+this.getAttribute('data-i'));
+  };
+  // Les boutons de tri sont RECRÉÉS à chaque rendu : les rebrancher ici est
+  // obligatoire. C'est aussi pourquoi leur état actif est écrit dans le HTML
+  // ci-dessus plutôt que posé par critSync — critSync tourne à chaque mouvement
+  // de curseur, bien avant que ces boutons existent.
+  var tris = box.querySelectorAll('[data-sort]');
+  for (i = 0; i < tris.length; i++) tris[i].onclick = function(){
+    crit.sort = this.getAttribute('data-sort');
+    saveCrit(); critRun();
   };
 }
 
