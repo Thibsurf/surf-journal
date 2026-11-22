@@ -282,6 +282,17 @@ noscript{display:block;background:var(--deep);border-radius:12px;padding:16px;
 </head>
 <body>
 
+<!-- Bandeau de péremption. Cette page est GÉNÉRÉE chaque lundi : si le build
+     hebdomadaire n'a pas tourné, elle continue d'afficher la semaine écoulée
+     avec son titre « du 16 au 21 novembre » en tête, sans que rien ne le signale
+     autrement qu'une ligne en pied de page. Constaté le 23/11/2026 : la page
+     servait encore la semaine du 16, dates entièrement passées.
+     Le test est fait dans le navigateur, sur WEEK.days — la seule source qui ne
+     puisse pas mentir sur la période couverte. -->
+<div id="perime" hidden style="margin:0 0 14px;padding:11px 14px;border-radius:10px;
+  background:rgba(224,92,92,.12);border:1px solid rgba(224,92,92,.35);
+  font-size:13px;line-height:1.6;"></div>
+
 <div class="top">
   <h1>🏄 La semaine</h1>
   <div class="per">du 16 au 21 novembre</div>
@@ -1845,5 +1856,36 @@ initMeteogram();
 
 </script>
 
+
+<script>
+// Péremption : la page couvre-t-elle encore des jours à venir ?
+// Nouvelle-Calédonie = UTC+11 FIXE : on décale puis on lit en getUTC*, jamais
+// les accesseurs locaux — convention du projet, et le visiteur peut être
+// n'importe où.
+(function(){
+  try {
+    if (typeof WEEK === 'undefined' || !WEEK.days || !WEEK.days.length) return;
+    var nc = new Date(Date.now() + 11 * 3600000);
+    var auj = nc.getUTCFullYear() + '-'
+      + ('0' + (nc.getUTCMonth() + 1)).slice(-2) + '-'
+      + ('0' + nc.getUTCDate()).slice(-2);
+    var dernier = WEEK.days[WEEK.days.length - 1];
+    if (dernier >= auj) return;                 // la semaine court encore
+    var el = document.getElementById('perime');
+    if (!el) return;
+    // Nombre de jours écoulés depuis la fin de la fenêtre, pour dire l'ampleur
+    // plutôt qu'un vague « pas à jour ».
+    var ecart = Math.round((Date.parse(auj) - Date.parse(dernier)) / 864e5);
+    el.innerHTML = '<b>Cette page n\'est plus à jour.</b> Elle couvre une semaine '
+      + 'terminée depuis ' + ecart + ' jour' + (ecart > 1 ? 's' : '')
+      + ' : la régénération hebdomadaire n\'a pas encore eu lieu. '
+      + 'Les chiffres ci-dessous sont ceux de cette semaine-là, pas ceux d\'aujourd\'hui. '
+      + 'Pour la prévision du moment : '
+      + '<a href="accueil.html" style="color:#4fa3c7;font-weight:600;">L\'essentiel</a> ou '
+      + '<a href="previsions.html" style="color:#4fa3c7;font-weight:600;">les prévisions complètes</a>.';
+    el.hidden = false;
+  } catch (e) {}
+})();
+</script>
 </body>
 </html>
