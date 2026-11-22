@@ -11735,31 +11735,13 @@ function renderRose(idx) {
   if(!d||!d.lbl||!d.lbl.length) return;
   var i = (idx===undefined||idx===null) ? 0 : idx;
 
-  var W=240, dpr=window.devicePixelRatio||1;
-  cv.width=W*dpr; cv.height=W*dpr; cv.style.width=W+'px'; cv.style.height=W+'px';
-  var ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
-  ctx.clearRect(0,0,W,W);
-  var cx=W/2, cy=W/2, R=W/2-28;
-
-  // Fond cercles de référence
-  [0.33,0.66,1].forEach(function(f){
-    ctx.beginPath(); ctx.arc(cx,cy,R*f,0,2*Math.PI);
-    ctx.strokeStyle='rgba('+_panelGridRGB()+',0.06)'; ctx.lineWidth=0.8; ctx.stroke();
-  });
-  // Axes + labels cardinaux
-  ['N','NE','E','SE','S','SO','O','NO'].forEach(function(dir,j){
-    var a=j*Math.PI/4-Math.PI/2;
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+R*Math.cos(a),cy+R*Math.sin(a));
-    ctx.strokeStyle='rgba('+_panelGridRGB()+',0.05)'; ctx.lineWidth=0.8; ctx.stroke();
-    ctx.font=(j%2===0?'bold 10':'8')+'px DM Sans,sans-serif';
-    ctx.fillStyle=_panelLight()?(j%2===0?'rgba(60,80,95,.9)':'rgba(60,80,95,.55)'):(j%2===0?'rgba(255,255,255,.55)':'rgba(255,255,255,.25)');
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(dir, cx+(R+14)*Math.cos(a), cy+(R+14)*Math.sin(a));
-  });
-
-  // ── Flèches de direction : partent du CENTRE vers l'extérieur ──────────
-  // Convention météo : deg = D'OÙ vient → flèche montre D'OÙ (vecteur arrivée)
-  // Pour éviter la superposition au centre, offset radial + décalage si proches
+  // ── Flèches de direction ───────────────────────────────────────────────
+  // Convention météo : `deg` = D'OÙ vient. La flèche occupe donc le rayon de
+  // provenance et pointe VERS le centre, qui est le spot.
+  // Le DESSIN lui-même vit dans assets/wind-rose.js depuis le 22/11/2026 : la
+  // fiche de créneau d'accueil.html avait sa propre version, avec la convention
+  // inverse, et les deux figures se contredisaient. Ici on ne fait plus que
+  // préparer les flèches et la légende.
 
   var sw1h = d.sw1h[i]||0, sw1d = d.sw1d[i], sw1t = d.sw1t&&d.sw1t[i]||null;
   var sw2h = (d.sw2h&&d.sw2h[i])||null, sw2d = (d.sw2d&&d.sw2d[i]!==null&&d.sw2d[i]!==undefined)?d.sw2d[i]:null;
@@ -11785,88 +11767,14 @@ function renderRose(idx) {
     label:Math.round(wspd||0)+'nds', sub:Math.round(wdir)+'°', period:null, lw:2
   });
 
-  // Anti-collision : si deux flèches < 25° d'écart → décaler de ±12°
-  for(var ai=0; ai<arrows.length; ai++) {
-    for(var aj=ai+1; aj<arrows.length; aj++) {
-      var diff = Math.abs(((arrows[ai].deg - arrows[aj].deg + 540) % 360) - 180);
-      if(diff < 25) {
-        arrows[ai].deg = (arrows[ai].deg - 13 + 360) % 360;
-        arrows[aj].deg = (arrows[aj].deg + 13 + 360) % 360;
-      }
-    }
-  }
-
-  // drawArrow : convention D'OÙ VIENT la houle/vent
-  // deg = direction de provenance (ex 120° = vient du SE → se déplace vers NO)
-  // La flèche part de l'EXTÉRIEUR (là d'où vient la houle) et pointe VERS le centre (le spot)
-  // Le label est placé côté extérieur pour indiquer clairement la provenance
-  function drawArrow(arr) {
-    var deg=arr.deg, normMag=arr.mag, col=arr.col, label=arr.label, deg_str=arr.sub, period=arr.period;
-    if(deg===null||deg===undefined||normMag===null) return;
-    // Convention : deg=0 → vient du Nord (angle canvas = -π/2, flèche pointe vers le bas)
-    var rad = (deg - 90) * Math.PI / 180;
-    var len = Math.max(R*0.30, normMag * R * 0.82);
-
-    // Départ = côté PROVENANCE (extérieur du cercle)
-    var sx = cx + len * Math.cos(rad);
-    var sy = cy + len * Math.sin(rad);
-    // Arrivée = CENTRE (le spot reçoit la houle)
-    var stopR = 9; // ne pas aller jusqu'au centre exact (disque propre)
-    var ex = cx + stopR * Math.cos(rad);
-    var ey = cy + stopR * Math.sin(rad);
-
-    ctx.shadowColor='rgba(0,0,0,0.6)'; ctx.shadowBlur=4;
-
-    // Tige
-    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(ex,ey);
-    ctx.strokeStyle=col; ctx.lineWidth=arr.lw||2.5; ctx.lineCap='round'; ctx.stroke();
-
-    // Pointe de flèche AU CENTRE (direction d'arrivée de la houle)
-    var headLen=10, headAng=0.42;
-    var arrAng = Math.atan2(ey-sy, ex-sx); // angle tige
-    ctx.beginPath();
-    ctx.moveTo(ex, ey);
-    ctx.lineTo(ex - headLen*Math.cos(arrAng-headAng), ey - headLen*Math.sin(arrAng-headAng));
-    ctx.lineTo(ex - headLen*Math.cos(arrAng+headAng), ey - headLen*Math.sin(arrAng+headAng));
-    ctx.closePath();
-    ctx.fillStyle=col; ctx.fill();
-    ctx.shadowBlur=0;
-
-    // Label côté PROVENANCE (extérieur, là d'où vient la houle)
-    var labelDist = len + 18;
-    var lx = cx + labelDist * Math.cos(rad);
-    var ly = cy + labelDist * Math.sin(rad);
-
-    // Fond semi-opaque derrière le label pour lisibilité
-    var labelW = 34, labelH = period ? 36 : (deg_str ? 26 : 16);
-    ctx.fillStyle='rgba(7,17,31,0.72)';
-    ctx.beginPath();
-    ctx.roundRect(lx - labelW/2, ly - 8, labelW, labelH, 4);
-    ctx.fill();
-
-    ctx.font='bold 10px DM Sans,sans-serif';
-    ctx.fillStyle=col; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(label, lx, ly);
-    if(deg_str) {
-      ctx.font='8px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.45)';
-      ctx.fillText(deg_str, lx, ly+12);
-    }
-    if(period) {
-      ctx.font='bold 9px DM Sans,sans-serif'; ctx.fillStyle='rgba(255,255,255,.8)';
-      ctx.fillText(period+'s', lx, ly+23);
-    }
-  }
-
-  // Dessiner d'abord les flèches (sous le disque central)
-  arrows.forEach(drawArrow);
-
-  // Disque central propre PAR-DESSUS (cache les pointes qui convergent)
-  ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI*2);
-  var grad = ctx.createRadialGradient(cx,cy,0,cx,cy,8);
-  grad.addColorStop(0,'rgba(30,50,80,0.95)');
-  grad.addColorStop(1,'rgba(10,20,35,0.85)');
-  ctx.fillStyle=grad; ctx.fill();
-  ctx.strokeStyle='rgba('+_panelGridRGB()+',0.2)'; ctx.lineWidth=1; ctx.stroke();
+  // Dessin délégué à assets/wind-rose.js : anti-collision, flèches de la
+  // provenance vers le centre, étiquettes sur fond arrondi, disque central.
+  // Le module gère aussi le repli de roundRect, absent avant Safari 16 — ce
+  // code-ci l'appelait sans filet.
+  drawWindRose(cv, {
+    size: 240, pad: 28, arrows: arrows,
+    gridRGB: _panelGridRGB(), light: _panelLight()
+  });
 
   // PAS de texte au centre — on affiche l'heure dans la légende sous la rose
   // (évite les débordements et reste lisible)
@@ -18607,6 +18515,7 @@ setInterval(function() { try { updateNavBMSBanner(); } catch(e) {} }, 5 * 60 * 1
      jamais en exécution synchrone au chargement (le boot appelle loadForecast() via
      fetch/.then(), qui ne peut résoudre qu'après que ce script defer ait fini). -->
 <script defer src="assets/sat-tiles.js"></script>
+<script defer src="assets/wind-rose.js"></script>
 <script defer src="assets/settings-utils.js"></script>
 <script>
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
