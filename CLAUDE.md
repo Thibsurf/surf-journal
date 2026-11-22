@@ -39,6 +39,7 @@ reste la page du « pourquoi ». Les deux lisent la MÊME archive et le même mo
 note. Le bloc « Meilleurs créneaux » de previsions.html tourne, lui, sur meteo.nc
 seul et en blocs de plusieurs heures : il peut désigner un autre créneau, et il le
 dit désormais.
+
 Chargement par `<script>` classiques, **pas de bundler, pas de modules ES**.
 `charts-core.js` est chargé SANS `defer`, avant le bloc inline : `PANEL_GEOM` doit
 exister quel que soit le moment du premier dessin.
@@ -153,16 +154,6 @@ ne relire qu'elle-même.
 ## Règles de travail
 
 1. Un chantier = un commit. Vérifier qu'aucun `ReferenceError` n'apparaît.
-1ter. **Ne JAMAIS lire `model_forecast_cache` en gardant « la ligne la plus récente
-   par date ».** L'archivage navigateur (`_cacheModelPoints`) réécrit nc/gfs/bom/marc
-   avec `issued_at = now` et seulement les heures que la page tient : mesuré le
-   22/11/2026, la ligne du jour portait 4 heures et masquait une ligne de 24. Il faut
-   **fusionner heure par heure**, le plus récent gagnant à l'heure près, en bornant à
-   30 h derrière le run le plus récent — et chaque point doit porter son propre `run`,
-   sinon une valeur d'avant-hier se re-date indéfiniment à chaque écriture. Corrigé
-   des deux côtés (lecture dans accueil.html, écriture dans previsions.html) ;
-   `_fetchOpenDataArchive`, `_lookupModelCache` et `fromArchive` gardent l'ancien
-   motif, l'écriture ne les appauvrit simplement plus.
 1bis. **Trois harnais à relancer avant de pousser**, aucun n'a besoin du réseau :
    - `node test_score.js` (48 assertions) — moteur de score.
    - `node test_tide.js` (44) — marée + fuseau. Il se relance seul dans 3 fuseaux
@@ -181,6 +172,16 @@ ne relire qu'elle-même.
    `:root`. **Aucune erreur nulle part** — la sonde headless comptait « 0 erreur »
    à chaque passage. Un navigateur applique le CSS valide et jette le reste en
    silence : compter les `window.onerror` ne suffit donc PAS à valider une page.
+1ter. **Ne JAMAIS lire `model_forecast_cache` en gardant « la ligne la plus récente
+   par date ».** L'archivage navigateur (`_cacheModelPoints`) réécrit nc/gfs/bom/marc
+   avec `issued_at = now` et seulement les heures que la page tient : mesuré le
+   22/11/2026, la ligne du jour portait 4 heures et masquait une ligne de 24. Il faut
+   **fusionner heure par heure**, le plus récent gagnant à l'heure près, en bornant à
+   30 h derrière le run le plus récent — et chaque point doit porter son propre `run`,
+   sinon une valeur d'avant-hier se re-date indéfiniment à chaque écriture. Corrigé
+   des deux côtés (lecture dans accueil.html, écriture dans previsions.html) ;
+   `_fetchOpenDataArchive`, `_lookupModelCache` et `fromArchive` gardent l'ancien
+   motif, l'écriture ne les appauvrit simplement plus.
 2. Après toute extraction de code vers `assets/` : **bumper `CACHE_NAME` dans `sw.js`**
    et compléter `ASSETS`. Le bumper aussi dès qu'un fichier d'`assets/` change.
    POURQUOI c'est non négociable (mesuré le 20/11/2026) : le `fetch` de `sw.js`
