@@ -176,23 +176,32 @@ footer a{color:var(--accent);text-decoration:none;}
   <!-- DÉMARRAGE RAPIDE -->
   <div class="quickstart">
     <div class="section-title" style="font-size:1.2rem;color:var(--ok);">⚡ Démarrage rapide</div>
-    <p style="font-size:13px;color:var(--muted);">Trois étapes pour avoir les prévisions meteo.nc officielles sur tous tes appareils.</p>
+    <!-- RÉÉCRIT le 23/11/2026. Ce bloc présentait l'installation d'une extension
+         Chrome et une visite sur meteo.nc comme les étapes 2 et 3 d'un démarrage
+         en quatre temps. Ce n'est plus vrai depuis juin 2026 : le Worker
+         Cloudflare capture et renouvelle le token lui-même (cron 5 min), et les
+         pages le lisent chez lui. Vérifié le 23/11/2026 sans aucune extension :
+         GET /token renvoie un jeton vivant et GET /forecast 16 Ko de données
+         meteo.nc réelles. Envoyer quelqu'un installer une extension pour rien
+         est pire qu'un bug d'affichage : ça coûte un quart d'heure et ça fait
+         douter du reste. -->
+    <p style="font-size:13px;color:var(--muted);">Deux étapes. Les prévisions meteo.nc officielles marchent sans rien installer.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <div class="step-text"><b>Créer un compte</b><br>Sur le journal (index), clique Se connecter → Créer un compte</div>
+        <div class="step-text"><b>Ouvrir les prévisions</b><br>Rien à installer : le token meteo.nc est renouvelé côté serveur, toutes les 5 min</div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <div class="step-text"><b>Installer l'extension</b><br>Chrome → Télécharge le .zip → Extensions → Charger non empaquetée</div>
+        <div class="step-text"><b>Créer un compte</b><br>Seulement pour le journal et les sorties — sur index, Se connecter → Créer un compte</div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <div class="step-text"><b>Activer le token</b><br>Visite <b>meteo.nc</b> une fois → badge 🔑 vert = prêt</div>
+        <div class="step-text"><b>Surfer 🤙</b><br>Prévisions, marées et préremplissage des sessions : tout est automatique</div>
       </div>
       <div class="step">
-        <div class="step-num">4</div>
-        <div class="step-text"><b>Surfer 🤙</b><br>Tout est auto : prévisions, marées, autofill des sessions</div>
+        <div class="step-num">+</div>
+        <div class="step-text"><b>Installer la PWA</b><br>Partager → « Sur l'écran d'accueil » : l'app marche ensuite hors ligne</div>
       </div>
     </div>
   </div>
@@ -288,12 +297,14 @@ footer a{color:var(--accent);text-decoration:none;}
       <span class="tool-icon">🧩</span>
       <div class="tool-name">Extension Chrome</div>
       <div class="tool-url">nc-token-extension-v10.zip</div>
-      <div class="tool-desc">Capture automatiquement le token JWT de meteo.nc pour alimenter toutes les prévisions du site. Indispensable.</div>
+      <div class="tool-desc"><b>Facultative.</b> Le site n'en a plus besoin : le Worker Cloudflare
+        capture et renouvelle le token meteo.nc tout seul. Elle reste un filet de sécurité —
+        si cette capture automatique tombe un jour, une visite sur meteo.nc depuis un navigateur
+        qui porte l'extension remet un jeton frais en circulation.</div>
       <div class="features">
+        <div class="feat"><div class="feat-icon">🛟</div><span><b>Filet</b> — utile seulement si la capture côté serveur s'arrête</span></div>
         <div class="feat"><div class="feat-icon">🔑</div><span><b>Capture auto</b> — intercepte le Bearer token quand tu visites meteo.nc</span></div>
-        <div class="feat"><div class="feat-icon">🔄</div><span><b>Renouvellement</b> — toutes les 15min, complètement transparent</span></div>
-        <div class="feat"><div class="feat-icon">☁️</div><span><b>Sync cloud</b> — pousse le token vers le Worker Cloudflare (accès mobile)</span></div>
-        <div class="feat"><div class="feat-icon">📱</div><span><b>Multi-appareils</b> — téléphone = utilise le token du dernier porteur actif</span></div>
+        <div class="feat"><div class="feat-icon">☁️</div><span><b>Sync cloud</b> — pousse le token vers le Worker, donc vers tous tes appareils</span></div>
         <div class="feat"><div class="feat-icon">🟢</div><span><b>Badge popup</b> — vert = actif, rouge = besoin de revisiter meteo.nc</span></div>
       </div>
       <div style="margin-top:14px;padding:10px 12px;background:rgba(169,159,248,.06);border:1px solid rgba(169,159,248,.2);border-radius:8px;font-size:11px;color:#a99ff8;">
@@ -305,23 +316,25 @@ footer a{color:var(--accent);text-decoration:none;}
 
   <!-- FLUX TOKEN -->
   <div class="section-title" style="font-size:1.2rem;color:var(--muted);">🔑 Comment circule le token meteo.nc</div>
-  <p class="section-sub">Le token JWT permet d'accéder aux prévisions officielles — valide ~22min, renouvelé automatiquement.</p>
+  <p class="section-sub">Le token JWT permet d'accéder aux prévisions officielles — valide ~22 min, renouvelé côté serveur toutes les 5 min. Tu n'as rien à faire.</p>
   <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:48px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;">Le chemin normal</div>
     <div class="flow">
       <div class="flow-box accent">🌐 meteo.nc<br><small>Bearer token</small></div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box accent">🧩 Extension<br><small>webRequest</small></div>
+      <div class="flow-box ok">☁️ Worker<br><small>cron 5 min</small></div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box ok">☁️ Worker KV<br><small>Cloudflare</small></div>
+      <div class="flow-box ok">🗄 Supabase<br><small>copie de secours</small></div>
       <div class="flow-arrow">→</div>
-      <div class="flow-box">📱 Mobile<br><small>sans extension</small></div>
+      <div class="flow-box">📱 Tes appareils<br><small>sans rien installer</small></div>
     </div>
-    <div class="flow" style="margin-top:8px;">
-      <div class="flow-box" style="opacity:.5;font-size:11px;">Extension</div>
-      <div class="flow-arrow" style="opacity:.5;">→</div>
-      <div class="flow-box" style="opacity:.5;font-size:11px;">localStorage</div>
-      <div class="flow-arrow" style="opacity:.5;">→</div>
-      <div class="flow-box ok" style="font-size:11px;">🖥 Prévisions + Journal<br><small>autofill session</small></div>
+    <div style="font-size:11px;color:var(--muted);margin:14px 0 8px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;">Le filet, si la capture tombe</div>
+    <div class="flow">
+      <div class="flow-box" style="opacity:.6;font-size:11px;">🧩 Extension<br><small>webRequest</small></div>
+      <div class="flow-arrow" style="opacity:.6;">→</div>
+      <div class="flow-box" style="opacity:.6;font-size:11px;">☁️ Worker</div>
+      <div class="flow-arrow" style="opacity:.6;">→</div>
+      <div class="flow-box ok" style="font-size:11px;">🖥 Tout le site<br><small>remis en route</small></div>
     </div>
   </div>
 
@@ -357,7 +370,7 @@ footer a{color:var(--accent);text-decoration:none;}
       <div class="account-title" style="color:#a99ff8;">🌤 Prévisions</div>
       <div class="account-items">
         <div class="account-item">Pas de compte requis</div>
-        <div class="account-item">Token via extension</div>
+        <div class="account-item">Token géré côté serveur</div>
         <div class="account-item">Spots sauvés localement</div>
       </div>
     </div>
@@ -374,10 +387,12 @@ footer a{color:var(--accent);text-decoration:none;}
       </div>
     </div>
     <div style="background:rgba(79,163,199,.06);border:1px solid rgba(79,163,199,.2);border-radius:12px;padding:16px;">
-      <div style="font-weight:600;color:var(--accent);margin-bottom:6px;font-size:13px;">💡 Token expiré ?</div>
+      <div style="font-weight:600;color:var(--accent);margin-bottom:6px;font-size:13px;">💡 Prévisions meteo.nc vides ?</div>
       <div style="font-size:12px;color:var(--muted);line-height:1.6;">
-        Le token dure ~22 minutes. L'extension le renouvelle automatiquement toutes les <b>15 minutes</b>.<br>
-        Si badge rouge : clique "Capturer" dans le popup de l'extension.
+        Le token dure ~22 minutes et le serveur le renouvelle toutes les <b>5 minutes</b> : en
+        temps normal tu n'as rien à faire.<br>
+        Si meteo.nc reste muet, les autres modèles (GFS, BOM, MARC, ECMWF) continuent de
+        fonctionner — choisis-en un dans le sélecteur de source.
       </div>
     </div>
     <div style="background:rgba(232,160,87,.06);border:1px solid rgba(232,160,87,.2);border-radius:12px;padding:16px;">
