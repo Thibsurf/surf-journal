@@ -1787,7 +1787,11 @@ async function init() {
   if (!sb) {
     document.getElementById('main-nav').style.display = 'flex';
     document.getElementById('setup-banner').style.display = 'block';
-    showPage('dashboard');
+    // Fragment d'URL honoré ICI, c'est-à-dire une fois la session établie : plus
+    // tôt, on afficherait une page qui a besoin de `currentUser` avant qu'il
+    // existe. Un fragment inconnu retombe sur le tableau de bord.
+    var _frag = (location.hash || '').replace('#', '');
+    showPage(PAGES_PROFONDES[_frag] ? _frag : 'dashboard');
     renderDashStats([]); renderSessionsList([]);
     return;
   }
@@ -8418,9 +8422,24 @@ document.addEventListener('click', function(e) {
   if (!m.contains(e.target) && !(btn && btn.contains(e.target)) && e.target !== btn) closeIndexMenu();
 });
 
+// Pages atteignables par un lien direct. Liste EXPLICITE et non « tout ce qui
+// commence par page- » : le fragment d'URL vient de l'extérieur, et il ne doit
+// pas pouvoir désigner un écran d'authentification ou un formulaire interne.
+var PAGES_PROFONDES = { dashboard:1, group:1, spots:1, ranking:1, boats:1, stats:1, profile:1 };
+
 function showPage(name) {
   var pageEl = document.getElementById('page-' + name);
   if (!pageEl) { console.warn('[showPage] page inconnue :', name); return; }
+  // Le fragment suit la navigation : on peut mettre les stats en favori, les
+  // partager, et y revenir avec le bouton Précédent. `replaceState` et non
+  // `location.hash =` : ce dernier déclencherait hashchange, donc un second
+  // showPage pour le même écran.
+  if (PAGES_PROFONDES[name]) {
+    try {
+      if (location.hash !== '#' + name)
+        history.replaceState(null, '', location.pathname + location.search + '#' + name);
+    } catch (e) {}
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   pageEl.classList.add('active');
   // Entrée de menu correspondante surlignée. data-page relie chaque entrée à sa page
