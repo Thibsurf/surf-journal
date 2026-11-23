@@ -60,6 +60,7 @@ const physSrc = readFileSync(join(ROOT, 'assets', 'wave-physics.js'), 'utf8');
 const P = (new Function(physSrc +
   '\nreturn { wpL0, wpC0, wpLongueurOnde, wpCinematique, wpShoaling, wpHauteurA,' +
   ' wpProfondeurDeferlement, wpProfondeurRessentie, wpBattement, wpModulation,' +
+  ' wpCambrure, wpTropCambree,' +
   ' WP_G, WP_INDICE_DEFERLEMENT };'))();
 
 // ─── Données réelles, Dumbéa, 23/11/2026 ───────────────────────────────────
@@ -216,10 +217,23 @@ section('Physique : longueur d\'onde, shoaling, déferlement');
   ok(Math.abs(P.wpCinematique(13, null).n - 0.5) < 1e-9, 'n = ½ en eau profonde');
   ok(P.wpCinematique(13, 0.5).n > 0.97, 'n → 1 en eau peu profonde',
      P.wpCinematique(13, 0.5).n.toFixed(4));
-  // Garde-fou de débordement : Math.sinh part à l'infini au-delà de ~710, et un
-  // fond de 500 m rendait NaN avant la borne kz2 > 20.
-  ok(isFinite(P.wpCinematique(13, 500).Cg) && P.wpCinematique(13, 500).Cg > 0,
-     'un fond de 500 m ne produit pas de NaN (débordement de sinh)');
+  // CETTE ASSERTION ÉTAIT UNE TAUTOLOGIE. Elle disait « un fond de 500 m ne
+  // produit pas de NaN (débordement de sinh) » et PASSAIT ENCORE avec la garde
+  // supprimée — parce qu'à 500 m, sinh(23,8) vaut 1,1e10, très loin du
+  // débordement, et parce que même sinh = Infinity donne x/Infinity = 0, donc
+  // n = ½ et jamais NaN. Prouvé par mutation lors d'une relecture.
+  // Le seul cas que la garde attrape vraiment est z = Infinity, où
+  // Infinity/Infinity ferait NaN. C'est donc ÇA qu'on teste, et on teste la
+  // VALEUR de n, pas seulement sa finitude.
+  ok(Math.abs(P.wpCinematique(13, 500).n - 0.5) < 1e-6,
+     'par 500 m de fond, n vaut ½ : on est en eau profonde',
+     P.wpCinematique(13, 500).n.toFixed(9));
+  ok(P.wpCinematique(13, Infinity).n === 0.5
+     && isFinite(P.wpCinematique(13, Infinity).Cg),
+     'une profondeur infinie ne produit pas NaN — c\'est le seul cas que la garde attrape');
+  ok(Math.abs(P.wpCinematique(13, 19).n - 0.5) > 1e-3,
+     '… et la garde ne s\'applique PAS trop tôt : par 19 m de fond, n diffère encore de ½',
+     P.wpCinematique(13, 19).n.toFixed(5));
 
   // L'ÉTALON du shoaling : Ks passe d'abord SOUS 1 — une houle perd un peu de
   // hauteur avant de grossir. Minimum de manuel : 0,913 vers z/L0 = 0,157.
@@ -262,6 +276,23 @@ section('Physique : longueur d\'onde, shoaling, déferlement');
 
   ok(Math.abs(P.wpProfondeurRessentie(13) - P.wpL0(13) / 2) < 1e-9,
      'la houle sent le fond par L0/2');
+
+  // Cambrure : la constante existait, documentée et exportée, et n'était lue
+  // NULLE PART — wpProfondeurDeferlement rendait donc tranquillement une
+  // profondeur pour des houles qui ne peuvent pas exister.
+  ok(P.wpTropCambree(5, 4) === true,
+     '5 m à 4 s est trop cambrée pour tenir en eau profonde (H/L0 = 0,20 > 0,17)');
+  ok(P.wpTropCambree(2, 13) === false, '2 m à 13 s tient très bien');
+  ok(Math.abs(P.wpCambrure(1, 10) - 1 / P.wpL0(10)) < 1e-12, 'la cambrure vaut H/L0');
+  ok(P.wpCambrure(0, 10) === null && P.wpCambrure(1, 0) === null,
+     'entrées nulles → null');
+
+  // Le drapeau dit que l'appelant n'a pas donné de profondeur, PAS qu'on est
+  // physiquement en eau profonde. Le nom précédent (`profond`) invitait à le
+  // lire de travers.
+  ok(P.wpCinematique(13, null).sansFond === true
+     && P.wpCinematique(13, 1e9).sansFond === false,
+     '`sansFond` dit « pas de profondeur fournie », pas « eau profonde »');
 }
 
 section('Physique : deux houles qui se croisent');
@@ -313,8 +344,17 @@ section('Les seuils d un affichage de series');
   // 24/11/2026 : battement median 21 s, p90 34 s, max 78 s), pas des gouts. On
   // verrouille les cas de part et d autre.
   const acc = readFileSync(join(ROOT, 'accueil.html'), 'utf8');
-  ok(/bat\.vagues < 3 \|\| bat\.periode < 45/.test(acc),
-     'la ligne Series exige 3 vagues ET un cycle d au moins 45 s');
+  ok(/bat\.vagues < 3 \|\| bat\.vagues > 40/.test(acc),
+     'la ligne Series est bornee des DEUX cotes en nombre de vagues');
+  ok(/bat\.periode < 45 \|\| bat\.periode > 240/.test(acc),
+     '... et des deux cotes en duree de cycle');
+  ok(/estMerDuVent\(sw\) && estMerDuVent\(t2\)/.test(acc),
+     '... et refuse deux mers du vent, qui ne font pas des series');
+  // Les cas que ces bornes ferment, verifies par le calcul.
+  const presque = P.wpBattement(13.00, 12.95);
+  ok(presque.vagues > 40 && presque.periode > 240,
+     '13,00 s et 12,95 s : 259 vagues en 56 min, ecarte par le plafond',
+     presque.vagues.toFixed(0) + ' vagues en ' + (presque.periode / 60).toFixed(0) + ' min');
   ok(/mod < 0\.25/.test(acc),
      '... et une modulation d au moins 25 % : une petite houle sur une grosse ne module rien');
   // 12 s et 15 s passent (4,9 vagues, 66 s) ; 9 s et 13 s non (2,6 vagues, 29 s).
@@ -331,9 +371,32 @@ section('La page consomme le module, et ne recopie rien');
   // Les constantes physiques ne doivent exister QU'À un endroit. Un 0.78 ou un
   // g/2π recopié dans la page, c'est la divergence programmée.
   const inline = acc.slice(acc.indexOf('function drawHouleSchema'),
-                           acc.indexOf('function drawHouleSchema') + 9000);
+                           acc.indexOf('function drawHouleSchema') + 12000);
   ok(!/0\.78/.test(inline),
      'l\'indice de déferlement n\'est pas recopié dans le dessin');
+
+  // LA COUPE N'EST PAS EN EAU PROFONDE. Elle commence par 15 m de fond alors
+  // qu'une houle de 9 s sent le fond par 63 m. Coter L0 au-dessus d'un dessin
+  // qui montre la longueur d'onde LOCALE annonçait 126 m pour 96 m dessinés à
+  // 9 s, et jusqu'à 62 % d'écart à 20 s.
+  ok(/var Lici = wpLongueurOnde\(T, PROF_LARGE\)/.test(inline),
+     'la cote de la figure donne la longueur d\'onde LOCALE, pas celle du large');
+  ok(/Math\.round\(Lici\) \+ ' m ici'/.test(inline),
+     '… et elle le DIT (« m ici »)');
+  ok(/Math\.round\(L0\) \+ ' m entre deux vagues au large'/.test(inline),
+     '… tandis que le titre du bloc porte la valeur du large, étiquetée comme telle');
+  // Et la cote de hauteur porte la hauteur du POINT COTÉ, pas Hmin : une
+  // étiquette « 0,8 m » sur une flèche qui en mesurait 0,73 répondait à
+  // « quelle hauteur est représentée ? » par un chiffre absent du dessin.
+  ok(/var lab = t1\(pc\.h\) \+ ' m'/.test(inline),
+     'la cote de hauteur porte la hauteur locale du point coté');
+  ok(!/var lab = t1\(Hmin\)/.test(inline),
+     '… et plus Hmin, qui vaut 8 % de plus que ce qui est tracé à 9 s');
+  // « Grossit » n'est écrit que si elle grossit.
+  ok(/hDef > hEntree \+ 0\.049 \?/.test(inline),
+     '« grossit jusqu\'à » est conditionnel : Ks passe d\'abord SOUS 1');
+  ok(/sansMin/.test(inline),
+     'un minimum de houle à 0 est dit, pas remplacé en silence par 0,5 m');
   ok(!/1\.56\s*\*\s*T\s*\*\s*T/.test(acc),
      'la longueur d\'onde n\'est plus calculée à la main dans la page');
 }

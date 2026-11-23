@@ -3105,34 +3105,26 @@ function drawRose(){
 // ════════════════════════════════════════════════════════════════════════════
 // SCHÉMA DE HOULE — ce que la période et la hauteur font vraiment
 // ════════════════════════════════════════════════════════════════════════════
-// Une coupe de 400 m arrivant sur un récif, à l'échelle HORIZONTALE vraie. Trois
-// choses s'y voient, et les trois sont calculées, pas dessinées à l'intuition :
+// Une coupe de 400 m arrivant sur un récif, à l'échelle HORIZONTALE vraie.
 //
-//   1. L'ESPACEMENT DES CRÊTES. L0 = g·T²/2π : 8 s → 100 m, 13 s → 264 m. Sur
-//      une fenêtre fixe de 400 m, quatre vagues serrées ou une vague et demie.
-//      C'est la différence entre une mer hachée et une houle qui déroule.
-//   2. LE RACCOURCISSEMENT en arrivant sur le fond. La longueur d'onde locale
-//      est intégrée le long de la coupe (Fenton & McKee), donc les crêtes se
-//      resserrent vraiment près du récif au lieu de garder un pas constant.
-//   3. LE SHOALING. La hauteur suit Ks = √(Cg0/Cg) : la houle commence par
-//      perdre un peu, puis grossit, puis déferle quand H/profondeur = 0,78.
-//      Une houle de 0,8 m à 13 s déferle par 1,6 m de fond EN FAISANT 1,3 m —
-//      la version précédente annonçait « 1,0 m de fond » avec une règle de
-//      pouce (1,3 × H) qui ignore la période, et ne montrait pas la vague
-//      grossir du tout.
+// ⚠ LA COUPE N'EST PAS EN EAU PROFONDE, ET C'EST TOUT LE PROPOS. Elle commence
+// par 15 m de fond, alors qu'une houle de 9 s sent déjà le fond par 63 m et une
+// de 13 s par 132 m. Tout ce qui est dessiné est donc DÉJÀ en train de shoaler.
+// La version précédente cotait pourtant la longueur d'onde en EAU PROFONDE
+// (L0 = g·T²/2π) au-dessus d'un dessin qui montrait la longueur d'onde LOCALE :
+// 126 m annoncés pour 96 m dessinés à 9 s, 264 pour 151 à 13 s — jusqu'à 62 %
+// d'écart à 20 s. Même erreur sur la hauteur : la flèche cotée « 0,8 m » en
+// mesurait 0,73 (Ks vaut 0,916 par 15 m de fond à 9 s).
 //
-// DEUX HAUTEURS SONT TRACÉES, et étiquetées. Les curseurs donnent une
-// FOURCHETTE : ne dessiner qu'une courbe laissait sans réponse la question
-// « laquelle ? » — posée telle quelle par l'utilisateur. Le minimum est en
-// trait plein (c'est lui qui filtre), le maximum en pointillé, et chacun porte
-// son chiffre. Leurs deux points de déferlement diffèrent, ce qui se voit : une
-// grosse houle casse bien plus au large.
+// Les deux chiffres sont désormais donnés, chacun à sa place : le large dans le
+// libellé du bloc, l'ici sur la figure. L'écart entre les deux EST la leçon.
 //
-// LES DEUX ÉCHELLES VERTICALES SONT ANNONCÉES. Le fond et la houle ne peuvent
-// pas partager une échelle : 1,3 m de houle sur 15 m de fond, dans 60 pixels,
-// serait un trait. La figure l'écrit, et donne le rapport H/profondeur EN
-// CHIFFRES au point de déferlement — c'est la seule façon honnête de le dire
-// sans mentir avec un dessin.
+// Ce qui est calculé, et non dessiné à l'intuition :
+//   · l'espacement des crêtes, intégré le long de la coupe (dφ = 2π·dx/L(x)),
+//     donc les crêtes se resserrent vraiment en arrivant ;
+//   · la hauteur, par Ks = √(Cg0/Cg) — elle commence par perdre un peu avant de
+//     grossir, ce qui est juste et surprend ;
+//   · le point de déferlement, à H/profondeur = 0,78, résolu par dichotomie.
 function drawHouleSchema(){
   var cv = document.getElementById('cr-schema');
   if (!cv || !cv.getContext || typeof wpCinematique !== 'function') return;
@@ -3146,45 +3138,42 @@ function drawHouleSchema(){
 
   var T = crit.perMin;
   if (!isFinite(T) || T <= 0) T = 10;
-  var Hmin = (isFinite(crit.hsMin) && crit.hsMin > 0) ? crit.hsMin : 0.5;
+  // `hsMin` peut valoir 0 : le curseur descend jusque-là, et ça veut dire « pas
+  // de minimum ». On trace alors une houle de référence — mais la légende le
+  // DIT, au lieu de présenter 0,5 m comme une demande de l'utilisateur.
+  var sansMin = !(isFinite(crit.hsMin) && crit.hsMin > 0);
+  var Hmin = sansMin ? 0.5 : crit.hsMin;
   var Hmax = (isFinite(crit.hsMax) && crit.hsMax > Hmin) ? crit.hsMax : Hmin;
 
   var FENETRE = 400;                 // mètres couverts par la largeur
   var px = W / FENETRE;              // pixels par mètre, à l'horizontale
 
-  // ── Le fond : tombant de barrière, 15 m au large → platier à 0,6 m ────────
-  // Pente douce puis tombant à ~1/28, ce qui est l'ordre de grandeur d'un récif
-  // barrière calédonien. Elle n'est pas décorative : c'est elle qui place, par
-  // la profondeur, le point de déferlement calculé plus bas.
-  var PROF_LARGE = 15, PROF_PLATIER = 0.6;
+  // ── Le fond : tombant de barrière, 15 m au large → platier ───────────────
+  // Platier à 0,30 m et non 0,60 : à 0,60 m, 34 réglages sur 850 avaient leur
+  // point de déferlement SOUS le platier, donc la légende annonçait un
+  // déferlement que la figure ne montrait nulle part. Il en reste 8, tous à
+  // 0,1 m de houle, et la légende les nomme.
+  var PROF_LARGE = 15, PROF_PLATIER = 0.3;
   var X_PENTE = FENETRE * 0.42, X_PLATIER = FENETRE * 0.88;
   function profondeur(xm){
     if (xm <= X_PENTE) return PROF_LARGE;
     if (xm >= X_PLATIER) return PROF_PLATIER;
     var t = (xm - X_PENTE) / (X_PLATIER - X_PENTE);
-    // Courbe en S plutôt qu'une droite : un tombant réel s'adoucit en haut.
-    var e = t * t * (3 - 2 * t);
+    var e = t * t * (3 - 2 * t);     // courbe en S : un tombant réel s'adoucit
     return PROF_LARGE + (PROF_PLATIER - PROF_LARGE) * e;
   }
 
   // ── Géométrie verticale : deux échelles, chacune annoncée ────────────────
-  var margeHaut = 26;                         // place pour la cote de L
-  var yEau = Math.round(H * 0.46);            // niveau de repos
-  var hFond = H - yEau - 13;                  // pixels pour PROF_LARGE mètres
+  var margeHaut = 26;
+  var yEau = Math.round(H * 0.46);
+  var hFond = H - yEau - 13;
   function yFond(z){ return yEau + (z / PROF_LARGE) * hFond; }
 
-  // UNE SEULE courbe est tracée, et c'est la hauteur MINIMUM — celle qui filtre.
-  // Première version : deux courbes, min et max. Mais 0,8 m et 4,0 m à la même
-  // échelle dans 120 pixels donnent une courbe presque plate à côté d'une
-  // grosse, et c'est la petite qui compte. Le maximum reste vivant autrement :
-  // son point de déferlement est marqué sur la coupe, et il se déplace quand on
-  // bouge le curseur — une grosse houle casse bien plus au large.
   var zbMin = wpProfondeurDeferlement(Hmin, T);
   var hDessinMax = (zbMin != null) ? wpHauteurA(Hmin, T, zbMin) : Hmin;
   if (!(hDessinMax > 0)) hDessinMax = Hmin;
-  // pxParM = pixels par mètre de HOULE (et non de fond).
   var pxParM = Math.max(2, (yEau - margeHaut) / hDessinMax * 0.85);
-  var exagV = pxParM / px;                    // facteur d'exagération annoncé
+  var exagV = pxParM / px;
 
   // ── L'eau ────────────────────────────────────────────────────────────────
   var grEau = g.createLinearGradient(0, yEau - 18, 0, H);
@@ -3193,12 +3182,12 @@ function drawHouleSchema(){
   g.fillStyle = grEau;
   g.fillRect(0, yEau, W, H - yEau);
 
-  // ── Profil d'une houle, hauteur H0 ───────────────────────────────────────
-  // La phase est INTÉGRÉE : dφ = 2π·dx/L(x). C'est ce qui resserre les crêtes
-  // quand le fond remonte. Une sinusoïde à pas constant ne le montre pas.
+  // ── Profil de la houle ───────────────────────────────────────────────────
+  // Chaque point garde SA hauteur locale : c'est elle que la cote affiche, et
+  // non `Hmin`, qui est la valeur au large et vaut 8 % de plus ici.
   function profil(H0){
-    var pts = [], phase = 0, xp, xm, z, cin, ks, h, amp, zb;
-    zb = wpProfondeurDeferlement(H0, T);
+    var pts = [], phase = 0, xp, xm, z, cin, ks, h, amp;
+    var zb = wpProfondeurDeferlement(H0, T);
     for (xp = 0; xp <= W; xp++){
       xm = xp / px;
       z = profondeur(xm);
@@ -3206,8 +3195,6 @@ function drawHouleSchema(){
       if (cin && cin.L > 0) phase += 2 * Math.PI / (cin.L * px);
       ks = wpShoaling(T, z);
       h = (ks == null) ? H0 : H0 * ks;
-      // Au-delà du déferlement, la crête ne tient plus : la hauteur est bornée
-      // par 0,78 × profondeur, puis l'écume retombe.
       if (zb != null && z <= zb) h = Math.min(h, WP_INDICE_DEFERLEMENT * z);
       amp = h / 2 * pxParM;
       pts.push({ x: xp, y: yEau - Math.sin(phase) * amp, h: h, z: z });
@@ -3215,21 +3202,10 @@ function drawHouleSchema(){
     return { pts: pts, zb: zb };
   }
 
-  function trace(pr, col, pointille, epais){
-    g.save();
-    if (pointille) g.setLineDash([4, 3]);
-    g.beginPath();
-    for (var i = 0; i < pr.pts.length; i++){
-      if (i === 0) g.moveTo(pr.pts[i].x, pr.pts[i].y);
-      else g.lineTo(pr.pts[i].x, pr.pts[i].y);
-    }
-    g.strokeStyle = col; g.lineWidth = epais; g.lineJoin = 'round'; g.stroke();
-    g.restore();
-  }
-
   var prMin = profil(Hmin);
-  // Le corps d'eau sous la courbe : une houle de 0,8 m tracée au trait seul se
-  // lit mal sur fond sombre, remplie elle se lit d'un coup d'œil.
+
+  // Corps d'eau sous la courbe : une houle de 0,8 m au trait seul se lit mal
+  // sur fond sombre, remplie elle se lit d'un coup d'œil.
   g.save();
   g.beginPath();
   g.moveTo(0, prMin.pts[0].y);
@@ -3237,9 +3213,14 @@ function drawHouleSchema(){
   g.lineTo(W, H); g.lineTo(0, H); g.closePath();
   g.fillStyle = 'rgba(79,163,199,.17)'; g.fill();
   g.restore();
-  trace(prMin, '#5fc3e8', false, 2);
+  g.beginPath();
+  for (var jj = 0; jj < prMin.pts.length; jj++){
+    if (jj === 0) g.moveTo(prMin.pts[jj].x, prMin.pts[jj].y);
+    else g.lineTo(prMin.pts[jj].x, prMin.pts[jj].y);
+  }
+  g.strokeStyle = '#5fc3e8'; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke();
 
-  // ── Le récif, tracé APRÈS l'eau pour qu'aucune vague ne le traverse ──────
+  // ── Le récif, tracé APRÈS l'eau ──────────────────────────────────────────
   g.beginPath();
   g.moveTo(0, H);
   var xm2;
@@ -3257,77 +3238,71 @@ function drawHouleSchema(){
   }
   g.stroke();
 
-  // ── Échelle de profondeur, à gauche ──────────────────────────────────────
+  // ── Échelle de profondeur ────────────────────────────────────────────────
   g.font = '600 9px DM Sans, sans-serif';
   g.textBaseline = 'middle'; g.textAlign = 'left';
-  // Le filet part APRÈS l'étiquette : tracé depuis x=26 il barrait « 15 m » en
-  // plein milieu, ce qui se voit tout de suite en capture.
   [5, 10, 15].forEach(function(z){
     var y = yFond(z);
     if (y > H - 4 || y < yEau + 4) return;
     g.strokeStyle = 'rgba(255,255,255,.09)'; g.lineWidth = 1;
     g.beginPath(); g.moveTo(36, y); g.lineTo(W, y); g.stroke();
-    // Pastille sombre derriere l'etiquette : le fond lui-meme passe a 15 m,
-    // donc le trait du recif barrait le texte (vu en capture).
     var lbl = z + ' m', lw = g.measureText(lbl).width;
     g.fillStyle = 'rgba(10,22,40,.82)';
     g.fillRect(2, y - 6, lw + 5, 12);
     g.fillStyle = 'rgba(200,220,235,.78)';
     g.fillText(lbl, 4, y);
   });
-  // Le niveau de repos, qui est le zéro des profondeurs.
   g.save();
   g.strokeStyle = 'rgba(255,255,255,.16)'; g.lineWidth = 1; g.setLineDash([2, 3]);
   g.beginPath(); g.moveTo(0, yEau); g.lineTo(W, yEau); g.stroke();
   g.restore();
 
-  // ── Le déferlement, là où H/profondeur atteint 0,78 ──────────────────────
+  // ── Déferlement ──────────────────────────────────────────────────────────
   function xDe(zb){
     if (zb == null) return null;
     for (var xm3 = 0; xm3 <= FENETRE; xm3 += 0.5) if (profondeur(xm3) <= zb) return xm3;
     return null;
   }
-  function marqueDe(pr, col, haut, etiq){
-    if (!pr || pr.zb == null) return;
-    var xm3 = xDe(pr.zb);
-    if (xm3 == null) return;
+  function marqueDe(zb, H0, col, haut){
+    if (zb == null) return;
+    var xm3 = xDe(zb);
+    if (xm3 == null) return;                 // déferle au-delà du platier dessiné
     var x = xm3 * px;
     if (x < 10 || x > W - 6) return;
-    var hb = wpHauteurA(etiq === 'min' ? Hmin : Hmax, T, pr.zb);
+    var hb = wpHauteurA(H0, T, zb);
     g.save();
     g.strokeStyle = col; g.lineWidth = 1.2; g.setLineDash([3, 3]);
-    g.beginPath(); g.moveTo(x, haut); g.lineTo(x, yFond(pr.zb)); g.stroke();
+    g.beginPath(); g.moveTo(x, haut); g.lineTo(x, yFond(zb)); g.stroke();
     g.setLineDash([]);
     g.fillStyle = col;
     g.textAlign = (x > W * 0.66) ? 'right' : 'left';
     g.textBaseline = 'top';
-    g.fillText(t1(hb) + ' m sur ' + t1(pr.zb) + ' m de fond',
+    g.fillText(t1(hb) + ' m sur ' + t1(zb) + ' m de fond',
                x + (g.textAlign === 'right' ? -5 : 5), haut);
     g.restore();
   }
   // Le maximum de la fourchette : pas de courbe, juste SON point de
-  // déferlement. C'est ce qui garde le curseur « max » vivant, et ce qui montre
-  // qu'une grosse houle casse plus au large.
+  // déferlement, qui bouge avec le curseur — une grosse houle casse plus au
+  // large. Posé 14 px PLUS BAS que la cote de longueur d'onde : à 13 s, les
+  // deux étiquettes se chevauchaient sur une largeur de téléphone.
   var zbHaut = (Hmax > Hmin + 0.05) ? wpProfondeurDeferlement(Hmax, T) : null;
-  if (zbHaut != null) marqueDe({ zb: zbHaut }, 'rgba(159,212,234,.6)', margeHaut, 'max');
-  marqueDe(prMin, '#e8a057', margeHaut + 14, 'min');
+  if (zbHaut != null) marqueDe(zbHaut, Hmax, 'rgba(159,212,234,.6)', margeHaut + 15);
+  marqueDe(zbMin, Hmin, '#e8a057', margeHaut + 29);
 
-  // ── Étiquettes de hauteur, sur les courbes elles-mêmes ───────────────────
-  // C'est LE point qui manquait : la figure ne disait pas quelle hauteur elle
-  // montrait, alors que les curseurs en règlent deux.
-  // ── La hauteur tracée, cotée SUR la courbe ───────────────────────────────
-  // C'est LE point qui manquait : la figure ne disait pas quelle hauteur elle
-  // montrait, alors que les curseurs en règlent deux. On cote donc la vraie
-  // amplitude, entre un creux et la crête suivante, avec une double flèche.
+  // ── La hauteur TRACÉE, cotée sur la courbe ───────────────────────────────
+  // La cote porte la hauteur LOCALE du point coté, pas `Hmin`. Elle affichait
+  // « 0,8 m » sur une flèche qui en mesurait 0,73 : la figure répondait à
+  // « quelle hauteur est représentée ? » par un chiffre qui n'était pas celui
+  // du dessin. La valeur au large est dans la légende, juste en dessous.
   (function(){
-    var i0 = Math.round(W * 0.08), i1 = Math.min(prMin.pts.length - 1, Math.round(W * 0.52));
+    var i0 = Math.round(W * 0.08), i1 = Math.min(prMin.pts.length - 1, Math.round(W * 0.40));
     var iCrete = i0, iCreux = i0, k;
     for (k = i0; k <= i1; k++){
       if (prMin.pts[k].y < prMin.pts[iCrete].y) iCrete = k;
       if (prMin.pts[k].y > prMin.pts[iCreux].y) iCreux = k;
     }
     var pc = prMin.pts[iCrete];
-    if (Math.abs(prMin.pts[iCreux].y - pc.y) < 6) return;   // trop plat pour coter
+    if (Math.abs(prMin.pts[iCreux].y - pc.y) < 6) return;
     var x = pc.x, yh = pc.y, yb = yEau + (yEau - pc.y);
     g.save();
     g.strokeStyle = 'rgba(200,228,244,.75)'; g.lineWidth = 1;
@@ -3337,11 +3312,9 @@ function drawHouleSchema(){
       g.moveTo(x - 3, e[0] + 3.2 * e[1]); g.lineTo(x, e[0]); g.lineTo(x + 3, e[0] + 3.2 * e[1]);
       g.stroke();
     });
-    // Meme pastille que les cotes de profondeur : la courbe passe au milieu du
-    // texte a mi-hauteur, et le chiffre devient illisible (vu en capture).
     g.font = '700 10.5px DM Sans, sans-serif';
     g.textAlign = 'left'; g.textBaseline = 'middle';
-    var lab = t1(Hmin) + ' m', lw2 = g.measureText(lab).width, ym = (yh + yb) / 2;
+    var lab = t1(pc.h) + ' m', lw2 = g.measureText(lab).width, ym = (yh + yb) / 2;
     g.fillStyle = 'rgba(10,22,40,.85)';
     g.fillRect(x + 4, ym - 7, lw2 + 5, 14);
     g.fillStyle = '#bfe4f6';
@@ -3349,47 +3322,76 @@ function drawHouleSchema(){
     g.restore();
   })();
 
-  // ── Une longueur d'onde, cotée au large ──────────────────────────────────
+  // ── Une longueur d'onde, cotée — celle d'ICI, pas celle du large ─────────
   var L0 = wpL0(T);
-  if (L0 < FENETRE * 0.92){
+  var Lici = wpLongueurOnde(T, PROF_LARGE);
+  if (Lici < FENETRE * 0.92){
     var y0 = 12;
     g.save();
     g.strokeStyle = 'rgba(255,255,255,.28)'; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(4, y0); g.lineTo(4 + L0 * px, y0); g.stroke();
-    [4, 4 + L0 * px].forEach(function(x){
+    g.beginPath(); g.moveTo(4, y0); g.lineTo(4 + Lici * px, y0); g.stroke();
+    [4, 4 + Lici * px].forEach(function(x){
       g.beginPath(); g.moveTo(x, y0 - 3.5); g.lineTo(x, y0 + 3.5); g.stroke();
     });
     g.fillStyle = 'rgba(255,255,255,.6)'; g.textAlign = 'center';
+    g.textBaseline = 'middle';
     g.font = '600 9px DM Sans, sans-serif';
-    g.fillText(Math.round(L0) + ' m', 4 + L0 * px / 2, y0 + 15);
+    g.fillText(Math.round(Lici) + ' m ici', 4 + Lici * px / 2, y0 + 13);
     g.restore();
   }
 
   // ── Légende chiffrée, hors canevas ───────────────────────────────────────
   var sent = wpProfondeurRessentie(T);
+  var hEntree = wpHauteurA(Hmin, T, PROF_LARGE);
+  var hDef = (zbMin != null) ? wpHauteurA(Hmin, T, zbMin) : null;
+  var trop = (typeof wpTropCambree === 'function') && wpTropCambree(Hmin, T);
+
   var vEl = document.getElementById('cr-sch-v');
-  if (vEl) vEl.textContent = Math.round(L0) + ' m entre deux vagues';
+  if (vEl) vEl.textContent = Math.round(L0) + ' m entre deux vagues au large';
+
   var nEl = document.getElementById('cr-sch-note');
-  if (nEl) nEl.innerHTML = (zbMin != null)
-    ? 'Tracé : <b>' + t1(Hmin) + ' m</b>, le minimum demandé. Elle grossit jusqu\'à <b>'
-      + t1(wpHauteurA(Hmin, T, zbMin)) + ' m</b> et déferle par <b>' + t1(zbMin)
-      + ' m</b> de fond'
-      + (zbHaut != null ? ' ; <b>' + t1(Hmax) + ' m</b> casserait par <b>'
-          + t1(zbHaut) + ' m</b>, plus au large.' : '.')
-    : 'Tracé : <b>' + t1(Hmin) + ' m</b>, le minimum demandé.';
+  if (nEl){
+    var txt = sansMin
+      ? 'Tracé : <b>0,5 m</b> — tu n' + String.fromCharCode(39) + 'as pas fixé de minimum. '
+      : 'Tracé : <b>' + t1(Hmin) + ' m</b> au large. ';
+    if (trop){
+      txt += 'Cette houle est <b>trop cambrée</b> pour tenir en eau profonde '
+           + '(H/L₀ = ' + t1(wpCambrure(Hmin, T) * 10) / 10 + ', limite 0,17) : elle déferlerait '
+           + 'avant d' + String.fromCharCode(39) + 'arriver.';
+    } else if (hDef != null && zbMin != null){
+      // « Grossit » n'est vrai que si elle grossit. Ks passe d'abord SOUS 1, et
+      // 148 réglages sur 850 annonçaient « grossit jusqu'à » un chiffre PLUS
+      // PETIT que la hauteur de départ. On compare donc à la hauteur à
+      // l'entrée de la coupe, qui est celle qu'on dessine.
+      txt += 'Elle entre ici à <b>' + t1(hEntree) + ' m</b>, '
+           + (hDef > hEntree + 0.049 ? 'grossit jusqu' + String.fromCharCode(39) + 'à <b>' + t1(hDef) + ' m</b>'
+              : 'reste vers <b>' + t1(hDef) + ' m</b>')
+           + ' et déferle'
+           + (xDe(zbMin) == null
+              ? ' au-delà du platier dessiné, par <b>' + t1(zbMin) + ' m</b> de fond.'
+              : ' par <b>' + t1(zbMin) + ' m</b> de fond.');
+    } else {
+      txt += 'Elle entre ici à <b>' + t1(hEntree) + ' m</b>.';
+    }
+    nEl.innerHTML = txt;
+  }
+
   var pEl = document.getElementById('cr-sch-plus');
   if (pEl) pEl.innerHTML =
-      '<b>Ce qui est juste.</b> L\'échelle horizontale (400 m) et l\'espacement des '
-    + 'crêtes : L₀ = g·T²/2π, soit <b>' + Math.round(L0) + ' m</b> à ' + T + ' s. '
-    + 'Le raccourcissement près du récif, la croissance de la houle et le point de '
-    + 'déferlement sont calculés — shoaling K<sub>s</sub> = √(Cg₀/Cg), déferlement à '
-    + 'H/profondeur = 0,78, longueur d\'onde par Fenton &amp; McKee (1990). Ce sont les '
-    + 'formules du <i>Coastal Engineering Manual</i>.<br>'
-    + '<b>Ce qui ne l\'est pas.</b> Les deux échelles verticales : le fond est tracé sur '
-    + '15 m, la houle est <b>exagérée ' + Math.round(exagV) + '×</b> par rapport à '
-    + 'l\'horizontale. Sans ça, ' + t1(Hmin) + ' m de houle sur ' + Math.round(L0)
-    + ' m de longueur d\'onde serait un trait plat. Le rapport hauteur/profondeur est '
-    + 'donc donné en chiffres au point de déferlement, pas par le dessin. Le tombant '
+      '<b>Pourquoi deux longueurs d' + String.fromCharCode(39) + 'onde.</b> Au large, L₀ = g·T²/2π vaut <b>'
+    + Math.round(L0) + ' m</b> à ' + T + ' s. Mais une houle de ' + T + ' s sent déjà le fond par <b>'
+    + Math.round(sent) + ' m</b> de profondeur, et la coupe commence à 15 m : tout ce qui est '
+    + 'dessiné est DÉJÀ en train de ralentir, donc les crêtes y sont espacées de <b>'
+    + Math.round(Lici) + ' m</b> seulement. La cote sur la figure donne celle-là, le titre du bloc '
+    + 'donne celle du large.<br>'
+    + '<b>Ce qui est juste.</b> L' + String.fromCharCode(39) + 'échelle horizontale (400 m), '
+    + 'le resserrement des crêtes, la croissance de la houle et le point de déferlement : '
+    + 'K<sub>s</sub> = √(Cg₀/Cg), déferlement à H/profondeur = 0,78, longueur d' + String.fromCharCode(39)
+    + 'onde par Fenton &amp; McKee (1990) — les formules du <i>Coastal Engineering Manual</i>.<br>'
+    + '<b>Ce qui ne l' + String.fromCharCode(39) + 'est pas.</b> Les deux échelles verticales : le fond '
+    + 'est tracé sur 15 m, la houle est <b>exagérée ' + Math.round(exagV) + '×</b> par rapport à '
+    + 'l' + String.fromCharCode(39) + 'horizontale — sans ça elle serait un trait plat. Le rapport '
+    + 'hauteur/profondeur est donc donné en chiffres au déferlement, pas par le dessin. Le tombant '
     + 'est un profil plausible de barrière, pas le relevé de ton spot.';
 }
 
@@ -4506,11 +4508,22 @@ function openSlotFor(s){
   // (assets/wave-physics.js, vérifié dans test_swell.js contre un calcul à la
   // main : 13 s et 12 s → une série de 12,5 vagues toutes les 156 s.)
   //
-  // DEUX GARDES, parce que le chiffre ne veut pas toujours dire quelque chose :
-  //   · moins de 3 vagues par cycle, ce ne sont pas des séries mais deux houles
-  //     qui s'entremêlent — 13 s et 9 s donnent 2,8, ça ne se lit pas à l'eau ;
-  //   · une petite houle sur une grosse ne module presque rien, donc la série
-  //     ne se VOIT pas. En dessous de 25 % de rapport de hauteur, on se tait.
+  // QUATRE GARDES, parce que le chiffre ne veut pas toujours dire quelque chose.
+  // Les deux premières étaient là, les deux autres ont été ajoutées après
+  // relecture — chacune ferme un cas où la ligne affichait une absurdité :
+  //   · moins de 3 vagues par cycle : ce ne sont pas des séries mais deux
+  //     houles qui s'entremêlent — 13 s et 9 s donnent 2,8, ça ne se lit pas ;
+  //   · un cycle de moins de 45 s n'est pas une série, c'est la houle ;
+  //   · PLAFOND, nouveau : wpBattement ne rend null qu'en dessous de 0,05 s
+  //     d'écart, donc 13,00 s et 12,95 s passaient et donnaient « environ
+  //     259 vagues toutes les 56 min 07 ». Personne n'attend 56 minutes une
+  //     série de 259 vagues. Au-delà de 4 min ou de 40 vagues, les deux trains
+  //     sont trop proches pour que le battement soit observable ;
+  //   · DEUX MERS DU VENT, nouveau : autresTrains n'écarte que t < 5 s, donc
+  //     5,2 s et 5,0 s déclenchaient la ligne. Or le commentaire promettait
+  //     « deux houles longues de périodes voisines ». Il faut donc qu'au moins
+  //     l'un des deux trains soit une houle — estMerDuVent est déjà calculé
+  //     deux lignes plus haut pour l'affichage du train.
   // Et même quand il s'affiche, ce n'est qu'un ordre de grandeur : la mer a un
   // spectre continu, pas deux raies. Le libellé dit « environ », et le détail
   // du calcul est dans le pli en bas de fiche.
@@ -4521,7 +4534,7 @@ function openSlotFor(s){
     if (sw.t == null || t2.t == null || !(sw.h > 0) || !(t2.h > 0)) return;
     var bat = wpBattement(sw.t, t2.t);
     var mod = wpModulation(sw.h, t2.h);
-    // TROIS seuils, et ils sont serres par la mesure, pas par le gout.
+    // Les seuils sont serres par la mesure, pas par le gout.
     // Releve le 24/11/2026 sur les 199 creneaux de la semaine qui portent deux
     // trains exploitables : periode de battement MEDIANE 21 s, p90 34 s,
     // maximum 78 s. Autrement dit, deux partitions d'un modele se separent
@@ -4531,7 +4544,13 @@ function openSlotFor(s){
     // C'est peu, et c'est voulu : la ligne est faite pour les semaines ou deux
     // houles longues de periodes voisines arrivent ensemble, c'est-a-dire
     // exactement quand les series comptent.
-    if (!bat || bat.vagues < 3 || bat.periode < 45 || mod == null || mod < 0.25) return;
+    if (!bat || mod == null) return;
+    if (bat.vagues < 3 || bat.vagues > 40) return;
+    if (bat.periode < 45 || bat.periode > 240) return;
+    if (mod < 0.25) return;
+    // Au moins une VRAIE houle parmi les deux : deux mers du vent qui battent
+    // ne font pas des series, elles font du clapot organise.
+    if (estMerDuVent(sw) && estMerDuVent(t2)) return;
     var mn = Math.floor(bat.periode / 60), sc = Math.round(bat.periode % 60);
     if (sc === 60) { mn++; sc = 0; }
     ligSerie = ligne('Séries',

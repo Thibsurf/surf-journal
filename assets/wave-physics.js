@@ -25,6 +25,26 @@
 //
 // Unités : mètres, secondes, radians. Jamais de nœuds ni de pieds ici.
 
+// Math.tanh et Math.sinh datent d'ES2015, et ce sont les SEULS appels non-ES5
+// de tout le dépôt (balayage : trois occurrences, toutes ici). Ils existent
+// depuis Safari 7.1 / iOS 8, donc en pratique ça passe — mais `CLAUDE.md` pose
+// l'ES5 comme règle de compatibilité, et le mode de panne serait vicieux :
+// drawHouleSchema se garde de l'ABSENCE du script, pas d'une exception à
+// l'intérieur. Or critSync() l'appelle en dernier, donc un TypeError ici
+// empêcherait saveCrit() ET critRunSoon() — bouger un curseur ne relancerait
+// plus la recherche et ne mémoriserait plus rien. Deux lignes ferment le sujet.
+if (typeof Math.tanh !== 'function') {
+  Math.tanh = function (x) {
+    if (x === Infinity) return 1;
+    if (x === -Infinity) return -1;
+    var a = Math.exp(x), b = Math.exp(-x);
+    return (a - b) / (a + b);
+  };
+}
+if (typeof Math.sinh !== 'function') {
+  Math.sinh = function (x) { return (Math.exp(x) - Math.exp(-x)) / 2; };
+}
+
 var WP_G = 9.81;
 
 // Indice de déferlement en eau peu profonde (McCowan). Au-delà de ce rapport
@@ -74,12 +94,25 @@ function wpCinematique(T, z) {
   var n = 0.5;
   if (!profond) {
     var kz2 = 2 * k * z;
-    // Math.sinh déborde vers l'infini au-delà de ~710. Bien avant ça, à
-    // kz2 > 20, le terme 2kz/sinh(2kz) vaut moins de 1e-7 : on est en eau
-    // profonde, n = ½. Sans cette borne, un fond de 500 m rendrait NaN.
+    // CE COMMENTAIRE A ÉTÉ FAUX. Il affirmait qu'un fond de 500 m « rendrait
+    // NaN » sans cette borne. Mesuré : à T = 13 s et z = 500 m, kz2 = 23,8 et
+    // sinh(23,8) = 1,1e10 — le rapport vaut 2e-9, aucun débordement. Et même
+    // au-delà de sinh ≈ 710, où sinh rend Infinity, x/Infinity vaut 0 : n = ½,
+    // jamais NaN. L'assertion qui « vérifiait » ce commentaire passait donc
+    // aussi sans la garde — une tautologie, exactement ce que la règle
+    // « valider tout harnais par MUTATION » cherche à éviter.
+    //
+    // La borne reste utile pour UNE raison, et une seule : z = Infinity donne
+    // kz2 = Infinity, donc Infinity/Infinity = NaN. Elle sert aussi d'économie
+    // (au-delà de kz2 = 20 le terme pèse moins de 1e-8, n vaut ½ à la précision
+    // du double). C'est ça qu'il fallait écrire.
     n = (kz2 > 20) ? 0.5 : 0.5 * (1 + kz2 / Math.sinh(kz2));
   }
-  return { L: L, k: k, C: C, n: n, Cg: n * C, profond: profond };
+  // `sansFond` et non `profond` : le drapeau dit que l'appelant n'a PAS fourni
+  // de profondeur, pas qu'on est physiquement en eau profonde. Un z de 1e9 est
+  // bien de l'eau profonde et sortirait pourtant `sansFond: false`. Le nom
+  // précédent (`profond`) était une invitation à le lire de travers.
+  return { L: L, k: k, C: C, n: n, Cg: n * C, sansFond: profond };
 }
 
 // ── Coefficient de shoaling ─────────────────────────────────────────────────
@@ -87,9 +120,17 @@ function wpCinematique(T, z) {
 // arrivant sur le fond, son énergie se comprime en hauteur.
 //
 // Détail qui surprend et qui est juste : Ks passe D'ABORD sous 1. Une houle
-// commence par PERDRE un peu de hauteur avant de grossir — minimum 0,913 vers
-// z/L0 = 0,157. C'est un étalon utile : si une implémentation ne montre pas ce
-// creux, elle est fausse. test_swell.js le vérifie.
+// commence par PERDRE un peu de hauteur avant de grossir. C'est un étalon
+// utile : une implémentation qui ne montre pas ce creux est fausse.
+//
+// DEUX valeurs, à ne pas confondre — le commentaire précédent donnait celle du
+// manuel comme si c'était celle du code :
+//   · théorie linéaire exacte (dispersion résolue par Newton) : 0,9130 à
+//     z/L0 = 0,159 — c'est le chiffre des manuels ;
+//   · CETTE implémentation, qui passe par l'approximation de Fenton & McKee :
+//     **0,9118 à z/L0 = 0,145**. L'écart EST celui de l'approximation, et il
+//     reste très inférieur à l'incertitude d'une prévision de houle.
+// test_swell.js vérifie la seconde, avec une tolérance qui couvre la première.
 function wpShoaling(T, z) {
   var c = wpCinematique(T, z);
   var cg0 = (T > 0) ? 0.5 * wpC0(T) : null;
@@ -123,6 +164,22 @@ function wpProfondeurDeferlement(H0, T) {
     if (exces(mid) > 0) bas = mid; else haut = mid;
   }
   return 0.5 * (bas + haut);
+}
+
+// Cambrure en eau profonde, H/L0. Au-delà de WP_CAMBRURE_LIMITE (0,17, critère
+// de Miche repris par eCoast), la houle déferle SANS fond : c'est le
+// moutonnement du large, et une telle houle ne peut pas arriver intacte sur un
+// récif. La constante existait, était documentée et exportée — et n'était lue
+// nulle part, si bien que wpProfondeurDeferlement rendait tranquillement une
+// profondeur de déferlement pour des houles qui ne peuvent pas exister
+// (5 m à 4 s, atteignable aux curseurs, donne H/L0 = 0,20).
+function wpCambrure(H0, T) {
+  var L0 = wpL0(T);
+  return (!(H0 > 0) || !(L0 > 0)) ? null : H0 / L0;
+}
+function wpTropCambree(H0, T) {
+  var c = wpCambrure(H0, T);
+  return c != null && c > WP_CAMBRURE_LIMITE;
 }
 
 // La houle « sent le fond » quand la profondeur descend sous la moitié de sa
@@ -187,6 +244,8 @@ if (typeof window !== 'undefined') {
     profondeurRessentie: wpProfondeurRessentie,
     battement: wpBattement,
     modulation: wpModulation,
+    cambrure: wpCambrure,
+    tropCambree: wpTropCambree,
     G: WP_G,
     INDICE_DEFERLEMENT: WP_INDICE_DEFERLEMENT,
     CAMBRURE_LIMITE: WP_CAMBRURE_LIMITE

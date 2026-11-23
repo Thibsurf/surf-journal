@@ -10601,6 +10601,69 @@ contenu, et la ligne de provenance ne garde que le nom de la source.
 
 `sw.js` v151 → **v152**.
 
+---
+
+## 24/11/2026 (suite) — Relecture du chantier physique : 13 points
+
+Un agent a relu `095f5be` en rejouant `drawHouleSchema` sur un faux contexte de
+canevas qui enregistre chaque tracé et signale NaN et sortie de cadre, et en
+sondant `wave-physics.js` numériquement. **Treize points, tous vérifiés par mes
+propres mesures avant correction.** Les trois premiers affichaient des chiffres
+faux AUX RÉGLAGES PAR DÉFAUT.
+
+### La cause commune : la coupe n'est pas en eau profonde
+
+Elle commence par 15 m de fond. Or une houle de 9 s sent le fond par **63 m**,
+une de 13 s par **132 m**. Tout ce qui est dessiné est donc déjà en train de
+shoaler — et la figure citait pourtant des valeurs d'eau profonde :
+
+| T | cote affichée (L0) | espacement réellement dessiné | écart |
+|---|---|---|---|
+| 8 s | 100 m | 82 m | −18 % |
+| **9 s (défaut)** | **126 m** | **96 m** | **−24 %** |
+| 13 s | 264 m | 151 m | −43 % |
+| 20 s | 625 m | 240 m | −62 % |
+
+Même erreur sur la hauteur : la double flèche cotée « 0,8 m » en mesurait
+**0,733** à 9 s, parce que `Ks(15 m) = 0,9158`. C'était pourtant LE reproche
+auquel ce bloc répondait (« on ne sait pas quelle hauteur est représentée »).
+
+**Correctif** : les deux chiffres sont donnés, chacun à sa place. Le titre du
+bloc porte « 126 m entre deux vagues **au large** », la cote sur la figure
+porte « **96 m ici** », la flèche porte la hauteur LOCALE du point coté, et la
+légende relie les deux : « Tracé : 0,8 m au large. Elle entre ici à 0,7 m,
+grossit jusqu'à 1,1 m et déferle par 1,4 m de fond. » L'écart entre les deux
+est devenu la leçon du schéma au lieu d'être son erreur.
+
+### Les autres
+
+| # | défaut | mesure | correctif |
+|---|---|---|---|
+| 2 | « grossit jusqu'à » un chiffre **plus petit** que le départ — `Ks` passe d'abord sous 1 | **111 réglages sur 850** annoncent moins, 37 annoncent le même chiffre ; pire −8,8 % | phrase conditionnelle, comparée à la hauteur d'entrée |
+| 4 | l'en-tête décrivait **deux courbes** là où le code n'en trace qu'une, et un paragraphe était dupliqué | — | en-tête réécrit |
+| 5 | le commentaire du garde `kz2 > 20` était faux (« rendrait NaN ») **et l'assertion qui le vérifiait passait sans la garde** | sinh(23,8) = 1,1e10, neuf ordres de grandeur du débordement | commentaire rectifié ; l'assertion teste la VALEUR de `n` et le seul cas réel, `z = Infinity` |
+| 6 | ligne « Séries » sans plafond ni garde de nature | 13,00 s et 12,95 s → « 259 vagues toutes les 56 min » ; deux mers du vent de 5,2 et 5,0 s la déclenchaient | plafonds 40 vagues / 240 s, et au moins une vraie houle exigée |
+| 7 | `hsMin = 0` (butée du curseur) → la figure annonçait « 0,5 m, le minimum demandé » | repli silencieux présenté comme une demande | la légende dit « tu n'as pas fixé de minimum » |
+| 8 | déferlement sous le platier : légende annonçant un déferlement que la figure ne montre pas | 34 réglages sur 850 | platier 0,60 → 0,30 m (8 cas restants, nommés) |
+| 9 | deux étiquettes superposées en largeur téléphone | 49 réglages, tous à 13 s | marqueurs décalés de 14 px |
+| 10 | `WP_CAMBRURE_LIMITE` déclarée, documentée, exportée — **jamais lue** | 8 réglages donnent une houle physiquement impossible (5 m à 4 s : H/L₀ = 0,20) | `wpCambrure` / `wpTropCambree`, et la légende le dit |
+| 11 | `wpProfondeurRessentie` calculée, jamais relue | — | remise dans le pli, où elle explique justement le point 1 |
+| 12 | `Math.tanh`/`Math.sinh` sont ES2015 — **les seuls appels non-ES5 du dépôt** | 3 occurrences | polyfills en tête de module, résultats identiques au natif vérifiés |
+| 13 | `profond` disait « pas de profondeur fournie » | `wpCinematique(13, 1e9).profond === false` | renommé `sansFond` |
+
+### Ce que la relecture a vérifié et ÉCARTÉ
+
+Utile pour ne pas re-sonder : les deux limites asymptotiques de Fenton & McKee
+(erreur max **1,659 %** contre la dispersion exacte, conforme au « < 1,7 %
+annoncé »), la monotonie de `H(z)/z` sur [0,05 ; 200] m (16 600 points, 10
+couples, **0 violation**), l'absence de NaN et de sortie de cadre sur plusieurs
+milliers de combinaisons de curseurs à deux largeurs, le formatage du temps des
+séries (y compris l'arrondi à 60 s), l'absence de bug de fuseau et d'injection.
+
+`test_swell.js` : 72 → **89 assertions**, et **7 mutations détectées** — dont
+celle qui ne l'était pas avant : retirer la garde `kz2 > 20` fait désormais
+tomber le harnais.
+
 ### ⚠ Reste à faire
 
 - `previsions.html` fait encore 129 requêtes pour 89 URL distinctes. Les six

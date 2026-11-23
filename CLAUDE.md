@@ -32,8 +32,20 @@ profondeur finie (Fenton & McKee 1990), shoaling `Ks = √(Cg0/Cg)`, déferlemen
 Engineering Manual* (US Army Corps of Engineers), via le calculateur eCoast. **Ne
 JAMAIS recopier une de ces constantes dans une page** : `test_swell.js` vérifie
 qu'aucun `0.78` ni `1.56·T²` ne réapparaît dans `accueil.html`. Étalon de
-validation à garder : `Ks` descend à **0,913 vers z/L0 = 0,157** avant de
-remonter — une implémentation qui ne montre pas ce creux est fausse.
+validation à garder : `Ks` descend sous 1 avant de remonter — une implémentation
+qui ne montre pas ce creux est fausse. ⚠ DEUX valeurs, à ne pas confondre : la
+théorie linéaire exacte donne **0,9130 à z/L0 = 0,159** (le chiffre des
+manuels), cette implémentation donne **0,9118 à 0,145** parce qu'elle passe par
+l'approximation de Fenton & McKee. Citer la première comme étant celle du code
+est une erreur qui a déjà été commise ici.
+
+⚠ **La coupe du schéma de houle n'est PAS en eau profonde**, et c'est structurel :
+elle commence par 15 m de fond alors qu'une houle de 9 s sent le fond par 63 m
+et une de 13 s par 132 m. Aucune fenêtre de 400 m ne peut contenir les deux.
+Tout chiffre affiché sur cette figure doit donc être LOCAL, ou étiqueté « au
+large ». La première version cotait `L0` au-dessus d'un dessin qui montrait la
+longueur d'onde locale : 126 m annoncés pour 96 m dessinés à 9 s, jusqu'à 62 %
+d'écart à 20 s.
 
 **`wind-rose.js` = LA rose des houles et du vent** (previsions.html ET la fiche de
 créneau d'accueil.html). Convention, écrite une fois : `deg` est la direction de
@@ -183,7 +195,7 @@ ne relire qu'elle-même.
    - `node test_pages.js` (61, sur 8 pages) — invariants STRUCTURELS : commentaires
      CSS équilibrés, accolades, `var(--x)` jamais utilisée sans définition, id lus
      en JS présents dans le balisage, précache à jour.
-   - `node test_swell.js` (72) — trains de houle ET physique de la houle. Il existe parce que
+   - `node test_swell.js` (89) — trains de houle ET physique de la houle. Il existe parce que
      l'interprétation des partitions est le point où ce projet s'est trompé le
      plus souvent, et toujours SANS lever d'erreur : trois définitions
      divergentes de « la houle primaire », une mer de vent de 8,13 s retenue
