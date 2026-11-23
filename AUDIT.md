@@ -10315,6 +10315,46 @@ motif `s.sw.(h|t|dir)` dans la fiche, et l'a trouvé dans un **commentaire** que
 je venais d'écrire. Le garde-fou a été laissé tel quel — brutal mais il protège
 un bug revenu trois fois — et c'est le commentaire qui a été reformulé.
 
+### ✓ Passe UX : « ça fait très Claude Code »
+
+Reproche de l'utilisateur, et il était mesurable. Deux défauts, chacun chiffré
+avant d'être corrigé.
+
+**1. L'encart de conditions était un composant de 244 px étiré à 490.** Au-dessus
+de 680 px, `.hb-cond` est un overlay posé sur la photo, large de 244 px — et il
+est très bien ainsi (vérifié en capture à 1100 px). En dessous, il passe en
+pleine largeur mais gardait la mise en page de la colonne étroite : valeur à
+gauche, second chiffre repoussé tout à droite par le `margin-left:auto` de
+`.hc-per`. Résultat à 520 px : **un vide de 300 px entre « 1,2 m » et « 9 s »**,
+et la direction (« SSE », « E ») orpheline sur sa propre ligne, détachée du
+chiffre qu'elle qualifie. Corrigé en rendant à chaque bloc une largeur proche de
+celle pour laquelle il est dessiné : `grid-template-columns:repeat(auto-fit,
+minmax(190px,1fr))` dans la requête média, la marée reprenant toute la largeur
+(c'est la seule des trois sans second chiffre à droite). `previsions.html` n'est
+pas touchée, son overlay garde son CSS.
+
+**2. 402 mots de prose explicative en permanence à l'écran** (mesuré dans le
+navigateur, blocs visibles uniquement, hors `<details>` fermés). Trois blocs en
+faisaient 244 : la légende du schéma de houle (85), le partage des rôles entre
+les deux pages (84), la légende du tableau horaire (75). Une page qui
+s'explique à chaque regard ressemble à de la documentation, pas à un outil.
+
+Rien n'a été supprimé — ces notes répondent à des questions réellement posées.
+Elles sont passées derrière une ouverture `<details class="aide">` dont le
+**libellé annonce le contenu** (« Comment lire ce tableau », « Ce que ce schéma
+simplifie », « Ce que « Excellent » veut dire ») : un chevron anonyme ne se
+clique jamais, et l'information serait perdue pour de bon. Ce qui reste en clair
+est ce qui change une décision — les deux profondeurs que le schéma marque,
+l'absence de rafale à une échéance, le créneau plus gros écarté par les critères
+avec son bouton, et le réglage qui rejette le plus de créneaux.
+
+**402 → 143 mots**, dont une bonne moitié sont des données (extrema de marée,
+résumé des critères) et non de la prose. `summary:focus-visible` était déjà
+couvert ; 0 erreur runtime sur `accueil`, `previsions` et `sorties` après coup,
+thème et polices vivants (le piège du commentaire CSS qui avale `:root`).
+
+`sw.js` v146 → **v147**.
+
 ### ⚠ Reste à faire
 
 - Les BMS ne sont lisibles qu'avec un token meteo.nc côté navigateur : la route

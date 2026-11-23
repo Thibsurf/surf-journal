@@ -130,8 +130,29 @@ a{color:var(--accent);}
   .site-banner .hb-stage{height:auto;container-type:normal;}
   .site-banner .hb-photo{position:relative;height:clamp(130px,34vw,230px);}
   .site-banner .hb-bottom{position:static;padding:14px .9rem 2px;}
+  /* Mode empilé : la carte n'est plus l'encart de 244 px posé sur la photo,
+     elle prend toute la largeur de l'écran. Ses trois blocs gardaient pourtant
+     la mise en page d'une colonne étroite — valeur à gauche, second chiffre
+     repoussé tout à droite par le `margin-left:auto` de .hc-per. Résultat
+     mesuré en capture à 520 px le 23/11/2026 : un vide de 300 px entre
+     « 1,2 m » et « 9 s », et la direction (« SSE », « E ») orpheline sur sa
+     propre ligne, détachée du chiffre qu'elle qualifie.
+     On rend donc à chaque bloc une largeur proche de celle pour laquelle il est
+     dessiné : deux colonnes dès qu'il y a la place, une seule en dessous de
+     ~420 px — où la pleine largeur vaut déjà celle de l'encart d'origine, donc
+     sans vide à combler. */
   .site-banner .hb-cond{position:static;width:auto;margin:10px .9rem 16px;max-height:none;
-    background:rgba(255,255,255,.055);padding:11px 14px;}
+    background:rgba(255,255,255,.055);padding:11px 14px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    column-gap:20px;row-gap:9px;align-content:start;}
+  .site-banner .hb-cond-hd{grid-column:1/-1;}
+  /* Le filet de séparation séparait des blocs EMPILÉS ; côte à côte, il
+     soulignerait la colonne de droite sans rien séparer. */
+  .site-banner .hb-cond-sec+.hb-cond-sec{border-top:none;padding-top:0;}
+  /* La marée garde toute la largeur et le filet : c'est la seule des trois qui
+     n'a pas de second chiffre à droite, elle sonne creux en demi-colonne. */
+  .site-banner #nw-td-sec{grid-column:1/-1;
+    border-top:1px solid rgba(160,200,225,.22);padding-top:8px;}
   .site-banner .hc-main b{font-size:16px;}
   .site-banner .hc-main-vent b{font-size:15px;}
   .site-banner .hc-unit,.site-banner .hc-per,.site-banner .hc-sub{font-size:12px;}
@@ -145,6 +166,15 @@ a{color:var(--accent);}
 .section-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
   letter-spacing:.05em;margin-bottom:8px;}
 .note{font-size:11px;color:var(--faint);line-height:1.5;}
+/* Ouverture d'aide : le libellé doit annoncer ce qu'il y a dedans, sinon on ne
+   l'ouvre jamais et l'information est perdue — c'était tout l'intérêt de la
+   laisser visible. Il reste donc lisible, pas réduit à un chevron gris. */
+.aide>summary{cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);
+  list-style:none;display:inline-flex;align-items:center;gap:5px;padding:3px 0;}
+.aide>summary::-webkit-details-marker{display:none;}
+.aide>summary::before{content:'▸';font-size:9px;color:var(--faint);transition:transform .15s;}
+.aide[open]>summary::before{transform:rotate(90deg);}
+.aide>summary:hover{color:var(--text);}
 .btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 11px;
   border-radius:16px;cursor:pointer;font-size:12px;font-family:var(--font-b);white-space:nowrap;
   transition:border-color .13s,color .13s,background .13s;}
@@ -799,7 +829,17 @@ footer .row{gap:14px;font-size:12px;}
             <canvas id="cr-schema" role="img"
               aria-label="Coupe d'une houle arrivant sur le récif, à l'échelle de la période et de la hauteur choisies"></canvas>
           </div>
+          <!-- Visible : les deux profondeurs que le dessin MARQUE, et rien
+               d'autre. L'espacement des vagues est déjà dans le libellé du
+               bloc, le répéter ici était la première des 85 mots de légende. -->
           <div class="cr-sch-note" id="cr-sch-note"></div>
+          <!-- Replié : ce que le dessin simplifie. C'est une honnêteté
+               nécessaire — l'échelle verticale est fausse — mais elle n'a pas à
+               occuper trois lignes sous un dessin de 124 px à chaque regard. -->
+          <details class="aide">
+            <summary>Ce que ce schéma simplifie</summary>
+            <div class="cr-sch-note" id="cr-sch-plus"></div>
+          </details>
         </div>
         <div class="cr-f cr-f--rose">
           <label>D'où vient la houle<b id="cr-sw-v"></b></label>
@@ -946,7 +986,13 @@ footer .row{gap:14px;font-size:12px;}
     </div>
     <div class="row" id="day-pick" style="margin-bottom:8px;"></div>
     <div class="tscroll" id="tbl"><div class="loading"><div class="spin"></div> Chargement…</div></div>
-    <div class="note" id="tbl-note" style="margin-top:7px;"></div>
+    <!-- La légende du tableau est une légende : elle se consulte quand on bute
+         sur un symbole, pas à chaque passage. 75 mots de gris permanent sous un
+         tableau que l'on vient déjà de lire, personne ne les lit. -->
+    <details class="aide" style="margin-top:7px;">
+      <summary>Comment lire ce tableau</summary>
+      <div class="note" id="tbl-note" style="margin-top:6px;"></div>
+    </details>
   </div>
   </div>
 
@@ -964,14 +1010,21 @@ footer .row{gap:14px;font-size:12px;}
          journal depuis le 23/11/2026. -->
     <a href="https://thibsurf.github.io/surf-journal/#stats">Ce que ton journal t'apprend</a>
   </div>
-  <div class="note" style="margin-top:8px;line-height:1.6;">
-    <b>Cette page répond à « où aller, et quand »</b> : elle compare les 8 spots sur
-    7 jours et classe les créneaux. C'est la seule à le faire.<br>
-    <b>Les prévisions complètes répondent à « pourquoi »</b> : les 8 modèles côte à
-    côte, le spectre de houle, les cartes, les isofronts, le vent aux passes et
-    l'onglet Marée &amp; Pêche. Les deux lisent la MÊME archive et le même moteur de
-    note : un créneau ne peut pas y valoir deux choses différentes.
-  </div>
+  <!-- Le partage des rôles entre les deux pages est utile à qui se demande
+       laquelle ouvrir — une fois. Le laisser en 84 mots au pied de CHAQUE
+       visite en faisait de la documentation collée sur un outil. -->
+  <details class="aide" style="margin-top:8px;">
+    <summary>Cette page et les prévisions complètes</summary>
+    <div class="note" style="margin-top:6px;line-height:1.6;">
+      <b>Ici : « où aller, et quand »</b> — les 8 spots comparés sur 7 jours, les
+      créneaux classés. C'est la seule page à le faire.<br>
+      <b>Les prévisions complètes : « pourquoi »</b> — les 8 modèles côte à côte,
+      le spectre de houle, les cartes, les isofronts, le vent aux passes et
+      l'onglet Marée &amp; Pêche.<br>
+      Les deux lisent la MÊME archive et le même moteur de note : un créneau ne
+      peut pas y valoir deux choses différentes.
+    </div>
+  </details>
 </footer>
 
 <!-- Fiche d'un créneau. Reste dans le DOM, masquée : html2canvas capture un
@@ -3116,15 +3169,22 @@ function drawHouleSchema(){
   var vEl = document.getElementById('cr-sch-v');
   if (vEl) vEl.textContent = Math.round(L) + ' m entre deux vagues';
   var nEl = document.getElementById('cr-sch-note');
+  // Visible : les deux profondeurs que le dessin marque, point. L'espacement
+  // des crêtes est déjà écrit dans le libellé du bloc (« 126 m entre deux
+  // vagues ») — le redire ici ouvrait 85 mots de légende sous un dessin de
+  // 124 px de haut.
   if (nEl) nEl.innerHTML =
-    'À <b>' + T + ' s</b>, deux crêtes sont séparées de <b>' + Math.round(L) + ' m</b> '
-    + '(L&nbsp;=&nbsp;g·T²/2π). Cette houle commence à sentir le fond par <b>'
-    + Math.round(profSent) + ' m</b> et déferle vers <b>' + t1(profDeferle)
-    + ' m</b> de fond pour <b>' + t1(Hs) + ' m</b>, la hauteur minimum que tu demandes.<br>'
-    + 'Le schéma couvre <b>400 m</b> et respecte l’espacement des vagues. '
-    + 'La <b>hauteur est exagérée</b> et le récif est <b>stylisé</b> : à cette échelle, '
-    + '1,5 m de houle sur ' + Math.round(L) + ' m serait un trait plat, et un vrai '
-    + 'tombant de ' + Math.round(profSent) + ' m ne tiendrait pas dans la largeur.';
+    'Sent le fond par <b>' + Math.round(profSent) + ' m</b> de profondeur, '
+    + 'déferle vers <b>' + t1(profDeferle) + ' m</b> pour <b>' + t1(Hs) + ' m</b> de houle.';
+  var pEl = document.getElementById('cr-sch-plus');
+  if (pEl) pEl.innerHTML =
+    'La longueur d’onde en eau profonde vaut L&nbsp;=&nbsp;g·T²/2π, soit <b>'
+    + Math.round(L) + ' m</b> à ' + T + ' s. La coupe couvre <b>400 m</b> et respecte '
+    + 'cet espacement — c’est le rapport horizontal qui porte l’information.<br>'
+    + 'En revanche la <b>hauteur est exagérée</b> et le récif est <b>stylisé</b> : '
+    + 'à cette échelle, 1,5 m de houle sur ' + Math.round(L) + ' m serait un trait '
+    + 'plat, et un vrai tombant de ' + Math.round(profSent) + ' m ne tiendrait pas '
+    + 'dans la largeur. Le dessin montre un comportement, les chiffres sont justes.';
 }
 
 var _critTimer = null;
@@ -3420,12 +3480,20 @@ function renderPodium(r){
   // ── Trois précisions, chacune affichée SEULEMENT quand elle est vraie ────
   var bas = [];
 
-  // a) Ce que la note veut dire. Nécessaire parce qu'une étoile pleine sur un
-  //    petit jour surprend à juste titre : le moteur note la propreté des
-  //    conditions, pas la taille de la houle.
-  bas.push('« ' + esc(b.surf.label) + ' » qualifie la <b>propreté des conditions</b> '
-    + '(période, direction, vent, marée) au barème de ce spot — pas la taille de la houle, '
-    + 'qui se lit sur la hauteur et la puissance.');
+  // a) Ce que la note veut dire. Nécessaire — une étoile pleine sur un petit
+  //    jour surprend à juste titre — mais ce n'est pas une information dont on
+  //    a besoin à chaque visite, et c'était 54 mots de gris permanent sous le
+  //    premier chiffre de la page. Repliée derrière un libellé qui PORTE la
+  //    note elle-même : « Ce que « Excellent » veut dire » se clique une fois,
+  //    là où un chevron anonyme ne se clique jamais.
+  var expl = '<details class="aide" style="margin-top:7px;">'
+    + '<summary>Ce que « ' + esc(b.surf.label) + ' » veut dire</summary>'
+    + '<div class="note" style="margin-top:5px;line-height:1.55;">'
+    + 'La note qualifie la <b>propreté des conditions</b> — période, direction, '
+    + 'vent, marée — au barème de ce spot. <b>Pas la taille de la houle</b>, qui '
+    + 'se lit sur la hauteur et la puissance : un petit jour bien rangé passe '
+    + 'devant un gros jour haché.'
+    + '</div></details>';
 
   // b) Au-delà de l'horizon d'AROME il n'y a pas de rafale, donc le malus de
   //    rafale ne peut pas s'appliquer : deux créneaux ne sont alors pas notés
@@ -3446,7 +3514,12 @@ function renderPodium(r){
       + '" style="padding:2px 8px;">voir quand même</button>');
   }
 
-  html += '<div class="note" style="margin-top:9px;line-height:1.55;">' + bas.join('<br>') + '</div>';
+  // Ne restent en clair que les deux précisions qui CHANGENT une décision :
+  // l'absence de rafale (la note n'en tient pas compte) et l'existence d'un
+  // créneau plus gros écarté par les critères, avec son bouton.
+  if (bas.length)
+    html += '<div class="note" style="margin-top:9px;line-height:1.55;">' + bas.join('<br>') + '</div>';
+  html += expl;
 
   box.innerHTML = html;
   var bs = box.querySelectorAll('[data-p]'), i;
