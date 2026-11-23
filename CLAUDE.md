@@ -23,7 +23,17 @@ Pages autonomes, CSS/JS **inline** dans de gros fichiers HTML :
 
 Modules déjà extraits dans `assets/` : `nc-token.js`, `app-cache.js`, `share-card.js`,
 `charts-core.js`, `enso.js`, `widget-global.js`, `settings-utils.js`, `score-core.js`,
-`tide-harmonics.js`, `sat-tiles.js`, `wind-rose.js`.
+`tide-harmonics.js`, `sat-tiles.js`, `wind-rose.js`, `obs-stations.js`,
+`swell-trains.js`, `wave-physics.js`.
+
+**`wave-physics.js` = la physique de la houle sur le récif.** Longueur d'onde en
+profondeur finie (Fenton & McKee 1990), shoaling `Ks = √(Cg0/Cg)`, déferlement à
+`H/profondeur = 0,78`, battement de deux trains. Les formules viennent du *Coastal
+Engineering Manual* (US Army Corps of Engineers), via le calculateur eCoast. **Ne
+JAMAIS recopier une de ces constantes dans une page** : `test_swell.js` vérifie
+qu'aucun `0.78` ni `1.56·T²` ne réapparaît dans `accueil.html`. Étalon de
+validation à garder : `Ks` descend à **0,913 vers z/L0 = 0,157** avant de
+remonter — une implémentation qui ne montre pas ce creux est fausse.
 
 **`wind-rose.js` = LA rose des houles et du vent** (previsions.html ET la fiche de
 créneau d'accueil.html). Convention, écrite une fois : `deg` est la direction de
@@ -173,7 +183,7 @@ ne relire qu'elle-même.
    - `node test_pages.js` (61, sur 8 pages) — invariants STRUCTURELS : commentaires
      CSS équilibrés, accolades, `var(--x)` jamais utilisée sans définition, id lus
      en JS présents dans le balisage, précache à jour.
-   - `node test_swell.js` (34) — trains de houle. Il existe parce que
+   - `node test_swell.js` (72) — trains de houle ET physique de la houle. Il existe parce que
      l'interprétation des partitions est le point où ce projet s'est trompé le
      plus souvent, et toujours SANS lever d'erreur : trois définitions
      divergentes de « la houle primaire », une mer de vent de 8,13 s retenue

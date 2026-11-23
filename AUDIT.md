@@ -10458,6 +10458,86 @@ commentaire oubliait la gouttière de 20 px, il porte maintenant le calcul.
 Harnais : `test_tide` 61 → **68**, `test_alertes` 77 → **89**. Six mutations,
 toutes détectées.
 
+---
+
+## 24/11/2026 — Le schéma de houle devient un calcul
+
+**Demandé** : « j'aime pas trop la figure que tu as faite parce qu'en fait on
+comprend que le récif est trop basique, et puis comme on a une échelle de
+hauteur de vague minimale et maximale, on ne sait pas quelle est la hauteur
+représentée sur la sinusoïde ». Plus : estimer le shoaling, et voir ce que font
+deux houles qui se croisent.
+
+### Ce que les liens fournis donnent, et ce qu'ils ne donnent pas
+
+Lus : `rider.report/outils/analyseur-de-houle/` et deux onglets de
+`ecoast.shinyapps.io/marine_calculators/`.
+
+- **rider.report ne publie aucune formule.** Son HTML ne contient que la
+  description de l'outil ; le calculateur est un widget JavaScript. La formule
+  des séries n'y est donc pas récupérable.
+- **eCoast donne tout le shoaling**, avec ses références : `Hs = H0·Ks·Kr`,
+  `Ks = √(Cg0/Cg)`, longueur d'onde par **Fenton & McKee (1990)**, déferlement
+  à `H/Z > 0,78`, le tout cité du *Coastal Engineering Manual*.
+- **Aucun des deux ne calcule le croisement de deux houles.** La période de
+  battement vient donc de la superposition d'ondes, pas d'eux — et elle est
+  vérifiée dans le harnais contre des calculs à la main.
+
+### `assets/wave-physics.js`
+
+Module pur, sans DOM, testé. L'ancienne figure utilisait une règle de pouce
+(« déferle vers 1,3 × H ») qui **ignore la période** et ne montrait pas la houle
+grossir. Mesuré avec les vraies formules : **0,8 m à 13 s déferle par 1,64 m de
+fond en faisant 1,28 m** — l'ancienne version annonçait « 1,0 m de fond » et une
+vague d'amplitude constante.
+
+Étalons de validation, tous dans `test_swell.js` :
+
+| contrôle | attendu | obtenu |
+|---|---|---|
+| `Ks` minimum | 0,913 (manuel) | **0,9118** |
+| … à | z/L0 = 0,157 | **0,145** |
+| `L` par 500 m de fond | `L0` = 263,86 m | **263,9 m** |
+| `L` par 1 m de fond | `T·√(gz)` = 40,72 m | **40,68 m** |
+| battement 13 s / 12 s | 156 s, 12,5 vagues | **exact** |
+
+### La figure
+
+- **Une seule courbe, cotée.** Deux hauteurs à la même échelle dans 120 px
+  donnaient une courbe presque plate à côté d'une grosse, et c'est la petite qui
+  filtre. Le minimum est tracé, avec une double flèche et son chiffre — c'est la
+  réponse directe à « on ne sait pas quelle hauteur est représentée ». Le
+  maximum reste vivant : **son** point de déferlement est marqué, et il se
+  déplace quand on bouge le curseur (une grosse houle casse plus au large).
+- **Le récif a une vraie pente** en S, de 15 m au large à 0,6 m de platier, avec
+  une échelle de profondeur cotée à gauche.
+- **La longueur d'onde locale est intégrée** le long de la coupe : les crêtes se
+  resserrent vraiment en arrivant, au lieu d'un pas constant.
+- **Les deux échelles verticales sont annoncées**, avec le facteur
+  d'exagération calculé, et le rapport hauteur/profondeur est donné **en
+  chiffres** au point de déferlement — la seule façon honnête de le dire sans
+  mentir par le dessin.
+
+### Les séries : mesuré, et le résultat est instructif
+
+`T_bat = T1·T2/|T1−T2|`, `N = (T1+T2)/(2·|T1−T2|)`. La fiche d'un créneau
+affiche la ligne quand deux trains se croisent vraiment.
+
+**Mais la mesure impose des seuils serrés.** Sur les 199 créneaux de la semaine
+portant deux trains exploitables : période de battement **médiane 21 s**, p90
+34 s, **maximum 78 s**. Deux partitions d'un modèle se séparent justement
+*parce que* leurs périodes diffèrent — un battement de 21 s ne fait pas des
+séries, il fait deux houles qui s'entremêlent. Avec les seuils retenus
+(≥ 3 vagues, cycle ≥ 45 s, modulation ≥ 25 %), **8 créneaux sur 199** affichent
+la ligne cette semaine-là, et aucun ne dépasse 0,8 m de houle.
+
+C'est peu, et c'est assumé : la ligne est faite pour les semaines où deux houles
+longues de périodes voisines arrivent ensemble, c'est-à-dire exactement quand
+les séries comptent. Le pied de fiche dit que c'est un ordre de grandeur — la
+mer réelle a un spectre continu, pas deux raies.
+
+`test_swell.js` : 34 → **72 assertions**. `sw.js` v149 → **v150**.
+
 ### ⚠ Reste à faire
 
 - `previsions.html` fait encore 129 requêtes pour 89 URL distinctes. Les six

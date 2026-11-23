@@ -49,6 +49,19 @@ const M = (new Function(scoreSrc + '\n' + swellSrc +
   '\nreturn { swellTrainsOf, swellPrimaryOf, swellEstMerDuVent, swellLecture,' +
   ' _DEFAULT_SCORE, ST_SEUIL_CHOIX };'))();
 
+// ─── La physique de la houle sur le récif ──────────────────────────────────
+// assets/wave-physics.js : longueur d'onde en profondeur finie, shoaling,
+// déferlement, battement de deux trains. Les formules viennent du Coastal
+// Engineering Manual (via le calculateur eCoast) et de Fenton & McKee (1990) ;
+// le battement est de l'algèbre de superposition. Toutes se vérifient contre
+// des valeurs de manuel ou contre un calcul à la main — c'est tout l'intérêt
+// de les tester ici plutôt que de les croire.
+const physSrc = readFileSync(join(ROOT, 'assets', 'wave-physics.js'), 'utf8');
+const P = (new Function(physSrc +
+  '\nreturn { wpL0, wpC0, wpLongueurOnde, wpCinematique, wpShoaling, wpHauteurA,' +
+  ' wpProfondeurDeferlement, wpProfondeurRessentie, wpBattement, wpModulation,' +
+  ' WP_G, WP_INDICE_DEFERLEMENT };'))();
+
 // ─── Données réelles, Dumbéa, 23/11/2026 ───────────────────────────────────
 const MARC_8H  = { partitions: [{ h: 1.540, t: 7.940, dir: 152 }, { h: 1.042, t: 12.990, dir: 198 }], hs: 1.86 };
 const MARC_11H = { partitions: [{ h: 1.482, t: 8.130, dir: 153 }, { h: 1.004, t: 13.280, dir: 197 }], hs: 1.79 };
@@ -177,6 +190,152 @@ section('accueil.html consomme le module, et rien d\'autre');
   ok(/\bpw\b/.test(ligPwr) && !/s\.pwr\b/.test(ligPwr),
      'l\'export agenda écrit la puissance du train affiché',
      ligPwr || '(ligne Puissance introuvable)');
+}
+
+section('Physique : longueur d\'onde, shoaling, déferlement');
+{
+  // Eau profonde : L0 = g·T²/2π. 8 s → 100 m, 13 s → 264 m. C'est CE rapport
+  // que le schéma de houle doit rendre à l'échelle.
+  ok(Math.abs(P.wpL0(8) - 99.86) < 0.1, 'L0(8 s) ≈ 100 m', P.wpL0(8).toFixed(2));
+  ok(Math.abs(P.wpL0(13) - 263.86) < 0.1, 'L0(13 s) ≈ 264 m', P.wpL0(13).toFixed(2));
+
+  // Les DEUX limites de Fenton & McKee, qui se calculent à la main.
+  ok(Math.abs(P.wpLongueurOnde(13, 500) - P.wpL0(13)) < 0.05,
+     'très au large, L retombe sur L0',
+     P.wpLongueurOnde(13, 500).toFixed(2) + ' vs ' + P.wpL0(13).toFixed(2));
+  const peuProfond = 13 * Math.sqrt(P.WP_G * 1);
+  ok(Math.abs(P.wpLongueurOnde(13, 1) - peuProfond) / peuProfond < 0.01,
+     'par 1 m de fond, L tend vers T·√(g·z) à moins de 1 %',
+     P.wpLongueurOnde(13, 1).toFixed(2) + ' vs ' + peuProfond.toFixed(2));
+  // Et la longueur d'onde RACCOURCIT en arrivant : c'est ce que le dessin doit
+  // montrer, et ce qu'une sinusoïde à pas constant ne montre pas.
+  ok(P.wpLongueurOnde(13, 3) < P.wpLongueurOnde(13, 10),
+     'L raccourcit quand le fond remonte');
+
+  // Rapport vitesse de groupe / vitesse de phase : ½ au large, 1 sur le platier.
+  ok(Math.abs(P.wpCinematique(13, null).n - 0.5) < 1e-9, 'n = ½ en eau profonde');
+  ok(P.wpCinematique(13, 0.5).n > 0.97, 'n → 1 en eau peu profonde',
+     P.wpCinematique(13, 0.5).n.toFixed(4));
+  // Garde-fou de débordement : Math.sinh part à l'infini au-delà de ~710, et un
+  // fond de 500 m rendait NaN avant la borne kz2 > 20.
+  ok(isFinite(P.wpCinematique(13, 500).Cg) && P.wpCinematique(13, 500).Cg > 0,
+     'un fond de 500 m ne produit pas de NaN (débordement de sinh)');
+
+  // L'ÉTALON du shoaling : Ks passe d'abord SOUS 1 — une houle perd un peu de
+  // hauteur avant de grossir. Minimum de manuel : 0,913 vers z/L0 = 0,157.
+  // Une implémentation qui ne montre pas ce creux est fausse.
+  let ksMin = 9, rMin = 0;
+  const L0 = P.wpL0(12);
+  for (let r = 0.005; r <= 0.6; r += 0.0005) {
+    const ks = P.wpShoaling(12, r * L0);
+    if (ks < ksMin) { ksMin = ks; rMin = r; }
+  }
+  ok(Math.abs(ksMin - 0.913) < 0.01,
+     'Ks descend bien à ~0,913 avant de remonter', 'obtenu ' + ksMin.toFixed(4));
+  ok(Math.abs(rMin - 0.157) < 0.02,
+     '… et ce creux tombe vers z/L0 = 0,157', 'obtenu ' + rMin.toFixed(4));
+  ok(Math.abs(P.wpShoaling(13, 400) - 1) < 0.005,
+     'au large, Ks vaut 1 (rien ne s\'est encore passé)');
+  ok(P.wpShoaling(13, 2) > 1.4, 'par 2 m de fond, la houle a bien grossi',
+     P.wpShoaling(13, 2).toFixed(3));
+
+  // Déferlement : H/profondeur = 0,78, résolu par dichotomie.
+  const zb = P.wpProfondeurDeferlement(0.8, 13);
+  const hb = P.wpHauteurA(0.8, 13, zb);
+  ok(Math.abs(hb / zb - P.WP_INDICE_DEFERLEMENT) < 1e-3,
+     'au point de déferlement, H/profondeur vaut bien 0,78',
+     (hb / zb).toFixed(4));
+  ok(zb > 1.5 && zb < 1.8,
+     '0,8 m à 13 s déferle par ~1,6 m de fond — pas 1,0 m comme le disait la règle naïve 1,3×H',
+     zb.toFixed(2) + ' m');
+  ok(hb > 1.2,
+     '… et elle fait alors 1,3 m, pas 0,8 : c\'est le shoaling, et il se voit à l\'eau',
+     hb.toFixed(2) + ' m');
+  // Une grosse houle déferle PLUS AU LARGE, et une houle courte plus près : les
+  // deux sont vraies et c'est ce que la figure doit raconter.
+  ok(P.wpProfondeurDeferlement(4, 13) > P.wpProfondeurDeferlement(0.8, 13),
+     'une houle plus grosse déferle par plus de fond');
+  ok(P.wpProfondeurDeferlement(1.5, 8) < P.wpProfondeurDeferlement(1.5, 13),
+     'à hauteur égale, une houle courte déferle moins au large (moins de shoaling)');
+  ok(P.wpProfondeurDeferlement(0, 13) === null && P.wpProfondeurDeferlement(1, 0) === null,
+     'entrées nulles → null, pas NaN');
+
+  ok(Math.abs(P.wpProfondeurRessentie(13) - P.wpL0(13) / 2) < 1e-9,
+     'la houle sent le fond par L0/2');
+}
+
+section('Physique : deux houles qui se croisent');
+{
+  // Vérifié à la main : T_bat = T1·T2/|T1−T2| = 13×12/1 = 156 s = 2 min 36.
+  const b = P.wpBattement(13, 12);
+  ok(Math.abs(b.periode - 156) < 0.5, '13 s et 12 s : une série toutes les 156 s',
+     b.periode.toFixed(1));
+  ok(Math.abs(b.vagues - 12.5) < 0.05, '… de 12,5 vagues', b.vagues.toFixed(2));
+  ok(Math.abs(b.porteuse - 12.48) < 0.05,
+     '… vues à l\'eau avec une période de 12,5 s', b.porteuse.toFixed(2));
+
+  // Le cas dégénéré, et c'est important qu'il le soit : deux périodes
+  // ÉLOIGNÉES ne font pas des séries, elles s'entremêlent. 2,8 vagues par
+  // « série » ne se lit pas comme une série, et l'affichage doit s'en abstenir.
+  const loin = P.wpBattement(13, 9);
+  ok(loin.vagues < 3,
+     '13 s et 9 s ne font pas des séries lisibles (moins de 3 vagues)',
+     loin.vagues.toFixed(2));
+
+  // Symétrie : l'ordre des deux trains ne doit rien changer.
+  ok(Math.abs(P.wpBattement(9, 13).periode - P.wpBattement(13, 9).periode) < 1e-9,
+     'le battement est symétrique');
+  ok(P.wpBattement(13, 13) === null,
+     'deux trains de même période : pas de battement, et pas une division par zéro');
+  ok(P.wpBattement(13, 13.02) === null,
+     '… y compris à 0,02 s près, où la « série » durerait deux heures');
+  ok(P.wpBattement(0, 13) === null && P.wpBattement(13, null) === null,
+     'entrées invalides → null');
+
+  // Plus les périodes sont proches, plus la série est longue. C'est la
+  // propriété qui rend le chiffre intéressant.
+  ok(P.wpBattement(14, 13.5).periode > P.wpBattement(14, 13).periode,
+     'des périodes plus proches donnent des séries plus espacées');
+
+  // L'amplitude de la modulation dit si la série se VOIT.
+  ok(Math.abs(P.wpModulation(1.2, 1.2) - 1) < 1e-9,
+     'deux houles de même hauteur se modulent complètement');
+  ok(P.wpModulation(2, 0.2) < 0.15,
+     'une petite houle sur une grosse ne module presque rien',
+     P.wpModulation(2, 0.2).toFixed(3));
+  ok(Math.abs(P.wpModulation(1.2, 0.8) - P.wpModulation(0.8, 1.2)) < 1e-9,
+     'la modulation est symétrique elle aussi');
+}
+
+section('Les seuils d un affichage de series');
+{
+  // Les chiffres de ces seuils sont des MESURES (199 creneaux de la semaine du
+  // 24/11/2026 : battement median 21 s, p90 34 s, max 78 s), pas des gouts. On
+  // verrouille les cas de part et d autre.
+  const acc = readFileSync(join(ROOT, 'accueil.html'), 'utf8');
+  ok(/bat\.vagues < 3 \|\| bat\.periode < 45/.test(acc),
+     'la ligne Series exige 3 vagues ET un cycle d au moins 45 s');
+  ok(/mod < 0\.25/.test(acc),
+     '... et une modulation d au moins 25 % : une petite houle sur une grosse ne module rien');
+  // 12 s et 15 s passent (4,9 vagues, 66 s) ; 9 s et 13 s non (2,6 vagues, 29 s).
+  const bon = P.wpBattement(12.2, 15.0), mauvais = P.wpBattement(9, 13);
+  ok(bon.vagues >= 3 && bon.periode >= 45, '12,2 s et 15,0 s : series affichables');
+  ok(mauvais.vagues < 3 || mauvais.periode < 45, '9 s et 13 s : ecartees');
+}
+
+section('La page consomme le module, et ne recopie rien');
+{
+  const acc = readFileSync(join(ROOT, 'accueil.html'), 'utf8');
+  ok(/<script src="assets\/wave-physics\.js"><\/script>/.test(acc),
+     'accueil.html charge wave-physics.js');
+  // Les constantes physiques ne doivent exister QU'À un endroit. Un 0.78 ou un
+  // g/2π recopié dans la page, c'est la divergence programmée.
+  const inline = acc.slice(acc.indexOf('function drawHouleSchema'),
+                           acc.indexOf('function drawHouleSchema') + 9000);
+  ok(!/0\.78/.test(inline),
+     'l\'indice de déferlement n\'est pas recopié dans le dessin');
+  ok(!/1\.56\s*\*\s*T\s*\*\s*T/.test(acc),
+     'la longueur d\'onde n\'est plus calculée à la main dans la page');
 }
 
 console.log('\n' + '═'.repeat(64));
