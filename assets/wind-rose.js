@@ -115,13 +115,20 @@ function drawWindRose(cv, o) {
   // Anti-collision : deux flèches à moins de 25° se chevauchent au point de ne
   // plus se distinguer → on les écarte de ±13°. L'écart est dans le DESSIN
   // seulement ; les degrés exacts restent dans l'étiquette.
-  var ai, aj, diff;
-  for (ai = 0; ai < arrows.length; ai++) {
-    for (aj = ai + 1; aj < arrows.length; aj++) {
-      diff = Math.abs(((arrows[ai].deg - arrows[aj].deg + 540) % 360) - 180);
-      if (diff < 25) {
-        arrows[ai].deg = (arrows[ai].deg - 13 + 360) % 360;
-        arrows[aj].deg = (arrows[aj].deg + 13 + 360) % 360;
+  // DEUX passes : avec trois fleches ou plus, une seule passe sous-corrige. A
+  // chaque fois qu'on ecarte une paire, on peut en rapprocher une autre, et le
+  // balayage lineaire ne revient pas en arriere. Deux passes suffisent pour les
+  // trois ou quatre fleches que cette rose porte ; au-dela il faudrait un vrai
+  // placement, qui ne vaut pas sa complexite ici.
+  var ai, aj, diff, passe;
+  for (passe = 0; passe < 2; passe++) {
+    for (ai = 0; ai < arrows.length; ai++) {
+      for (aj = ai + 1; aj < arrows.length; aj++) {
+        diff = Math.abs(((arrows[ai].deg - arrows[aj].deg + 540) % 360) - 180);
+        if (diff < 25) {
+          arrows[ai].deg = (arrows[ai].deg - 13 + 360) % 360;
+          arrows[aj].deg = (arrows[aj].deg + 13 + 360) % 360;
+        }
       }
     }
   }

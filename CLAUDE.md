@@ -154,13 +154,20 @@ ne relire qu'elle-même.
 ## Règles de travail
 
 1. Un chantier = un commit. Vérifier qu'aucun `ReferenceError` n'apparaît.
-1bis. **Trois harnais à relancer avant de pousser**, aucun n'a besoin du réseau :
+1bis. **Quatre harnais à relancer avant de pousser**, aucun n'a besoin du réseau :
    - `node test_score.js` (48 assertions) — moteur de score.
    - `node test_tide.js` (44) — marée + fuseau. Il se relance seul dans 3 fuseaux
      hostiles, ce que le sandbox réglé sur `Pacific/Noumea` ne peut pas détecter.
-   - `node test_pages.js` (59, sur 8 pages) — invariants STRUCTURELS : commentaires
+   - `node test_pages.js` (61, sur 8 pages) — invariants STRUCTURELS : commentaires
      CSS équilibrés, accolades, `var(--x)` jamais utilisée sans définition, id lus
-     en JS présents dans le balisage.
+     en JS présents dans le balisage, précache à jour.
+   - `node test_swell.js` (34) — trains de houle. Il existe parce que
+     l'interprétation des partitions est le point où ce projet s'est trompé le
+     plus souvent, et toujours SANS lever d'erreur : trois définitions
+     divergentes de « la houle primaire », une mer de vent de 8,13 s retenue
+     comme houle là où celle de 7,94 s était exclue, MFWAM dont `partitions[0]`
+     EST la mer du vent. Il vérifie aussi qu'accueil.html ne relit pas le train
+     principal là où elle affiche un train secondaire.
    `test_pages.js` refuse aussi un fichier précaché **modifié et non commité** quand
    aucun bump n'est en attente : il ne voyait le problème qu'après le commit, donc
    trop tard, et l'a laissé passer une fois de plus le 22/11. ⚠ Ne pas `.trim()` la
