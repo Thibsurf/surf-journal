@@ -40,6 +40,40 @@
   #cmp td.k { font-weight:700; border-left:1px solid var(--line); }
   #cmp .best { color:var(--accent); }
   #cmp .g { display:block; font-size:10px; color:var(--muted); }
+  /* Vent mesuré : même langage que le comparatif juste au-dessus (mêmes
+     tailles, même sticky sur la colonne de gauche), pour que la page garde
+     une seule grammaire visuelle. */
+  #obs h2 { padding-bottom:8px; }
+  #obs .note { padding:4px 12px 10px; color:var(--muted); font-size:12px; }
+  #obs .tscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .obs-t { border-collapse:collapse; width:100%; font-size:12px; }
+  .obs-t th { color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.1em;
+    text-transform:uppercase; text-align:right; padding:0 10px 5px; white-space:nowrap; }
+  .obs-t th:first-child { text-align:left; padding-left:12px; }
+  .obs-t td { padding:7px 10px; text-align:right; border-top:1px solid var(--line);
+    white-space:nowrap; vertical-align:top; }
+  .obs-t td:first-child { text-align:left; padding-left:12px; white-space:normal; }
+  .obs-t td b { font-weight:600; font-size:12.5px; }
+  .obs-t td small { display:block; color:var(--muted); font-size:10.5px; font-weight:400; }
+  .obs-t td.gros { font-size:17px; font-weight:700; color:#eaf2f8; }
+  .obs-t td.gros span { font-size:10.5px; font-weight:500; color:var(--muted); }
+  .obs-t td span { font-size:10.5px; color:var(--muted); }
+  .obs-t .muet { color:var(--muted); font-weight:400; }
+  /* L'écart au modèle est l'information de la colonne : il porte une couleur,
+     pas un simple gris. Sous-estime = le modèle annonçait moins que le réel. */
+  .obs-t small.sous { color:#e8a057; }
+  .obs-t small.sur  { color:#7fb8d8; }
+
+  /* Ouverture d'aide, même grammaire que les autres pages du site : le libellé
+     annonce le contenu, il reste lisible, et le chevron tourne à l'ouverture. */
+  .aide { margin:6px 0 0; }
+  .aide > summary { cursor:pointer; font-size:12px; font-weight:600; color:var(--muted);
+    list-style:none; display:inline-flex; align-items:center; gap:5px; padding:4px 0; }
+  .aide > summary::-webkit-details-marker { display:none; }
+  .aide > summary::before { content:'\25B8'; font-size:9px; transition:transform .15s; }
+  .aide[open] > summary::before { transform:rotate(90deg); }
+  .aide > summary:hover { color:var(--text); }
+
   footer { padding:10px 14px 30px; color:var(--muted); font-size:11px; }
   footer a { color:var(--accent); }
 
@@ -59,7 +93,22 @@ textarea:focus-visible,
 <body>
 <header>
   <h1>💨 Vent AROME 2.5 km — les passes</h1>
-  <div class="sub">En haut, un comparatif maison des passes entre elles, servi par l'<b>archive GRIB2 Météo-France</b> du site (même modèle AROME 2,5 km, lu en direct à la source 3×/jour). En dessous, les tableaux officiels Windguru (widget « Add to your website ») empilés sur les mêmes heures : ce sont eux qui font foi en cas d'écart.</div>
+  <div class="sub">Les trois passes comparées entre elles, puis ce que les stations
+    <b>mesurent</b>, puis les tableaux officiels Windguru.</div>
+  <!-- 70 mots de provenance en permanence sous le titre : utile une fois, du
+       gris le reste du temps. Repliés, avec un libellé qui dit ce qu'il y a
+       dedans — un chevron anonyme ne se clique jamais. -->
+  <details class="aide">
+    <summary>D'où viennent ces chiffres</summary>
+    <div class="sub" style="margin-top:6px;">
+      Le comparatif du haut vient de l'<b>archive GRIB2 Météo-France</b> du site :
+      même modèle AROME 2,5 km que Windguru, lu en direct à la source 3×/jour,
+      un relais en moins. Le bloc « vent mesuré » vient des stations
+      <b>meteo.nc</b> — c'est la seule donnée réelle de la page. Les tableaux du
+      bas sont le widget officiel Windguru, empilé sur les mêmes heures : en cas
+      d'écart, ce sont eux qui font foi.
+    </div>
+  </details>
 </header>
 
 <div class="bar">
@@ -83,6 +132,17 @@ textarea:focus-visible,
   </div>
   <div id="c-body" class="note">Chargement…</div>
 </div>
+<!-- VENT MESURÉ. Demandé : « un tableau qui met les mesures aux stations à
+     proximité, comme c'est un peu fait sur la page principale ». C'est la seule
+     donnée MESURÉE de cette page — tout le reste est du modèle — et c'est elle
+     qui dit si AROME tire haut ou bas aujourd'hui. Placée APRÈS le comparatif
+     et avant les tableaux Windguru : secondaire, mais pas enterrée sous trois
+     tableaux de 48 heures. -->
+<div id="obs" class="card">
+  <h2>Vent mesuré, en ce moment <span class="id" id="obs-sub"></span></h2>
+  <div id="obs-body" class="note">Lecture des stations…</div>
+</div>
+
 <div id="cards"></div>
 
 <footer>
@@ -96,6 +156,9 @@ textarea:focus-visible,
 </footer>
 
 <script src="assets/nc-token.js"></script>
+<!-- La liste des stations de mesure, partagée avec previsions.html et
+     accueil.html. Le bloc « vent mesuré » plus bas en a besoin. -->
+<script src="assets/obs-stations.js"></script>
 <script>
 // ── Page autonome : 3 widgets Windguru officiels (js/widget.php) empilés ──
 // POURQUOI cette page : previsions.html redessine AROME dans une table maison
@@ -366,7 +429,12 @@ function loadCmp() {
   cmpData = {};
   document.getElementById('c-body').className = 'note';
   document.getElementById('c-body').innerHTML = 'Chargement…';
-  function done() { pending--; if (pending === 0 && seq === loadSeq) drawCmp(); }
+  // loadObs() APRÈS drawCmp : le tableau mesuré lit `cmpData` pour la colonne
+  // AROME. L'appeler avant afficherait « hors horizon » sur toutes les lignes.
+  function done() {
+    pending--;
+    if (pending === 0 && seq === loadSeq) { drawCmp(); loadObs(); }
+  }
   function one(s) {
     // ORDRE INVERSÉ le 20/11/2026. L'ordre précédent (Windguru d'abord et SEUL)
     // répondait à « je veux être sûr que ça vienne de Windguru » (10/11/2026) ;
@@ -410,6 +478,162 @@ function loadCmp() {
 }
 
 function fmtRun(ms) { var p = ncParts(ms); return pad2(p.dom) + '/' + pad2(p.mon) + ' ' + pad2(p.h) + 'h'; }
+
+// ════════════════════════════════════════════════════════════════════════════
+// VENT MESURÉ AUX STATIONS PROCHES
+// ════════════════════════════════════════════════════════════════════════════
+// Une ligne par station meteo.nc rattachée à l'une des passes affichées, avec
+// ce qu'elle mesure MAINTENANT et ce qu'AROME annonçait pour la même heure.
+// C'est le « prévu contre mesuré » de la page principale, ramené ici.
+//
+// Trois précautions, toutes payées ailleurs dans ce projet :
+//   · `wind_speed` de /observation/history est en MÈTRES PAR SECONDE — le seul
+//     flux du site qui ne soit pas en nœuds. ×1,944, une seule fois ;
+//   · une rafale à 0 veut dire « absente », pas « nulle » ;
+//   · la station n'est pas le spot. On affiche son nom et sa distance, sinon
+//     l'écart au modèle serait mis sur le dos du modèle.
+var obsData = {};
+
+// La station D'UN SPOT : son réglage `obsId` dans shared_spots prime toujours
+// sur la distance (Dumbéa est rattachée au Phare Amédée bien que Nouméa soit
+// plus proche — le phare est au vent, la ville est abritée).
+function stationPour(s) {
+  var i, n, sp = null;
+  if (sharedSpots) for (i = 0; i < sharedSpots.length; i++) {
+    n = norm(sharedSpots[i].name);
+    if (n.indexOf(s.match) >= 0) { sp = sharedSpots[i]; break; }
+  }
+  var c = coordsFor(s);
+  if (!sp && c) sp = { lat: c.lat, lon: c.lon };
+  return (typeof obsStationForSpot === 'function') ? obsStationForSpot(sp) : null;
+}
+
+function kmEntre(aLat, aLon, bLat, bLon) {
+  var dLat = (aLat - bLat) * 111.2;
+  var dLon = (aLon - bLon) * 111.2 * Math.cos(aLat * Math.PI / 180);
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
+// Dernier relevé PORTANT DU VENT. Le dernier relevé tout court peut n'avoir
+// qu'une température, et effacerait la mesure précédente.
+function dernierVent(d) {
+  var h = null;
+  if (d && d.properties && d.properties.history) h = d.properties.history;
+  else if (d && d.history && d.history.length) h = d.history;
+  else if (d && d.length) h = d;
+  if (!h || !h.length) return null;
+  for (var i = h.length - 1; i >= 0; i--) {
+    var r = h[i];
+    if (!r) continue;
+    var ws = (r.wind_speed != null && isFinite(r.wind_speed)) ? r.wind_speed * 1.944
+           : (r.wind_speed_kt != null && isFinite(r.wind_speed_kt) ? r.wind_speed_kt : null);
+    if (ws == null) continue;
+    var g = (r.wind_speed_gust != null && r.wind_speed_gust > 0) ? r.wind_speed_gust * 1.944 : null;
+    var ms = r.time ? Date.parse(r.time) : NaN;
+    return { ws: ws, gust: g, dir: r.wind_direction, temp: r.T, ms: isFinite(ms) ? ms : null };
+  }
+  return null;
+}
+
+function loadObs() {
+  // Une station peut servir PLUSIEURS passes — Ouano et Ténia dépendent toutes
+  // deux de Bourake. On ne la lit qu'une fois, mais on nomme les deux : sinon
+  // la ligne semblait ne concerner qu'un spot, et l'autre paraissait absent.
+  var spots = readIds(), vues = {}, liste = [], i;
+  for (i = 0; i < spots.length; i++) {
+    var st = stationPour(spots[i]);
+    if (!st) continue;
+    if (vues[st.id]) { vues[st.id].spots.push(spots[i]); continue; }
+    var e = { st: st, spot: spots[i], spots: [spots[i]] };
+    vues[st.id] = e;
+    liste.push(e);
+  }
+  if (!liste.length || typeof ncGet !== 'function') {
+    document.getElementById('obs-body').textContent =
+      'Pas de station rattachée aux passes affichées.';
+    return;
+  }
+  var reste = liste.length;
+  liste.forEach(function (e) {
+    var q = 'lat=' + e.st.lat + '&lon=' + e.st.lon + '&id=' + e.st.id;
+    ncGet('/history?' + q, 'observation/history?' + q).then(function (d) {
+      obsData[e.st.id] = dernierVent(d);
+      if (--reste === 0) drawObs(liste);
+    }, function () {
+      obsData[e.st.id] = null;
+      if (--reste === 0) drawObs(liste);
+    });
+  });
+}
+
+// AROME à l'heure de la mesure, pour le spot de cette station.
+function aromeA(cle, ms) {
+  var d = cmpData[cle];
+  if (!d || !d.pts) return null;
+  var best = null, bd = 90 * 60000 + 1;
+  for (var i = 0; i < d.pts.length; i++) {
+    var dd = Math.abs(d.pts[i].ms - ms);
+    if (dd < bd && d.pts[i].w != null) { bd = dd; best = d.pts[i]; }
+  }
+  return best;
+}
+
+function drawObs(liste) {
+  var body = document.getElementById('obs-body');
+  var h = '<div class="tscroll"><table class="obs-t"><thead><tr>'
+        + '<th>Station</th><th>Vent</th><th>Rafale</th><th>AROME</th><th>Relevé</th>'
+        + '</tr></thead><tbody>';
+  var n = 0, maxAge = 0;
+  liste.forEach(function (e) {
+    var pt = obsData[e.st.id];
+    var c = coordsFor(e.spot);
+    var km = c ? Math.round(kmEntre(c.lat, c.lon,
+      (e.st.dlat != null ? e.st.dlat : e.st.lat),
+      (e.st.dlon != null ? e.st.dlon : e.st.lon))) : null;
+    var noms = [];
+    for (var q = 0; q < e.spots.length; q++) noms.push(e.spots[q].short);
+    var nom = '<b>' + esc(e.st.name) + '</b><small>' + esc(noms.join(', '))
+            + (km != null ? ' · ' + km + ' km' : '') + '</small>';
+    if (!pt || pt.ms == null) {
+      h += '<tr><td>' + nom + '</td><td colspan="4" class="muet">station muette</td></tr>';
+      return;
+    }
+    var age = Math.round((Date.now() - pt.ms) / 60000);
+    if (age > maxAge) maxAge = age;
+    n++;
+    var mod = aromeA(e.spot.key, pt.ms);
+    var ec = (mod && mod.w != null) ? Math.round(pt.ws) - Math.round(mod.w) : null;
+    h += '<tr><td>' + nom + '</td>'
+       + '<td class="gros">' + Math.round(pt.ws) + '<span> nds</span>'
+       + (pt.dir != null ? '<small>' + compassFr(pt.dir) + '</small>' : '') + '</td>'
+       + '<td>' + (pt.gust != null ? Math.round(pt.gust) + '<span> nds</span>' : '<span class="muet">—</span>') + '</td>'
+       + '<td>' + (mod && mod.w != null
+            ? Math.round(mod.w) + '<span> nds</span>'
+              + (ec !== null && Math.abs(ec) >= 2
+                 ? '<small class="' + (ec > 0 ? 'sous' : 'sur') + '">modèle '
+                   + (ec > 0 ? 'sous-estime de ' + ec : 'surestime de ' + (-ec)) + '</small>'
+                 : (ec !== null ? '<small>au plus près</small>' : ''))
+            : '<span class="muet">hors horizon</span>') + '</td>'
+       + '<td class="muet">' + (age < 1 ? 'à l\u2019instant' : 'il y a ' + age + ' min') + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  body.className = '';
+  body.innerHTML = h;
+  var sub = document.getElementById('obs-sub');
+  if (sub) sub.textContent = n ? (n + ' station' + (n > 1 ? 's' : '') + ' · meteo.nc') : '';
+}
+
+// Rose des vents française, 16 secteurs. `compass()` de settings-utils.js n'est
+// pas chargé ici : cette page est volontairement autonome.
+function compassFr(d) {
+  if (d == null || !isFinite(d)) return '';
+  var R = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  return R[Math.round(((d % 360) + 360) % 360 / 22.5) % 16];
+}
+function esc(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function drawCmp() {
   var spots = readIds(), body = document.getElementById('c-body'), sel = document.getElementById('c-day');
@@ -535,13 +759,17 @@ function drawCmp() {
     ? '⚠ Ces chiffres sortent du cache du worker (jusqu\'à 4 h 30 de retard, donc peut-être le run précédent) : ils peuvent différer des tableaux Windguru du dessous, qui font foi.'
     : 'Chiffres lus chez Windguru il y a ' + Math.round(oldest / 60000) + ' min au plus. En cas d\'écart, les tableaux Windguru du dessous font foi.';
   else if (nWg && nArch) prov = '⚠ Lignes de sources différentes (Windguru et archive Météo-France) : lis la colonne « source » avant de comparer deux spots entre eux.';
-  else prov = 'Source : <b>archive GRIB2 Météo-France</b> du site — même modèle AROME 2,5 km que les tableaux Windguru ci-dessous, lu en direct chez Météo-France (3×/jour) plutôt que relayé.'
-    + (wgWhy ? ' Windguru a été essayé et n\'a pas répondu : ' + wgWhy + '.' : '');
+  else prov = 'Source : <b>archive GRIB2 Météo-France</b>'
+    + (wgWhy ? ' — Windguru a été essayé et n\'a pas répondu : ' + wgWhy + '.' : '');
   html = '<div class="note" style="padding-bottom:8px;color:var(--accent);">' + prov + '</div>'
     + '<div class="note" style="padding-bottom:8px;color:var(--text);">' + banner + '</div>' + html
-    + '<div class="note">Grand chiffre = vent moyen (nds), petit = rafales, puis la direction d\'où vient le vent (la flèche montre où il va). En jaune : le spot où le vent atteint le seuil le plus tard, et celui au matin le plus calme.'
+    + '<details class="aide" style="padding:0 12px;"><summary>Comment lire ce tableau</summary>'
+    + '<div class="note" style="padding-left:0;">Grand chiffre = vent moyen (nds), petit = rafales, '
+    + 'puis la direction d\'où vient le vent (la flèche montre où il va). En jaune : le spot où le '
+    + 'vent atteint le seuil le plus tard, et celui au matin le plus calme.'
     + (anyMixed ? ' * = les heures de ce jour viennent de deux runs différents.' : '')
-    + ' Les tableaux Windguru ci-dessous affichent leur propre date de run dans leur en-tête : elle peut différer de celle-ci.</div>';
+    + ' Les tableaux Windguru ci-dessous affichent leur propre date de run dans leur '
+    + 'en-tête : elle peut différer de celle-ci.</div></details>';
   // Bouton toujours proposé : la source par défaut n'est plus Windguru, donc
   // l'offre « essayer Windguru » ne dépend plus d'une erreur préalable.
   body.className = ''; body.innerHTML = html + '<div class="note">' + archBtn() + '</div>';
