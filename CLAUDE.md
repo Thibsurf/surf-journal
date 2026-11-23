@@ -88,7 +88,13 @@ observation `wind_speed` en m/s → `×1.944`. Une seule conversion par chemin.
 
 Supabase `tiiptlozingmgzcnexpu.supabase.co` (clé anon côté client) + Worker Cloudflare
 (proxy meteo.nc, endpoints `/token`, `/forecast`, `/tide`, `/history`, `/arome`, `/enso`,
-`/proxy`). `/history` = `observation/history` (vent/météo horaire, stations meteo.nc,
+`/bms`, `/proxy`). **`/bms`** (23/11/2026) rend les QUATRE bulletins marine en un appel
+(BMR côte/large + BMS côte/large), cache edge 10 min : les domaines BMS répondent 204
+sans corps quand il n'y a pas d'avis, et c'est cette réponse-là — pas le texte — qui dit
+s'il y a une alerte. Elle existe parce que `/proxy` n'autorise que `meteo.nc/`, pas
+`rpcache.meteo.nc` : sans elle, chaque page devait obtenir un token côté NAVIGATEUR pour
+afficher un avis marine. `assets/alerts.js` l'essaie en premier et retombe sur rpcache +
+Bearer si le worker est injoignable (DNS mobiles NC filtrant `*.workers.dev`). `/history` = `observation/history` (vent/météo horaire, stations meteo.nc,
 fenêtre glissante ~5 j — PAS de houle, aucun champ Hs/période/direction, vérifié le
 03/08/2026). Tables : `sessions`, `meteo_cache`, `model_forecast_cache`, `shared_tokens`,
 `spots`, `shared_spots`, `observations_history` (migration à passer, cf. AUDIT.md 03/08).
@@ -156,7 +162,7 @@ ne relire qu'elle-même.
 1. Un chantier = un commit. Vérifier qu'aucun `ReferenceError` n'apparaît.
 1bis. **Cinq harnais à relancer avant de pousser**, aucun n'a besoin du réseau :
    - `node test_score.js` (48 assertions) — moteur de score.
-   - `node test_tide.js` (57) — marée + fuseau. Il se relance seul dans 3 fuseaux
+   - `node test_tide.js` (61) — marée + fuseau. Il se relance seul dans 3 fuseaux
      hostiles, ce que le sandbox réglé sur `Pacific/Noumea` ne peut pas détecter.
      Il couvre aussi, depuis le 23/11/2026, le **lien profond** de `sorties.html`
      vers la fiche d'`accueil.html` (`#fiche=Spot,AAAA-MM-JJ,HH:MM`) : c'est le
@@ -174,7 +180,7 @@ ne relire qu'elle-même.
      comme houle là où celle de 7,94 s était exclue, MFWAM dont `partitions[0]`
      EST la mer du vent. Il vérifie aussi qu'accueil.html ne relit pas le train
      principal là où elle affiche un train secondaire.
-   - `node test_alertes.js` (62) — BMS marine et vent mesuré. Il existe parce
+   - `node test_alertes.js` (77) — BMS marine et vent mesuré. Il existe parce
      que `getActiveBMS()` décidait de l'alerte par expression régulière sur la
      PROSE du bulletin, et que `/Vent fort/i` trouve son compte dans « mer
      sou**vent fort**e », une phrase de tous les bulletins marine. Résultat

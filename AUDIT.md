@@ -10355,10 +10355,61 @@ thème et polices vivants (le piège du commentaire CSS qui avale `:root`).
 
 `sw.js` v146 → **v147**.
 
+### ✓ Route `/bms` du Worker — l'avis marine sans token navigateur
+
+Les BMS ne sont servis que par `rpcache.meteo.nc`, qui exige un Bearer, et la
+route `/proxy` du worker n'autorise que `meteo.nc/`. Chaque page devait donc
+obtenir un token CÔTÉ NAVIGATEUR juste pour afficher un avis — ce qu'accueil.html
+n'avait aucune autre raison de faire.
+
+`/bms` rend les quatre domaines en un appel, en parallèle, avec un cache edge de
+10 min. Les domaines BMS répondent 204 sans corps quand il n'y a pas d'avis : la
+route transmet ce `null` tel quel, sans l'interpréter — le parsing reste dans
+`assets/alerts.js`, une seule fois pour tout le site. Une réponse où les DEUX
+bulletins normaux manquent n'est pas mise en cache : c'est une panne de rpcache,
+pas une mer calme.
+
+`_bmsCharges()` essaie le worker puis retombe sur rpcache + Bearer : le repli
+reste nécessaire, `*.workers.dev` étant filtré par certains DNS mobiles en NC.
+Et `bmsEnsure()` d'accueil.html a inversé son ordre — le worker d'abord, le
+token seulement si ça n'a rien donné : demander un token d'abord faisait payer
+à la première ouverture de fiche un aller-retour dont on n'a le plus souvent
+aucun besoin.
+
+Déployé (version `1229d9df`), compte `25169cde…` vérifié avant. Testé en direct :
+`/bms` rend les deux BMR et `null` sur les deux BMS (aucun avis en cours),
+1,55 s à froid puis 0,07 s depuis le cache edge. Vérifié dans le navigateur
+token retiré : le bandeau obtient ses données et `_ncToken` reste nul.
+
+`test_alertes.js` passe à **77 assertions** : chemin worker, repli sur 502, sur
+exception (DNS filtrant), sur worker répondant sans aucun BMR, et absence totale
+de source. Validé par mutation, 4 sur 4 — dont une qui a révélé une assertion
+trop lâche de ma part (`/douteux/` sur le source du worker, que
+`const douteux = false` traversait sans broncher).
+
+### ✓ 39 requêtes de marée pour 18 jours distincts
+
+Trouvé en lisant la trace réseau de la vérification précédente.
+`tideFetchDay()` ne remplit son cache qu'au RETOUR de la réponse : N appels
+pour le même jour partis avant ce retour produisaient N requêtes identiques. Et
+c'est systématique, pas accidentel — `tideEnsureDay()` demande J-1, J et J+1,
+donc deux jours consécutifs se recouvrent toujours, et le chercheur de créneaux
+les demande tous en parallèle.
+
+Mesuré : **39 requêtes `/tide` pour 18 couples (station, date) distincts**, soit
+22 aller-retours pour rien à chaque chargement, sur une page qui se veut légère
+et qui s'ouvre en 4G au bord de l'eau. Après correction (registre des requêtes
+EN VOL, pas seulement des résultats) : **17 requêtes, 17 distinctes**.
+
+`test_tide.js` passe à **61 assertions**. Le bouchon de ce test ne résout qu'au
+tour suivant, sinon le cache se remplirait avant la deuxième demande et un
+doublon passerait inaperçu. La mutation reproduit exactement le motif réel :
+9 requêtes pour 5 dates, celle du milieu demandée trois fois.
+
+`previsions.html` en profite aussi, elle partage le module.
+
 ### ⚠ Reste à faire
 
-- Les BMS ne sont lisibles qu'avec un token meteo.nc côté navigateur : la route
-  `/proxy` du worker n'autorise que `meteo.nc/`, pas `rpcache.meteo.nc`. Une
-  route `/bms` côté worker rendrait le bandeau disponible sans token.
-- Relecture indépendante à refaire quand la limite d'usage sera repartie : la
-  passe à la main a trouvé cinq défauts, un œil neuf en trouvera d'autres.
+- Relecture indépendante relancée (elle s'était arrêtée sur la limite d'usage de
+  5 h) : la passe à la main a trouvé cinq défauts, un œil neuf en trouvera
+  d'autres.

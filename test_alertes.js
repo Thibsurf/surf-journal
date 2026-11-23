@@ -80,6 +80,35 @@ const A = (new Function('bouchon', `
   };
 `))(bouchon);
 
+// ─── La même chose, mais avec la route /bms du Worker disponible ───────────
+// Deux chemins coexistent désormais dans _bmsCharges() : le worker (sans token
+// navigateur) puis rpcache en direct. Il faut vérifier les DEUX, et surtout que
+// le repli se déclenche quand le worker ne rend rien d'exploitable — sinon une
+// panne du worker ferait disparaître les avis marine en silence.
+const bouchonW = { token: 'jeton-bidon', reponses: {}, bmsHttp: null, appelsNcFetch: 0 };
+const W = (new Function('b', `
+  var _NC_WORKER = 'https://worker-bidon';
+  var _workerDead = false;
+  var _ncToken = b.token;
+  function AbortController(){ this.signal = null; this.abort = function(){}; }
+  function setTimeout(f, d){ return 0; }
+  function clearTimeout(t){}
+  function fetch(url, opt){
+    if (String(url).indexOf('/bms') >= 0) {
+      if (b.bmsHttp === 'throw') return Promise.reject(new Error('DNS filtre'));
+      if (b.bmsHttp === 'ko')    return Promise.resolve({ ok: false, status: 502 });
+      return Promise.resolve({ ok: true, status: 200, json: function(){ return Promise.resolve(b.bmsBody); } });
+    }
+    return Promise.reject(new Error('fetch inattendu : ' + url));
+  }
+  function ncFetch(url){ b.appelsNcFetch++; return Promise.resolve(b.reponses[url] || null); }
+  function escapeHtml(s){ return String(s); }
+  var document = { getElementById: function(){ return null; } };
+  var window = {};
+  ${alertsSrc}
+  return { getActiveBMS: getActiveBMS, jeton: function(t){ _ncToken = t; } };
+`))(bouchonW);
+
 const O = (new Function(obsSrc + `
   return { OBS_STATIONS: OBS_STATIONS, obsStationNearest: obsStationNearest,
            obsStationForSpot: obsStationForSpot, obsStationDist: obsStationDist };
@@ -253,6 +282,61 @@ ok((await A.getActiveBMS(true)) === null, 'sans token, getActiveBMS rend null');
 A.jeton('jeton-bidon');
 
 // ════════════════════════════════════════════════════════════════════════════
+section('route /bms du Worker : chemin principal et repli');
+
+// Charges telles que la route les rend : les quatre domaines en un objet, les
+// domaines BMS à null quand rpcache a répondu 204.
+const VIA_WORKER_CALME = { bmrLagon: BMR_LAGON, bmrLarge: BMR_LARGE, bmsLagon: null, bmsLarge: null };
+const VIA_WORKER_AVIS  = { bmrLagon: BMR_LAGON, bmrLarge: BMR_LARGE, bmsLagon: BMS_LAGON, bmsLarge: null };
+
+async function viaWorker(body, http) {
+  bouchonW.bmsBody = body;
+  bouchonW.bmsHttp = http || null;
+  bouchonW.appelsNcFetch = 0;
+  bouchonW.reponses = {
+    [URLS.bmrLagon]: BMR_LAGON, [URLS.bmrLarge]: BMR_LARGE,
+    [URLS.bmsLagon]: BMS_LAGON   // le chemin DIRECT verrait un avis : si le
+  };                             // résultat n'en montre pas, c'est bien le
+  return await W.getActiveBMS(true);  // worker qui a servi.
+}
+
+const wCalme = await viaWorker(VIA_WORKER_CALME);
+ok(wCalme && wCalme.active === false,
+  'le worker fait foi : deux domaines BMS à null → aucune alerte',
+  JSON.stringify({ active: wCalme && wCalme.active, nc: bouchonW.appelsNcFetch }));
+ok(bouchonW.appelsNcFetch === 0,
+  '… et rpcache n\'est pas appelé du tout (donc aucun token requis)',
+  'appels ncFetch = ' + bouchonW.appelsNcFetch);
+
+const wAvis = await viaWorker(VIA_WORKER_AVIS);
+ok(wAvis && wAvis.active === true && wAvis.niveau === 'cote',
+  'un corps BMS servi par le worker arme bien l\'alerte',
+  JSON.stringify({ active: wAvis && wAvis.active, niveau: wAvis && wAvis.niveau }));
+
+// Le worker répond, mais sans aucun BMR : ce n'est pas une mer calme, c'est une
+// panne. Il FAUT basculer sur rpcache, sinon les avis disparaissent en silence.
+const wVide = await viaWorker({ bmrLagon: null, bmrLarge: null, bmsLagon: null, bmsLarge: null });
+ok(bouchonW.appelsNcFetch === 4,
+  'worker sans aucun BMR → repli sur rpcache (4 appels)',
+  'appels ncFetch = ' + bouchonW.appelsNcFetch);
+ok(wVide && wVide.active === true,
+  '… et le repli retrouve l\'avis que le chemin direct voit');
+
+const wKo = await viaWorker(null, 'ko');
+ok(bouchonW.appelsNcFetch === 4, 'worker en 502 → repli sur rpcache');
+const wThrow = await viaWorker(null, 'throw');
+ok(bouchonW.appelsNcFetch === 4,
+  'worker injoignable (DNS mobile NC filtrant *.workers.dev) → repli sur rpcache');
+
+// Dernier filet : ni worker exploitable ni token.
+bouchonW.bmsHttp = 'throw';
+bouchonW.appelsNcFetch = 0;
+W.jeton(null);
+ok((await W.getActiveBMS(true)) === null,
+  'ni worker ni token → null, et pas une alerte inventée');
+W.jeton('jeton-bidon');
+
+// ════════════════════════════════════════════════════════════════════════════
 section('vent mesuré : la conversion et la station');
 
 const OBSFN = (new Function(
@@ -322,8 +406,20 @@ const appelsBms = sansCommentaires(accueilSrc).split('\n')
 ok(appelsBms.length === 1,
   'accueil.html n\'appelle getActiveBMS qu\'à UN endroit (bmsEnsure)',
   appelsBms.join(' | '));
-ok(/function bmsEnsure\([^]*?tokenEnsure\(/.test(accueilSrc),
-  'cet appel est précédé de tokenEnsure : sans Bearer, rpcache ne répond pas');
+// L'ORDRE compte, et il s'est inversé le 23/11/2026 quand le Worker a exposé
+// /bms : on tente d'abord (le worker a son propre token, aucun aller-retour
+// pour le navigateur), et on ne va chercher un token QUE si ça n'a rien donné.
+// L'assertion précédente disait « précédé de tokenEnsure » et serait restée
+// verte après l'inversion — un harnais qui décrit un design périmé.
+{
+  const be = fnSrc(accueilSrc, 'bmsEnsure');
+  ok(be.indexOf('essai(false)') < be.indexOf('tokenEnsure('),
+    'bmsEnsure essaie le Worker AVANT de demander un token');
+  ok(/essai\(true\)/.test(be),
+    '… et force la relecture au second essai, sinon alerts.js rend son null en cache');
+  ok(/tokenEnsure\(/.test(be),
+    '… mais garde le repli par token : *.workers.dev est filtré par des DNS NC');
+}
 ok(/function majBms\([^]*?BMS_PORTEE_H/.test(accueilSrc),
   'majBms borne la portée : un avis en cours ne s\'affiche pas sur un créneau de J+4');
 
@@ -377,6 +473,24 @@ ok(/<script src="assets\/alerts\.js"><\/script>/.test(accueilSrc),
   'accueil.html charge alerts.js');
 ok(swSrc.includes("'/surf-journal/assets/obs-stations.js'"),
   'obs-stations.js est précaché : sans ça, ReferenceError au 1er lancement hors-ligne');
+
+const workerSrc = readFileSync(join(ROOT, 'worker_cloudflare', 'worker.js'), 'utf8');
+ok(/url\.pathname === "\/bms"/.test(workerSrc),
+  'le Worker expose bien la route /bms');
+ok(/BMSCOTE-09/.test(workerSrc) && /BMSLARGE-09/.test(workerSrc)
+   && /BMRCOTE-09/.test(workerSrc) && /BMRLARGE-09/.test(workerSrc),
+  '… et interroge les quatre domaines');
+ok(/up\.status === 204/.test(workerSrc),
+  '… en rendant null sur un 204, qui est la réponse « aucun avis »');
+// Ces quatre contrôles sont des TRIPWIRES de source : le worker ne s'exécute pas
+// dans ce harnais (il lui faudrait KV, caches.default et un token). On vérifie
+// donc l'invariant écrit, pas le comportement — et on le vérifie précisément.
+// Première version : `/douteux/.test(...)`, que la mutation `const douteux =
+// false` traversait sans broncher, le mot étant toujours là.
+ok(/douteux\s*=\s*!out\.bmrLagon\s*&&\s*!out\.bmrLarge/.test(workerSrc),
+  '… « douteux » se juge bien sur l\'absence des DEUX bulletins normaux');
+ok(/if\s*\(!douteux\)\s*await cache\.put/.test(workerSrc),
+  '… et une réponse douteuse n\'entre pas dans le cache de 10 min');
 
 // ════════════════════════════════════════════════════════════════════════════
 console.log('\n' + '═'.repeat(64));

@@ -3761,11 +3761,28 @@ function bmsEnsure(cb){
     _bmsEtat = d ? { pret: true, data: d } : null;
     att.forEach(function(f){ try { f(d); } catch(e){} });
   }
-  tokenEnsure(function(ok){
-    if (!ok || typeof getActiveBMS !== 'function') { fini(null); return; }
-    try { getActiveBMS().then(fini, function(){ fini(null); }); }
-    catch(e){ fini(null); }
-  });
+  // ORDRE INVERSÉ depuis que le Worker expose /bms (23/11/2026) : on essaie
+  // d'abord, et on ne va chercher un token QUE si ça n'a rien donné. Le worker
+  // a le sien en KV et répond en ~70 ms depuis son cache edge ; demander un
+  // token d'abord faisait payer à la première ouverture de fiche un
+  // aller-retour réseau dont on n'a, le plus souvent, aucun besoin.
+  //
+  // Le repli reste nécessaire : *.workers.dev est filtré par certains DNS
+  // mobiles en Nouvelle-Calédonie, et là seul le chemin direct rpcache marche.
+  // `force` au second essai, sinon alerts.js rend le null qu'il vient de
+  // mettre en cache pour 15 min.
+  if (typeof getActiveBMS !== 'function') { fini(null); return; }
+  function essai(force){
+    try { return getActiveBMS(force); }
+    catch(e){ return Promise.reject(e); }
+  }
+  essai(false).then(function(d){
+    if (d) { fini(d); return; }
+    tokenEnsure(function(ok){
+      if (!ok) { fini(null); return; }
+      essai(true).then(fini, function(){ fini(null); });
+    });
+  }, function(){ fini(null); });
 }
 
 // La nature d'un BMS est un paragraphe de bulletin (« Avis de vent fort sur… »).

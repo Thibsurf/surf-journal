@@ -191,25 +191,47 @@ function _tideEventsToPoints(tide) {
 
 // Charge (et met en cache) les extrema d'UN jour pour UNE station.
 // Résout toujours — jamais de rejet : l'absence de donnée est un repli, pas une erreur.
+// Requêtes EN VOL, par station et par jour. Le cache de résultats ne se remplit
+// qu'au retour de la réponse : jusqu'ici, N appels pour le même jour partis
+// AVANT ce retour produisaient N requêtes identiques.
+//
+// Ce n'est pas théorique. Le chercheur de créneaux d'accueil.html appelle
+// tideEnsureDay() pour chaque jour affiché, et chaque appel demande J-1, J et
+// J+1 : deux jours consécutifs se recouvrent donc toujours. Mesuré dans le
+// navigateur le 23/11/2026 : **39 requêtes /tide pour 18 couples
+// (station, date) distincts** — 21 aller-retours pour rien, sur une page qui
+// se veut légère et qui s'ouvre au bord de l'eau en 4G.
+var _tideInflight = {};
+
 function tideFetchDay(stationId, ds) {
   var key = _tideCacheKey(stationId, ds);
   if (Object.prototype.hasOwnProperty.call(_tideDayCache, key)) {
     return Promise.resolve(_tideDayCache[key]);
   }
+  // Même station, même jour, déjà demandé et pas encore revenu : on rend LA
+  // promesse en cours. Tous les appelants seront servis par la même réponse.
+  if (_tideInflight[key]) return _tideInflight[key];
   if (!TIDE_API.base || typeof fetch !== 'function') {
     _tideDayCache[key] = null;
     return Promise.resolve(null);
   }
-  return fetch(TIDE_API.base + '/tide?id=' + encodeURIComponent(stationId) + '&date=' + encodeURIComponent(ds))
+  var p = fetch(TIDE_API.base + '/tide?id=' + encodeURIComponent(stationId) + '&date=' + encodeURIComponent(ds))
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       // Hors couverture (avant l'année courante), l'API répond `tide: []` : c'est
       // une réponse VALIDE qui dit « je n'ai pas ce jour », d'où le repli modèle.
       var pts = j && j.properties ? _tideEventsToPoints(j.properties.tide) : null;
       _tideDayCache[key] = pts;
+      delete _tideInflight[key];
       return pts;
     })
-    .catch(function () { _tideDayCache[key] = null; return null; });
+    .catch(function () {
+      _tideDayCache[key] = null;
+      delete _tideInflight[key];
+      return null;
+    });
+  _tideInflight[key] = p;
+  return p;
 }
 
 // Prépare la courbe d'une date : J-1, J et J+1, car il faut un extremum de part et

@@ -118,6 +118,21 @@ function fetchStubReel() {
   };
 }
 
+// Bouchon qui COMPTE ses appels et ne résout qu'au tour suivant : c'est la
+// seule façon de voir plusieurs demandes identiques coexister en vol. Un
+// bouchon qui résout immédiatement remplirait le cache avant même la deuxième
+// demande, et un doublon passerait inaperçu.
+function fetchStubCompteur(journal) {
+  return function (url) {
+    journal.push(String(url).replace(/^[^?]*\?/, ''));
+    const m = /date=(\d{4}-\d{2}-\d{2})/.exec(String(url));
+    const body = m && REEL[m[1]] ? { properties: { tide: REEL[m[1]] } } : { properties: { tide: [] } };
+    return new Promise(function (resolve) {
+      setTimeout(function () { resolve({ ok: true, json: () => Promise.resolve(body) }); }, 5);
+    });
+  };
+}
+
 // ─── Mini-harnais ───────────────────────────────────────────────────────────
 let pass = 0, fail = 0;
 const SILENT = !!process.env.__TIDE_CHILD;
@@ -367,6 +382,46 @@ function testLienSortie() {
   ok(L._clefSpot(null) === '' && L._clefSpot(undefined) === '', 'une entrée vide ne lève pas');
 }
 
+async function testDedup() {
+  section('Une requête par jour, même demandée dix fois à la fois');
+  const journal = [];
+  const T = loadTide(fetchStubCompteur(journal));
+  T.TIDE_API.base = 'https://exemple-non-appele';
+
+  // tideEnsureDay demande J-1, J et J+1. Trois jours CONSÉCUTIFS se recouvrent
+  // donc : 5 dates distinctes pour 3 appels, pas 9. C'est exactement ce que
+  // fait le chercheur de créneaux d'accueil.html, et il produisait 39 requêtes
+  // pour 18 couples (station, date) — mesuré dans le navigateur le 23/11/2026.
+  await Promise.all([
+    T.tideEnsureDay('2026-11-20', 'noumea'),
+    T.tideEnsureDay('2026-11-21', 'noumea'),
+    T.tideEnsureDay('2026-11-22', 'noumea'),
+  ]);
+  const uniques = Array.from(new Set(journal));
+  ok(journal.length === uniques.length,
+     'aucune requête /tide en double, même lancées en parallèle',
+     journal.length + ' requêtes pour ' + uniques.length + ' distinctes : '
+       + journal.slice().sort().join(' , '));
+  ok(uniques.length === 5,
+     '3 jours consécutifs = 5 dates distinctes (J-1..J+1 se recouvrent)',
+     'obtenu ' + uniques.length);
+
+  // Et une fois revenues, elles ne repartent pas : le cache de résultats prend
+  // le relais du registre des requêtes en vol.
+  const avant = journal.length;
+  await T.tideEnsureDay('2026-11-21', 'noumea');
+  ok(journal.length === avant,
+     'un jour déjà chargé ne redéclenche aucune requête',
+     (journal.length - avant) + ' requête(s) de trop');
+
+  // Deux STATIONS différentes pour le même jour restent deux requêtes : la
+  // déduplication ne doit pas confondre Nouméa et Bourail.
+  const avant2 = journal.length;
+  await T.tideEnsureDay('2026-11-21', 'bourail');
+  ok(journal.length > avant2,
+     'une autre station redemande bien ses propres jours');
+}
+
 function testFuseaux(empreinteLocale) {
   section('Aucune fuite de fuseau : même résultat sous TZ hostile');
   const self = fileURLToPath(import.meta.url);
@@ -405,6 +460,7 @@ function testFuseaux(empreinteLocale) {
   testModele(T);
   testPorts(T);
   testLienSortie();
+  await testDedup();
   testFuseaux(await empreinte());
 
   console.log('\n' + '═'.repeat(64));

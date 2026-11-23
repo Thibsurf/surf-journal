@@ -395,6 +395,73 @@ export default {
         return jsonOrRaw(up, cors);
       }
 
+      // ── /bms — bulletins marine meteo.nc (BMR normaux + BMS d'alerte) ──────
+      // POURQUOI cette route existe : les BMS ne sont servis que par
+      // rpcache.meteo.nc, qui exige un Bearer. La route /proxy n'autorise que
+      // meteo.nc/ (pas rpcache), donc jusqu'ici chaque page devait obtenir un
+      // token côté NAVIGATEUR pour afficher un avis marine — ce qu'accueil.html
+      // n'avait aucune autre raison de faire. Le worker a déjà le token, en KV,
+      // renouvelé par son cron : autant qu'il réponde.
+      //
+      // Les QUATRE domaines en un seul appel, en parallèle. Les deux domaines
+      // BMS répondent 204 sans corps quand il n'y a aucun avis en cours, et
+      // c'est CETTE réponse-là qui dit s'il y a une alerte — pas le texte des
+      // bulletins. On la transmet donc telle quelle (null), sans l'interpréter :
+      // le parsing vit dans assets/alerts.js, une seule fois pour tout le site.
+      // Chercher « vent fort » dans la prose d'un BMR a produit une alerte
+      // permanente et fausse pendant des mois (cf. AUDIT.md 23/11/2026).
+      //
+      // Cache edge 10 min : un BMS est réécrit quelques fois par jour, et le
+      // client en garde déjà 15 min de son côté.
+      if (url.pathname === "/bms") {
+        const BASE = "https://rpcache.meteo.nc/internet2018client/2.0/report?";
+        const DOMAINES = {
+          bmrLagon: "domain=BMRCOTE-09&report_type=marine&report_subtype=BMR_cote_fr",
+          bmrLarge: "domain=BMRLARGE-09&report_type=marine&report_subtype=BMR_large_fr",
+          bmsLagon: "domain=BMSCOTE-09&report_type=marine&report_subtype=BMS_cote_fr",
+          bmsLarge: "domain=BMSLARGE-09&report_type=marine&report_subtype=BMS_large_fr",
+        };
+        const cache = caches.default;
+        const cacheKey = new Request("https://surf-nc-cache/bms-v1");
+        let hit = await cache.match(cacheKey);
+        if (!hit) {
+          const cles = Object.keys(DOMAINES);
+          const reps = await Promise.all(
+            cles.map(async (k) => {
+              try {
+                const up = await proxyMeteo(env, BASE + DOMAINES[k]);
+                // 204/205 = pas de bulletin sur ce domaine. Tout autre échec
+                // est rendu null AUSSI : une page ne doit jamais armer une
+                // alerte sur une réponse qu'elle n'a pas comprise.
+                if (up.status === 204 || up.status === 205 || !up.ok) return null;
+                const txt = await up.text();
+                if (!txt || !txt.trim()) return null;
+                try { return JSON.parse(txt); } catch { return null; }
+              } catch (e) {
+                console.log("[Worker] /bms " + k + " : " + e.message);
+                return null;
+              }
+            })
+          );
+          const out = {};
+          cles.forEach((k, i) => { out[k] = reps[i]; });
+          // Si les deux BMR sont absents, c'est rpcache qui ne répond pas, pas
+          // une mer calme : on ne met PAS ça en cache pour 10 min.
+          const douteux = !out.bmrLagon && !out.bmrLarge;
+          hit = new Response(JSON.stringify(out), {
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": douteux ? "no-store" : "public, max-age=600",
+            },
+          });
+          if (!douteux) await cache.put(cacheKey, hit.clone());
+        }
+        return new Response(hit.body, {
+          status: 200,
+          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=600", ...cors },
+        });
+      }
+
       // ── /enso — flux NOAA CPC Nino 3.4 (detrended), cache edge 6h ───────────
       // Le site NOAA n'a pas de CORS → previsions.html passe par ici pour avoir
       // des données ENSO à jour (l'embarqué dans la page n'est qu'un fallback).

@@ -360,11 +360,21 @@ function _bmsSeverity(nature) {
   return 'orange'; // avis de vent fort / grand frais / défaut
 }
 
-async function getActiveBMS(force) {
-  if (!force && _BMS_CACHE && (Date.now() - _BMS_CACHE.ts) < _BMS_TTL) return _BMS_CACHE.data;
-  // Pas de token : pas de bruit (le détail reste dans l'onglet Marée). Cache un null court.
-  if (!_ncToken) { _BMS_CACHE = { ts:Date.now(), data:null }; return null; }
-
+// Les quatre bulletins, d'où qu'ils viennent. DEUX chemins, dans cet ordre :
+//
+//   1. la route /bms du Worker. Elle a le token en KV (son cron le renouvelle
+//      toutes les 5 min), rend les quatre domaines en UN appel et garde une
+//      copie 10 min au bord. Surtout : elle ne demande AUCUN token côté
+//      navigateur — c'est ce qui rend l'avis marine disponible sur
+//      accueil.html, et sur un appareil qui n'a jamais ouvert previsions.html.
+//   2. rpcache en direct, avec le Bearer de la page. Chemin historique, gardé
+//      parce que *.workers.dev est filtré par certains DNS mobiles en NC (cas
+//      connu et mesuré, cf. ncGet dans nc-token.js).
+//
+// Dans les deux cas on rend les charges utiles BRUTES. L'interprétation —
+// notamment « y a-t-il un avis ? », qui se lit sur la présence même d'un corps
+// BMS et non sur le texte — reste dans _bmsParse, une seule fois.
+async function _bmsCharges() {
   var BASE = 'https://rpcache.meteo.nc/internet2018client/2.0/';
   // BMR = bulletins normaux (toujours 200) ; BMS = avis spécifiques (204 si pas d'alerte).
   var EP_BMR_LAGON = BASE + 'report?domain=BMRCOTE-09&report_type=marine&report_subtype=BMR_cote_fr';
@@ -372,14 +382,48 @@ async function getActiveBMS(force) {
   var EP_BMS_LAGON = BASE + 'report?domain=BMSCOTE-09&report_type=marine&report_subtype=BMS_cote_fr';
   var EP_BMS_LARGE = BASE + 'report?domain=BMSLARGE-09&report_type=marine&report_subtype=BMS_large_fr';
 
+  // `typeof` sur chaque globale : alerts.js est chargé par des pages qui n'ont
+  // pas toutes nc-token.js, et lire une variable non déclarée lève.
+  var worker = (typeof _NC_WORKER === 'string') ? _NC_WORKER : null;
+  var mort = (typeof _workerDead !== 'undefined') && _workerDead;
+  if (worker && !mort && typeof fetch === 'function') {
+    try {
+      var ctrl = new AbortController();
+      var minuteur = setTimeout(function(){ ctrl.abort(); }, 4000);
+      var rw = await fetch(worker + '/bms', { signal: ctrl.signal });
+      clearTimeout(minuteur);
+      if (rw.ok) {
+        var j = await rw.json();
+        // Les deux BMR absents = le worker n'a rien obtenu de rpcache. On ne
+        // prend PAS ça pour une mer calme : on bascule sur le chemin direct.
+        if (j && (j.bmrLagon || j.bmrLarge)) {
+          return { lagon: j.bmrLagon, large: j.bmrLarge,
+                   bmsLagon: j.bmsLagon, bmsLarge: j.bmsLarge, via: 'worker' };
+        }
+      }
+    } catch(e) { console.warn('[BMS] worker /bms indisponible :', e && e.message); }
+  }
+
+  if (typeof _ncToken === 'undefined' || !_ncToken) return null;
+  var r = await Promise.all([
+    ncFetch(EP_BMR_LAGON).catch(function(e){ console.warn('[BMR lagon]',e); return null; }),
+    ncFetch(EP_BMR_LARGE).catch(function(e){ console.warn('[BMR large]',e); return null; }),
+    ncFetch(EP_BMS_LAGON).catch(function(){ return null; }),
+    ncFetch(EP_BMS_LARGE).catch(function(){ return null; }),
+  ]);
+  return { lagon: r[0], large: r[1], bmsLagon: r[2], bmsLarge: r[3], via: 'rpcache' };
+}
+
+async function getActiveBMS(force) {
+  if (!force && _BMS_CACHE && (Date.now() - _BMS_CACHE.ts) < _BMS_TTL) return _BMS_CACHE.data;
+
   try {
-    var r = await Promise.all([
-      ncFetch(EP_BMR_LAGON).catch(function(e){ console.warn('[BMR lagon]',e); return null; }),
-      ncFetch(EP_BMR_LARGE).catch(function(e){ console.warn('[BMR large]',e); return null; }),
-      ncFetch(EP_BMS_LAGON).catch(function(){ return null; }),
-      ncFetch(EP_BMS_LARGE).catch(function(){ return null; }),
-    ]);
-    var dataLagon = r[0], dataLarge = r[1], dataBmsL = r[2], dataBmsG = r[3];
+    var ch = await _bmsCharges();
+    // Ni worker ni token : pas de bruit (le détail reste dans l'onglet Marée).
+    // Cache un null court.
+    if (!ch) { _BMS_CACHE = { ts:Date.now(), data:null }; return null; }
+    var dataLagon = ch.lagon, dataLarge = ch.large,
+        dataBmsL = ch.bmsLagon, dataBmsG = ch.bmsLarge;
 
     // Un corps reçu sur le domaine BMS = il y a un avis, et il prime sur le
     // BMR. C'est ce booléen-là, et lui seul, qui décide de l'alerte : il est
