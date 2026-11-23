@@ -3133,6 +3133,7 @@ function openSlotFor(s){
   _fcRetour = document.activeElement;
   var ferme = document.getElementById('fc-x');
   if (ferme) ferme.focus();
+  _fcFondCache(true);
 
   // Satellite : même mosaïque que previsions.html (assets/sat-tiles.js), donc
   // le même centrage exact. Les tuiles arrivent en différé, d'où le dessin des
@@ -3143,10 +3144,33 @@ function openSlotFor(s){
 }
 
 var _fcRetour = null;
+
+// Le fond d'une boîte de dialogue doit être retiré de l'arbre d'accessibilité,
+// pas seulement voilé : sans ça, le curseur virtuel d'un lecteur d'écran
+// continue de parcourir la page masquée, et annonce des éléments que personne
+// ne voit. Le piège de Tab ne suffit pas — la navigation par en-têtes ou par
+// liens du lecteur l'ignore complètement.
+// On vise les trois conteneurs de premier niveau. PAS le <body> ni un ancêtre
+// de la fiche : poser aria-hidden sur un ancêtre de l'élément focalisé est
+// invalide, et les navigateurs s'en plaignent à juste titre.
+function _fcFondCache(cache){
+  var zones = [document.getElementById('site-banner'),
+               document.querySelector('.wrap'),
+               document.querySelector('footer')];
+  zones.forEach(function(z){
+    if (!z) return;
+    if (cache) z.setAttribute('aria-hidden', 'true');
+    else z.removeAttribute('aria-hidden');
+  });
+}
+
 function closeSlot(){
   document.getElementById('fc-back').hidden = true;
   document.body.style.overflow = '';
   fcSlot = null;
+  // Rendre le fond AVANT de lui redonner le focus : l'ordre inverse poserait le
+  // focus dans une zone encore marquée aria-hidden.
+  _fcFondCache(false);
   // Rendre le focus à ce qui a ouvert la fiche : sans ça il retombe sur
   // <body> et la navigation au clavier repart du haut de la page, c'est-à-dire
   // très loin du créneau qu'on venait de consulter.
