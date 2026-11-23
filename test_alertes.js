@@ -326,6 +326,28 @@ ok(/function bmsEnsure\([^]*?tokenEnsure\(/.test(accueilSrc),
   'cet appel est précédé de tokenEnsure : sans Bearer, rpcache ne répond pas');
 ok(/function majBms\([^]*?BMS_PORTEE_H/.test(accueilSrc),
   'majBms borne la portée : un avis en cours ne s\'affiche pas sur un créneau de J+4');
+
+// Les trois lignes remplies en différé (BMS, vent mesuré, ciel) doivent vérifier
+// l'IDENTITÉ du créneau avant d'écrire, pas son instant. Mesuré le 23/11/2026 :
+// les 344 créneaux de la recherche ne portent que 43 instants distincts — les
+// huit spots sont échantillonnés aux mêmes heures, donc « Passe de Boulari » et
+// « Passe de Mato » partagent le même `ms` à 02 h (301 paires dans ce cas). Un
+// garde sur `fcSlot.ms` laisse donc un rappel en retard écrire la station, la
+// distance ou le ciel d'un spot dans la fiche d'un AUTRE, ouverte entre temps à
+// la même heure. La course dépend du réseau et ne se reproduit pas à volonté :
+// c'est précisément pourquoi elle est verrouillée ici, à la source.
+// On vise les trois fonctions nommément. Un simple comptage de gardes attrapait
+// aussi le `if (!fcSlot) return;` de l'export agenda, qui est synchrone et lit
+// `fcSlot.ms` tout à fait légitimement : ce n'est pas un rappel différé.
+['majBms', 'majObs', 'openSlotFor'].forEach(function (nom) {
+  const f = fnSrc(accueilSrc, nom);
+  ok(/fcSlot !== vise/.test(f),
+    nom + ' : le rappel différé compare l\'OBJET de créneau');
+  ok(!/fcSlot\.ms\s*!==/.test(f),
+    nom + ' : … et jamais son instant, que deux spots partagent');
+});
+ok(!/fcSlot\.ms\s*!==/.test(sansCommentaires(accueilSrc)),
+  'nulle part dans la page un garde ne se contente de comparer `fcSlot.ms`');
 ok(/id="fc-bms"/.test(accueilSrc) && /id="fc-obs"/.test(accueilSrc),
   'les deux lignes existent dans le balisage (élément permanent, pas gabarit conditionnel)');
 ok(accueilSrc.indexOf('<div class="fc-bms" id="fc-bms"') < accueilSrc.indexOf('<div class="fc-body">'),

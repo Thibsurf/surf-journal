@@ -174,7 +174,7 @@ ne relire qu'elle-même.
      comme houle là où celle de 7,94 s était exclue, MFWAM dont `partitions[0]`
      EST la mer du vent. Il vérifie aussi qu'accueil.html ne relit pas le train
      principal là où elle affiche un train secondaire.
-   - `node test_alertes.js` (55) — BMS marine et vent mesuré. Il existe parce
+   - `node test_alertes.js` (62) — BMS marine et vent mesuré. Il existe parce
      que `getActiveBMS()` décidait de l'alerte par expression régulière sur la
      PROSE du bulletin, et que `/Vent fort/i` trouve son compte dans « mer
      sou**vent fort**e », une phrase de tous les bulletins marine. Résultat

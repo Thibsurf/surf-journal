@@ -3251,26 +3251,37 @@ function ficheDepuisLien(r){
 
   var msJour = quand.jour, msCible = quand.ms, hh = quand.heure;
 
-  // Le créneau. `tous` porte TOUS les créneaux notés, pas seulement ceux qui
-  // passent les critères : une sortie déjà décidée doit s'afficher même si ses
-  // conditions ne plaisent pas aux réglages du chercheur.
-  var liste = (r && r.tous) ? r.tous : [];
-  var best = null, bd = Infinity;
+  // Le créneau — cherché dans `allSlots`, PAS dans `r.tous`.
+  //
+  // `r.tous` est la liste du podium : elle est volontairement réduite aux
+  // créneaux de JOUR et à VENT CONNU, parce qu'une vitrine ne propose pas
+  // d'aller surfer à 3 h du matin. Une sortie déjà décidée, elle, doit
+  // s'afficher telle qu'elle est — de nuit, au vent inconnu, et quels que
+  // soient les réglages du chercheur. Partir de `r.tous` faisait répondre
+  // « au-delà de l'horizon du modèle » à une sortie parfaitement dans la
+  // fenêtre, simplement parce qu'elle tombait avant le lever du soleil.
+  //
+  // `allSlots` porte en revanche aussi le PASSÉ (la fenêtre d'archive commence
+  // 17 h en arrière, mesuré), et filtrer() ne note que ce qui est à venir : un
+  // créneau sans `.surf` est un créneau passé. openSlotFor() lit `s.surf.score`
+  // sans garde, donc il faut l'écarter ici — et le dire, plutôt que de le
+  // confondre avec une absence de prévision.
+  var liste = (typeof allSlots !== 'undefined' && allSlots) ? allSlots : [];
+  var best = null, bd = Infinity, passe = false;
   for (i = 0; i < liste.length; i++){
     var sl = liste[i];
-    if (sl.spot !== cible) continue;
-    if (ncDs(sl.ms) !== jour) continue;
+    if (sl.spot !== cible || ncDs(sl.ms) !== jour) continue;
+    if (!sl.surf){ passe = true; continue; }
     // Avec une heure de départ : le créneau le plus proche. Sans heure : le
     // MEILLEUR du jour, ce qui est plus utile qu'un minuit arbitraire.
-    var d = (hh != null) ? Math.abs(sl.ms - msCible) : -(sl.surf ? sl.surf.score : 0);
+    var d = (hh != null) ? Math.abs(sl.ms - msCible) : -sl.surf.score;
     if (d < bd){ bd = d; best = sl; }
   }
   if (!best){
-    var dj = Math.round((msJour - Date.now()) / 864e5);
     // Aucun article devant la date : jourTxt rend « Demain » ou
     // « Aujourd'hui » aussi bien qu'une date, et « du Demain » ne se dit pas.
     // Les phrases sont donc construites pour que la date ouvre un segment.
-    _msgLien(dj < 0
+    _msgLien(passe || msJour < Date.now() - 864e5
       ? 'Cette sortie est passée : <b>' + esc(jourTxt(msJour, 'long'))
         + '</b>. Les modèles ne gardent pas l\'historique ici.'
       : 'Aucune prévision pour <b>' + esc(cible.short || cible.name) + '</b> à cette date : <b>'
@@ -3278,11 +3289,18 @@ function ficheDepuisLien(r){
     return;
   }
 
+  // L'écart entre le départ annoncé et le créneau ouvert. Au-delà de 4 h ce
+  // n'est plus « le créneau le plus proche » : c'est que l'heure de départ est
+  // DERRIÈRE nous, et la page doit le dire au lieu d'afficher le soir en
+  // prétendant répondre pour le matin.
+  var ecart = (hh != null) ? Math.abs(best.ms - msCible) : 0;
   _msgLien('Fiche de la sortie : <b>' + esc(jourTxt(best.ms, 'long')) + ' à '
     + esc(heureTxt(best.ms)) + '</b> — <b>' + esc(cible.short || cible.name) + '</b>'
-    + (hh != null && Math.abs(best.ms - msCible) > 30 * 60000
-        ? ' (créneau le plus proche du départ prévu, ' + esc(heure) + ')' : '')
-    + '.', false);
+    + (ecart > 4 * 36e5
+        ? '. Le départ prévu (' + esc(heure) + ') est passé : voici le créneau suivant.'
+        : ecart > 30 * 60000
+          ? ' (créneau le plus proche du départ prévu, ' + esc(heure) + ').'
+          : '.'), false);
   openSlotFor(best);
 }
 
@@ -3633,7 +3651,13 @@ function tokenEnsure(cb){
       })
       .catch(function(){ return false; });
   }
-  _tokPromesse.then(cb, function(){ cb(false); });
+  _tokPromesse.then(function(ok){
+    // Un échec n'est pas définitif : on oublie la promesse ratée pour que la
+    // prochaine ouverture de fiche retente, au lieu de rendre « pas de token »
+    // jusqu'au rechargement de la page.
+    if (!ok) _tokPromesse = null;
+    cb(ok);
+  }, function(){ _tokPromesse = null; cb(false); });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3655,7 +3679,13 @@ function bmsEnsure(cb){
   _bmsEtat = { attente: [cb] };
   function fini(d){
     var att = (_bmsEtat || {}).attente || [];
-    _bmsEtat = { pret: true, data: d };
+    // Un ÉCHEC ne se mémorise pas : `getActiveBMS()` rend null aussi bien pour
+    // « pas de token » que pour une panne passagère, et une page de PWA reste
+    // ouverte des heures. Mémoriser null interdirait le bandeau jusqu'au
+    // rechargement, même une fois le réseau revenu. On garde en revanche un
+    // résultat réel, y compris « aucun avis » : celui-là a sa propre durée de
+    // vie de 15 min dans alerts.js.
+    _bmsEtat = d ? { pret: true, data: d } : null;
     att.forEach(function(f){ try { f(d); } catch(e){} });
   }
   tokenEnsure(function(ok){
@@ -3684,10 +3714,17 @@ function majBms(s){
   // Créneau trop lointain pour qu'un avis en cours le concerne : on ne dit rien
   // plutôt que d'alarmer à tort.
   if ((s.ms - Date.now()) / 36e5 > BMS_PORTEE_H) return;
-  var msCible = s.ms;
+  // Le créneau VISÉ, par son identité et non par son instant. Mesuré le
+  // 23/11/2026 : les 344 créneaux de la recherche ne portent que 43 instants
+  // distincts — les huit spots sont échantillonnés aux MÊMES heures, donc
+  // « Passe de Boulari » et « Passe de Mato » partagent le même `ms` à 02 h.
+  // Un garde sur `fcSlot.ms` laissait donc un rappel en retard écrire la
+  // donnée d'un spot dans la fiche d'un AUTRE, ouverte à la même heure entre
+  // temps. L'objet de créneau, lui, est unique par (spot, heure).
+  var vise = s;
   bmsEnsure(function(b){
     // La fiche a pu être fermée, ou changée de créneau, pendant l'attente.
-    if (!fcSlot || fcSlot.ms !== msCible) return;
+    if (fcSlot !== vise) return;
     var e2 = document.getElementById('fc-bms');
     if (!e2 || !b || !b.active) return;
     var zone = b.niveau === 'both' ? 'sur le lagon et au large'
@@ -3724,12 +3761,17 @@ function majBms(s){
 var _obsCache = {};
 function obsEnsure(st, cb){
   var e = _obsCache[st.id];
-  if (e && e.pret) { cb(e.data); return; }
+  if (e && e.pret && (Date.now() - e.ts) < 10 * 60000) { cb(e.data); return; }
+  if (e && e.pret) e = null;
   if (e && e.attente) { e.attente.push(cb); return; }
   _obsCache[st.id] = { attente: [cb] };
   function fini(pt){
     var att = (_obsCache[st.id] || {}).attente || [];
-    _obsCache[st.id] = { pret: true, data: pt };
+    // Même raison que pour les BMS : une station muette une fois ne doit pas
+    // l'être pour toute la session. Et une mesure VALIDE vieillit — on la garde
+    // 10 min, pas plus, sinon la fiche annoncerait « il y a 12 min » une heure
+    // après coup.
+    _obsCache[st.id] = pt ? { pret: true, data: pt, ts: Date.now() } : null;
     att.forEach(function(f){ try { f(pt); } catch(e){} });
   }
   if (typeof ncGet !== 'function') { fini(null); return; }
@@ -3780,11 +3822,18 @@ function majObs(s){
   el.style.display = 'none';
   var st = (typeof obsStationForSpot === 'function') ? obsStationForSpot(s.spot) : null;
   if (!st || ncDs(s.ms) !== ncDs(Date.now())) return;
-  var msCible = s.ms;
+  // Le créneau VISÉ, par son identité et non par son instant. Mesuré le
+  // 23/11/2026 : les 344 créneaux de la recherche ne portent que 43 instants
+  // distincts — les huit spots sont échantillonnés aux MÊMES heures, donc
+  // « Passe de Boulari » et « Passe de Mato » partagent le même `ms` à 02 h.
+  // Un garde sur `fcSlot.ms` laissait donc un rappel en retard écrire la
+  // donnée d'un spot dans la fiche d'un AUTRE, ouverte à la même heure entre
+  // temps. L'objet de créneau, lui, est unique par (spot, heure).
+  var vise = s;
   el.innerHTML = '<i>Vent mesuré</i><b class="fc-att">lecture…</b>';
   el.style.display = '';
   obsEnsure(st, function(pt){
-    if (!fcSlot || fcSlot.ms !== msCible) return;
+    if (fcSlot !== vise) return;
     var e2 = document.getElementById('fc-obs');
     if (!e2) return;
     // Station muette depuis plus de 3 h : on retire la ligne plutôt que de
@@ -3846,6 +3895,10 @@ function majObs(s){
 // Une seule requête par spot, gardée en mémoire pour la session : ouvrir cinq
 // fiches du même spot ne doit pas faire cinq appels.
 var _cielCache = {};
+function _cielVide(pts){
+  for (var k in pts) if (Object.prototype.hasOwnProperty.call(pts, k)) return false;
+  return true;
+}
 function cielEnsure(lat, lon, cb){
   var cle = lat.toFixed(3) + ',' + lon.toFixed(3);
   var e = _cielCache[cle];
@@ -3869,14 +3922,20 @@ function cielEnsure(lat, lon, cb){
                     pluie: j.hourly.precipitation[i], code: j.hourly.weather_code[i] };
       }
     }
+    // Une réponse VIDE n'est pas une réponse : c'est un appel qui a échoué ou
+    // qui a été limité (vu le 23/11/2026, deux fiches ouvertes à 40 ms d'écart
+    // → la seconde sans ciel). La graver dans le cache interdirait le ciel
+    // jusqu'au rechargement de la page, alors qu'Open-Meteo publie bien ces
+    // heures — vérifié, 192 heures reçues pour le même point à la requête
+    // suivante. On ne mémorise donc QUE du contenu.
     var res = { pts: pts };
     var att = (_cielCache[cle] || {}).attente || [];
-    _cielCache[cle] = res;
+    _cielCache[cle] = _cielVide(pts) ? null : res;
     att.forEach(function(f){ try { f(res); } catch(e){} });
   }).catch(function(){
     var att = (_cielCache[cle] || {}).attente || [];
-    _cielCache[cle] = { pts: {} };
-    att.forEach(function(f){ try { f(_cielCache[cle]); } catch(e){} });
+    _cielCache[cle] = null;
+    att.forEach(function(f){ try { f({ pts: {} }); } catch(e){} });
   });
 }
 
@@ -3948,12 +4007,28 @@ function openSlotFor(s){
   // leur seule nature donnait deux lignes « Mer du vent » identiques en
   // apparence quand un créneau porte deux trains courts — vu en capture sur la
   // passe de Ouano, 0,5 m à 6 s et 0,3 m à 8 s.
+  // Le RANG n'a de sens que si la ligne « Houle » montre bien le train
+  // principal. Quand la recherche en a retenu un autre, le plus gros train du
+  // créneau se retrouve EN DESSOUS : l'appeler « 2e train » est alors
+  // faux — il est premier par la taille. On le dit « Autre train » dans ce
+  // cas-là, et c'est la ligne « Houle » qui porte l'explication.
+  //
+  // La comparaison passe par swellPrimaryOf() — LA règle de houle primaire du
+  // projet, dans assets/swell-trains.js — et sur l'IDENTITÉ du train, jamais sur
+  // ses hauteurs et périodes. Comparer les valeurs reviendrait à recopier ici la
+  // définition du train principal, ce que test_swell.js interdit à juste titre :
+  // c'est par ce chemin-là que trois définitions divergentes de « la houle
+  // primaire » ont cohabité dans ce dépôt. `trainRetenu()` rend un élément de la
+  // liste de trains, donc la même référence.
+  var principal = (typeof swellPrimaryOf === 'function' && s.sw && s.sw.trains)
+    ? swellPrimaryOf(s.sw.trains) : null;
+  var estPrincipal = (sw === s.sw) || (principal != null && sw === principal);
   var autresFc = autresTrains(s.sw, sw), ligTrains = '', ti;
   for (ti = 0; ti < autresFc.length && ti < 2; ti++){
     var tf = autresFc[ti];
     var cr = croisement(sw, tf);
     var mdv = estMerDuVent(tf);
-    ligTrains += ligne((ti + 2) + 'e train',
+    ligTrains += ligne(estPrincipal ? (ti + 2) + 'e train' : 'Autre train',
       t1(tf.h) + ' m',
       (tf.t != null ? Math.round(tf.t) + ' s' : '')
       + (mdv ? ' · mer du vent' : ' · houle')
@@ -3963,13 +4038,20 @@ function openSlotFor(s){
       // gênent.
       + (cr != null && cr >= 40 ? ' · croisée à ' + Math.round(cr) + '°' : ''));
   }
+  // Mesuré le 23/11/2026 à la passe de Dumbéa à 23 h : la fiche annonçait
+  // « Houle 0,8 m » puis « 2e train 1,4 m », le second plus GROS que le
+  // premier, sans rien pour l'expliquer. Le train de 9 s venant de SSE est hors
+  // du secteur demandé (170-270°), c'est celui de 13 s de SSO qui a été retenu
+  // — mais tant que la fiche ne le disait pas, elle se contredisait à vue
+  // d'œil.
   document.getElementById('fc-data').innerHTML =
       ligne('Houle', t1(sw.h) + ' m',
             (sw.dir != null ? compass(sw.dir) + ' ' + Math.round(sw.dir) + '°' : '')
             // Calculé sur le train AFFICHÉ : `sw.merDuVent` n'existe que sur la
             // lecture complète, pas sur un train nu retenu par la recherche —
             // l'étiquette disparaissait donc silencieusement dans ce cas.
-            + (estMerDuVent(sw) ? ' · mer du vent' : ''))
+            + (estMerDuVent(sw) ? ' · mer du vent' : '')
+            + (estPrincipal ? '' : ' · train retenu par tes critères'))
     + ligne('Période', (sw.t != null ? Math.round(sw.t) + ' s' : '—'), '')
     + ligTrains
     // Le vent porte le NOM de son modèle, ici aussi : c'est la donnée sur
@@ -4059,14 +4141,23 @@ function openSlotFor(s){
 
   // Ciel et UV : on demande, et on remplit quand ça arrive.
   (function(){
-    var msCible = s.ms;
+    // `msCible` sert encore à retrouver l'heure dans la série Open-Meteo ;
+    // c'est `vise` qui décide si la réponse concerne encore cette fiche — deux
+    // spots partagent le même instant, pas le même objet de créneau.
+    var msCible = s.ms, vise = s;
     cielEnsure(sp.lat, sp.lon, function(res){
       var el = document.getElementById('fc-ciel');
       // La fiche a pu être fermée ou changée de créneau pendant l'attente.
-      if (!el || !fcSlot || fcSlot.ms !== msCible) return;
+      if (!el || fcSlot !== vise) return;
       var pt = res.pts ? (res.pts[Math.round(msCible / 3600000) * 3600000] || null) : null;
       if (!pt){
-        el.innerHTML = '<i>Ciel &amp; UV</i><b class="fc-att">non publié à cette heure</b>';
+        // Deux échecs différents, deux messages différents. « Non publié à
+        // cette heure » était affiché dans les deux cas, y compris quand on
+        // n'avait reçu AUCUNE heure — ce qui accusait la source d'un trou
+        // qu'elle n'a pas.
+        el.innerHTML = '<i>Ciel &amp; UV</i><b class="fc-att">'
+          + (_cielVide(res.pts || {}) ? 'lecture impossible' : 'non publié à cette heure')
+          + '</b>';
         return;
       }
       var lib = cielLibelle(pt.code, pt.nuage), niv = uvNiveau(pt.uv);

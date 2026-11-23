@@ -10254,8 +10254,71 @@ venue d'une autre page. Elle est testée dans `test_tide.js` (+13 assertions,
 5 mutations, toutes détectées — dont « date lue en heure locale du navigateur »,
 que SEULE la comparaison inter-fuseaux attrape.
 
+### ✓ Passe de relecture du code écrit ce jour
+
+La relecture indépendante s'est arrêtée sur la limite d'usage de 5 h ; la passe
+a été refaite à la main sur le diff des deux commits. Cinq défauts réels, tous
+vérifiés avant correction.
+
+**1. Les rappels différés gardaient sur l'INSTANT, pas sur le créneau.** Les
+trois lignes remplies en différé (BMS, vent mesuré, ciel/UV) vérifiaient
+`fcSlot.ms !== msCible` avant d'écrire. Or — mesuré dans le navigateur — les
+344 créneaux de la recherche ne portent que **43 instants distincts** : les huit
+spots sont échantillonnés aux mêmes heures, donc « Passe de Boulari » et
+« Passe de Mato » partagent le même `ms` à 02 h (301 paires dans ce cas). Un
+rappel en retard pour le spot A pouvait donc écrire sa station, sa distance et
+son ciel dans la fiche du spot B, ouverte entre temps à la même heure. Corrigé
+en comparant l'OBJET de créneau, unique par (spot, heure).
+Honnêteté sur la vérification : la course est réelle par construction, mais je
+n'ai pas réussi à lui faire perdre le tirage réseau en headless (deux tentatives,
+dont une avec le cache de B préchauffé pour rendre son remplissage synchrone).
+Elle est donc verrouillée par une assertion de source dans `test_alertes.js`,
+pas par une reproduction.
+
+**2. Un échec réseau se gravait dans le cache pour toute la vie de la page.**
+`_bmsEtat`, `_obsCache` et `_cielCache` mémorisaient un `null` d'échec aussi
+bien qu'un résultat. Sur une PWA ouverte des heures, le bandeau BMS ou la ligne
+de vent mesuré ne revenaient donc plus même une fois le réseau rétabli. Seul du
+CONTENU est désormais mémorisé ; une mesure valide expire en plus au bout de
+10 min, sinon la fiche aurait annoncé « il y a 12 min » une heure plus tard. Un
+token raté n'est plus définitif non plus.
+
+**3. « Ciel non publié à cette heure » accusait la source d'un trou qu'elle n'a
+pas.** Le même message couvrait deux cas : l'heure vraiment absente, et l'appel
+échoué. Vérifié : Open-Meteo publie bien cette heure-là (192 heures reçues pour
+le même point à la requête suivante). Deux messages distincts désormais.
+
+**4. Le lien profond partait de la mauvaise liste.** `r.tous` est la liste du
+PODIUM : réduite aux créneaux de jour et à vent connu, parce qu'une vitrine ne
+propose pas d'aller surfer à 3 h du matin. Conséquence : une sortie d'aujourd'hui
+à 07:00 regardée à 19:00, ou une sortie de nuit, recevait « au-delà de l'horizon
+du modèle choisi » — faux. La recherche part maintenant d'`allSlots`, en
+écartant les créneaux passés (reconnaissables à l'absence de `.surf`, que
+`filtrer()` ne pose que sur l'à-venir — et qu'`openSlotFor()` lit sans garde).
+Un départ dépassé de plus de 4 h le dit : « Le départ prévu (02:00) est passé :
+voici le créneau suivant. »
+
+**5. La fiche se contredisait à vue d'œil.** À la passe de Ouano, 23 h : « Houle
+0,8 m » puis « 2e train **1,4 m** » — le second plus gros que le premier, sans
+explication. Le train de 9 s de SSE est hors du secteur demandé (170-270°),
+c'est celui de 13 s de SSO qui a été retenu. La ligne « Houle » porte désormais
+« train retenu par tes critères », et le rang (« 2e train ») cède la place à
+« Autre train » quand le train affiché n'est pas le principal — l'appeler
+« 2e » alors qu'il est premier par la taille était faux. La comparaison passe
+par `swellPrimaryOf()` et sur l'IDENTITÉ du train : comparer les hauteurs aurait
+recopié la définition de la houle primaire dans la page, ce que `test_swell.js`
+interdit — et à raison, c'est par là que trois définitions divergentes ont
+cohabité.
+
+Un faux positif à mon compte, signalé pour mémoire : `test_swell.js` interdit le
+motif `s.sw.(h|t|dir)` dans la fiche, et l'a trouvé dans un **commentaire** que
+je venais d'écrire. Le garde-fou a été laissé tel quel — brutal mais il protège
+un bug revenu trois fois — et c'est le commentaire qui a été reformulé.
+
 ### ⚠ Reste à faire
 
 - Les BMS ne sont lisibles qu'avec un token meteo.nc côté navigateur : la route
   `/proxy` du worker n'autorise que `meteo.nc/`, pas `rpcache.meteo.nc`. Une
   route `/bms` côté worker rendrait le bandeau disponible sans token.
+- Relecture indépendante à refaire quand la limite d'usage sera repartie : la
+  passe à la main a trouvé cinq défauts, un œil neuf en trouvera d'autres.
