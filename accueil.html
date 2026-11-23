@@ -158,38 +158,17 @@ select.btn{padding:5px 9px;border-radius:var(--rs);background:var(--surface);col
    en naviguant au clavier on ne voyait tout simplement pas où l'on était.
    `:focus-visible` et non `:focus` — ce dernier dessinerait aussi l'anneau au
    clic à la souris, ce que personne ne demande. */
+/* PAS de `border-radius` ici. `button:focus-visible` (classe + élément) bat
+   `.fc-x`, `.cr-pre` et `.pod-chip` (classe seule) : la croix ronde de la fiche
+   et toutes les pastilles devenaient des rectangles à coins 6 px dès qu'on les
+   atteignait au clavier. Le contour suit de lui-même la forme de l'élément. */
 .btn:focus-visible,
 a:focus-visible,
 summary:focus-visible,
 select:focus-visible,
 input[type=checkbox]:focus-visible,
-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 
-/* ── Cibles tactiles ────────────────────────────────────────────────────────
-   Mesuré : un `.btn` fait 12 px de texte plus 4 px de marge, soit ~24 px de
-   haut. Sur un téléphone, les recommandations parlent de 44 px, et ce site se
-   consulte souvent avec les mains mouillées, debout sur un bateau. On n'élargit
-   QUE sur pointeur grossier : à la souris, des pastilles de 40 px alourdiraient
-   la page sans rien apporter.
-   `min-height` + `align-items:center` plutôt que du padding vertical : le
-   padding décalerait le texte des pastilles qui ont déjà une icône. */
-@media (pointer: coarse){
-  .btn, .cr-pre, .pod-chip{min-height:40px;display:inline-flex;align-items:center;
-    padding-left:14px;padding-right:14px;}
-  select.btn{min-height:40px;}
-  .cr-chk{min-height:40px;}
-  .cr-chk input{width:20px;height:20px;}
-  .fc-x{width:42px;height:42px;}
-  /* La croix de fermeture et les pastilles de jour gagnent de l'air entre
-     elles : des cibles de 40 px collées les unes aux autres restent difficiles
-     à viser, c'est l'espacement qui fait la différence autant que la taille. */
-  .row{gap:10px;}
-  .cr-presets{gap:8px;}
-}
-.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.loading{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:12px;padding:10px 0;}
-.spin{width:13px;height:13px;border:2px solid var(--border-h);border-top-color:var(--accent);
-  border-radius:50%;animation:sp .8s linear infinite;}
 @keyframes sp{to{transform:rotate(360deg);}}
 /* Respect de « réduire les animations » : la rotation du témoin de chargement
    est remplacée par un battement d'opacité, qui dit la même chose sans tourner.
@@ -559,6 +538,34 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
   /* Un cercle ne s'étire pas : on le centre au lieu de le passer en 100 %. */
   .fc-sat{margin:0 auto;}
 }
+
+/* ── Cibles tactiles ────────────────────────────────────────────────────────
+   PLACÉ EN FIN DE FEUILLE, et c'est le point essentiel : à spécificité égale,
+   c'est la dernière règle qui gagne. Écrit plus haut, ce bloc était MORT pour
+   quatre cibles sur six — `.cr-pre`, `.pod-chip`, `.cr-chk input` et `.fc-x`
+   sont déclarées plus bas et reprenaient le dessus. Ma vérification initiale
+   ne l'avait pas vu parce qu'elle injectait les déclarations dans un <style>
+   ajouté au <head>, donc en dernier : elle mesurait ce qui se passerait si
+   l'ordre était bon.
+
+   Mesuré à la souris : bouton 26 px de haut, raccourci de secteur 24, pastille
+   de podium 22, case à cocher 21. Les recommandations parlent de 44, et ce site
+   se consulte les mains mouillées, debout sur un bateau. On n'élargit QUE sur
+   pointeur grossier : à la souris, des pastilles de 40 px alourdiraient la page
+   sans rien apporter. */
+@media (pointer: coarse){
+  .btn, .cr-pre, .pod-chip{min-height:40px;display:inline-flex;align-items:center;
+    padding-left:14px;padding-right:14px;}
+  select.btn{min-height:40px;}
+  .cr-f label.cr-chk{min-height:40px;}
+  .cr-f label.cr-chk input{width:20px;height:20px;}
+  .fc-x{width:42px;height:42px;}
+  /* L'espacement compte autant que la taille : des cibles de 40 px collées les
+     unes aux autres restent difficiles à viser. */
+  .row{gap:10px;}
+  .cr-presets{gap:8px;}
+}
+
 footer{padding:4px 16px 34px;max-width:980px;margin:0 auto;}
 footer .row{gap:14px;font-size:12px;}
 </style>
@@ -710,12 +717,19 @@ footer .row{gap:14px;font-size:12px;}
                    Les positions sont calculées sur la course réelle du curseur
                    (0 à 355 par pas de 5), pas sur 360 — sans quoi l'ouest tombe
                    à 75 % alors que la poignée s'y arrête à 76,1 %. -->
+              <!-- Positions calculées sur la COURSE RÉELLE du centre de la
+                   poignée, qui ne parcourt que (largeur − 16 px) : une poignée
+                   de 16 px s'arrête à 8 px de chaque bord. Avec de simples
+                   pourcentages de la largeur totale, le repère « O » tombait
+                   4,3 px à côté de sa poignée sur une piste de 300 px.
+                   Le dernier repère vaut 355°, la valeur maximale du curseur,
+                   soit NNO — et non N, qui est à 0°, à l'autre bout. -->
               <div class="cr-ticks" aria-hidden="true">
-                <span style="left:0;">N</span>
-                <span style="left:25.4%;">E</span>
-                <span style="left:50.7%;">S</span>
-                <span style="left:76.1%;">O</span>
-                <span style="left:100%;">N</span>
+                <span style="left:calc(8px + 0% * (100% - 16px) / 100%);">N</span>
+                <span style="left:calc(8px + 25.35% * (100% - 16px) / 100%);">E</span>
+                <span style="left:calc(8px + 50.70% * (100% - 16px) / 100%);">S</span>
+                <span style="left:calc(8px + 76.06% * (100% - 16px) / 100%);">O</span>
+                <span style="left:calc(8px + 100% * (100% - 16px) / 100%);">NNO</span>
               </div>
               <div class="cr-presets" id="cr-sw-pre"></div>
             </div>
@@ -2478,7 +2492,21 @@ function critBind(){
   });
   el('cr-reset').onclick = function(){
     var k; for (k in CRIT_DEF) crit[k] = CRIT_DEF[k];
-    saveCrit(); critBind(); critSync(); critRun();
+    saveCrit();
+    // On RECOPIE les valeurs dans les champs au lieu de rappeler critBind() :
+    // celui-ci rebranchait `document.addEventListener('keydown', …)` et les huit
+    // écouteurs de bindRose() À CHAQUE remise à zéro. Après un clic, une flèche
+    // du clavier déplaçait le secteur de 10° au lieu de 5 ; après deux clics,
+    // de 15. Les `onclick`/`oninput` ne posaient pas ce problème (ils
+    // remplacent), mais addEventListener empile.
+    var map = { 'cr-hsMin':'hsMin', 'cr-hsMax':'hsMax', 'cr-perMin':'perMin',
+                'cr-swFrom':'swFrom', 'cr-swTo':'swTo', 'cr-windMax':'windMax',
+                'cr-wdFrom':'wdFrom', 'cr-wdTo':'wdTo' };
+    Object.keys(map).forEach(function(id){ var e = el(id); if (e) e.value = crit[map[id]]; });
+    el('cr-windDirOn').checked = !!crit.windDirOn;
+    el('cr-dayOnly').checked = !!crit.dayOnly;
+    el('cr-tide').value = crit.tide;
+    critSync(); critRun();
   };
   critSync();
 }
@@ -2824,7 +2852,7 @@ function renderPodium(r){
       html += '<button type="button" class="pod-chip" data-p="' + k + '">'
         + '<b>' + esc(o.spot.short || o.spot.name) + '</b>'
         + '<i>' + quandTxt(o.ms, 'court') + '</i>'
-        + '<span style="color:' + o.surf.col + ';letter-spacing:1px;">' + _podDots(o.surf.score) + '</span>'
+        + '<span style="letter-spacing:1px;font-size:11px;">' + _pastilles(o.surf.score, o.surf.col) + '</span>'
         + '</button>';
     }
     html += '</div>';
@@ -2874,11 +2902,10 @@ function renderPodium(r){
     try { localStorage.setItem('surf-active-spot', b.spot.name); } catch(e){}
   };
 }
-function _podDots(n){
-  var o = '', z;
-  for (z = 0; z < 5; z++) o += (z < n ? '●' : '○');
-  return o;
-}
+// `_podDots` a été supprimée le 23/11/2026 : c'était une CINQUIÈME notation de
+// pastilles, avec des cercles creux là où le reste de la page met des pastilles
+// grises — et elle servait sur la MÊME carte que les pastilles pleines, vingt
+// lignes plus bas. Tout passe par `_pastilles`.
 
 // Annonce vocale. Le texte est REMPLACÉ, jamais ajouté : une région vivante qui
 // s'allonge fait relire tout l'historique à chaque mise à jour.
@@ -3137,9 +3164,19 @@ function _fcPiegeFocus(e){
   var back = document.getElementById('fc-back');
   if (!back || back.hidden) return;
   var cibles = back.querySelectorAll(
-    'button:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])');
+    'button:not([disabled]), a[href], summary, select, input:not([type=hidden]), '
+    + 'textarea, [tabindex]:not([tabindex="-1"])');
   if (!cibles.length) return;
   var premier = cibles[0], dernier = cibles[cibles.length - 1];
+  // Le focus est-il seulement DANS la fiche ? Il n'y est plus dès qu'on clique
+  // sur la vue satellite, qui n'est pas focalisable : `activeElement` retombe
+  // alors sur <body>, aucune des deux branches ci-dessous ne tire, et Tab
+  // donnait le focus au premier élément de la page, derrière le voile.
+  if (!back.contains(document.activeElement)){
+    e.preventDefault();
+    (e.shiftKey ? dernier : premier).focus();
+    return;
+  }
   if (e.shiftKey && document.activeElement === premier){
     e.preventDefault(); dernier.focus();
   } else if (!e.shiftKey && document.activeElement === dernier){

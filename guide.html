@@ -148,6 +148,22 @@ footer a{color:var(--accent);text-decoration:none;}
   .hero{background:#e8f4fb;border-color:#b0d0e8;}
   .hero-title{-webkit-text-fill-color:#0a1628;color:#0a1628;}
 }
+
+/* ── Focus clavier (ajouté le 23/11/2026) ───────────────────────────────────
+   Oubliée lors de la passe d'accessibilité, alors que cette page anime une
+   rangée de points (.wave-dot) en boucle infinie et n'avait aucun style de
+   focus. */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible{outline:2px solid #4fa3c7;outline-offset:2px;}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;}
+}
 </style>
 <!-- Cloudflare Web Analytics. Script classique + defer, et non le type="module"
      proposé par défaut dans le dashboard : beacon.min.js ne contient aucune syntaxe
@@ -185,7 +201,7 @@ footer a{color:var(--accent);text-decoration:none;}
          meteo.nc réelles. Envoyer quelqu'un installer une extension pour rien
          est pire qu'un bug d'affichage : ça coûte un quart d'heure et ça fait
          douter du reste. -->
-    <p style="font-size:13px;color:var(--muted);">Deux étapes. Les prévisions meteo.nc officielles marchent sans rien installer.</p>
+    <p style="font-size:13px;color:var(--muted);">Trois étapes, et rien à installer : les prévisions meteo.nc officielles marchent d'emblée.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>

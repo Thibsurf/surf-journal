@@ -540,16 +540,26 @@ input:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible{outline:2px solid #4fa3c7;outline-offset:2px;border-radius:6px;}
 
-/* ── « Réduire les animations » du système (ajouté le 23/11/2026) ───────────
-   Honoré au lieu d'être ignoré. On ne SUPPRIME pas les animations — un témoin
-   de chargement figé ne dit plus qu'il charge — on les ramène à une durée et
-   une amplitude qui ne déclenchent rien chez les personnes sensibles au
-   mouvement. */
+/* ── « Réduire les animations » du système ──────────────────────────────────
+   CORRIGÉ le 23/11/2026. La recette habituelle — tout ramener à 0,01 ms — a un
+   défaut qu'il a fallu mesurer pour voir : une animation qui finit en 0,01 ms
+   sans `animation-fill-mode` RAMÈNE l'élément à son état de base. Quand cet
+   état est `opacity:0` — le cas d'un éclair qui ne se montre que 2 % de son
+   cycle — l'élément disparaît DÉFINITIVEMENT au lieu de se calmer.
+   On distingue donc trois cas :
+     · les transitions : coupées, elles ne portent jamais d'information ;
+     · les témoins de chargement : la rotation est remplacée par un battement
+       d'opacité, qui dit « ça charge » sans tourner ;
+     · tout le reste : ramené à 0,01 ms, sauf les éléments listés plus bas dont
+       l'animation EST l'information, et qu'on fige à un instant où ils se
+       voient (délai négatif + animation en pause). */
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
     transition-duration:.01ms!important;scroll-behavior:auto!important;}
-  .spin,.spinner,.loader{animation:none!important;opacity:.6;}
+  .spinner{animation:a11yPouls 1.4s ease-in-out infinite!important;
+    animation-duration:1.4s!important;animation-iteration-count:infinite!important;}
 }
+@keyframes a11yPouls{0%,100%{opacity:.35}50%{opacity:1}}
 </style>
 <!-- Cloudflare Web Analytics. Script classique + defer, et non le type="module"
      proposé par défaut dans le dashboard : beacon.min.js ne contient aucune syntaxe
