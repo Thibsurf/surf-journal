@@ -465,6 +465,15 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
   font-size:9.5px;font-weight:700;color:#f0bc83;background:rgba(232,160,87,.18);
   vertical-align:middle;}
 
+/* Schéma de houle : pleine largeur, comme le champ de direction — une coupe
+   de 400 m écrasée dans une demi-colonne ne montrerait rien. */
+.cr-f--schema{grid-column:1/-1;}
+.cr-sch-box{position:relative;height:124px;border-radius:9px;overflow:hidden;
+  background:linear-gradient(180deg,rgba(10,22,40,.5),rgba(8,30,56,.55));
+  border:1px solid var(--border);}
+.cr-sch-box canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+.cr-sch-note{font-size:10.5px;color:var(--faint);margin-top:5px;line-height:1.55;}
+
 /* Regroupement sans décor : porte un titre et des cartes, mais n'est pas une
    carte lui-même — imbriquer deux .card donne deux bordures et deux marges. */
 .sect{margin-bottom:12px;}
@@ -739,6 +748,19 @@ footer .row{gap:14px;font-size:12px;}
         <div class="cr-f">
           <label>Période minimum<b id="cr-per-v"></b></label>
           <input type="range" id="cr-perMin" min="4" max="20" step="1">
+        </div>
+        <!-- Schéma de houle. « 13 s » ne dit rien tant qu'on ne l'a pas traduit
+             en longueur d'onde : à 8 s les vagues se suivent tous les 100 m, à
+             13 s tous les 264 m. C'est ÇA la différence entre une mer hachée et
+             une houle qui déroule, et les deux curseurs juste au-dessus la
+             pilotent sans qu'on la voie. -->
+        <div class="cr-f cr-f--schema">
+          <label>Ce que ça donne à l'eau<b id="cr-sch-v"></b></label>
+          <div class="cr-sch-box">
+            <canvas id="cr-schema" role="img"
+              aria-label="Coupe d'une houle arrivant sur le récif, à l'échelle de la période et de la hauteur choisies"></canvas>
+          </div>
+          <div class="cr-sch-note" id="cr-sch-note"></div>
         </div>
         <div class="cr-f cr-f--rose">
           <label>D'où vient la houle<b id="cr-sw-v"></b></label>
@@ -2703,6 +2725,7 @@ function critSync(){
     + compass(crit.swFrom) + '–' + compass(crit.swTo) + ' · vent ≤' + crit.windMax;
   renderSwPresets();
   drawRose();
+  drawHouleSchema();
 }
 
 // ── Raccourcis de secteur ───────────────────────────────────────────────────
@@ -2905,6 +2928,149 @@ function drawRose(){
     'Secteur de houle retenu, de ' + crit.swFrom + ' à ' + crit.swTo + ' degrés, '
     + compass(crit.swFrom) + ' à ' + compass(crit.swTo)
     + '. Flèches gauche et droite pour tourner le secteur, Maj plus flèches pour l’élargir.');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SCHÉMA DE HOULE — ce que la période et la hauteur font vraiment
+// ════════════════════════════════════════════════════════════════════════════
+// Une coupe de 400 m d'océan arrivant sur le récif, tracée aux VRAIES
+// proportions horizontales. La longueur d'onde en eau profonde vaut
+// L = g·T²/(2π) ≈ 1,56·T² : 8 s donnent 100 m, 13 s en donnent 264. Sur une
+// fenêtre fixe de 400 m, on voit donc quatre vagues serrées à 8 s et une vague
+// et demie à 13 s — c'est exactement la différence entre une mer hachée et une
+// houle qui déroule, et aucun chiffre ne la rend aussi vite qu'un dessin.
+//
+// L'ÉCHELLE VERTICALE EST EXAGÉRÉE et le schéma le dit : 1,5 m de houle sur
+// 264 m de longueur d'onde donnerait un trait plat. Exagérer sans le dire
+// serait mentir sur la pente des vagues ; le dire permet de garder le rapport
+// horizontal juste, qui est l'information utile.
+//
+// Deux repères physiques, calculés et non décoratifs :
+//   · la houle commence à sentir le fond par L/2 de profondeur ;
+//   · elle déferle quand la profondeur descend vers ~1,3 fois sa hauteur
+//     (indice de déferlement usuel pour un fond de récif).
+function drawHouleSchema(){
+  var cv = document.getElementById('cr-schema');
+  if (!cv || !cv.getContext) return;
+  var box = cv.parentNode, W = box.clientWidth, H = box.clientHeight;
+  if (!W || !H) return;
+  var dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  var g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  // Hauteur illustrée = le MINIMUM demandé, pas le milieu de la plage : le
+  // maximum vaut 4 m par défaut, c'est-à-dire « pas de limite », et en faire la
+  // moitié d'une moyenne donnait une houle de 2,4 m qu'on n'a jamais demandée.
+  var T = crit.perMin, Hs = crit.hsMin;
+  if (!isFinite(T) || T <= 0) T = 10;
+  if (!isFinite(Hs) || Hs <= 0) Hs = 1;
+  var L = 1.56 * T * T;                 // longueur d'onde en eau profonde, m
+  var FENETRE = 400;                    // mètres couverts par la largeur du canevas
+  var px = W / FENETRE;
+
+  var yEau = H * 0.52;
+  // Amplitude EXAGÉRÉE et progressive, avec un plancher. Un facteur fixe de
+  // 9 px/m donnait 7 px pour une houle de 0,8 m : un trait quasi droit, qui
+  // n'illustrait plus rien. Le but premier du schéma est l'ESPACEMENT des
+  // vagues ; la hauteur doit rester lisible et varier, sans prétendre à une
+  // échelle. D'où une base visible plus une part proportionnelle, bornée.
+  var ampPx = Math.max(12, Math.min(H * 0.22, 9 + Hs * 7));
+
+  // ── La surface, à l'échelle horizontale RÉELLE ──────────────────────────
+  // C'est tout l'intérêt du schéma : à 8 s il y a quatre vagues dans la
+  // fenêtre, à 13 s il y en a une et demie.
+  var xp, xm, phase, amp, yS, crete = [];
+  g.beginPath();
+  for (xp = 0; xp <= W; xp += 1){
+    xm = xp / px;
+    phase = (xm / L) * Math.PI * 2;
+    amp = ampPx;
+    // Levée à l'approche du récif, puis crête qui bascule : stylisé, et borné
+    // à la zone du récif pour ne pas déformer l'espacement ailleurs.
+    if (xm > xRecif - L * 0.5)
+      amp = ampPx * (1 + Math.min(1.1, (xm - (xRecif - L * 0.5)) / (L * 0.5)) * 0.8);
+    yS = yEau - Math.sin(phase) * amp;
+    if (xp === 0) g.moveTo(xp, yS); else g.lineTo(xp, yS);
+    if (xp > 0 && xp % 2 === 0 && Math.sin(phase) > 0.985) crete.push([xp, yS]);
+  }
+  g.strokeStyle = '#5fc3e8'; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke();
+  g.lineTo(W, H); g.lineTo(0, H); g.closePath();
+  g.fillStyle = 'rgba(79,163,199,.10)'; g.fill();
+
+  // Écume sur la crête la plus proche du récif, pour dire où ça casse.
+  var der = null, k;
+  for (k = 0; k < crete.length; k++) if (crete[k][0] < xRecifPx + 6) der = crete[k];
+  if (der){
+    g.fillStyle = 'rgba(226,245,255,.85)';
+    for (k = 0; k < 7; k++){
+      var rx = der[0] + 3 + k * 3.2, ry = der[1] - 2 + Math.sin(k) * 2.4;
+      g.beginPath(); g.arc(rx, ry, 2.1 - k * 0.18, 0, 6.3); g.fill();
+    }
+  }
+
+  // ── Le récif, à droite : STYLISÉ, et la légende le dit ──────────────────
+  // Dessiné APRÈS l'eau : avant, le remplissage de la surface passait
+  // par-dessus et la vague semblait traverser la roche.
+  // On ne trace PAS de profil de fond coté. Une coupe honnête serait
+  // impossible à cette échelle : à 13 s la houle sent le fond par 132 m, bien
+  // avant les 400 m de la fenêtre, et dessiner un tombant qui passe de 132 m à
+  // zéro sur 400 m donnerait une falaise à 1:3. Les profondeurs réelles sont
+  // données en chiffres sous le dessin ; le dessin, lui, ne montre que ce qu'il
+  // peut montrer juste : l'espacement des vagues.
+  var xRecif = FENETRE * 0.80, xRecifPx = xRecif * px;
+  g.beginPath();
+  g.moveTo(xRecifPx - 26, H);
+  g.lineTo(xRecifPx + 4, yEau + 10);
+  g.lineTo(W, yEau + 4);
+  g.lineTo(W, H);
+  g.closePath();
+  var grR = g.createLinearGradient(0, yEau, 0, H);
+  grR.addColorStop(0, 'rgba(96,128,152,.5)');
+  grR.addColorStop(1, 'rgba(44,70,94,.8)');
+  g.fillStyle = grR; g.fill();
+  g.strokeStyle = 'rgba(150,185,210,.4)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(xRecifPx - 26, H); g.lineTo(xRecifPx + 4, yEau + 10);
+  g.lineTo(W, yEau + 4); g.stroke();
+  g.font = '600 9.5px DM Sans, sans-serif'; g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(190,214,232,.75)'; g.textAlign = 'right';
+  g.fillText('récif', W - 6, H - 11);
+
+  // ── La longueur d'onde, cotée sur le dessin ─────────────────────────────
+  var y0 = Math.max(13, yEau - ampPx - 14);
+  if (L * px < W - 10){
+    g.strokeStyle = 'rgba(255,255,255,.32)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(5, y0); g.lineTo(5 + L * px, y0); g.stroke();
+    [5, 5 + L * px].forEach(function(x){
+      g.beginPath(); g.moveTo(x, y0 - 3.5); g.lineTo(x, y0 + 3.5); g.stroke();
+    });
+    g.fillStyle = 'rgba(226,240,250,.8)'; g.textAlign = 'center';
+    g.fillText(Math.round(L) + ' m', 5 + L * px / 2, y0 - 8);
+  } else {
+    g.fillStyle = 'rgba(226,240,250,.8)'; g.textAlign = 'left';
+    g.fillText(Math.round(L) + ' m entre deux vagues — plus large que ce schéma', 7, 13);
+  }
+  // Échelle horizontale, pour qu'on sache ce qu'on regarde.
+  g.strokeStyle = 'rgba(255,255,255,.18)';
+  g.beginPath(); g.moveTo(5, H - 5); g.lineTo(5 + 100 * px, H - 5); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.45)'; g.textAlign = 'left';
+  g.fillText('100 m', 8, H - 13);
+
+  // ── Les chiffres, sous le dessin ────────────────────────────────────────
+  var profSent = L / 2, profDeferle = Hs * 1.3;
+  var vEl = document.getElementById('cr-sch-v');
+  if (vEl) vEl.textContent = Math.round(L) + ' m entre deux vagues';
+  var nEl = document.getElementById('cr-sch-note');
+  if (nEl) nEl.innerHTML =
+    'À <b>' + T + ' s</b>, deux crêtes sont séparées de <b>' + Math.round(L) + ' m</b> '
+    + '(L&nbsp;=&nbsp;g·T²/2π). Cette houle commence à sentir le fond par <b>'
+    + Math.round(profSent) + ' m</b> et déferle vers <b>' + t1(profDeferle)
+    + ' m</b> de fond pour <b>' + t1(Hs) + ' m</b>, la hauteur minimum que tu demandes.<br>'
+    + 'Le schéma couvre <b>400 m</b> et respecte l’espacement des vagues. '
+    + 'La <b>hauteur est exagérée</b> et le récif est <b>stylisé</b> : à cette échelle, '
+    + '1,5 m de houle sur ' + Math.round(L) + ' m serait un trait plat, et un vrai '
+    + 'tombant de ' + Math.round(profSent) + ' m ne tiendrait pas dans la largeur.';
 }
 
 var _critTimer = null;
