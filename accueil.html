@@ -278,8 +278,17 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
   background:var(--accent);border:2px solid #0d1f3c;box-shadow:0 1px 4px rgba(0,0,0,.5);}
 /* Deux curseurs qui bornent un intervalle : resserrés, et le second décalé
    d'un demi-pouce pour qu'on voie tout de suite qu'ils vont par paire. */
+/* Une ligne = un rôle, un curseur, une valeur. La valeur est À CÔTÉ de sa
+   poignée et non dans l'en-tête : on lit ce qu'on règle sans faire l'aller-retour
+   avec le coin opposé de la case. */
+.cr-lig{display:flex;align-items:center;gap:9px;}
+.cr-lig+.cr-lig{margin-top:2px;}
+.cr-bout{flex-shrink:0;width:26px;text-align:right;font-size:10.5px;font-weight:700;
+  letter-spacing:.06em;color:var(--faint);text-transform:lowercase;}
+.cr-lig input[type=range]{flex:1;min-width:0;}
+.cr-val{flex-shrink:0;min-width:52px;text-align:right;font-size:12px;font-weight:700;
+  color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:0;}
 .cr-duo input[type=range]{display:block;}
-.cr-duo input[type=range]+input[type=range]{margin-top:-4px;}
 /* `justify-content:flex-start` est OBLIGATOIRE ici : .cr-chk est un <label>
    dans .cr-f, donc la règle générique « libellé à gauche, valeur à droite »
    (space-between) s'y applique aussi. Résultat mesuré en capture le
@@ -407,7 +416,10 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 /* Les graduations sont posées en absolu dans une bande de 14 px : un flex avec
    `justify-content:space-between` les répartirait à intervalles égaux, ce qui
    serait FAUX — l'ouest est à 76 % de la course, pas à 75. */
-.cr-ticks{position:relative;height:14px;margin-top:2px;}
+/* Décalée de la largeur du libellé et de la valeur, pour que les repères
+   tombent sous la piste et non sous la ligne entière. */
+.cr-ticks{position:relative;height:14px;margin-top:3px;
+  margin-left:35px;margin-right:61px;}
 .cr-ticks span{position:absolute;top:0;transform:translateX(-50%);
   font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--faint);}
 .cr-ticks span::before{content:'';position:absolute;left:50%;top:-3px;
@@ -705,9 +717,23 @@ footer .row{gap:14px;font-size:12px;}
       <div class="cr-grid">
         <div class="cr-f">
           <label>Hauteur de houle<b id="cr-hs-v"></b></label>
+          <!-- Chaque curseur porte son rôle ET sa valeur. Empilés nus, rien ne
+               disait lequel était le minimum : on déplaçait l'un en croyant
+               bouger l'autre, et la seule valeur affichée était la plage
+               combinée, en haut à droite, loin des poignées. -->
           <div class="cr-duo">
-            <input type="range" id="cr-hsMin" min="0" max="5" step="0.1">
-            <input type="range" id="cr-hsMax" min="0" max="5" step="0.1">
+            <div class="cr-lig">
+              <span class="cr-bout">min</span>
+              <input type="range" id="cr-hsMin" min="0" max="5" step="0.1"
+                aria-label="Hauteur de houle minimum, en mètres">
+              <b class="cr-val" id="cr-hsMin-v"></b>
+            </div>
+            <div class="cr-lig">
+              <span class="cr-bout">max</span>
+              <input type="range" id="cr-hsMax" min="0" max="5" step="0.1"
+                aria-label="Hauteur de houle maximum, en mètres">
+              <b class="cr-val" id="cr-hsMax-v"></b>
+            </div>
           </div>
         </div>
         <div class="cr-f">
@@ -723,10 +749,18 @@ footer .row{gap:14px;font-size:12px;}
           <div class="cr-rose-row">
             <div style="flex:1;min-width:0;">
               <div class="cr-duo">
-                <input type="range" id="cr-swFrom" min="0" max="355" step="5"
-                  aria-label="Début du secteur de houle, en degrés">
-                <input type="range" id="cr-swTo" min="0" max="355" step="5"
-                  aria-label="Fin du secteur de houle, en degrés">
+                <div class="cr-lig">
+                  <span class="cr-bout">de</span>
+                  <input type="range" id="cr-swFrom" min="0" max="355" step="5"
+                    aria-label="Début du secteur de houle, en degrés">
+                  <b class="cr-val" id="cr-swFrom-v"></b>
+                </div>
+                <div class="cr-lig">
+                  <span class="cr-bout">à</span>
+                  <input type="range" id="cr-swTo" min="0" max="355" step="5"
+                    aria-label="Fin du secteur de houle, en degrés">
+                  <b class="cr-val" id="cr-swTo-v"></b>
+                </div>
               </div>
               <!-- Repères cardinaux. Deux barres de 800 px sans graduation ne
                    disent rien : on ne sait pas si le milieu est le sud ou l'est.
@@ -766,8 +800,18 @@ footer .row{gap:14px;font-size:12px;}
           <div id="cr-windDirBox" style="display:none;">
             <label class="cr-sub-lbl" style="margin-top:9px;">D'où vient le vent<b id="cr-wd-v"></b></label>
             <div class="cr-duo">
-              <input type="range" id="cr-wdFrom" min="0" max="355" step="5">
-              <input type="range" id="cr-wdTo" min="0" max="355" step="5">
+              <div class="cr-lig">
+                <span class="cr-bout">de</span>
+                <input type="range" id="cr-wdFrom" min="0" max="355" step="5"
+                  aria-label="Début du secteur de vent, en degrés">
+                <b class="cr-val" id="cr-wdFrom-v"></b>
+              </div>
+              <div class="cr-lig">
+                <span class="cr-bout">à</span>
+                <input type="range" id="cr-wdTo" min="0" max="355" step="5"
+                  aria-label="Fin du secteur de vent, en degrés">
+                <b class="cr-val" id="cr-wdTo-v"></b>
+              </div>
             </div>
           </div>
         </div>
@@ -1163,7 +1207,10 @@ function dirArrow(deg, col, size){
 }
 // Hauteur d'eau : TOUJOURS une décimale. Math.round(x*10)/10 affiche « 1 m »
 // pour 0,96 et « 0.9 m » pour 0,94 : deux formats à une minute d'intervalle.
-function t1(v){ return (v == null || !isFinite(v)) ? '—' : v.toFixed(1); }
+// Virgule décimale, comme partout ailleurs sur le site : previsions.html écrit
+// « 1,2 m » dans sa rose, semaine.html « 0,8 m ». Cette page écrivait « 1.2 m »,
+// seule contre les autres, dans une interface entièrement en français.
+function t1(v){ return (v == null || !isFinite(v)) ? '—' : v.toFixed(1).replace('.', ','); }
 function esc(s){ return String(s==null?'':s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function n1(v){ return (v==null||!isFinite(v))?null:v; }
@@ -2610,7 +2657,15 @@ function critSync(){
   if (crit.hsMin > crit.hsMax){ var t = crit.hsMin; crit.hsMin = crit.hsMax; crit.hsMax = t;
     document.getElementById('cr-hsMin').value = crit.hsMin;
     document.getElementById('cr-hsMax').value = crit.hsMax; }
-  document.getElementById('cr-hs-v').textContent = crit.hsMin.toFixed(1) + ' à ' + crit.hsMax.toFixed(1) + ' m';
+  document.getElementById('cr-hs-v').textContent = t1(crit.hsMin) + ' à ' + t1(crit.hsMax) + ' m';
+  // Valeurs par ligne, au plus près de leur poignée.
+  function pose(id, txt){ var e = document.getElementById(id); if (e) e.textContent = txt; }
+  pose('cr-hsMin-v', t1(crit.hsMin) + ' m');
+  pose('cr-hsMax-v', t1(crit.hsMax) + ' m');
+  pose('cr-swFrom-v', crit.swFrom + '° ' + compass(crit.swFrom));
+  pose('cr-swTo-v', crit.swTo + '° ' + compass(crit.swTo));
+  pose('cr-wdFrom-v', crit.wdFrom + '° ' + compass(crit.wdFrom));
+  pose('cr-wdTo-v', crit.wdTo + '° ' + compass(crit.wdTo));
   document.getElementById('cr-per-v').textContent = '≥ ' + crit.perMin + ' s';
   document.getElementById('cr-sw-v').textContent = crit.swFrom + '° → ' + crit.swTo + '°  ('
     + compass(crit.swFrom) + '–' + compass(crit.swTo) + ')';
@@ -2618,7 +2673,7 @@ function critSync(){
   document.getElementById('cr-wd-v').textContent = crit.wdFrom + '° → ' + crit.wdTo + '°';
   document.getElementById('cr-windDirBox').style.display = crit.windDirOn ? '' : 'none';
   document.getElementById('cr-resume').textContent =
-    crit.hsMin.toFixed(1) + '–' + crit.hsMax.toFixed(1) + ' m · ≥' + crit.perMin + ' s · '
+    t1(crit.hsMin) + '–' + t1(crit.hsMax) + ' m · ≥' + crit.perMin + ' s · '
     + compass(crit.swFrom) + '–' + compass(crit.swTo) + ' · vent ≤' + crit.windMax;
   renderSwPresets();
   drawRose();
