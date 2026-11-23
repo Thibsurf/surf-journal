@@ -105,7 +105,40 @@ async function _loadTokenFromSupabase() {
 // _workerDead mémoïse l'échec pour ne pas repayer le timeout de 3 s à chaque appel.
 // Retourne du JSON ou null (jamais de throw).
 var _workerDead = false;
+
+// Requêtes EN VOL, par couple (chemin worker, chemin direct). Mesuré dans le
+// navigateur le 23/11/2026 sur previsions.html : 133 requêtes pour 89 URL
+// distinctes, dont `/tide?id=9881852` demandé SIX fois et
+// `/history?lat=-22.4783…` TROIS fois — à chaque chargement. Ce ne sont pas
+// des rechargements voulus : ce sont plusieurs blocs de la page qui demandent
+// la même chose au même instant, chacun ignorant les autres.
+//
+// On ne met PAS les résultats en cache (la fraîcheur reste décidée par les
+// appelants) : on fusionne seulement les appels simultanés, qui par définition
+// rendraient la même réponse.
+var _ncGetEnVol = {};
+
+// Chaque appelant SUPPLÉMENTAIRE reçoit une copie. Indispensable : certains
+// consommateurs MODIFIENT la réponse — `_tideNormalizeDay` réécrit les champs
+// `time` en place pour retirer un suffixe Z abusif. Deux appelants qui
+// partageraient l'objet se marcheraient dessus, et le second verrait des
+// heures déjà normalisées qu'il croirait brutes.
+function _ncCopie(d) {
+  if (d == null || typeof d !== 'object') return d;
+  try { return JSON.parse(JSON.stringify(d)); } catch (e) { return d; }
+}
+
 async function ncGet(workerPath, directPath) {
+  var cle = String(workerPath) + '\u0000' + String(directPath || '');
+  var enVol = _ncGetEnVol[cle];
+  if (enVol) return _ncCopie(await enVol);
+  var p = _ncGetReel(workerPath, directPath);
+  _ncGetEnVol[cle] = p;
+  try { return await p; }
+  finally { delete _ncGetEnVol[cle]; }
+}
+
+async function _ncGetReel(workerPath, directPath) {
   if (!_workerDead) {
     try {
       var ctrl = new AbortController();

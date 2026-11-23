@@ -369,6 +369,14 @@ function testLienSortie() {
   ok(L.msDeSortie('2026-11-25', '99:99').heure === null,
      'une heure hors bornes vaut « pas d\'heure », pas une date absurde');
   ok(L.msDeSortie('25/11/2026', '07:00') === null, 'un format de date étranger est refusé');
+  // La FORME ne garantit pas que la date existe : Date.UTC(2026, 12, 45) ne
+  // lève pas, il roule jusqu'au 14 février 2027. Une sortie silencieusement
+  // déplacée de trois mois est exactement ce que ce dépôt ne voit jamais passer.
+  ok(L.msDeSortie('2026-13-45', '07:00') === null,
+     'une date qui n\'existe pas est refusée, pas reportée en silence');
+  ok(L.msDeSortie('2026-02-30', '07:00') === null, '30 février refusé');
+  ok(L.msDeSortie('2026-11-31', '07:00') === null, '31 novembre refusé');
+  ok(L.msDeSortie('2028-02-29', '07:00') !== null, '29 février d\'une année bissextile accepté');
   ok(L.msDeSortie('', '07:00') === null && L.msDeSortie(null, null) === null,
      'une date absente est refusée, sans lever');
 
@@ -380,6 +388,20 @@ function testLienSortie() {
   ok(L._clefSpot('Baie de Ste Marie') !== L._clefSpot('Baie de Sainte Marie'),
      '… mais deux libellés vraiment différents ne sont pas confondus');
   ok(L._clefSpot(null) === '' && L._clefSpot(undefined) === '', 'une entrée vide ne lève pas');
+  // Le piège : un nom SANS lettre ni chiffre rend '' lui aussi. Comme aucun
+  // spot ne porte de champ `short` (0 sur 8 dans shared_spots, vérifié),
+  // `_clefSpot(spots[i].short)` valait '' en permanence et le PREMIER spot
+  // correspondait — le lien ouvrait la Passe de Dumbéa en l'annonçant, pour une
+  // sortie qui n'a rien à voir. Le champ spot de sorties.html est libre.
+  ok(L._clefSpot('—') === '' && L._clefSpot('🌊') === '' && L._clefSpot('???') === '',
+     'un nom sans lettre ni chiffre rend une clé VIDE (d\'où la garde)');
+  {
+    const corps = fnSrc(readFileSync(join(ROOT, 'accueil.html'), 'utf8'), 'ficheDepuisLien');
+    ok(/if \(!cle\)/.test(corps),
+       'ficheDepuisLien refuse explicitement une clé vide avant de chercher un spot');
+    ok(/spots\[i\]\.short && _clefSpot/.test(corps),
+       '… et ne compare `short` que s\'il existe');
+  }
 }
 
 async function testDedup() {

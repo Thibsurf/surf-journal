@@ -382,24 +382,25 @@ async function _bmsCharges() {
   var EP_BMS_LAGON = BASE + 'report?domain=BMSCOTE-09&report_type=marine&report_subtype=BMS_cote_fr';
   var EP_BMS_LARGE = BASE + 'report?domain=BMSLARGE-09&report_type=marine&report_subtype=BMS_large_fr';
 
-  // `typeof` sur chaque globale : alerts.js est chargé par des pages qui n'ont
-  // pas toutes nc-token.js, et lire une variable non déclarée lève.
-  var worker = (typeof _NC_WORKER === 'string') ? _NC_WORKER : null;
-  var mort = (typeof _workerDead !== 'undefined') && _workerDead;
-  if (worker && !mort && typeof fetch === 'function') {
+  // ncGet SANS chemin direct : rpcache n'a pas d'endpoint /bms, donc le worker
+  // est le seul à pouvoir répondre ici — ncGet rend null plutôt que de tenter
+  // un repli qui n'existe pas. On passe par lui, et non par un fetch à la main,
+  // pour hériter de ses trois comportements : le timeout de 3 s, la mémoïsation
+  // de `_workerDead` (DNS mobiles NC filtrant *.workers.dev), et surtout la
+  // FUSION DES APPELS SIMULTANÉS — previsions.html appelle getActiveBMS depuis
+  // le bandeau de navigation ET depuis la carte de l'onglet Marée, ce qui
+  // faisait partir deux requêtes /bms par chargement.
+  //
+  // `typeof` : alerts.js est chargé par des pages qui n'ont pas toutes
+  // nc-token.js, et lire une variable non déclarée lève.
+  if (typeof ncGet === 'function') {
     try {
-      var ctrl = new AbortController();
-      var minuteur = setTimeout(function(){ ctrl.abort(); }, 4000);
-      var rw = await fetch(worker + '/bms', { signal: ctrl.signal });
-      clearTimeout(minuteur);
-      if (rw.ok) {
-        var j = await rw.json();
-        // Les deux BMR absents = le worker n'a rien obtenu de rpcache. On ne
-        // prend PAS ça pour une mer calme : on bascule sur le chemin direct.
-        if (j && (j.bmrLagon || j.bmrLarge)) {
-          return { lagon: j.bmrLagon, large: j.bmrLarge,
-                   bmsLagon: j.bmsLagon, bmsLarge: j.bmsLarge, via: 'worker' };
-        }
+      var j = await ncGet('/bms', null);
+      // Les deux BMR absents = le worker n'a rien obtenu de rpcache. On ne
+      // prend PAS ça pour une mer calme : on bascule sur le chemin direct.
+      if (j && (j.bmrLagon || j.bmrLarge)) {
+        return { lagon: j.bmrLagon, large: j.bmrLarge,
+                 bmsLagon: j.bmsLagon, bmsLarge: j.bmsLarge, via: 'worker' };
       }
     } catch(e) { console.warn('[BMS] worker /bms indisponible :', e && e.message); }
   }

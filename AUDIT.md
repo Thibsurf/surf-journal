@@ -10408,8 +10408,67 @@ doublon passerait inaperçu. La mutation reproduit exactement le motif réel :
 
 `previsions.html` en profite aussi, elle partage le module.
 
+### ✓ Relecture indépendante — 12 points, 11 réels
+
+L'agent a relu les quatre commits du jour. **Onze défauts confirmés, un faux
+positif** (relevé en le vérifiant, conformément à la règle : la passe
+précédente de ce genre avait eu 1 point faux sur 7).
+
+**Le plus grave — un avis marine qui serait resté muet.** `_bmsEtat` n'expirait
+JAMAIS : `bmsEnsure` court-circuitait sur `.pret` sans borne de temps, donc
+`getActiveBMS()` n'était plus jamais rappelé et son propre cache de 15 min
+devenait inatteignable par ce chemin. Une PWA ouverte à 08 h ayant lu « aucun
+avis » n'aurait affiché le coup de vent émis à 10 h 30 ni à midi, ni le soir.
+C'est le défaut INVERSE de celui corrigé le matin même (ne pas mémoriser un
+échec) — et le plus grave des deux. Pire : le commentaire écrit à ce moment-là
+affirmait le contraire. Corrigé par un horodatage et `BMS_TTL_PAGE` = 5 min.
+
+**Un lien qui ouvrait la fiche du mauvais spot en l'annonçant.** `_clefSpot`
+rend `''` pour toute chaîne sans lettre ni chiffre (« — », un emoji), et
+**aucun spot ne porte de champ `short`** — vérifié dans `shared_spots`, 0 sur 8.
+`_clefSpot(spots[i].short)` valait donc `''` en permanence, et le premier spot
+de la liste correspondait. Une sortie nommée « 🌊 » (champ libre dans
+`sorties.html`) ouvrait la fiche de la Passe de Dumbéa **en écrivant son nom**.
+Vérifié après correctif : « 🌊 ne ressemble à aucun nom de spot », fiche fermée.
+
+**Les autres, tous vérifiés avant correction :**
+
+| # | défaut | correctif |
+|---|---|---|
+| 3 | `cielEnsure` sans minuteur : un fetch qui pend laisse l'entrée de cache sur `{attente}` **à vie**, et toute fiche ultérieure du spot y empile un rappel mort | `AbortController` 6 s, comme partout ailleurs dans le projet |
+| 4 | « le départ est passé, voici le créneau suivant » affirmé sur un écart **absolu** — faux dans les deux sens pour une sortie à 23 h sur un horizon tronqué à 18 h | écart signé + test que le départ est bien derrière nous |
+| 4b | « *aujourd'hui* est au-delà de l'horizon du modèle », littéralement impossible | trois raisons distinctes, trois phrases |
+| 5c | vent inconnu → sa demi-rangée sort de la grille et la houle restait dans 216 px sur 482 (`auto-fit` n'effondre pas la piste, la marée la traverse en `1/-1`) | classe posée par `fillNow`, houle pleine largeur |
+| 6 | deux lignes « Autre train » au libellé **identique** — le défaut même qui avait fait abandonner le libellé par nature | rang dans `sw.trains`, unique par construction |
+| 7 | le commentaire du `hashchange` décrivait un scénario impossible (deux documents : chaque clic recharge la page) ; et revenir sans fragment laissait la fiche ouverte | commentaire corrigé + fermeture de la fiche |
+| 8 | paramètre `r` mort depuis le passage à `allSlots`, et `critDerniersR` dont le commentaire annonçait un usage disparu | `critPret`, un drapeau nommé pour ce qu'il est |
+| 9 | « Comment lire ce tableau » dépliait **zéro mot** quand la note est vidée (aucune houle archivée) — conséquence directe du repli en `<details>` | `_tblNoteVisible()` aux deux points de vidage |
+| 10 | distance affichée calculée sur les coordonnées de l'**API** et non la position : 16,5 km d'écart à Yaté, dans une ligne dont tout l'intérêt est de dire d'où vient la mesure | `dlat`/`dlon` quand la station en déclare |
+| 11 | `msDeSortie('2026-13-45')` roulait en silence jusqu'au 14 février 2027 | relecture de ce que `Date.UTC` a compris |
+| 12 | les deux redessins de canvas (rAF et 260 ms) n'avaient pas la garde d'identité des trois rappels réseau | garde ajoutée — une exception à une règle est une règle qu'on oublie |
+
+**Le faux positif : « la grille passe à 3 colonnes entre 668 et 680 px ».**
+Mesuré sur la VRAIE page à 678 px de fenêtre : 2 colonnes de 292 px. C'est
+exactement le rôle d'`auto-fit`, qui effondre une piste vide — l'agent avait
+mesuré sur une réplique isolée du bloc CSS, sans la barre de défilement, d'où
+15 px de contenu en trop et une troisième piste qui tenait. La mesure du seuil
+une-colonne (~457 px et non « ~420 px ») était en revanche juste : le
+commentaire oubliait la gouttière de 20 px, il porte maintenant le calcul.
+
+Harnais : `test_tide` 61 → **68**, `test_alertes` 77 → **89**. Six mutations,
+toutes détectées.
+
 ### ⚠ Reste à faire
 
-- Relecture indépendante relancée (elle s'était arrêtée sur la limite d'usage de
-  5 h) : la passe à la main a trouvé cinq défauts, un œil neuf en trouvera
-  d'autres.
+- `previsions.html` fait encore 129 requêtes pour 89 URL distinctes. Les six
+  `/tide` et les deux `/bms` ont disparu avec la coalescence, mais il reste
+  **13 écritures** `model_forecast_cache` (POST, corps différents — à vérifier
+  avant de conclure), **5 sondes** `select=id&limit=1` et **3 `/history`
+  séquentiels sur la même station** (donc non coalescés : ce serait un cache de
+  résultats, pas une fusion d'appels en vol).
+- `ncFetch` (chemin direct rpcache) n'a **aucun** minuteur, contrairement au
+  chemin worker. Atteignable seulement si `_workerDead`, mais alors
+  `_obsCache[st.id]` peut se bloquer comme `_cielCache` le faisait.
+- `renderPodium` déclare `var bs` **deux fois** (une lecture de houle, puis une
+  `NodeList`). Inoffensif aujourd'hui, mine pour qui ajoutera une lecture après.
+- Relancer une relecture indépendante sur les commits de l'après-midi.

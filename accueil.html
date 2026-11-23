@@ -139,8 +139,11 @@ a{color:var(--accent);}
      propre ligne, détachée du chiffre qu'elle qualifie.
      On rend donc à chaque bloc une largeur proche de celle pour laquelle il est
      dessiné : deux colonnes dès qu'il y a la place, une seule en dessous de
-     ~420 px — où la pleine largeur vaut déjà celle de l'encart d'origine, donc
-     sans vide à combler. */
+     ~457 px — où la pleine largeur vaut déjà celle de l'encart d'origine, donc
+     sans vide à combler. Le seuil se calcule : il faut 190×2 + 20 de gouttière
+     = 400 px de contenu, plus 28,8 de marge et 28 de rembourrage, soit 456,8 px
+     de fenêtre. (Le commentaire a d'abord annoncé « ~420 px » en oubliant la
+     gouttière — relevé en relecture, et le genre de chiffre qu'on recopie.) */
   .site-banner .hb-cond{position:static;width:auto;margin:10px .9rem 16px;max-height:none;
     background:rgba(255,255,255,.055);padding:11px 14px;
     display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
@@ -153,6 +156,9 @@ a{color:var(--accent);}
      n'a pas de second chiffre à droite, elle sonne creux en demi-colonne. */
   .site-banner #nw-td-sec{grid-column:1/-1;
     border-top:1px solid rgba(160,200,225,.22);padding-top:8px;}
+  /* Posée par fillNow() quand le vent manque : sans voisine, la houle prend
+     toute la rangée au lieu de laisser une demi-colonne vide. */
+  .site-banner .hb-cond-sec--plein{grid-column:1/-1;}
   .site-banner .hc-main b{font-size:16px;}
   .site-banner .hc-main-vent b{font-size:15px;}
   .site-banner .hc-unit,.site-banner .hc-per,.site-banner .hc-sub{font-size:12px;}
@@ -1742,6 +1748,9 @@ function assemble(src, wp, swell, wind, windFb, gust){
       + ' Essaie une autre source ci-dessus, ou ouvre les <a href="previsions.html">prévisions complètes</a>.</div>';
     document.getElementById('tbl').innerHTML = '<div class="note">' + why + '</div>';
     document.getElementById('tbl-note').textContent = '';
+    // Et l'ouverture qui la contient : sinon « Comment lire ce tableau » reste
+    // cliquable, sous un tableau remplacé par un message d'indisponibilité.
+    _tblNoteVisible(false);
     renderDayPick();
     // La barre de sources est TOUT ce qui reste d'utile dans ce cas : c'est elle
     // qui porte l'âge des runs et le bouton « Passer à la source la plus
@@ -2081,6 +2090,15 @@ function fillNow(){
       + '<div class="hc-sub"><span>' + (s.wdir != null ? compass(s.wdir) : '—') + '</span></div>';
   }
   show('nw-wd-sec', s.ws != null);
+  // Vent inconnu : sa demi-rangée sort de la grille (`display:none`), et la
+  // houle restait seule dans une colonne de 216 px avec autant de vide à
+  // droite — mesuré en capture à 526 px. `auto-fit` n'effondre pas la piste
+  // devenue vide, parce que la ligne de marée porte `grid-column:1/-1` et
+  // l'occupe. Le cas est réel : `bestNowSlot()` ne filtre pas sur `s.ws`, et
+  // `filtrer()` note aussi les créneaux à vent inconnu.
+  // Posé APRÈS les deux `show()`, qui réécrivent `className` en entier.
+  var secSw = document.getElementById('nw-sw-sec');
+  if (secSw) secSw.className = 'hb-cond-sec' + (s.ws != null ? '' : ' hb-cond-sec--plein');
 
   if (s.tide) {
     // Port du spot MONTRÉ : quand le bandeau affiche Gouaro, sa marée est celle
@@ -2350,9 +2368,26 @@ function drawTable(){
     + 'survole-le, ou ouvre la fiche du créneau pour sa période et sa direction.');
   notes.push('Marée : station ' + esc(tidePortName(tidePort())) + '. Lignes grisées = nuit.');
   document.getElementById('tbl-note').innerHTML = notes.join(' ');
+  // Replier la légende l'a dotée d'un `<summary>` toujours rendu : quand la
+  // note est vidée (aucune ligne de houle archivée pour cette source près de ce
+  // spot), on affichait un « Comment lire ce tableau » qui dépliait zéro mot,
+  // sous un tableau qui n'existe pas.
+  _tblNoteVisible(!!notes.length);
   var ts = document.getElementById('tbl-src');
   if (ts) ts.innerHTML = esc(src.label) + ' + vent ' + esc(windPlan().prim.label);
 }
+// Affiche ou masque l'ouverture qui contient la légende du tableau. Le `<div>`
+// lui-même reste en place : c'est son parent `<details>` qui disparaît, sinon
+// le libellé resterait cliquable pour rien.
+function _tblNoteVisible(on){
+  var el = document.getElementById('tbl-note');
+  var det = el && el.parentNode;
+  if (det && det.tagName === 'DETAILS'){
+    det.hidden = !on;
+    if (!on) det.removeAttribute('open');
+  }
+}
+
 // Direction : flèche + secteur + degrés. La flèche pointe vers où ça VA (dir +
 // 180°), ce que l'œil attend d'une flèche ; le secteur et les degrés disent la
 // PROVENANCE, convention météo du site. Les trois ensemble pour qu'aucune des
@@ -3206,12 +3241,12 @@ function critRun(auto){
   loadAllSpots(function(list){
     ensureTides(list, function(){
       var r = filtrer(list);
-      critDerniersR = r;
+      critPret = true;
       renderPodium(r);
       critRender(r);
       // Après le rendu : la fiche s'ouvre PAR-DESSUS une page déjà complète,
       // pas sur un écran de chargement.
-      ficheDepuisLien(r);
+      ficheDepuisLien();
       // Les créneaux sont notés : le bandeau peut enfin désigner le meilleur
       // spot de l'instant. Avant cet appel il montre le spot choisi.
       if (spot) fillNow();
@@ -3258,7 +3293,18 @@ function msDeSortie(jour, heure){
     mm = +String(heure).split(':')[1];
     if (!(hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59)){ hh = null; mm = 0; }
   }
-  var msJour = Date.UTC(+m[0], +m[1] - 1, +m[2]) - 11 * 36e5;
+  // La forme AAAA-MM-JJ ne garantit pas que la date EXISTE : Date.UTC(2026, 12,
+  // 45) ne lève pas, il roule jusqu'au 14 février 2027. On relit donc ce que
+  // Date.UTC a compris et on refuse si ça ne correspond plus à ce qui était
+  // demandé. Aujourd'hui `date_start` est une colonne Postgres de type `date`,
+  // donc inatteignable — mais c'est le SEUL point d'entrée d'une date venue
+  // d'ailleurs, et une date silencieusement décalée de trois mois est
+  // exactement le genre d'erreur que ce projet ne voit jamais passer.
+  var brut = Date.UTC(+m[0], +m[1] - 1, +m[2]);
+  var relu = new Date(brut);
+  if (relu.getUTCFullYear() !== +m[0] || relu.getUTCMonth() !== +m[1] - 1
+      || relu.getUTCDate() !== +m[2]) return null;
+  var msJour = brut - 11 * 36e5;
   return { jour: msJour,
            ms: msJour + (hh != null ? (hh * 60 + mm) * 60000 : 0),
            heure: hh };
@@ -3274,7 +3320,7 @@ function _msgLien(txt, rate){
 }
 
 var _lienFait = false;
-function ficheDepuisLien(r){
+function ficheDepuisLien(){
   if (_lienFait) return;
   var brut = String(location.hash || '').replace(/^#/, '');
   if (brut.indexOf('fiche=') !== 0) return;
@@ -3292,10 +3338,21 @@ function ficheDepuisLien(r){
     return;
   }
 
-  // Le spot
+  // Le spot. `_clefSpot` rend '' pour toute chaîne sans lettre ni chiffre
+  // (« — », un emoji, « ??? »), et AUCUN spot ne porte de champ `short` —
+  // vérifié dans shared_spots, 0 sur 8. Sans cette garde, `_clefSpot(undefined)`
+  // valait '' lui aussi et le premier spot de la liste correspondait : le lien
+  // ouvrait la fiche de la Passe de Dumbéa en l'ANNONÇANT, pour une sortie qui
+  // n'a rien à voir. Un lien qui répond à côté est pire qu'un lien qui échoue.
   var cle = _clefSpot(nom), cible = null, i;
+  if (!cle){
+    _msgLien('<b>' + esc(nom) + '</b> ne ressemble à aucun nom de spot.', true);
+    return;
+  }
   for (i = 0; i < spots.length; i++){
-    if (_clefSpot(spots[i].name) === cle || _clefSpot(spots[i].short) === cle){ cible = spots[i]; break; }
+    if (_clefSpot(spots[i].name) === cle || (spots[i].short && _clefSpot(spots[i].short) === cle)){
+      cible = spots[i]; break;
+    }
   }
   if (!cible){
     for (i = 0; i < spots.length; i++){
@@ -3341,34 +3398,68 @@ function ficheDepuisLien(r){
     // Aucun article devant la date : jourTxt rend « Demain » ou
     // « Aujourd'hui » aussi bien qu'une date, et « du Demain » ne se dit pas.
     // Les phrases sont donc construites pour que la date ouvre un segment.
-    _msgLien(passe || msJour < Date.now() - 864e5
-      ? 'Cette sortie est passée : <b>' + esc(jourTxt(msJour, 'long'))
-        + '</b>. Les modèles ne gardent pas l\'historique ici.'
-      : 'Aucune prévision pour <b>' + esc(cible.short || cible.name) + '</b> à cette date : <b>'
-        + esc(jourTxt(msJour, 'long')) + '</b> est au-delà de l\'horizon du modèle choisi.', true);
+    // Trois raisons possibles, et elles ne se disent pas pareil. « Aujourd'hui
+    // est au-delà de l'horizon du modèle » était littéralement impossible, et
+    // c'est pourtant ce que la page écrivait pour une sortie du jour sur un
+    // spot dont aucun créneau n'avait été lu.
+    var txt;
+    if (passe || msJour < Date.now() - 864e5)
+      txt = 'Cette sortie est passée : <b>' + esc(jourTxt(msJour, 'long'))
+          + '</b>. Les modèles ne gardent pas l\'historique ici.';
+    else if (msJour < Date.now() + 864e5)
+      txt = 'Aucune prévision lue pour <b>' + esc(cible.short || cible.name)
+          + '</b> à cette date. La source de houle choisie ne couvre peut-être pas ce spot.';
+    else
+      txt = 'Aucune prévision pour <b>' + esc(cible.short || cible.name) + '</b> à cette date : <b>'
+          + esc(jourTxt(msJour, 'long')) + '</b> est au-delà de l\'horizon du modèle choisi.';
+    _msgLien(txt, true);
     return;
   }
 
-  // L'écart entre le départ annoncé et le créneau ouvert. Au-delà de 4 h ce
-  // n'est plus « le créneau le plus proche » : c'est que l'heure de départ est
-  // DERRIÈRE nous, et la page doit le dire au lieu d'afficher le soir en
-  // prétendant répondre pour le matin.
-  var ecart = (hh != null) ? Math.abs(best.ms - msCible) : 0;
+  // L'écart entre le départ annoncé et le créneau ouvert. SIGNÉ, pas absolu :
+  // la première version prenait Math.abs, et affirmait donc « le départ est
+  // passé, voici le créneau suivant » dans un cas où il est devant nous et où
+  // le créneau montré est le PRÉCÉDENT — une sortie à 23 h le dernier jour
+  // couvert, dont la série du modèle s'arrête à 18 h. Deux affirmations, deux
+  // conditions : le créneau est-il APRÈS le départ, et le départ est-il
+  // vraiment derrière nous ?
+  var delta = (hh != null) ? (best.ms - msCible) : 0;   // > 0 = créneau après le départ
+  var departPasse = (hh != null) && msCible < Date.now();
+  var queue;
+  if (delta > 4 * 36e5 && departPasse)
+    queue = '. Le départ prévu (' + esc(heure) + ') est passé : voici le créneau suivant.';
+  else if (Math.abs(delta) > 30 * 60000)
+    queue = ' (créneau le plus proche du départ prévu, ' + esc(heure) + ').';
+  else
+    queue = '.';
   _msgLien('Fiche de la sortie : <b>' + esc(jourTxt(best.ms, 'long')) + ' à '
     + esc(heureTxt(best.ms)) + '</b> — <b>' + esc(cible.short || cible.name) + '</b>'
-    + (ecart > 4 * 36e5
-        ? '. Le départ prévu (' + esc(heure) + ') est passé : voici le créneau suivant.'
-        : ecart > 30 * 60000
-          ? ' (créneau le plus proche du départ prévu, ' + esc(heure) + ').'
-          : '.'), false);
+    + queue, false);
   openSlotFor(best);
 }
 
-// Un deuxième clic depuis sorties.html n'atteint pas le réseau (page en cache) :
-// seul le fragment change. Sans cet écouteur, rien ne se passerait.
+// Pour le RETOUR ARRIÈRE et les changements de fragment DANS cet onglet.
+//
+// Ce commentaire disait auparavant que l'écouteur servait au « deuxième clic
+// depuis sorties.html ». C'est faux : sorties.html et accueil.html sont deux
+// documents, le lien n'a pas de target, donc chaque clic est une navigation
+// inter-documents qui RECHARGE accueil.html — `hashchange` ne se déclenche
+// jamais dans ce cas. Il sert au retour/avance du navigateur entre deux
+// fragments une fois sur la page.
+//
+// Et dans ce cas-là il faut aussi savoir REFERMER : revenir à `accueil.html`
+// sans fragment laissait la fiche du créneau précédent ouverte à l'écran, avec
+// son message, parce que ficheDepuisLien sortait sans rien toucher.
 window.addEventListener('hashchange', function(){
   _lienFait = false;
-  if (typeof critDerniersR !== 'undefined' && critDerniersR) ficheDepuisLien(critDerniersR);
+  var frag = String(location.hash || '').replace(/^#/, '');
+  if (frag.indexOf('fiche=') !== 0){
+    var m = document.getElementById('lien-msg');
+    if (m) { m.style.display = 'none'; m.innerHTML = ''; }
+    if (typeof closeSlot === 'function' && fcSlot) closeSlot();
+    return;
+  }
+  if (critPret) ficheDepuisLien();
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3378,10 +3469,12 @@ window.addEventListener('hashchange', function(){
 // on montre les meilleurs de la semaine en disant qu'ils sont hors critères.
 // Une page qui répond « rien » à « où aller » n'a pas répondu.
 var podDerniers = [];
-// Dernier résultat complet de filtrer(), gardé pour le lien profond : un
-// changement de fragment doit pouvoir rouvrir une fiche sans relancer toute la
-// recherche.
-var critDerniersR = null;
+// La recherche a-t-elle tourné au moins une fois ? C'est tout ce dont le lien
+// profond a besoin : il lit `allSlots`, pas le résultat de filtrer(). La
+// version précédente gardait l'objet complet de filtrer() « pour le lien
+// profond », ce qui n'est plus vrai depuis qu'il est parti d'`allSlots` — un
+// nom et un commentaire qui décrivaient un usage disparu.
+var critPret = false;
 
 function renderPodium(r){
   var box = document.getElementById('pod-body');
@@ -3745,20 +3838,36 @@ function tokenEnsure(cb){
 // que l'avis concerne ce créneau — d'où la portée, et le mot « en cours » dans
 // le libellé plutôt que « prévu ».
 var BMS_PORTEE_H = 36;
+
+// Durée de vie du résultat DANS LA PAGE. Sans elle, le premier résultat non nul
+// restait vrai pour toujours : `bmsEnsure` court-circuitait sur `.pret` et
+// `getActiveBMS()` n'était plus jamais rappelé, rendant son propre cache de
+// 15 min inatteignable par ce chemin. Conséquence mesurée au raisonnement et
+// confirmée en relecture : une PWA ouverte à 08 h qui a lu « aucun avis »
+// n'aurait JAMAIS affiché le coup de vent émis à 10 h 30, ni à midi, ni le
+// soir. C'est le défaut inverse de celui corrigé plus tôt (ne pas mémoriser un
+// échec), et le plus grave des deux — un avis réel resté muet.
+//
+// 5 min et non 15 : l'appel qui en résulte retombe presque toujours sur le
+// cache de 15 min d'alerts.js, donc il ne coûte rien, et la fenêtre de
+// péremption totale reste celle d'alerts.js.
+var BMS_TTL_PAGE = 5 * 60 * 1000;
 var _bmsEtat = null;
 function bmsEnsure(cb){
-  if (_bmsEtat && _bmsEtat.pret) { cb(_bmsEtat.data); return; }
+  if (_bmsEtat && _bmsEtat.pret && (Date.now() - _bmsEtat.ts) < BMS_TTL_PAGE) { cb(_bmsEtat.data); return; }
+  if (_bmsEtat && _bmsEtat.pret) _bmsEtat = null;   // périmé : on redemande
   if (_bmsEtat && _bmsEtat.attente) { _bmsEtat.attente.push(cb); return; }
   _bmsEtat = { attente: [cb] };
   function fini(d){
     var att = (_bmsEtat || {}).attente || [];
-    // Un ÉCHEC ne se mémorise pas : `getActiveBMS()` rend null aussi bien pour
-    // « pas de token » que pour une panne passagère, et une page de PWA reste
-    // ouverte des heures. Mémoriser null interdirait le bandeau jusqu'au
-    // rechargement, même une fois le réseau revenu. On garde en revanche un
-    // résultat réel, y compris « aucun avis » : celui-là a sa propre durée de
-    // vie de 15 min dans alerts.js.
-    _bmsEtat = d ? { pret: true, data: d } : null;
+    // Un ÉCHEC ne se mémorise pas du tout : `getActiveBMS()` rend null aussi
+    // bien pour « pas de source » que pour une panne passagère, et une page de
+    // PWA reste ouverte des heures. Mémoriser null interdirait le bandeau
+    // jusqu'au rechargement, même une fois le réseau revenu.
+    // Un résultat RÉEL, lui, est gardé — mais horodaté, et pour BMS_TTL_PAGE
+    // seulement. Le garder sans limite revenait à figer l'état de la mer à
+    // l'heure où la page a été ouverte.
+    _bmsEtat = d ? { pret: true, data: d, ts: Date.now() } : null;
     att.forEach(function(f){ try { f(d); } catch(e){} });
   }
   // ORDRE INVERSÉ depuis que le Worker expose /bms (23/11/2026) : on essaie
@@ -3931,7 +4040,15 @@ function majObs(s){
     // publient à l'heure ou à la demi-heure.
     var age = (pt && pt.ms) ? (Date.now() - pt.ms) / 60000 : null;
     if (!pt || age == null || age < -10 || age > 180){ e2.style.display = 'none'; return; }
-    var km = Math.round(kmEntre(s.spot.lat, s.spot.lon, st.lat, st.lon));
+    // `lat`/`lon` d'une station sont les coordonnées attendues par l'API, qui
+    // ne sont pas toujours sa POSITION : obs-stations.js documente le cas de
+    // Yaté (API lon=167,100 ; position réelle 166,940), soit 0,16° ≈ 16,5 km
+    // d'écart. Afficher « 25 km » pour une station qui est à 9 km, dans une
+    // ligne dont tout l'intérêt est de dire d'où vient la mesure, serait une
+    // belle façon de perdre la confiance qu'on vient de gagner.
+    var stLat = (st.dlat != null) ? st.dlat : st.lat;
+    var stLon = (st.dlon != null) ? st.dlon : st.lon;
+    var km = Math.round(kmEntre(s.spot.lat, s.spot.lon, stLat, stLon));
     var ageTxt = age < 1 ? 'à l’instant'
                : age < 90 ? 'il y a ' + Math.round(age) + ' min'
                : 'il y a ' + String(Math.round(age / 30) / 2).replace('.', ',') + ' h';
@@ -3999,7 +4116,17 @@ function cielEnsure(lat, lon, cb){
     + '&longitude=' + lon.toFixed(4)
     + '&hourly=uv_index,cloud_cover,precipitation,weather_code'
     + '&timezone=GMT&forecast_days=8';
-  fetch(url).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+  // PLAFOND DE TEMPS, comme partout ailleurs dans ce projet (_loadTokenFromWorker
+  // 4 s, ncGet 3 s). Un fetch qui ne reçoit jamais de réponse — portail captif,
+  // zone morte, connexion qui pend — ne rejette PAS : sans minuteur, ni .then ni
+  // .catch ne partent, la ligne reste sur « lecture… », et surtout l'entrée du
+  // cache reste sur {attente:[…]} à vie : toute fiche ultérieure de ce spot y
+  // empile un rappel qui ne partira jamais.
+  var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  var minuteur = ctrl ? setTimeout(function(){ try { ctrl.abort(); } catch(e){} }, 6000) : null;
+  fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+    .then(function(r){ if (minuteur) clearTimeout(minuteur); return r.ok ? r.json() : null; })
+    .then(function(j){
     var pts = {};
     if (j && j.hourly && j.hourly.time){
       for (var i = 0; i < j.hourly.time.length; i++){
@@ -4023,6 +4150,7 @@ function cielEnsure(lat, lon, cb){
     _cielCache[cle] = _cielVide(pts) ? null : res;
     att.forEach(function(f){ try { f(res); } catch(e){} });
   }).catch(function(){
+    if (minuteur) clearTimeout(minuteur);
     var att = (_cielCache[cle] || {}).attente || [];
     _cielCache[cle] = null;
     att.forEach(function(f){ try { f({ pts: {} }); } catch(e){} });
@@ -4097,11 +4225,21 @@ function openSlotFor(s){
   // leur seule nature donnait deux lignes « Mer du vent » identiques en
   // apparence quand un créneau porte deux trains courts — vu en capture sur la
   // passe de Ouano, 0,5 m à 6 s et 0,3 m à 8 s.
-  // Le RANG n'a de sens que si la ligne « Houle » montre bien le train
-  // principal. Quand la recherche en a retenu un autre, le plus gros train du
-  // créneau se retrouve EN DESSOUS : l'appeler « 2e train » est alors
-  // faux — il est premier par la taille. On le dit « Autre train » dans ce
-  // cas-là, et c'est la ligne « Houle » qui porte l'explication.
+  // Le RANG, toujours — mais celui du train dans la lecture complète, triée par
+  // hauteur, et pas sa position dans la liste des « autres ». Deux versions ont
+  // échoué avant celle-ci :
+  //   · « 2e train », « 3e train » comptés après exclusion du train affiché :
+  //     quand la recherche retient un secondaire, le plus GROS train du créneau
+  //     se retrouve étiqueté « 2e », alors qu'il est premier par la taille ;
+  //   · « Autre train » pour tous dans ce cas : deux trains donnaient alors deux
+  //     lignes au libellé IDENTIQUE — exactement le défaut qui avait fait
+  //     abandonner le libellé par nature (deux « Mer du vent » indistinguables).
+  // Le rang dans `sw.trains` est unique par construction et ne ment jamais.
+  function rangTrain(lect, tr){
+    var L = (lect && lect.trains) ? lect.trains : [];
+    for (var z = 0; z < L.length; z++) if (L[z] === tr) return z + 1;
+    return null;
+  }
   //
   // La comparaison passe par swellPrimaryOf() — LA règle de houle primaire du
   // projet, dans assets/swell-trains.js — et sur l'IDENTITÉ du train, jamais sur
@@ -4118,7 +4256,8 @@ function openSlotFor(s){
     var tf = autresFc[ti];
     var cr = croisement(sw, tf);
     var mdv = estMerDuVent(tf);
-    ligTrains += ligne(estPrincipal ? (ti + 2) + 'e train' : 'Autre train',
+    var rg = rangTrain(s.sw, tf);
+    ligTrains += ligne(rg == null ? 'Autre train' : (rg === 1 ? '1er train' : rg + 'e train'),
       t1(tf.h) + ' m',
       (tf.t != null ? Math.round(tf.t) + ' s' : '')
       + (mdv ? ' · mer du vent' : ' · houle')
@@ -4264,8 +4403,13 @@ function openSlotFor(s){
   })();
 
   if (typeof updateRoseSatBg === 'function') updateRoseSatBg(sp.lat, sp.lon, 'fc-sat-img');
-  requestAnimationFrame(function(){ drawSatVec(s); drawMiniTide(s); });
-  setTimeout(function(){ drawSatVec(s); drawMiniTide(s); }, 260);
+  // Mêmes gardes que les trois rappels réseau : ces deux-ci écrivent dans les
+  // canvas PARTAGÉS de la fiche avec le créneau capturé. La fenêtre est courte
+  // (260 ms) et la fiche est un modal, donc le cas est improbable — mais la
+  // garde coûte une comparaison, et une exception à une règle est une règle
+  // qu'on finit par oublier.
+  requestAnimationFrame(function(){ if (fcSlot !== s) return; drawSatVec(s); drawMiniTide(s); });
+  setTimeout(function(){ if (fcSlot !== s) return; drawSatVec(s); drawMiniTide(s); }, 260);
 }
 
 var _fcRetour = null;

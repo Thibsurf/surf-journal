@@ -39,6 +39,7 @@ function ok(cond, titre, detail) {
 function section(t) { console.log('\n── ' + t + ' ' + '─'.repeat(Math.max(0, 62 - t.length))); }
 
 const alertsSrc  = readFileSync(join(ROOT, 'assets', 'alerts.js'), 'utf8');
+const tokenSrc   = readFileSync(join(ROOT, 'assets', 'nc-token.js'), 'utf8');
 const obsSrc     = readFileSync(join(ROOT, 'assets', 'obs-stations.js'), 'utf8');
 const accueilSrc = readFileSync(join(ROOT, 'accueil.html'), 'utf8');
 const prevSrc    = readFileSync(join(ROOT, 'previsions.html'), 'utf8');
@@ -86,20 +87,22 @@ const A = (new Function('bouchon', `
 // le repli se déclenche quand le worker ne rend rien d'exploitable — sinon une
 // panne du worker ferait disparaître les avis marine en silence.
 const bouchonW = { token: 'jeton-bidon', reponses: {}, bmsHttp: null, appelsNcFetch: 0 };
+// Le bouchon porte sur `ncGet`, pas sur `fetch` : depuis le 23/11/2026,
+// _bmsCharges passe par ncGet (chemin worker SANS chemin direct — rpcache n'a
+// pas d'endpoint /bms), pour hériter de son timeout, de la mémoïsation de
+// `_workerDead` et de la fusion des appels simultanés. Le bouchon suit le code.
+// ncGet ne LÈVE jamais en vrai : il rend null. On reproduit ce contrat, sinon
+// le test validerait une gestion d'erreur que la production ne rencontre pas.
 const W = (new Function('b', `
   var _NC_WORKER = 'https://worker-bidon';
   var _workerDead = false;
   var _ncToken = b.token;
-  function AbortController(){ this.signal = null; this.abort = function(){}; }
-  function setTimeout(f, d){ return 0; }
-  function clearTimeout(t){}
-  function fetch(url, opt){
-    if (String(url).indexOf('/bms') >= 0) {
-      if (b.bmsHttp === 'throw') return Promise.reject(new Error('DNS filtre'));
-      if (b.bmsHttp === 'ko')    return Promise.resolve({ ok: false, status: 502 });
-      return Promise.resolve({ ok: true, status: 200, json: function(){ return Promise.resolve(b.bmsBody); } });
+  function ncGet(workerPath, directPath){
+    if (String(workerPath).indexOf('/bms') >= 0) {
+      if (b.bmsHttp === 'throw' || b.bmsHttp === 'ko') return Promise.resolve(null);
+      return Promise.resolve(b.bmsBody);
     }
-    return Promise.reject(new Error('fetch inattendu : ' + url));
+    return Promise.resolve(null);
   }
   function ncFetch(url){ b.appelsNcFetch++; return Promise.resolve(b.reponses[url] || null); }
   function escapeHtml(s){ return String(s); }
@@ -337,6 +340,75 @@ ok((await W.getActiveBMS(true)) === null,
 W.jeton('jeton-bidon');
 
 // ════════════════════════════════════════════════════════════════════════════
+section('ncGet : les appels simultanés ne partent qu\'une fois');
+
+// nc-token.js est le passage obligé de toutes les lectures meteo.nc du site.
+// Mesuré sur previsions.html le 23/11/2026 : 133 requêtes pour 89 URL
+// distinctes, `/tide?id=9881852` demandé SIX fois et `/history?lat=-22.4783…`
+// TROIS fois par chargement — plusieurs blocs de la page demandant la même
+// chose au même instant, chacun ignorant les autres.
+const jr = { appels: [], retard: 5 };
+const NT = (new Function('j', `
+  var localStorage = { getItem: function(){ return null; }, setItem: function(){} };
+  var window = {};
+  var console = { warn: function(){}, log: function(){} };
+  function fetch(url, opt){
+    j.appels.push(String(url));
+    return new Promise(function(res){
+      setTimeout(function(){
+        res({ ok: true, json: function(){ return Promise.resolve({ marque: String(url), liste: [{ t: 'Z' }] }); } });
+      }, j.retard);
+    });
+  }
+  ${tokenSrc}
+  return { ncGet: ncGet, _NC_WORKER: _NC_WORKER };
+`))(jr);
+
+{
+  const n0 = jr.appels.length;
+  const [a, b2, c] = await Promise.all([
+    NT.ncGet('/tide?id=9881852', 'tide?id=9881852'),
+    NT.ncGet('/tide?id=9881852', 'tide?id=9881852'),
+    NT.ncGet('/tide?id=9881852', 'tide?id=9881852'),
+  ]);
+  ok(jr.appels.length - n0 === 1,
+    'trois demandes simultanées de la même URL = UNE requête réseau',
+    (jr.appels.length - n0) + ' requête(s)');
+  ok(a && b2 && c && a.marque === b2.marque && b2.marque === c.marque,
+    'les trois appelants reçoivent la même donnée');
+  // La COPIE est le point délicat : _tideNormalizeDay réécrit les champs `time`
+  // en place. Deux appelants qui partageraient l'objet se marcheraient dessus.
+  ok(a.liste !== b2.liste,
+    'chaque appelant supplémentaire reçoit une COPIE, pas l\'objet partagé');
+  b2.liste[0].t = 'modifié';
+  ok(a.liste[0].t === 'Z',
+    '… et modifier la copie ne touche pas la réponse du premier appelant',
+    'obtenu ' + a.liste[0].t);
+}
+
+{
+  // Pas de cache de RÉSULTATS : une fois la requête revenue, la suivante
+  // repart. On ne fusionne que ce qui est simultané — la fraîcheur reste
+  // décidée par les appelants, comme avant.
+  const n0 = jr.appels.length;
+  await NT.ncGet('/tide?id=9881852', 'tide?id=9881852');
+  ok(jr.appels.length - n0 === 1,
+    'un appel ULTÉRIEUR repart bien (aucun cache de résultats introduit)',
+    (jr.appels.length - n0) + ' requête(s)');
+}
+
+{
+  const n0 = jr.appels.length;
+  await Promise.all([
+    NT.ncGet('/tide?id=9881852&date=2026-11-23', 'x'),
+    NT.ncGet('/tide?id=9880352&date=2026-11-23', 'y'),
+  ]);
+  ok(jr.appels.length - n0 === 2,
+    'deux URL différentes restent deux requêtes (pas de confusion de clé)',
+    (jr.appels.length - n0) + ' requête(s)');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 section('vent mesuré : la conversion et la station');
 
 const OBSFN = (new Function(
@@ -423,6 +495,22 @@ ok(appelsBms.length === 1,
 ok(/function majBms\([^]*?BMS_PORTEE_H/.test(accueilSrc),
   'majBms borne la portée : un avis en cours ne s\'affiche pas sur un créneau de J+4');
 
+// Le résultat gardé dans la page doit PÉRIMER. Sans horodatage, `bmsEnsure`
+// court-circuitait sur `.pret` pour toujours : getActiveBMS n'était plus jamais
+// rappelé, son cache de 15 min devenait inatteignable, et une PWA ouverte à
+// 08 h qui a lu « aucun avis » n'aurait jamais montré le coup de vent émis à
+// 10 h 30. C'est le défaut INVERSE de « ne pas mémoriser un échec », et le plus
+// grave des deux : un avis réel resté muet.
+{
+  const be = fnSrc(accueilSrc, 'bmsEnsure');
+  ok(/_bmsEtat\.pret && \(Date\.now\(\) - _bmsEtat\.ts\) < BMS_TTL_PAGE/.test(be),
+    'le résultat BMS gardé dans la page a une durée de vie');
+  ok(/ts: Date\.now\(\)/.test(be),
+    '… et il est bien horodaté au moment où on le range');
+  ok(/var BMS_TTL_PAGE = \d+ \* 60 \* 1000;/.test(accueilSrc),
+    '… avec une durée écrite en clair');
+}
+
 // Les trois lignes remplies en différé (BMS, vent mesuré, ciel) doivent vérifier
 // l'IDENTITÉ du créneau avant d'écrire, pas son instant. Mesuré le 23/11/2026 :
 // les 344 créneaux de la recherche ne portent que 43 instants distincts — les
@@ -435,6 +523,18 @@ ok(/function majBms\([^]*?BMS_PORTEE_H/.test(accueilSrc),
 // On vise les trois fonctions nommément. Un simple comptage de gardes attrapait
 // aussi le `if (!fcSlot) return;` de l'export agenda, qui est synchrone et lit
 // `fcSlot.ms` tout à fait légitimement : ce n'est pas un rappel différé.
+// Les deux redessins de canvas d'openSlotFor (requestAnimationFrame et
+// setTimeout 260 ms) écrivent dans les canvas PARTAGÉS de la fiche : ils ont la
+// même garde que les trois rappels réseau. Une exception à une règle est une
+// règle qu'on finit par oublier.
+{
+  const os = fnSrc(accueilSrc, 'openSlotFor');
+  const redessins = (os.match(/if \(fcSlot !== s\) return; drawSatVec/g) || []);
+  ok(redessins.length === 2,
+    'les deux redessins différés des canvas sont gardés eux aussi',
+    redessins.length + ' garde(s)');
+}
+
 ['majBms', 'majObs', 'openSlotFor'].forEach(function (nom) {
   const f = fnSrc(accueilSrc, nom);
   ok(/fcSlot !== vise/.test(f),
@@ -460,6 +560,18 @@ ok(convTotal === convDedans && convDedans === 2,
   'total=' + convTotal + ' dont dans la fonction=' + convDedans);
 ok(/obsStationForSpot/.test(accueilSrc),
   'accueil.html choisit sa station par la fonction partagée');
+
+// `lat`/`lon` d'une station sont les coordonnées de l'API, pas toujours sa
+// POSITION : Yaté déclare lon=167,100 pour l'API et dlon=166,940 en réalité,
+// soit 16,5 km. La distance AFFICHÉE doit suivre la position.
+ok(/st\.dlat != null\) \? st\.dlat : st\.lat/.test(accueilSrc),
+  'la distance affichée utilise dlat/dlon quand la station en déclare');
+{
+  const yate = O.OBS_STATIONS.filter(function (x) { return /Yat/.test(x.name); })[0];
+  ok(yate && yate.dlon != null && Math.abs(yate.lon - yate.dlon) > 0.1,
+    'Yaté a bien deux positions distinctes (sinon ce contrôle ne prouve rien)',
+    yate ? 'lon=' + yate.lon + ' dlon=' + yate.dlon : 'station absente');
+}
 
 ok(!/var OBS_STATIONS\s*=/.test(prevSrc),
   'previsions.html ne redéclare plus la liste des stations');
