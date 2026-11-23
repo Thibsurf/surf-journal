@@ -628,6 +628,35 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 .fc-row--w b{white-space:normal;text-align:right;min-width:0;}
 /* Le contexte d'une mesure (station, distance, âge, écart au modèle) passe à
    la ligne sous la valeur : il se lit APRÈS le chiffre, pas à la place. */
+/* ── Ciel : une image, puis le texte, puis l'échelle UV ────────────────────
+   La ligne cesse d'être une case de tableur. Elle garde son libellé à gauche
+   comme ses voisines — la carte doit rester UNE grille, pas un patchwork. */
+/* Jauge de hauteur de houle : 3 m de plein. Posée SOUS le chiffre, alignée à
+   droite comme lui, et volontairement discrète — elle donne une échelle, elle
+   ne remplace pas la valeur. */
+/* Titres de groupe : ils coupent la liste en blocs de sens — la mer, le vent,
+   le ciel — au lieu d'une colonne de dix lignes identiques. Discrets : c'est
+   une respiration, pas une nouvelle hiérarchie à lire. */
+.fc-grp{font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);opacity:.75;margin:9px 0 1px;}
+.fc-grp:first-child{margin-top:0;}
+.fc-jauge{display:block;width:72px;height:4px;border-radius:2px;margin:4px 0 1px auto;
+  background:rgba(255,255,255,.10);overflow:hidden;}
+.fc-jauge span{display:block;height:100%;border-radius:2px;}
+.fc-row--ciel b{display:flex;align-items:center;gap:9px;justify-content:flex-end;}
+.fc-wx{width:40px;height:40px;object-fit:contain;flex-shrink:0;
+  filter:drop-shadow(0 2px 5px rgba(0,0,0,.45));}
+.fc-ciel-t{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0;}
+.fc-ciel-n{font-size:14px;font-weight:700;line-height:1.1;}
+.fc-ciel-t small{font-size:11px;font-weight:600;color:var(--muted);margin:0;}
+/* Échelle UV : cinq segments, un par bande de l'OMS, allumés jusqu'à la bande
+   atteinte. « UV 6 » ne dit rien sans l'échelle ; quatre segments sur cinq en
+   orange se lisent sans rien savoir. */
+.fc-uv{display:inline-flex;align-items:center;gap:6px;margin-top:1px;}
+.fc-uv-b{display:inline-flex;gap:2px;}
+.fc-uv-b span{display:block;width:8px;height:11px;border-radius:2px;
+  background:rgba(255,255,255,.13);}
+.fc-uv small{font-size:10.5px;font-weight:700;margin:0;}
 .fc-row b small.fc-ctx{display:block;margin-left:0;margin-top:2px;
   color:var(--faint);line-height:1.45;}
 .fc-tide{margin-top:11px;}
@@ -4317,14 +4346,74 @@ function cielLibelle(code, nuage){
   if (code <= 86) return 'averses fortes';
   return 'orage';
 }
+// Une image de ciel parmi les 16 genres OMM de assets/wx/, déjà dans le dépôt
+// et déjà précachées (elles servent au tableau « Ciel & houle » de
+// previsions.html). On n'en prend QU'UNE, représentative : previsions compose
+// une scène entière à partir des couches basse/moyenne/haute, mais accueil ne
+// demande à Open-Meteo que la couverture TOTALE et le code temps — composer
+// une scène avec ça serait inventer les couches.
+//
+// Le code WMO décide d'abord, parce qu'il porte la pluie et l'orage ; la
+// couverture ne départage que les ciels sans précipitation.
+function cielImage(code, nuage){
+  // Table établie en REGARDANT les seize images côte à côte sur le fond sombre
+  // de la fiche, pas en lisant leurs noms. Deux d'entre elles ne tiennent pas
+  // toutes seules : `rain` et `shower` ne sont que des hachures de pluie, sans
+  // nuage, et ne se lisent pas à 40 px — on prend le nuage qui les porte.
+  // `stratus` est un filet gris presque invisible : `altostratus` dit « couvert »
+  // bien mieux.
+  var c = (code == null) ? null : +code;
+  if (c != null){
+    if (c >= 95) return 'lightning';
+    if (c >= 80) return 'congestus';      // averses : le nuage, pas les hachures
+    if (c >= 51) return 'nimbostratus';   // bruine, pluie, grésil
+    if (c >= 45) return (c >= 48 ? 'fog-low' : 'mist');
+  }
+  // Les codes 0 à 3 décrivent déjà la couverture, et `cielLibelle` s'en sert
+  // pour écrire le mot : l'image doit suivre le MÊME code, sinon on affichait
+  // « Couvert » à côté d'un cumulus de beau temps (vu en capture : code 3, 84 %
+  // de nuages, l'image partait sur la couverture et le texte sur le code).
+  if (c === 0) return 'sun';
+  if (c === 1) return 'sun-clouds';
+  if (c === 2) return 'cumulus';
+  if (c === 3) return 'altostratus';
+  var n = (nuage == null) ? 50 : nuage;
+  if (n < 15) return 'sun';
+  if (n < 50) return 'sun-clouds';
+  if (n < 85) return 'cumulus';
+  return 'altostratus';
+}
+
 // Échelle OMS de l'indice UV. Les seuils ne sont pas de moi : 3, 6, 8 et 11.
+var UV_BANDES = [
+  { max: 3,        txt: 'faible',     col: '#3dba8a' },
+  { max: 6,        txt: 'modéré',     col: '#e8c44a' },
+  { max: 8,        txt: 'fort',       col: '#e8a057' },
+  { max: 11,       txt: 'très fort',  col: '#e05c5c' },
+  { max: Infinity, txt: 'extrême',    col: '#b05ce0' }
+];
 function uvNiveau(uv){
   if (uv == null || !isFinite(uv)) return null;
-  if (uv < 3) return { txt: 'faible', col: '#3dba8a' };
-  if (uv < 6) return { txt: 'modéré', col: '#e8c44a' };
-  if (uv < 8) return { txt: 'fort', col: '#e8a057' };
-  if (uv < 11) return { txt: 'très fort', col: '#e05c5c' };
-  return { txt: 'extrême', col: '#b05ce0' };
+  for (var i = 0; i < UV_BANDES.length; i++)
+    if (uv < UV_BANDES[i].max) return { txt: UV_BANDES[i].txt, col: UV_BANDES[i].col, rang: i };
+  return null;
+}
+
+// Une échelle à cinq segments plutôt qu'un chiffre : « UV 6 » ne dit rien à qui
+// ne connaît pas l'échelle, « quatre segments sur cinq, en orange » se lit sans
+// rien savoir. Les segments atteints portent leur propre couleur de bande, les
+// autres restent éteints — c'est la représentation usuelle de l'indice, et elle
+// montre d'un coup d'œil où l'on se situe dans l'échelle entière.
+function uvEchelle(uv){
+  var n = uvNiveau(uv);
+  if (!n) return '';
+  var h = '<span class="fc-uv" title="Indice UV ' + Math.round(uv)
+        + ' sur l’échelle de l’OMS : ' + esc(n.txt) + '">'
+        + '<span class="fc-uv-b">';
+  for (var i = 0; i < UV_BANDES.length; i++)
+    h += '<span' + (i <= n.rang ? ' style="background:' + UV_BANDES[i].col + ';"' : '') + '></span>';
+  return h + '</span><small style="color:' + n.col + ';">UV ' + Math.round(uv)
+       + ' · ' + esc(n.txt) + '</small></span>';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4457,21 +4546,55 @@ function openSlotFor(s){
   // du secteur demandé (170-270°), c'est celui de 13 s de SSO qui a été retenu
   // — mais tant que la fiche ne le disait pas, elle se contredisait à vue
   // d'œil.
+  // ── La taille de la houle, VUE ────────────────────────────────────────────
+  // « Ça peut être mieux représenté, la taille de la houle. » Un chiffre seul
+  // n'a d'échelle que pour qui en lit tous les jours. La jauge en donne une :
+  // 3 m de plein, qui est le haut de ce qui se surfe couramment ici, et la
+  // couleur est celle de hsCol() — la MÊME que le tableau horaire et que
+  // previsions.html, donc un même 1,5 m a partout la même teinte.
+  function jaugeHoule(h){
+    if (h == null || !isFinite(h) || h <= 0) return '';
+    var pct = Math.max(4, Math.min(100, h / 3 * 100));
+    var col = (typeof hsCol === 'function') ? hsCol(h) : '#4fa3c7';
+    return '<span class="fc-jauge" aria-hidden="true"><span style="width:'
+         + pct.toFixed(0) + '%;background:' + col + ';"></span></span>';
+  }
+
+  // La ligne Houle ne passe PAS par ligne() : la jauge doit venir APRÈS le
+  // sous-titre. Insérée dans la valeur, son `display:block` renvoyait
+  // « S 170° · mer du vent » à la ligne du dessous (vu en capture).
+  var sousHoule = (sw.dir != null ? compass(sw.dir) + ' ' + Math.round(sw.dir) + '°' : '')
+    // Calculé sur le train AFFICHÉ : `sw.merDuVent` n'existe que sur la lecture
+    // complète, pas sur un train nu retenu par la recherche — l'étiquette
+    // disparaissait donc silencieusement dans ce cas.
+    + (estMerDuVent(sw) ? ' · mer du vent' : '')
+    + (estPrincipal ? '' : ' · train retenu par tes critères');
+  // Puissance DU TRAIN AFFICHÉ. `s.pwr` est celle du train principal : elle
+  // s'affichait à côté de la hauteur et de la période d'un autre train, donc
+  // trois chiffres qui ne décrivaient pas la même vague. Et elle vient
+  // maintenant JUSTE APRÈS la houle qu'elle décrit, au lieu de fermer la carte
+  // huit lignes plus bas.
+  var pw = (s.pwrUse != null) ? s.pwrUse
+         : (sw === s.sw ? s.pwr : surfPower(sw.h, sw.t));
+
+  function titre(t){ return '<div class="fc-grp">' + t + '</div>'; }
+
   document.getElementById('fc-data').innerHTML =
-      ligne('Houle', t1(sw.h) + ' m',
-            (sw.dir != null ? compass(sw.dir) + ' ' + Math.round(sw.dir) + '°' : '')
-            // Calculé sur le train AFFICHÉ : `sw.merDuVent` n'existe que sur la
-            // lecture complète, pas sur un train nu retenu par la recherche —
-            // l'étiquette disparaissait donc silencieusement dans ce cas.
-            + (estMerDuVent(sw) ? ' · mer du vent' : '')
-            + (estPrincipal ? '' : ' · train retenu par tes critères'))
+      titre('La mer')
+    + '<div class="fc-row"><i>Houle</i><b>' + t1(sw.h) + ' m'
+      + (sousHoule ? '<small>' + sousHoule + '</small>' : '')
+      + jaugeHoule(sw.h) + '</b></div>'
     + ligne('Période', (sw.t != null ? Math.round(sw.t) + ' s' : '—'), '')
     + ligTrains
     + ligSerie
+    + ligne('Puissance', (pw != null ? t1(pw) + ' kW/m' : '—'),
+            pw != null ? powerBand(pw).label : '')
+
+    + titre('Le vent')
     // Le vent porte le NOM de son modèle, ici aussi : c'est la donnée sur
     // laquelle l'utilisateur disait ne pas savoir à quoi s'en tenir, et une
     // image partagée doit pouvoir être relue dans six mois.
-    + ligne('Vent', (s.ws != null ? Math.round(s.ws) + ' nds' : '—'),
+    + ligne('Prévu', (s.ws != null ? Math.round(s.ws) + ' nds' : '—'),
             (s.wdir != null ? compass(s.wdir) : '') + (s.wsrc ? ' · ' + esc(s.wsrc.label) : ''))
     // Condition sur la RAFALE elle-même et non sur `aroOk` : AROME peut couvrir
     // l'heure tout en n'ayant pas de rafale ce pas-là (fetch_arome.py écrit
@@ -4483,6 +4606,8 @@ function openSlotFor(s){
     // Juste sous le vent prévu, parce que c'est là que la comparaison se fait.
     // Remplie en différé, et masquée hors du jour même (cf. majObs).
     + '<div class="fc-row fc-row--w" id="fc-obs" style="display:none;"></div>'
+
+    + titre('Le ciel')
     + (s.temp != null
         ? ligne('Air', Math.round(s.temp) + ' °C',
                 (s.rain != null && s.rain > 0.05) ? 'pluie ' + t1(s.rain) + ' mm' : 'sans pluie')
@@ -4490,18 +4615,11 @@ function openSlotFor(s){
     // Ligne remplie EN DIFFÉRÉ : Open-Meteo est un appel réseau, et la fiche
     // doit s'ouvrir tout de suite. L'élément est permanent, jamais un gabarit
     // conditionnel — piège documenté du projet.
-    + '<div class="fc-row fc-row--w" id="fc-ciel"><i>Ciel &amp; UV</i><b class="fc-att">lecture…</b></div>'
-    + ligne('Marée', (s.tide ? t1(s.tide.h) + ' m' : '—'),
-            s.tide ? (s.tide.rising ? 'montante' : 'descendante') : '')
-    // Puissance DU TRAIN AFFICHÉ. `s.pwr` est celle du train principal : elle
-    // s'affichait à côté de la hauteur et de la période d'un autre train, donc
-    // trois chiffres qui ne décrivaient pas la même vague.
-    + (function(){
-        var pw = (s.pwrUse != null) ? s.pwrUse
-               : (sw === s.sw ? s.pwr : surfPower(sw.h, sw.t));
-        return ligne('Puissance', (pw != null ? t1(pw) + ' kW/m' : '—'),
-                     pw != null ? powerBand(pw).label : '');
-      })();
+    + '<div class="fc-row fc-row--w" id="fc-ciel"><i>Ciel &amp; UV</i><b class="fc-att">lecture…</b></div>';
+  // La MARÉE n'a plus de ligne : sa valeur rejoint le libellé de sa propre
+  // courbe, juste en dessous. Une ligne « Marée 1,0 m descendante » au milieu
+  // du tableau, à dix centimètres du graphe qui dit la même chose en mieux,
+  // c'était la onzième ligne d'un tableur.
 
   var src = srcOf(srcKey);
   var iSw = runInfo(src.model, src.kind, src.everyH);
@@ -4576,16 +4694,30 @@ function openSlotFor(s){
           + '</b>';
         return;
       }
-      var lib = cielLibelle(pt.code, pt.nuage), niv = uvNiveau(pt.uv);
+      var lib = cielLibelle(pt.code, pt.nuage);
+      // ⚠ Ces PNG doivent rester SERVIS PAR CE SITE. #fc-card est capturé par
+      // html2canvas pour le partage : une image d'une autre origine sans en-tête
+      // CORS « tainterait » le canvas, et toBlob() rendrait null — le partage
+      // échouerait en silence, ce que ce projet traque partout. (Vérifié : sous
+      // file:// le canvas EST tainté, sous https de même origine il ne l'est pas.)
+      // Une IMAGE plutôt qu'un adjectif. « Couvert, 99 % de nuages » est exact
+      // et ne se voit pas ; un ciel se reconnaît d'un coup d'œil. Les PNG sont
+      // ceux du tableau « Ciel &amp; houle » de previsions.html, déjà précachés.
+      // Décoratives : `alt=""` et le texte reste à côté, donc rien n'est perdu
+      // pour un lecteur d'écran ni si l'image ne charge pas.
+      el.className = 'fc-row fc-row--w fc-row--ciel';
       el.innerHTML = '<i>Ciel &amp; UV</i><b>'
-        + (lib ? esc(lib.charAt(0).toUpperCase() + lib.slice(1)) : '—')
-        + (pt.nuage != null ? '<small>' + Math.round(pt.nuage) + ' % de nuages</small>' : '')
+        + '<img class="fc-wx" src="assets/wx/' + cielImage(pt.code, pt.nuage) + '.png" alt="">'
+        + '<span class="fc-ciel-t">'
+        +   '<span class="fc-ciel-n">'
+        +     (lib ? esc(lib.charAt(0).toUpperCase() + lib.slice(1)) : '—') + '</span>'
+        +   (pt.nuage != null ? '<small>' + Math.round(pt.nuage) + ' % de nuages'
+              + (pt.pluie != null && pt.pluie > 0.05 ? ' · ' + t1(pt.pluie) + ' mm' : '')
+              + '</small>' : '')
         // UV masqué quand il est nul : « UV 0 · faible » sur un créneau de 20 h
         // est du bruit, le soleil est couché et chacun le sait.
-        + (niv && pt.uv >= 0.5 ? '<small style="color:' + niv.col + ';">UV ' + Math.round(pt.uv)
-                 + ' · ' + niv.txt + '</small>' : '')
-        + (pt.pluie != null && pt.pluie > 0.05 ? '<small>' + t1(pt.pluie) + ' mm</small>' : '')
-        + '</b>';
+        +   ((pt.uv != null && pt.uv >= 0.5) ? uvEchelle(pt.uv) : '')
+        + '</span></b>';
     });
   })();
 
@@ -4760,8 +4892,13 @@ function drawMiniTide(s){
   }
   g.fillStyle = '#728aa1'; g.font = '9px DM Sans, sans-serif'; g.textAlign = 'center';
   for (var h2 = 0; h2 <= 24; h2 += 6) g.fillText(h2 + 'h', Math.min(W - 10, Math.max(10, X(h2))), H - 3);
-  document.getElementById('fc-tide-lbl').textContent =
-    'Marée — ' + tidePortName(port) + (s.tideReelle === false ? ' (modèle)' : '');
+  // La valeur de marée est ICI, dans le libellé de sa propre courbe, et plus
+  // dans une ligne du tableau huit lignes plus haut. Le graphe dit déjà
+  // « montante » mieux qu'un mot ; le chiffre, lui, se lit mal sur une courbe.
+  document.getElementById('fc-tide-lbl').innerHTML =
+    (s.tide ? 'Marée <b>' + t1(s.tide.h) + ' m</b> '
+            + (s.tide.rising ? 'montante' : 'descendante') + ' — ' : 'Marée — ')
+    + esc(tidePortName(port)) + (s.tideReelle === false ? ' (modèle)' : '');
 }
 
 // Partage : charge html2canvas à la demande, capture #fc-card, puis partage

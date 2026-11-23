@@ -10538,6 +10538,69 @@ mer réelle a un spectre continu, pas deux raies.
 
 `test_swell.js` : 34 → **72 assertions**. `sw.js` v149 → **v150**.
 
+---
+
+## 24/11/2026 (suite) — La fiche cesse d'être un tableur, et « Vent passes » montre le mesuré
+
+**Demandé** : « la fiche de partage, elle est pas mal, mais elle est pas très
+design. La météo c'est pas très visuel, les UV c'est pas très visuel. Il manque
+des informations, la taille de la houle peut être mieux représentée. Ça fait un
+peu tableur. » Et pour `windguru.html` : « un tableau qui met les mesures aux
+stations à proximité, comme c'est un peu fait sur la page principale ; mais ça,
+c'est plus en bas, faut pas que ce soit trop lourd ».
+
+### La fiche
+
+- **Le ciel est une image.** Une des seize PNG de genres OMM de `assets/wx/`,
+  déjà dans le dépôt et déjà précachées (elles servent au tableau « Ciel &
+  houle » de `previsions.html`). On n'en prend QU'UNE, représentative :
+  `previsions` compose une scène à partir des couches basse/moyenne/haute, mais
+  `accueil` ne demande à Open-Meteo que la couverture TOTALE — composer une
+  scène avec ça serait inventer les couches.
+  **La table a été établie en REGARDANT les seize images côte à côte** sur le
+  fond sombre de la fiche, pas en lisant leurs noms : `rain` et `shower` ne sont
+  que des hachures sans nuage et ne se lisent pas à 40 px (on prend le nuage qui
+  les porte), et `stratus` est un filet gris presque invisible (`altostratus`
+  dit « couvert » bien mieux). L'image suit le MÊME code WMO que le texte —
+  première version : « Couvert » à côté d'un cumulus de beau temps.
+- **L'UV est une échelle à cinq segments** aux couleurs de l'OMS, allumés
+  jusqu'à la bande atteinte. « UV 9 » ne dit rien à qui ne connaît pas
+  l'échelle ; quatre segments sur cinq en rouge se lisent sans rien savoir.
+- **La hauteur de houle a une jauge**, 3 m de plein, à la couleur de `hsCol()`
+  — la même que le tableau horaire et que `previsions.html`, donc un même 1,5 m
+  a partout la même teinte.
+- **Quatre blocs au lieu de dix lignes** : *la mer* (houle, période, trains,
+  séries, puissance), *le vent* (prévu, rafale, mesuré), *le ciel* (air, ciel et
+  UV), puis la marée. La **puissance a remonté** juste sous la houle qu'elle
+  décrit, au lieu de fermer la carte huit lignes plus bas ; et **la marée a
+  perdu sa ligne** — sa valeur est passée dans le libellé de sa propre courbe,
+  à dix centimètres de là.
+
+⚠ **Les PNG de ciel doivent rester servis par ce site.** `#fc-card` est capturé
+par html2canvas : une image d'une autre origine sans en-tête CORS « tainterait »
+le canvas et `toBlob()` rendrait null — le partage échouerait en silence.
+Vérifié dans les deux sens : sous `file://` le canvas EST tainté (artefact du
+protocole), sous `https` de même origine il ne l'est pas (49 370 pixels opaques,
+3 219 couleurs distinctes).
+
+### `windguru.html`
+
+Un bloc **« Vent mesuré, en ce moment »** entre le comparatif et les tableaux
+Windguru : une ligne par station meteo.nc rattachée aux passes affichées, avec
+ce qu'elle mesure, sa rafale, et **ce qu'AROME annonçait pour la même heure**.
+C'est la seule donnée mesurée de la page.
+
+Relevé au branchement : Phare Amédée mesure **6 nds** quand AROME annonce **20**
+à la passe de Dumbéa. Appariement vérifié — même heure (08 h), même run
+(23/11 12:00), 0 minute d'écart.
+
+Une station qui sert deux passes les nomme toutes les deux (Bourake couvre Ouano
+et Ténia) et n'est lue qu'une fois. La page a reçu le même traitement de prose
+qu'`accueil` : en-tête et légende repliés derrière un libellé qui annonce leur
+contenu, et la ligne de provenance ne garde que le nom de la source.
+
+`sw.js` v151 → **v152**.
+
 ### ⚠ Reste à faire
 
 - `previsions.html` fait encore 129 requêtes pour 89 URL distinctes. Les six
