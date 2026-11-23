@@ -266,7 +266,12 @@ var _BMS_CACHE = null;
 var _BMS_TTL   = 15 * 60 * 1000; // 15 min
 
 // Parse un bulletin (BMR ou BMS) d'un domaine en objet exploitable.
-function _bmsParse(data, label, url) {
+//
+// `estBms` n'est PAS une déduction : c'est l'endpoint qui l'a dit. Les domaines
+// BMSCOTE-09 / BMSLARGE-09 répondent 204 quand il n'y a aucun avis en cours, et
+// ncFetch() rend null sur un 204. Le seul fait d'avoir reçu un corps EST la
+// réponse à la question « y a-t-il un BMS ? », et l'appelant la transmet ici.
+function _bmsParse(data, label, url, estBms) {
   if (!data) return { label:label, url:url, active:false, sit:'', updateLabel:'' };
 
   // Extraire métadonnées
@@ -275,8 +280,11 @@ function _bmsParse(data, label, url) {
   if (updateT && !isNaN(+updateT)) {
     try {
       var dd = new Date(+updateT * 1000);
-      updateT = 'N°'+(data.report_number||'')
-        +' · '+dd.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short',timeZone:'Pacific/Noumea'})
+      // Le numéro de bulletin est souvent ABSENT de la réponse (vérifié le
+      // 23/11/2026 sur les deux domaines BMR : report_number undefined), et on
+      // affichait alors « N° · lun. 23 nov. à 13:35 », un « N° » orphelin.
+      updateT = (data.report_number ? 'N°'+data.report_number+' · ' : '')
+        +dd.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short',timeZone:'Pacific/Noumea'})
         +' à '+dd.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Pacific/Noumea'});
     } catch(e){}
   }
@@ -307,12 +315,22 @@ function _bmsParse(data, label, url) {
 
   var fullText = paragraphs.join('\n');
 
-  // Détecter BMS actif
+  // ── BMS actif ? L'ENDPOINT a déjà répondu ────────────────────────────────
+  // Cette décision se prenait par expressions régulières sur la prose du
+  // bulletin, et elle était FAUSSE en permanence. Mesuré le 23/11/2026 : les
+  // deux domaines BMS répondaient 204 (aucun avis), et `active` valait quand
+  // même true pour le large, parce que /Vent fort/i trouve son compte dans
+  // « mer sou-VENT FORT-e par houle de Sud Sud-Est » — une phrase de tous les
+  // bulletins marine. Conséquences, toutes silencieuses : bandeau d'alerte
+  // permanent sur previsions.html, carte de l'onglet Marée en alerte, mention
+  // « BMS » dans le texte partagé, et NOTIFICATION envoyée pour un avis qui
+  // n'existait pas.
+  //
+  // On garde une seule garde textuelle : certains bulletins arrivent en 200
+  // avec « pas de BMS en cours » dans le corps. Elle ne peut que DÉSARMER
+  // l'alerte, jamais l'armer.
   var noBMS  = /pas de BMS|aucun BMS/i.test(fullText.slice(0,300));
-  var hasBMS = /Avis de|Grand frais|Vent fort|Coup de vent|25-30 kt|30-35 kt/i.test(fullText);
-  var isBMSType = /^BMS/i.test(data.report_subtype||'') || /^BMS/i.test(titre);
-
-  var active = !noBMS && (hasBMS || (isBMSType && paragraphs.length > 1));
+  var active = !!estBms && !noBMS && paragraphs.length > 0;
 
   if (!active) {
     // Bulletin normal — situation générale
@@ -363,12 +381,16 @@ async function getActiveBMS(force) {
     ]);
     var dataLagon = r[0], dataLarge = r[1], dataBmsL = r[2], dataBmsG = r[3];
 
-    // Si BMS actif (réponse non-null), il prime sur le BMR
-    if (dataBmsL && dataBmsL.text_bloc_item) dataLagon = dataBmsL;
-    if (dataBmsG && dataBmsG.text_bloc_item) dataLarge = dataBmsG;
+    // Un corps reçu sur le domaine BMS = il y a un avis, et il prime sur le
+    // BMR. C'est ce booléen-là, et lui seul, qui décide de l'alerte : il est
+    // transmis à _bmsParse plutôt que redeviné sur le texte.
+    var bmsLagonActif = !!(dataBmsL && dataBmsL.text_bloc_item);
+    var bmsLargeActif = !!(dataBmsG && dataBmsG.text_bloc_item);
+    if (bmsLagonActif) dataLagon = dataBmsL;
+    if (bmsLargeActif) dataLarge = dataBmsG;
 
-    var lagon = _bmsParse(dataLagon, 'Lagon', 'https://meteo.nc/fr/marine/lagon');
-    var large = _bmsParse(dataLarge, 'Large', 'https://meteo.nc/fr/marine/large');
+    var lagon = _bmsParse(dataLagon, 'Lagon', 'https://meteo.nc/fr/marine/lagon', bmsLagonActif);
+    var large = _bmsParse(dataLarge, 'Large', 'https://meteo.nc/fr/marine/large', bmsLargeActif);
 
     var niveau = (lagon.active && large.active) ? 'both'
                : lagon.active ? 'cote'
@@ -390,6 +412,11 @@ async function getActiveBMS(force) {
       updateLabel: primary ? (primary.updateLabel || primary.numDate || '') : '',
       url:    primary ? primary.url : 'https://meteo.nc/fr/marine/lagon',
       severity: primary ? _bmsSeverity(primary.nature) : 'orange',
+      // Zones du BMS primaire, remontées au premier niveau comme `nature` et
+      // `titre` : un bulletin dont la ligne « Avis de… » manque n'a parfois que
+      // ses zones pour dire de quoi il s'agit, et un consommateur qui n'affiche
+      // qu'une ligne n'a pas à savoir lequel des deux domaines a gagné.
+      zones:  primary ? (primary.zones || []) : [],
       lagon: lagon, large: large
     };
     _BMS_CACHE = { ts:Date.now(), data:data };

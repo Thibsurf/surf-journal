@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v142';
+const CACHE_NAME = 'surf-nc-v144';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -52,6 +52,10 @@ const ASSETS = [
   // previsions.html lèverait un ReferenceError au 1er lancement hors-ligne
   // (chargé SANS defer, avant le bloc inline qui l'appelle en top-level).
   '/surf-journal/assets/alerts.js',
+  // obs-stations.js : la liste des stations de mesure du vent, lue par
+  // previsions.html ET accueil.html en top-level (OBS_STATIONS,
+  // obsStationForSpot). Sans precache, ReferenceError hors-ligne.
+  '/surf-journal/assets/obs-stations.js',
   // Bibliothèques servies depuis le dépôt (plus depuis jsdelivr/cdnjs) : sans elles
   // en cache, le 1er lancement hors-ligne laissait `sb` à null et Chart.js absent —
   // donc pas d'app du tout, alors que le reste était précaché.

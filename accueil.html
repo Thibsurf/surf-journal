@@ -539,6 +539,19 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
 .fc-note{text-align:right;flex-shrink:0;}
 .fc-note u{display:block;font-size:19px;letter-spacing:2px;text-decoration:none;line-height:1;}
 .fc-note s{display:block;font-size:12px;font-weight:700;text-decoration:none;margin-top:3px;}
+/* Bandeau BMS : orange par défaut (avis de vent fort, grand frais), rouge pour
+   un coup de vent ou plus — c'est _bmsSeverity() qui tranche, pas cette feuille
+   de style. Pas de fond saturé : la carte est sombre et l'image est partagée,
+   un bloc plein vire au tract. */
+.fc-bms{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 9px;
+  margin:0 0 11px;padding:8px 10px;border-radius:9px;line-height:1.4;
+  background:rgba(232,160,87,.10);border:1px solid rgba(232,160,87,.38);}
+.fc-bms b{font-size:12px;font-weight:800;letter-spacing:.02em;color:#e8a057;}
+.fc-bms span{font-size:12px;color:var(--text);}
+.fc-bms small{font-size:10.5px;color:var(--faint);}
+.fc-bms a{font-size:10.5px;color:var(--muted);text-decoration:none;margin-left:auto;}
+.fc-bms.rouge{background:rgba(224,92,92,.11);border-color:rgba(224,92,92,.42);}
+.fc-bms.rouge b{color:#e05c5c;}
 .fc-body{display:flex;gap:12px;align-items:stretch;}
 /* Vue satellite de la fiche : CERCLE, et avec le même traitement d'image que la
    rose de previsions.html (opacité .45, contraste poussé). C'était un carré à
@@ -560,6 +573,21 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
   text-transform:uppercase;color:var(--faint);}
 .fc-row b{font-size:15px;font-weight:700;white-space:nowrap;}
 .fc-row b small{font-size:11px;font-weight:600;color:var(--muted);margin-left:3px;}
+/* Valeur en attente d'un appel réseau : visible, mais sans prétendre à un
+   chiffre. Elle ne doit pas peser comme une donnée réelle dans l'image. */
+.fc-att{font-size:12px;font-weight:600;color:var(--faint);}
+/* Lignes à plusieurs précisions (ciel + UV, vent mesuré + station + âge) : le
+   white-space:nowrap de .fc-row b les faisait déborder de la colonne au lieu
+   de passer à la ligne. Le libellé, lui, ne se coupe JAMAIS : sans ce
+   nowrap, « VENT MESURÉ » s'écrivait sur deux lignes pendant que la valeur
+   occupait toute la largeur. */
+.fc-row--w{align-items:flex-start;}
+.fc-row--w i{white-space:nowrap;flex:0 0 auto;padding-top:3px;}
+.fc-row--w b{white-space:normal;text-align:right;min-width:0;}
+/* Le contexte d'une mesure (station, distance, âge, écart au modèle) passe à
+   la ligne sous la valeur : il se lit APRÈS le chiffre, pas à la place. */
+.fc-row b small.fc-ctx{display:block;margin-left:0;margin-top:2px;
+  color:var(--faint);line-height:1.45;}
 .fc-tide{margin-top:11px;}
 .fc-tide-lbl{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
   color:var(--faint);margin-bottom:3px;}
@@ -950,6 +978,12 @@ footer .row{gap:14px;font-size:12px;}
         </div>
         <div class="fc-note" id="fc-note"></div>
       </div>
+      <!-- Bandeau BMS. Élément PERMANENT masqué par défaut, jamais écrit dans un
+           gabarit conditionnel : il est rempli par un appel réseau qui arrive
+           après l'ouverture de la fiche. Il vit DANS #fc-card, donc il part sur
+           l'image partagée — un avis de coup de vent est la première chose à
+           voir sur un récap de sortie. -->
+      <div class="fc-bms" id="fc-bms" style="display:none;"></div>
       <div class="fc-body">
         <div class="fc-sat">
           <img id="fc-sat-img" alt="Vue satellite du spot">
@@ -981,6 +1015,15 @@ footer .row{gap:14px;font-size:12px;}
 </div>
 
 <script src="assets/nc-token.js"></script>
+<!-- obs-stations.js : la liste des stations de mesure du vent meteo.nc, la MÊME
+     que previsions.html — la fiche de sortie annonce la dernière mesure réelle
+     près du spot, et deux listes finiraient par désigner deux stations.
+     alerts.js : uniquement pour getActiveBMS(). Le module n'a aucun effet de
+     bord au chargement et ne dépend que de _ncToken et ncFetch (vérifié) ; ses
+     autres fonctions sortent tout de suite si leur élément n'existe pas, ce qui
+     est le cas ici. -->
+<script src="assets/obs-stations.js"></script>
+<script src="assets/alerts.js"></script>
 <script src="assets/score-core.js"></script>
 <script src="assets/tide-harmonics.js"></script>
 <script src="assets/sat-tiles.js"></script>
@@ -3409,6 +3452,311 @@ function critRender(r){
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// TOKEN meteo.nc — demandé seulement quand on en a besoin
+// ════════════════════════════════════════════════════════════════════════════
+// Cette page n'en avait pas besoin jusqu'ici : marée, houle et vent passent tous
+// par le worker ou par Supabase. Les BMS, eux, ne sont servis que par
+// rpcache.meteo.nc, et la route /proxy du worker n'autorise que meteo.nc/ — donc
+// il faut un Bearer côté navigateur, comme previsions.html.
+//
+// Aucun appel au chargement de la page : la promesse n'est créée qu'à la
+// première ouverture d'une fiche, et mémoïsée. Une page « où aller, et quand »
+// ne doit pas payer un aller-retour de token pour afficher son classement.
+var _tokPromesse = null;
+function tokenEnsure(cb){
+  if (typeof _isTokenValid === 'function' && _isTokenValid()) { cb(true); return; }
+  if (typeof _loadTokenFromWorker !== 'function') { cb(false); return; }
+  if (!_tokPromesse){
+    // Worker d'abord : son cron renouvelle le token toutes les 5 minutes, donc
+    // c'est la source la plus fraîche. Supabase en repli, pour les réseaux
+    // mobiles NC où *.workers.dev est filtré par le DNS (cas connu, cf. ncGet).
+    _tokPromesse = Promise.resolve()
+      .then(function(){ return _loadTokenFromWorker(); })
+      .then(function(t){ return t || _loadTokenFromSupabase(); })
+      .then(function(t){
+        if (!t || !_isTokenValid(t)) return false;
+        _ncToken = t;
+        try { localStorage.setItem('nc-token', t); } catch(e){}
+        return true;
+      })
+      .catch(function(){ return false; });
+  }
+  _tokPromesse.then(cb, function(){ cb(false); });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BMS — bulletin météo spécial marine
+// ════════════════════════════════════════════════════════════════════════════
+// getActiveBMS() vient d'assets/alerts.js : même source de vérité que le bandeau
+// de previsions.html, même cache de 15 min. On n'en relit QUE .active,
+// .severity, .niveau, .nature et .url.
+//
+// Un BMS marine couvre la journée en cours et la suivante ; il est réécrit
+// plusieurs fois par jour. L'afficher sur un créneau de J+4 laisserait croire
+// que l'avis concerne ce créneau — d'où la portée, et le mot « en cours » dans
+// le libellé plutôt que « prévu ».
+var BMS_PORTEE_H = 36;
+var _bmsEtat = null;
+function bmsEnsure(cb){
+  if (_bmsEtat && _bmsEtat.pret) { cb(_bmsEtat.data); return; }
+  if (_bmsEtat && _bmsEtat.attente) { _bmsEtat.attente.push(cb); return; }
+  _bmsEtat = { attente: [cb] };
+  function fini(d){
+    var att = (_bmsEtat || {}).attente || [];
+    _bmsEtat = { pret: true, data: d };
+    att.forEach(function(f){ try { f(d); } catch(e){} });
+  }
+  tokenEnsure(function(ok){
+    if (!ok || typeof getActiveBMS !== 'function') { fini(null); return; }
+    try { getActiveBMS().then(fini, function(){ fini(null); }); }
+    catch(e){ fini(null); }
+  });
+}
+
+// La nature d'un BMS est un paragraphe de bulletin (« Avis de vent fort sur… »).
+// On garde la première phrase : au-delà, le bandeau devient un bloc de texte et
+// le détail est de toute façon à un clic, sur meteo.nc.
+function bmsNature(txt){
+  var t = String(txt || '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  var pt = t.indexOf('. ');
+  if (pt > 20) t = t.slice(0, pt + 1);
+  return t.length > 150 ? t.slice(0, 147) + '…' : t;
+}
+
+function majBms(s){
+  var el = document.getElementById('fc-bms');
+  if (!el) return;
+  el.style.display = 'none';
+  el.innerHTML = '';
+  // Créneau trop lointain pour qu'un avis en cours le concerne : on ne dit rien
+  // plutôt que d'alarmer à tort.
+  if ((s.ms - Date.now()) / 36e5 > BMS_PORTEE_H) return;
+  var msCible = s.ms;
+  bmsEnsure(function(b){
+    // La fiche a pu être fermée, ou changée de créneau, pendant l'attente.
+    if (!fcSlot || fcSlot.ms !== msCible) return;
+    var e2 = document.getElementById('fc-bms');
+    if (!e2 || !b || !b.active) return;
+    var zone = b.niveau === 'both' ? 'sur le lagon et au large'
+             : b.niveau === 'cote' ? 'sur le lagon' : 'au large';
+    // L'URL vient d'alerts.js et y est codée en dur, mais elle finit dans un
+    // href : on vérifie le domaine plutôt que de faire confiance.
+    var url = (typeof b.url === 'string' && b.url.indexOf('https://meteo.nc/') === 0)
+      ? b.url : 'https://meteo.nc/fr/marine/lagon';
+    // Le libellé le plus informatif dont on dispose. `nature` est la ligne
+    // « Avis de… » du bulletin, mais elle manque sur certains domaines (vérifié
+    // le 23/11/2026 : vide sur le large) ; la première zone citée dit alors de
+    // quoi il retourne, et le titre reste le dernier repli. Un bandeau qui
+    // n'annonce qu'« un BMS » sans dire lequel n'aide personne à décider.
+    var nat = bmsNature(b.nature || (b.zones && b.zones[0]) || b.titre);
+    e2.className = 'fc-bms' + (b.severity === 'red' ? ' rouge' : '');
+    e2.innerHTML = '<b>⚠ BMS en cours ' + esc(zone) + '</b>'
+      + (nat ? '<span>' + esc(nat) + '</span>' : '')
+      + (b.updateLabel ? '<small>' + esc(b.updateLabel) + '</small>' : '')
+      + '<a href="' + esc(url) + '" target="_blank" rel="noopener">meteo.nc ↗</a>';
+    e2.style.display = '';
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DERNIÈRE MESURE DE VENT PRÈS DU SPOT
+// ════════════════════════════════════════════════════════════════════════════
+// La SEULE donnée mesurée de cette fiche — tout le reste est du modèle. D'où le
+// libellé « Vent mesuré » en clair, et le nom de la station : une mesure prise à
+// 20 km n'est pas le vent du spot, et la fiche ne doit pas laisser croire le
+// contraire.
+//
+// Le jour même seulement : /observation/history est une fenêtre glissante vers
+// le PASSÉ (~5 jours), elle ne dit rien d'une session de demain.
+var _obsCache = {};
+function obsEnsure(st, cb){
+  var e = _obsCache[st.id];
+  if (e && e.pret) { cb(e.data); return; }
+  if (e && e.attente) { e.attente.push(cb); return; }
+  _obsCache[st.id] = { attente: [cb] };
+  function fini(pt){
+    var att = (_obsCache[st.id] || {}).attente || [];
+    _obsCache[st.id] = { pret: true, data: pt };
+    att.forEach(function(f){ try { f(pt); } catch(e){} });
+  }
+  if (typeof ncGet !== 'function') { fini(null); return; }
+  var q = 'lat=' + st.lat + '&lon=' + st.lon + '&id=' + st.id;
+  // ncGet : worker d'abord, rpcache en direct ensuite — il ne lève jamais et
+  // rend null en cas d'échec. Le chemin worker n'a PAS besoin de token.
+  try {
+    ncGet('/history?' + q, 'observation/history?' + q)
+      .then(function(d){ fini(obsDernierVent(d)); }, function(){ fini(null); });
+  } catch(e){ fini(null); }
+}
+
+// Le flux /observation/history donne wind_speed en MÈTRES PAR SECONDE — c'est le
+// seul du site à ne pas être en nœuds. Une seule conversion par chemin, ici.
+// wind_speed_gust à 0 veut dire « absente », comme côté prévision meteo.nc.
+function obsDernierVent(d){
+  var h = null;
+  if (d && d.properties && d.properties.history) h = d.properties.history;
+  else if (d && Array.isArray(d.history)) h = d.history;
+  else if (Array.isArray(d)) h = d;
+  if (!h || !h.length) return null;
+  for (var i = h.length - 1; i >= 0; i--){
+    var r = h[i];
+    if (!r) continue;
+    var ws = (r.wind_speed != null && isFinite(r.wind_speed)) ? r.wind_speed * 1.944
+           : (r.wind_speed_kt != null && isFinite(r.wind_speed_kt) ? r.wind_speed_kt : null);
+    if (ws == null) continue;
+    var g = (r.wind_speed_gust != null && r.wind_speed_gust > 0) ? r.wind_speed_gust * 1.944 : null;
+    var ms = r.time ? Date.parse(r.time) : NaN;
+    return { ws: ws, gust: g, dir: n1(r.wind_direction), temp: n1(r.T),
+             ms: isFinite(ms) ? ms : null };
+  }
+  return null;
+}
+
+// Distance en kilomètres, corrigée de la latitude. obsStationDist() du module
+// partagé classe en degrés, ce qui suffit pour CHOISIR ; ici on AFFICHE, donc il
+// faut une vraie distance.
+function kmEntre(aLat, aLon, bLat, bLon){
+  var dLat = (aLat - bLat) * 111.2;
+  var dLon = (aLon - bLon) * 111.2 * Math.cos(aLat * Math.PI / 180);
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
+function majObs(s){
+  var el = document.getElementById('fc-obs');
+  if (!el) return;
+  el.style.display = 'none';
+  var st = (typeof obsStationForSpot === 'function') ? obsStationForSpot(s.spot) : null;
+  if (!st || ncDs(s.ms) !== ncDs(Date.now())) return;
+  var msCible = s.ms;
+  el.innerHTML = '<i>Vent mesuré</i><b class="fc-att">lecture…</b>';
+  el.style.display = '';
+  obsEnsure(st, function(pt){
+    if (!fcSlot || fcSlot.ms !== msCible) return;
+    var e2 = document.getElementById('fc-obs');
+    if (!e2) return;
+    // Station muette depuis plus de 3 h : on retire la ligne plutôt que de
+    // présenter une vieille mesure comme « la dernière ». Les stations meteo.nc
+    // publient à l'heure ou à la demi-heure.
+    var age = (pt && pt.ms) ? (Date.now() - pt.ms) / 60000 : null;
+    if (!pt || age == null || age < -10 || age > 180){ e2.style.display = 'none'; return; }
+    var km = Math.round(kmEntre(s.spot.lat, s.spot.lon, st.lat, st.lon));
+    var ageTxt = age < 1 ? 'à l’instant'
+               : age < 90 ? 'il y a ' + Math.round(age) + ' min'
+               : 'il y a ' + String(Math.round(age / 30) / 2).replace('.', ',') + ' h';
+    // Écart au modèle, comparé À L'HEURE DE LA MESURE et non à celle du
+    // créneau. Première version : on comparait la mesure au vent prévu POUR LE
+    // CRÉNEAU, dans une fenêtre de ±90 min. Les créneaux tombent toutes les
+    // 3 h, donc la comparaison ne s'affichait presque jamais — mesuré, 0 fois
+    // sur le créneau le plus proche de maintenant, la mesure étant à 2 h de
+    // lui. Or c'est l'information la plus utile de la ligne : savoir si le
+    // modèle du jour tire haut ou bas sur ce spot.
+    //
+    // `allSlots` porte tous les créneaux de tous les spots sur la fenêtre du
+    // chercheur (−17 h → J+4, mesuré) : on y prend celui du MÊME spot le plus
+    // proche de la mesure, à ±90 min. Pas d'interpolation, pas de recalcul :
+    // c'est exactement le chiffre que la page affiche ailleurs pour cette
+    // heure-là.
+    var ec = '', ref = null, rd = 90 * 60000 + 1;
+    var L = (typeof allSlots !== 'undefined' && allSlots) ? allSlots : [];
+    for (var i = 0; i < L.length; i++){
+      if (L[i].spot !== s.spot || L[i].ws == null) continue;
+      var dd = Math.abs(L[i].ms - pt.ms);
+      if (dd < rd){ rd = dd; ref = L[i]; }
+    }
+    if (ref){
+      var d = pt.ws - ref.ws;
+      ec = ' · modèle ' + Math.round(ref.ws) + ' nds à ' + heureTxt(ref.ms)
+         + (Math.abs(d) >= 1.5 ? ' (' + (d > 0 ? '+' : '−') + Math.round(Math.abs(d)) + ')' : '');
+    }
+    // DEUX niveaux, et pas une ligne de plus : la mesure et sa rafale d'abord,
+    // puis d'où elle vient. Tout sur une seule ligne, la valeur mangeait la
+    // largeur et le libellé « VENT MESURÉ » se coupait en deux (vu en capture
+    // à 430 px). L'écart au modèle ferme la ligne de contexte : c'est une
+    // conclusion, elle ne se lit qu'après avoir su quelle station a mesuré.
+    e2.innerHTML = '<i>Vent mesuré</i><b>' + Math.round(pt.ws) + ' nds'
+      + (pt.dir != null ? '<small>' + compass(pt.dir) + '</small>' : '')
+      + (pt.gust != null ? '<small>rafale ' + Math.round(pt.gust) + '</small>' : '')
+      + '<small class="fc-ctx">' + esc(st.name) + (km >= 3 ? ' · ' + km + ' km' : '')
+      + ' · ' + ageTxt + ec + '</small></b>';
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CIEL ET UV — Open-Meteo, pour la fiche de sortie
+// ════════════════════════════════════════════════════════════════════════════
+// Pourquoi Open-Meteo et pas meteo.nc : meteo.nc ne publie ni couverture
+// nuageuse par couche ni indice UV (vérifié au chantier « Ciel & houle » de
+// previsions.html, qui tire déjà son ciel d'Open-Meteo pour la même raison).
+// Aucun token, aucune clé, et la même source que le reste du site pour cette
+// grandeur-là — deux sources pour le même chiffre finiraient par diverger.
+//
+// Une seule requête par spot, gardée en mémoire pour la session : ouvrir cinq
+// fiches du même spot ne doit pas faire cinq appels.
+var _cielCache = {};
+function cielEnsure(lat, lon, cb){
+  var cle = lat.toFixed(3) + ',' + lon.toFixed(3);
+  var e = _cielCache[cle];
+  if (e && e.pts) { cb(e); return; }
+  if (e && e.attente) { e.attente.push(cb); return; }
+  _cielCache[cle] = { attente: [cb] };
+  var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat.toFixed(4)
+    + '&longitude=' + lon.toFixed(4)
+    + '&hourly=uv_index,cloud_cover,precipitation,weather_code'
+    + '&timezone=GMT&forecast_days=8';
+  fetch(url).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+    var pts = {};
+    if (j && j.hourly && j.hourly.time){
+      for (var i = 0; i < j.hourly.time.length; i++){
+        // Open-Meteo rend des heures UTC sans suffixe Z quand timezone=GMT :
+        // les lire avec Date.parse() telles quelles les ferait passer pour de
+        // l'heure LOCALE du navigateur. On force le Z.
+        var ms = Date.parse(j.hourly.time[i] + ':00Z');
+        if (!ms) continue;
+        pts[ms] = { uv: j.hourly.uv_index[i], nuage: j.hourly.cloud_cover[i],
+                    pluie: j.hourly.precipitation[i], code: j.hourly.weather_code[i] };
+      }
+    }
+    var res = { pts: pts };
+    var att = (_cielCache[cle] || {}).attente || [];
+    _cielCache[cle] = res;
+    att.forEach(function(f){ try { f(res); } catch(e){} });
+  }).catch(function(){
+    var att = (_cielCache[cle] || {}).attente || [];
+    _cielCache[cle] = { pts: {} };
+    att.forEach(function(f){ try { f(_cielCache[cle]); } catch(e){} });
+  });
+}
+
+// Codes WMO, réduits à ce qui se voit du bord d'un bateau. On ne prétend pas
+// traduire les 28 codes : les familles suffisent, et un code inconnu rend la
+// couverture nuageuse plutôt qu'une étiquette inventée.
+function cielLibelle(code, nuage){
+  if (code == null) return nuage == null ? null
+    : (nuage < 20 ? 'ciel dégagé' : nuage < 55 ? 'quelques nuages'
+      : nuage < 85 ? 'nuageux' : 'couvert');
+  if (code === 0) return 'ciel dégagé';
+  if (code <= 2) return 'quelques nuages';
+  if (code === 3) return 'couvert';
+  if (code <= 48) return 'brume';
+  if (code <= 57) return 'bruine';
+  if (code <= 67) return 'pluie';
+  if (code <= 77) return 'averses de grésil';
+  if (code <= 82) return 'averses';
+  if (code <= 86) return 'averses fortes';
+  return 'orage';
+}
+// Échelle OMS de l'indice UV. Les seuils ne sont pas de moi : 3, 6, 8 et 11.
+function uvNiveau(uv){
+  if (uv == null || !isFinite(uv)) return null;
+  if (uv < 3) return { txt: 'faible', col: '#3dba8a' };
+  if (uv < 6) return { txt: 'modéré', col: '#e8c44a' };
+  if (uv < 8) return { txt: 'fort', col: '#e8a057' };
+  if (uv < 11) return { txt: 'très fort', col: '#e05c5c' };
+  return { txt: 'extrême', col: '#b05ce0' };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // FICHE D'UN CRÉNEAU — satellite, vecteurs, marée, et partage en image
 // ════════════════════════════════════════════════════════════════════════════
 // On capture un élément RÉEL du DOM (#fc-card) avec html2canvas, jamais un
@@ -3484,10 +3832,17 @@ function openSlotFor(s){
     // AROME », ce qui est faux, et le malus de rafale était pourtant bien sauté.
     + ligne('Rafale', (s.gust != null ? Math.round(s.gust) + ' nds' : '—'),
             s.gust != null ? 'AROME 2,5 km' : 'non publiée à cette heure')
+    // Juste sous le vent prévu, parce que c'est là que la comparaison se fait.
+    // Remplie en différé, et masquée hors du jour même (cf. majObs).
+    + '<div class="fc-row fc-row--w" id="fc-obs" style="display:none;"></div>'
     + (s.temp != null
         ? ligne('Air', Math.round(s.temp) + ' °C',
                 (s.rain != null && s.rain > 0.05) ? 'pluie ' + t1(s.rain) + ' mm' : 'sans pluie')
         : '')
+    // Ligne remplie EN DIFFÉRÉ : Open-Meteo est un appel réseau, et la fiche
+    // doit s'ouvrir tout de suite. L'élément est permanent, jamais un gabarit
+    // conditionnel — piège documenté du projet.
+    + '<div class="fc-row fc-row--w" id="fc-ciel"><i>Ciel &amp; UV</i><b class="fc-att">lecture…</b></div>'
     + ligne('Marée', (s.tide ? t1(s.tide.h) + ' m' : '—'),
             s.tide ? (s.tide.rising ? 'montante' : 'descendante') : '')
     // Puissance DU TRAIN AFFICHÉ. `s.pwr` est celle du train principal : elle
@@ -3508,6 +3863,7 @@ function openSlotFor(s){
     + (iSw ? ', run ' + iSw.run : '')
     + ' · Vent : <b>' + esc(s.wsrc ? s.wsrc.label : '—') + '</b>'
     + (s.gust != null ? ' · Rafale, air et pluie : AROME 2,5 km' : '')
+    + ' · Ciel et UV : Open-Meteo'
     + ' · Marée : ' + esc(tidePortName(s.port))
     + (s.tideReelle === false ? ' (modèle harmonique, meteo.nc n\'a rien donné ce jour-là)' : '')
     + '<br>Note calculée avec les réglages de ce spot.'
@@ -3546,6 +3902,34 @@ function openSlotFor(s){
   // Satellite : même mosaïque que previsions.html (assets/sat-tiles.js), donc
   // le même centrage exact. Les tuiles arrivent en différé, d'où le dessin des
   // vecteurs dans un rAF plutôt qu'immédiatement.
+  majBms(s);
+  majObs(s);
+
+  // Ciel et UV : on demande, et on remplit quand ça arrive.
+  (function(){
+    var msCible = s.ms;
+    cielEnsure(sp.lat, sp.lon, function(res){
+      var el = document.getElementById('fc-ciel');
+      // La fiche a pu être fermée ou changée de créneau pendant l'attente.
+      if (!el || !fcSlot || fcSlot.ms !== msCible) return;
+      var pt = res.pts ? (res.pts[Math.round(msCible / 3600000) * 3600000] || null) : null;
+      if (!pt){
+        el.innerHTML = '<i>Ciel &amp; UV</i><b class="fc-att">non publié à cette heure</b>';
+        return;
+      }
+      var lib = cielLibelle(pt.code, pt.nuage), niv = uvNiveau(pt.uv);
+      el.innerHTML = '<i>Ciel &amp; UV</i><b>'
+        + (lib ? esc(lib.charAt(0).toUpperCase() + lib.slice(1)) : '—')
+        + (pt.nuage != null ? '<small>' + Math.round(pt.nuage) + ' % de nuages</small>' : '')
+        // UV masqué quand il est nul : « UV 0 · faible » sur un créneau de 20 h
+        // est du bruit, le soleil est couché et chacun le sait.
+        + (niv && pt.uv >= 0.5 ? '<small style="color:' + niv.col + ';">UV ' + Math.round(pt.uv)
+                 + ' · ' + niv.txt + '</small>' : '')
+        + (pt.pluie != null && pt.pluie > 0.05 ? '<small>' + t1(pt.pluie) + ' mm</small>' : '')
+        + '</b>';
+    });
+  })();
+
   if (typeof updateRoseSatBg === 'function') updateRoseSatBg(sp.lat, sp.lon, 'fc-sat-img');
   requestAnimationFrame(function(){ drawSatVec(s); drawMiniTide(s); });
   setTimeout(function(){ drawSatVec(s); drawMiniTide(s); }, 260);

@@ -10128,3 +10128,104 @@ dont l'arrondi décide du côté du seuil ; le focus carrait les boutons ronds ;
 Deux curseurs empilés nus, rien ne disait lequel était le minimum. Chaque ligne
 porte son rôle (min/max, de/à) et sa valeur au ras de la poignée. Et la virgule
 décimale : accueil écrivait « 1.2 m », seule contre previsions et semaine.
+
+---
+
+## 23/11/2026 — Fiche de sortie (accueil.html) + LE FAUX BMS PERMANENT
+
+**Ce qui était demandé** : « quand on dit qu'on va surfer tel jour, avoir une
+fiche sortie qui montre les prévisions, s'il y a un BMS, l'indice UV, les
+marées, de manière concise… et si c'est le jour même, les dernières mesures de
+vent à proximité du spot ».
+
+### ✗ Le bug trouvé en chemin : un BMS annoncé en permanence, qui n'existait pas
+
+En branchant les BMS sur la fiche, le bandeau « ⚠ BMS en cours » s'est affiché.
+Vérification des quatre endpoints meteo.nc depuis le navigateur :
+
+| endpoint | réponse |
+|---|---|
+| `BMSCOTE-09` (BMS lagon) | **HTTP 204**, corps vide |
+| `BMSLARGE-09` (BMS large) | **HTTP 204**, corps vide |
+| `BMRCOTE-09` (bulletin normal lagon) | 200, 5 893 o |
+| `BMRLARGE-09` (bulletin normal large) | 200, 2 729 o |
+
+Il n'y avait donc **aucun** avis. `getActiveBMS()` décidait pourtant `active:true`,
+parce que la détection se faisait par expression régulière sur le texte du
+bulletin :
+
+```js
+var hasBMS = /Avis de|Grand frais|Vent fort|Coup de vent|25-30 kt|30-35 kt/i.test(fullText);
+```
+
+`/Vent fort/i` matche à l'intérieur de **« mer sou-VENT FORT-e par houle de Sud
+Sud-Est »** (position 1697 du bulletin large du jour) — une tournure qu'on lit
+dans à peu près tous les bulletins marine. Aucune erreur, aucun NaN, aucune case
+vide : juste une alerte fausse, et permanente.
+
+**Portée** : ce n'est pas un bug de la nouvelle fiche. `getActiveBMS()` est la
+source unique des BMS du site, donc étaient touchés, depuis le chantier T18 :
+
+- le bandeau d'alerte de navigation de `previsions.html` ;
+- la carte « Bulletins marine » de l'onglet Marée ;
+- la ligne de résumé du partage (`ShareCard.buildSummary`, mention « BMS ») ;
+- **la notification** (`_maybeNotifyBms`) — un avis envoyé pour rien.
+
+**Correctif** (`assets/alerts.js`) : la question « y a-t-il un avis ? » est
+rendue à l'endpoint, qui y répond déjà par un 204. `_bmsParse()` reçoit un
+paramètre `estBms` au lieu de le deviner ; le texte ne sert plus qu'à DÉCRIRE un
+avis confirmé. La seule garde textuelle qui reste (`pas de BMS en cours` dans un
+corps servi en 200) ne peut que désarmer l'alerte, jamais l'armer.
+Vérifié après correctif : `previsions.html` affiche « ✅ Lagon — pas de BMS » et
+« ✅ Large — pas de BMS », bandeau de navigation masqué, `active=false`.
+
+Corrigé au passage : `updateLabel` écrivait « N° · lun. 23 nov. à 13:35 » quand
+`report_number` était absent — ce qui est le cas des deux domaines BMR.
+
+### ✓ Nouveau harnais : `test_alertes.js` (55 assertions)
+
+Cinquième harnais du dépôt, pour la même raison que les quatre autres : l'erreur
+ne levait rien. Il couvre la détection BMS (dont la phrase « mer souvent forte »
+en fixture), la sévérité, l'horodatage, `getActiveBMS()` de bout en bout avec un
+`ncFetch` bouchonné, la conversion m/s → nœuds des observations et le choix de
+la station. **Validé par mutation** : 7 mutations remettant chacune un bug connu
+sont toutes détectées, et par des assertions (une 8ᵉ mutation, écartée, faisait
+tomber `node` sur une erreur de syntaxe — elle ne prouvait rien).
+
+### ✓ `assets/obs-stations.js` — la liste des stations, extraite
+
+`OBS_STATIONS` vivait dans `previsions.html`. La fiche en a besoin pour la
+dernière mesure de vent ; une seconde copie aurait divergé (l'id de la station
+de Ténia a déjà dû être migré une fois, 9881836 → 9880904). `nearestObs()` de
+`previsions.html` délègue désormais à `obsStationNearest()` : **une** règle de
+distance, donc la même station désignée des deux côtés. `obsStationForSpot()`
+porte la règle du projet : le réglage `obsId` du spot PRIME toujours sur la
+distance (Passe de Dumbéa → Phare Amédée, bien que Nouméa soit plus proche —
+le phare est au vent, la ville est abritée).
+
+### ✓ La fiche elle-même (`accueil.html`)
+
+- **Bandeau BMS** dans `#fc-card`, donc sur l'image partagée. Masqué par défaut,
+  rempli en différé, et **borné à 36 h** : un avis en cours ne s'affiche pas sur
+  un créneau de J+4, où il aura été réécrit trois fois.
+- **Ciel et UV** (Open-Meteo : meteo.nc ne publie ni couverture nuageuse par
+  couche ni indice UV). UV masqué sous 0,5 — la nuit, « UV 0 » est du bruit.
+- **Vent mesuré**, le jour même seulement (`/observation/history` est une
+  fenêtre vers le passé). La seule donnée MESURÉE de la fiche, d'où le libellé
+  en clair, le nom de la station, sa distance et l'âge du relevé.
+  L'écart au modèle est calculé **à l'heure de la mesure**, pas à celle du
+  créneau : les créneaux tombent toutes les 3 h, et la comparaison ne s'affichait
+  donc presque jamais (mesuré : 0 fois, la mesure étant à 2 h du créneau).
+- Ligne sur **deux niveaux** (valeur, puis contexte) après capture à 430 px : sur
+  une seule ligne, la valeur mangeait la largeur et le libellé « VENT MESURÉ »
+  se coupait en deux.
+
+`sw.js` v143 → **v144**, `obs-stations.js` précaché.
+
+### ⚠ Reste à faire
+
+- Lier la fiche depuis `sorties.html` (demandé : « une option qui peut être liée
+  d'ailleurs à la page sortie »). Il faut un lien profond vers un créneau.
+- Les BMS ne sont lisibles qu'avec un token meteo.nc côté navigateur : la route
+  `/proxy` du worker n'autorise que `meteo.nc/`, pas `rpcache.meteo.nc`. Une
+  route `/bms` côté worker rendrait le bandeau disponible sans token.
