@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-nc-v136';
+const CACHE_NAME = 'surf-nc-v138';
 const ASSETS = [
   '/surf-journal/',
   '/surf-journal/index.html',
@@ -32,6 +32,9 @@ const ASSETS = [
   // (22/11/2026). Les deux pages la dessinaient séparément, avec la convention
   // inverse l'une de l'autre.
   '/surf-journal/assets/wind-rose.js',
+  // swell-trains.js : LA règle de houle primaire + tous les trains, partagée
+  // (23/11/2026). Trois définitions divergentes cohabitaient avant.
+  '/surf-journal/assets/swell-trains.js',
   // score-core.js : calcSurfScore/SCORE_PARAMS en sont sortis le 05/08/2026 pour
   // être partagés avec le générateur de semaine.html. Sans précache, previsions.html
   // lèverait un ReferenceError au 1er lancement hors-ligne — la page entière.

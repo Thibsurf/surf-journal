@@ -440,6 +440,18 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
    d'horizon de la source choisie. */
 .wfb{display:inline-block;margin-left:3px;font-size:8.5px;font-weight:700;
   letter-spacing:.04em;color:var(--warm);vertical-align:super;}
+/* Marqueur de second train de houle. Discret mais présent : il ne concerne
+   qu'une partie des créneaux, et c'est justement ce qui le rend informatif. */
+.cr-t2{display:inline-block;margin-left:4px;padding:0 4px;border-radius:7px;
+  font-size:9.5px;font-weight:700;color:#8fd0ea;background:rgba(79,163,199,.16);
+  vertical-align:middle;}
+/* Deux badges voisins qui ne disent PAS la même chose : « +0,9 » signale qu'un
+   autre train de cette hauteur existe, « 2e houle » dit que les chiffres
+   affichés sont ceux d'un train secondaire. Côte à côte dans la même couleur
+   ils se lisaient comme une répétition — le second passe en ambre. */
+.cr-t2b{display:inline-block;margin-left:4px;padding:0 5px;border-radius:7px;
+  font-size:9.5px;font-weight:700;color:#f0bc83;background:rgba(232,160,87,.18);
+  vertical-align:middle;}
 
 /* Regroupement sans décor : porte un titre et des cartes, mais n'est pas une
    carte lui-même — imbriquer deux .card donne deux bordures et deux marges. */
@@ -704,6 +716,10 @@ footer .row{gap:14px;font-size:12px;}
         </div>
         <div class="cr-f cr-f--rose">
           <label>D'où vient la houle<b id="cr-sw-v"></b></label>
+          <label class="cr-chk" style="margin-top:0;margin-bottom:9px;">
+            <input type="checkbox" id="cr-tousTrains">
+            <span>Chercher dans <b>tous les trains</b> de houle, pas seulement le principal</span>
+          </label>
           <div class="cr-rose-row">
             <div style="flex:1;min-width:0;">
               <div class="cr-duo">
@@ -903,6 +919,7 @@ footer .row{gap:14px;font-size:12px;}
 <script src="assets/tide-harmonics.js"></script>
 <script src="assets/sat-tiles.js"></script>
 <script src="assets/wind-rose.js"></script>
+<script src="assets/swell-trains.js"></script>
 <script src="assets/settings-utils.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════════
@@ -1270,37 +1287,48 @@ function archive(model, kind, lat, lon, back, fwd, cb){
   });
 }
 
-// Houle d'un point d'archive, SELON le modèle. C'est le seul endroit de la page
-// qui sait que les schémas diffèrent, et il applique les mêmes conventions que
-// previsions.html :
-//  · nc/gfs/bom écrivent val/period/dir = houle primaire native ;
-//  · mf expose des partitions AVEC direction — la houle primaire est
-//    partitions[1] (SW1), jamais totH/totT qui sont la MER TOTALE ;
-//  · marc n'a pas de partition numérotée de façon stable chez Ifremer : on
-//    retient le train le plus énergétique de période >= 8 s, exactement comme
-//    _marcPrimarySwell(). Prendre hs/t02 donnerait la mer totale (t02 ~6,5 s
-//    contre un pic réel à ~13 s) — c'est le piège documenté du projet.
+// Houle d'un point d'archive. TOUTE l'interprétation est dans
+// assets/swell-trains.js depuis le 23/11/2026 : trois définitions différentes
+// de « la houle primaire » cohabitaient dans le projet (la plus haute ici, la
+// plus énergétique là), et celle de cette page n'avait AUCUN repli — un créneau
+// dont tous les trains font moins de 8 s en disparaissait sans un mot, alors
+// que previsions.html l'affichait. Le module dit aussi combien de trains il y
+// a, ce qui permet enfin de montrer les houles secondaires.
 function swellOf(src, raw){
   if (!raw) return null;
-  var h, t, d, tot = null;
-  if (src.k === 'mf') {
-    var ps = raw.partitions || [], pr = ps[1] || null;
-    if (!pr) return null;
-    h = n1(pr.h); t = n1(pr.t); d = n1(pr.dir); tot = n1(raw.totH);
-  } else if (src.k === 'marc') {
-    var list = (raw.partitions || []).filter(function(p){ return p && p.h != null && p.t != null; });
-    var dom = null;
-    for (var i=0;i<list.length;i++){
-      if (list[i].t < 8) continue;
-      if (!dom || list[i].h*list[i].h*list[i].t > dom.h*dom.h*dom.t) dom = list[i];
-    }
-    if (!dom) return null;
-    h = n1(dom.h); t = n1(dom.t); d = n1(dom.dir); tot = n1(raw.hs);
-  } else {
-    h = n1(raw.val); t = n1(raw.period); d = n1(raw.dir);
+  var r = (typeof swellLecture === 'function') ? swellLecture(src.k, raw) : null;
+  if (!r || r.h == null) return null;
+  return { h:r.h, t:r.t, dir:r.dir, tot:r.tot,
+           trains:r.trains || [], merDuVent:!!r.merDuVent };
+}
+
+// Trains AUTRES que celui retenu, du plus haut au plus bas, et seulement ceux
+// qui pèsent : sous 30 % de la hauteur du principal, un train ne change rien à
+// une session et encombrerait l'affichage.
+// `ref` = le train effectivement AFFICHÉ, qui n'est pas toujours le principal
+// (la recherche peut retenir un secondaire). C'est lui qu'il faut exclure de la
+// liste des « autres », sinon il s'afficherait deux fois : une fois comme houle
+// principale et une fois comme deuxième train.
+function autresTrains(sw, ref){
+  if (!sw || !sw.trains || sw.trains.length < 2) return [];
+  var r = ref || sw;
+  var out = [], i, t;
+  for (i = 0; i < sw.trains.length; i++){
+    t = sw.trains[i];
+    if (t.h === r.h && t.t === r.t && t.dir === r.dir) continue;   // celui qu'on montre
+    if (r.h && t.h < r.h * 0.3) continue;
+    out.push(t);
   }
-  if (h == null) return null;
-  return { h:h, t:t, dir:d, tot:tot };
+  return out;
+}
+
+// Écart angulaire entre deux trains : au-delà de ~40° ils déferlent de deux
+// côtés différents et se croisent sur le récif, ce qui hache la vague. C'est une
+// information que le chiffre de houle ne porte pas.
+function croisement(a, b){
+  if (!a || !b || a.dir == null || b.dir == null) return null;
+  var d = Math.abs(((a.dir - b.dir) % 360 + 540) % 360 - 180);
+  return d;
 }
 
 // ── Vent d'un instant, selon le plan de vent ────────────────────────────────
@@ -2077,7 +2105,11 @@ function drawTable(){
     if (s.ms === nearestMs && ds === ncDs(now)) cls = ' class="now' + (night?' night':'') + '"';
     h += '<tr' + cls + '>'
       + '<td class="h">' + p2(d.getUTCHours()) + 'h' + (d.getUTCMinutes() ? p2(d.getUTCMinutes()) : '') + '</td>'
-      + '<td style="color:' + hsCol(s.sw.h) + ';font-weight:700;">' + t1(s.sw.h) + '</td>'
+      + '<td style="color:' + hsCol(s.sw.h) + ';font-weight:700;">' + t1(s.sw.h)
+        + (function(){
+            var au = autresTrains(s.sw);
+            return au.length ? '<span class="cr-t2">+' + t1(au[0].h) + '</span>' : '';
+          })() + '</td>'
       + '<td>' + (s.sw.t != null ? Math.round(s.sw.t) : '—') + '</td>'
       + '<td>' + dirCell(s.sw.dir, '#9fd4ea') + '</td>'
       + '<td style="color:' + (s.ws != null ? windCol(s.ws) : 'var(--muted)') + ';font-weight:700;"'
@@ -2112,6 +2144,8 @@ function drawTable(){
   var notes = [];
   notes.push('Directions en convention météo : <b>d\'où vient</b> le vent ou la houle, la flèche montre où ça va.');
   notes.push('Rafales : AROME 2,5 km, appariées au créneau le plus proche à ±90 min — absentes au-delà de son horizon.');
+  notes.push('Un <b>+0,8</b> accolé à la hauteur signale un <b>second train de houle</b> de cette hauteur-là : '
+    + 'survole-le, ou ouvre la fiche du créneau pour sa période et sa direction.');
   notes.push('Marée : station ' + esc(tidePortName(tidePort())) + '. Lignes grisées = nuit.');
   document.getElementById('tbl-note').innerHTML = notes.join(' ');
   var ts = document.getElementById('tbl-src');
@@ -2172,7 +2206,7 @@ var LS_CRIT = 'accueil-criteres-v2';
 // semaine (26 à 0,5 m, 15 à 0,6 m, 2 à 1,0 m), donc le seuil ne vide pas la liste.
 var CRIT_DEF = { hsMin:0.8, hsMax:4.0, perMin:9, swFrom:170, swTo:270,
                  windMax:18, windDirOn:false, wdFrom:90, wdTo:200,
-                 tide:'any', dayOnly:true, sort:'note' };
+                 tide:'any', dayOnly:true, sort:'note', tousTrains:true };
 var crit = (function(){
   var o = {};
   try { o = JSON.parse(localStorage.getItem(LS_CRIT) || '{}') || {}; } catch(e){ o = {}; }
@@ -2310,6 +2344,8 @@ function filtrer(list){
   // faut donc l'installer par spot puis la restaurer. Sans ça trois spots
   // sortaient la même note pendant que la légende affirmait le contraire
   // (mesuré le 20/11/2026).
+  // `parSpot` est déclaré HORS de la passe 1 : la passe 2 en a besoin pour
+  // recalculer la note d'un créneau dont elle retient un autre train.
   var notes = [], sauve = SCORE_PARAMS, parSpot = {};
   try {
     for (i = 0; i < list.length; i++){
@@ -2336,6 +2372,33 @@ function filtrer(list){
   }
 
   // ── Passe 2 : le filtre ──────────────────────────────────────────────────
+  // Le train retenu n'est pas forcément le principal. Demande utilisateur :
+  // « est-ce que tu prends en compte les houles secondaires quand on cherche
+  // une session ? » — non, et ça écartait des créneaux parfaitement surfables.
+  // MESURÉ le 23/11/2026 à la passe de Dumbéa : à 23 h, MARC donne une mer de
+  // vent de 1,5 m à 8 s de SSE — retenue comme principale parce qu'elle est la
+  // plus haute — ET une houle de 1,2 m à 13 s de SSO. Chercher « ≥ 9 s, secteur
+  // 170-270° » ne trouvait rien, alors que la houle qu'on irait surfer est là.
+  //
+  // On essaie les trains du plus haut au plus bas et on garde le PREMIER qui
+  // satisfait hauteur, période et secteur ENSEMBLE — ensemble, parce qu'un
+  // créneau qui tiendrait la hauteur sur un train et la période sur un autre ne
+  // correspond à rien dans l'eau. C'est la note de CE train qui est calculée et
+  // c'est lui qui s'affiche ; les autres restent visibles à côté.
+  function trainRetenu(sl){
+    var liste = (crit.tousTrains && sl.sw.trains && sl.sw.trains.length)
+      ? sl.sw.trains : [sl.sw];
+    var k, tr;
+    for (k = 0; k < liste.length; k++){
+      tr = liste[k];
+      if (tr.h == null || tr.h < crit.hsMin || tr.h > crit.hsMax) continue;
+      if (crit.perMin > 0 && (tr.t == null || tr.t < crit.perMin)) continue;
+      if (!inSector(tr.dir, crit.swFrom, crit.swTo)) continue;
+      return tr;
+    }
+    return null;
+  }
+
   var keep = [];
   for (i = 0; i < notes.length; i++){
     var s1 = notes[i], ko = false;
@@ -2344,9 +2407,37 @@ function filtrer(list){
     // et avec des `continue` en cascade il n'aurait compté que le premier de la
     // liste. La page accusait alors la hauteur de houle là où le secteur
     // rejetait tout autant. Le coût est nul, ce sont des comparaisons.
-    if (s1.sw.h == null || s1.sw.h < crit.hsMin || s1.sw.h > crit.hsMax) { rej.hs++; ko = true; }
-    if (crit.perMin > 0 && (s1.sw.t == null || s1.sw.t < crit.perMin)) { rej.per++; ko = true; }
-    if (!inSector(s1.sw.dir, crit.swFrom, crit.swTo)) { rej.dir++; ko = true; }
+    // Les trois compteurs de rejet sont évalués sur le train PRINCIPAL : ce sont
+    // eux qui servent à dire « voilà le réglage qui écarte le plus de créneaux »,
+    // et les compter sur le meilleur train de chaque créneau les rendrait
+    // illisibles. Le rejet EFFECTIF, lui, ne tombe que si AUCUN train ne convient.
+    if (s1.sw.h == null || s1.sw.h < crit.hsMin || s1.sw.h > crit.hsMax) rej.hs++;
+    if (crit.perMin > 0 && (s1.sw.t == null || s1.sw.t < crit.perMin)) rej.per++;
+    if (!inSector(s1.sw.dir, crit.swFrom, crit.swTo)) rej.dir++;
+    var trOk = trainRetenu(s1);
+    if (!trOk) ko = true;
+    // `swUse` est posé DANS TOUS LES CAS, y compris sur un créneau rejeté : le
+    // podium affiche aussi des créneaux hors critères, et il doit avoir une
+    // houle à montrer.
+    s1.swUse = trOk || s1.sw;
+    s1.trainAutre = !!(trOk && (trOk.h !== s1.sw.h || trOk.t !== s1.sw.t || trOk.dir !== s1.sw.dir));
+    // La note a été calculée en passe 1 sur le train PRINCIPAL. Si on retient un
+    // autre train, il faut la refaire : garder la note du principal à côté des
+    // chiffres d'un autre train, c'est exactement le défaut « trois blocs, trois
+    // chiffres » que ce projet a déjà corrigé.
+    if (s1.trainAutre){
+      var nomS = s1.spot.name;
+      if (!parSpot[nomS]) parSpot[nomS] = Object.assign({}, _DEFAULT_SCORE, s1.spot.scoreParams || {});
+      var gardeP = SCORE_PARAMS;
+      try {
+        SCORE_PARAMS = parSpot[nomS];
+        s1.pwrUse = surfPower(s1.swUse.h, s1.swUse.t);
+        s1.surf = calcSurfScore(s1.swUse.h, s1.swUse.t, s1.swUse.dir, s1.ws, s1.gust,
+                                s1.wdir, s1.pwrUse, tideAdjOf(s1.spot, s1.tide));
+      } finally { SCORE_PARAMS = gardeP; }
+    } else {
+      s1.pwrUse = s1.pwr;
+    }
     // Vent ABSENT : on ne peut pas certifier qu'un créneau respecte un critère
     // de vent qu'on n'a pas mesuré. L'ancienne version le laissait passer sur la
     // vitesse tout en le rejetant sur la direction — deux réponses opposées à la
@@ -2460,6 +2551,8 @@ function critBind(){
   el('cr-windDirOn').onchange = function(){ crit.windDirOn = this.checked; critSync(); saveCrit(); critRunSoon(); };
   el('cr-dayOnly').checked = !!crit.dayOnly;
   el('cr-dayOnly').onchange = function(){ crit.dayOnly = this.checked; saveCrit(); critRunSoon(); };
+  el('cr-tousTrains').checked = !!crit.tousTrains;
+  el('cr-tousTrains').onchange = function(){ crit.tousTrains = this.checked; saveCrit(); critRunSoon(); };
   el('cr-tide').value = crit.tide;
   el('cr-tide').onchange = function(){ crit.tide = this.value; saveCrit(); critRunSoon(); };
   el('cr-go').onclick = function(){ critRun(); };
@@ -2505,6 +2598,7 @@ function critBind(){
     Object.keys(map).forEach(function(id){ var e = el(id); if (e) e.value = crit[map[id]]; });
     el('cr-windDirOn').checked = !!crit.windDirOn;
     el('cr-dayOnly').checked = !!crit.dayOnly;
+    el('cr-tousTrains').checked = !!crit.tousTrains;
     el('cr-tide').value = crit.tide;
     critSync(); critRun();
   };
@@ -2795,6 +2889,10 @@ function renderPodium(r){
 
   podDerniers = classe.slice(0, 4);
   var b = podDerniers[0];
+  // `swUse` : le train effectivement retenu par la recherche, qui peut être un
+  // train secondaire. Repli sur le principal pour les créneaux que `filtrer`
+  // n'a pas traversés.
+  var bs = b.swUse || b.sw;
   var quand = jourTxt(b.ms, 'long');
   var dots = _pastilles(b.surf.score, b.surf.col);
 
@@ -2818,10 +2916,10 @@ function renderPodium(r){
     +     (b.tide ? ' · marée ' + t1(b.tide.h) + ' m ' + (b.tide.rising ? 'montante' : 'descendante') : '')
     +   '</div>'
     +   '<div class="pod-vals">'
-    +     '<span style="color:' + hsCol(b.sw.h) + ';">' + t1(b.sw.h) + '<small>m</small></span>'
-    +     '<span>' + (b.sw.t != null ? Math.round(b.sw.t) + '<small>s</small>' : '—') + '</span>'
-    +     '<span>' + dirArrow(b.sw.dir, '#9fd4ea', 12) + ' '
-    +       (b.sw.dir != null ? compass(b.sw.dir) : '—') + '</span>'
+    +     '<span style="color:' + hsCol(bs.h) + ';">' + t1(bs.h) + '<small>m</small></span>'
+    +     '<span>' + (bs.t != null ? Math.round(bs.t) + '<small>s</small>' : '—') + '</span>'
+    +     '<span>' + dirArrow(bs.dir, '#9fd4ea', 12) + ' '
+    +       (bs.dir != null ? compass(bs.dir) : '—') + '</span>'
     +     '<span style="color:' + (b.ws != null ? windCol(b.ws) : 'var(--muted)') + ';"'
     +       (b.wsrc ? ' title="Vent : ' + esc(b.wsrc.full || b.wsrc.label) + '"' : '') + '>'
     +       (b.ws != null ? Math.round(b.ws) + '<small>nds</small>' : '—')
@@ -2840,8 +2938,9 @@ function renderPodium(r){
     + '<div class="pod-score">'
     +   '<div class="pod-dots">' + dots + '</div>'
     +   '<div class="pod-lbl" style="color:' + b.surf.col + ';">' + esc(b.surf.label) + '</div>'
-    +   (b.pwr != null ? '<div class="note">' + b.pwr + ' kW/m · '
-          + esc(powerBand(b.pwr).label) + '</div>' : '')
+    +   ((b.pwrUse != null ? b.pwrUse : b.pwr) != null
+          ? '<div class="note">' + (b.pwrUse != null ? b.pwrUse : b.pwr) + ' kW/m · '
+            + esc(powerBand(b.pwrUse != null ? b.pwrUse : b.pwr).label) + '</div>' : '')
     + '</div></div>';
 
   if (podDerniers.length > 1){
@@ -2964,6 +3063,7 @@ function critRender(r){
   html += '<div class="cr-list">';
   for (i = 0; i < keep.length && shown < 60; i++){
     var sl = keep[i], d = nc(sl.ms), ds = ncDs(sl.ms);
+    var sls = sl.swUse || sl.sw;
     // Intertitres de jour en tri PAR DATE seulement. En tri par note les
     // créneaux ne sont pas groupés par jour : un intertitre y serait un mensonge
     // de mise en page, et c'est l'heure portée par chaque ligne qui situe.
@@ -2984,9 +3084,28 @@ function critRender(r){
       + '<span class="cr-h"' + (parNote ? ' style="width:auto;min-width:74px;"' : '') + '>' + qd + '</span>'
       + '<span class="cr-spot">' + esc(sl.spot.short || sl.spot.name) + '</span>'
       + '<span class="cr-vals">'
-      +   '<span class="cr-v" style="color:' + hsCol(sl.sw.h) + ';">' + t1(sl.sw.h) + '<small>m</small></span>'
-      +   '<span class="cr-v cr-dim">' + (sl.sw.t != null ? Math.round(sl.sw.t) + '<small>s</small>' : '—') + '</span>'
-      +   '<span class="cr-v cr-dim">' + dirArrow(sl.sw.dir, '#9fd4ea', 11) + ' ' + (sl.sw.dir != null ? compass(sl.sw.dir) : '—') + '</span>'
+      +   '<span class="cr-v" style="color:' + hsCol(sls.h) + ';">' + t1(sls.h) + '<small>m</small></span>'
+      +   '<span class="cr-v cr-dim">' + (sls.t != null ? Math.round(sls.t) + '<small>s</small>' : '—') + '</span>'
+      +   '<span class="cr-v cr-dim">' + dirArrow(sls.dir, '#9fd4ea', 11) + ' '
+      +     (sls.dir != null ? compass(sls.dir) : '—')
+      // Quand la recherche a retenu un train SECONDAIRE, le dire : sinon les
+      // chiffres affichés ne correspondent pas à la « houle » que montre le
+      // tableau horaire pour la même heure.
+      +     (sl.trainAutre ? '<span class="cr-t2b" title="La recherche a retenu un '
+            + 'train SECONDAIRE de houle : les chiffres de cette ligne sont les siens, '
+            + 'et la note aussi. Le train principal est plus haut mais ne remplit pas '
+            + 'tes critères.">2e houle</span>' : '')
+      // Un second train qui pèse change la vague : il se signale ici, avec sa
+      // hauteur, et le détail est dans la fiche. Sans ce marqueur, deux créneaux
+      // identiques en apparence pouvaient être l'un propre, l'autre haché.
+      +     (function(){
+              var au = autresTrains(sl.sw);
+              if (!au.length) return '';
+              return '<span class="cr-t2" title="Deuxième train de houle : '
+                + t1(au[0].h) + ' m' + (au[0].t != null ? ', ' + Math.round(au[0].t) + ' s' : '')
+                + (au[0].dir != null ? ', de ' + compass(au[0].dir) : '') + '">+' + t1(au[0].h) + '</span>';
+            })()
+      +   '</span>'
       +   '<span class="cr-v" style="color:' + (sl.ws != null ? windCol(sl.ws) : 'var(--muted)') + ';"'
       +     (sl.wsrc ? ' title="Vent : ' + esc(sl.wsrc.full || sl.wsrc.label) + '"' : '') + '>'
       +     (sl.ws != null ? Math.round(sl.ws) + '<small>nds</small>' : '—')
@@ -3058,6 +3177,9 @@ function openSlotFor(s){
   if (!s) return;
   fcSlot = s;
   var sp = s.spot;
+  // Train retenu par la recherche (peut etre un secondaire), repli sur le
+  // principal pour un creneau ouvert hors contexte de recherche.
+  var sw = s.swUse || s.sw;
   document.getElementById('fc-spot').textContent = sp.short || sp.name;
   document.getElementById('fc-when').textContent =
     jourTxt(s.ms, 'long') + ' · ' + heureTxt(s.ms);
@@ -3068,9 +3190,24 @@ function openSlotFor(s){
     return '<div class="fc-row"><i>' + lbl + '</i><b>' + val
       + (sub ? '<small>' + sub + '</small>' : '') + '</b></div>';
   }
+  // Trains secondaires : une ligne par train qui pèse, avec l'écart angulaire
+  // au principal quand il est assez grand pour hacher la vague.
+  var autresFc = autresTrains(s.sw, sw), ligTrains = '', ti;
+  for (ti = 0; ti < autresFc.length && ti < 2; ti++){
+    var tf = autresFc[ti];
+    var cr = croisement(sw, tf);
+    ligTrains += ligne(ti === 0 ? '2e train' : '3e train',
+      t1(tf.h) + ' m',
+      (tf.t != null ? Math.round(tf.t) + ' s' : '')
+      + (tf.dir != null ? ' · ' + compass(tf.dir) : '')
+      + (cr != null && cr >= 40 ? ' · croisé à ' + Math.round(cr) + '°' : ''));
+  }
   document.getElementById('fc-data').innerHTML =
-      ligne('Houle', t1(s.sw.h) + ' m', s.sw.dir != null ? compass(s.sw.dir) + ' ' + Math.round(s.sw.dir) + '°' : '')
-    + ligne('Période', (s.sw.t != null ? Math.round(s.sw.t) + ' s' : '—'), '')
+      ligne('Houle', t1(sw.h) + ' m',
+            (sw.dir != null ? compass(sw.dir) + ' ' + Math.round(sw.dir) + '°' : '')
+            + (sw.merDuVent ? ' · mer du vent' : ''))
+    + ligne('Période', (sw.t != null ? Math.round(sw.t) + ' s' : '—'), '')
+    + ligTrains
     // Le vent porte le NOM de son modèle, ici aussi : c'est la donnée sur
     // laquelle l'utilisateur disait ne pas savoir à quoi s'en tenir, et une
     // image partagée doit pouvoir être relue dans six mois.
@@ -3227,13 +3364,30 @@ function drawSatVec(s){
   if (!cv || typeof drawWindRose !== 'function') return;
   var box = cv.parentNode, W = box.clientWidth;
   if (!W) return;                                   // pas encore de layout
+  var sw = s.swUse || s.sw;
   var arrows = [];
-  if (s.sw.dir != null) arrows.push({
-    deg: s.sw.dir, mag: 1, col: WR_COL.swell1, lw: 3,
-    label: (s.sw.h != null ? t1(s.sw.h) + 'm' : '—'),
-    sub: Math.round(s.sw.dir) + '°',
-    period: (s.sw.t != null ? Math.round(s.sw.t) : null)
+  if (sw.dir != null) arrows.push({
+    deg: sw.dir, mag: 1, col: WR_COL.swell1, lw: 3,
+    label: (sw.h != null ? t1(sw.h) + 'm' : '—'),
+    sub: Math.round(sw.dir) + '°',
+    period: (sw.t != null ? Math.round(sw.t) : null)
   });
+  // Trains SECONDAIRES. previsions.html en dessine un depuis toujours (H2) ;
+  // la fiche n'en montrait aucun, donc une mer de vent croisée de 1,5 m à 40°
+  // de la houle était parfaitement invisible sur l'image qu'on partage. La
+  // longueur est proportionnelle à la hauteur du principal, pour qu'on voie
+  // d'un coup d'œil lequel domine.
+  var autres = autresTrains(s.sw, sw), ai;
+  for (ai = 0; ai < autres.length && ai < 2; ai++){
+    var tr = autres[ai];
+    if (tr.dir == null) continue;
+    arrows.push({
+      deg: tr.dir, mag: sw.h ? Math.max(0.35, Math.min(1, tr.h / sw.h)) : 0.6,
+      col: WR_COL.swell2, lw: 2,
+      label: t1(tr.h) + 'm', sub: Math.round(tr.dir) + '°',
+      period: (tr.t != null ? Math.round(tr.t) : null)
+    });
+  }
   if (s.wdir != null && s.ws != null) arrows.push({
     deg: s.wdir, mag: Math.max(Math.min(s.ws / 25, 1), 0.25), col: WR_COL.wind, lw: 2,
     label: Math.round(s.ws) + 'nds', sub: Math.round(s.wdir) + '°', period: null
