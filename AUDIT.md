@@ -10065,3 +10065,66 @@ corrigés, deux remarques écartées après vérification (une mosaïque 2×2 ne
 suffirait pas au recadrage ; le changement de cadrage est voulu).
 
 sw v116 → v129.
+
+---
+
+## 2026-11-23 (suite) — houles secondaires, curseurs, et la relecture du second lot
+
+### Le défaut le plus grave de la journée : une mer de vent affichée comme « la houle »
+
+Question de l'utilisateur : « est-ce que tu prends en compte les houles
+secondaires ou tertiaires quand on cherche une session, ou seulement la première
+houle de MARC ? ». Non. Et en vérifiant :
+
+- **TROIS définitions** de « la houle primaire » cohabitaient : previsions.html et
+  `cache-model-forecasts.mjs` prenaient la plus HAUTE avec T ≥ 8 s, accueil.html
+  la plus ÉNERGÉTIQUE. accueil n'avait **aucun repli** : un créneau dont tous les
+  trains font moins de 8 s en disparaissait sans un mot.
+- **Bascule à un dixième de seconde près.** Mesuré à Dumbéa : MARC donne une mer
+  de vent de SSE à ~8 s et une houle de SSO à ~13 s. À 8 h la mer de vent est à
+  7,94 s → exclue → la page montre la houle. À 11 h elle est à 8,13 s → admise,
+  et plus haute → la page bascule dessus. Le tableau affichait « 13 s SSO » puis
+  « 8 s SSE » comme s'il s'agissait d'une rotation de houle.
+- **MFWAM** : `partitions[1]` était lu comme « la houle primaire ». Vérifié le
+  23/11 : [0] = 4 s de 118° (l'alizé), [1] = 6,3 s, [2] = 9,9 s de 193°. La page
+  appelait donc « houle » un train de 6 s.
+
+`assets/swell-trains.js` porte maintenant LA règle et rend TOUS les trains. Un
+train dont la période tombe sous `windSeaT` est étiqueté « mer du vent » — même
+frontière que celle qui plafonne la note.
+
+**La recherche essaie tous les trains** (option cochée par défaut), du plus haut
+au plus bas, et garde le premier qui satisfait hauteur, période ET secteur
+ensemble. La note est RECALCULÉE sur ce train. Mesuré sur les données du jour :
+**0 créneau** en ne regardant que le principal, **2** en regardant tous les
+trains — dont une houle de 13 s à 195°, notée 4/5, cachée derrière une mer de
+vent plus haute.
+
+### Relecture indépendante du second lot — 12 points, tous vérifiés
+
+Trois défauts que j'avais introduits en annonçant le contraire :
+
+| Défaut | Ce que j'avais écrit |
+|---|---|
+| Le fragment `#stats` n'était lu que si Supabase n'est PAS configuré — donc jamais pour quelqu'un de connecté | « honoré une fois la session établie » |
+| Le bloc `@media (pointer: coarse)` était écrit AVANT les règles qu'il devait écraser : mort pour 4 cibles sur 6 | « 40 px exactement sur les cinq contrôles testés » |
+| `prefers-reduced-motion` faisait DISPARAÎTRE quatre schémas (animation à 0,01 ms sans `fill-mode` → retour à `opacity:0`) | « on ne supprime pas les animations » |
+
+⚠ **Ma vérification des cibles tactiles était fausse** : elle injectait les
+déclarations dans un `<style>` ajouté au `<head>`, donc en dernier — elle
+mesurait ce qui se passerait si l'ordre était bon. Revérifiée en forçant la
+CONDITION de la vraie règle à sa vraie place.
+
+Autres : l'onglet « Stats groupe » nourrissait « TON journal » avec les sessions
+de tout le monde ; « le vent est celui que tu as noté sur place » était faux (14
+sessions sur 85 sont préremplies depuis un modèle, ce qui rendait la
+confrontation au barème circulaire) ; « nettement confirmé » était décerné sur
+0 % contre 0 % ; la puissance était recopiée au lieu d'appeler `surfPower()`,
+dont l'arrondi décide du côté du seuil ; le focus carrait les boutons ronds ;
+« Réglages par défaut » rebranchait les écouteurs (flèche à 10° puis 15°).
+
+### Curseurs
+
+Deux curseurs empilés nus, rien ne disait lequel était le minimum. Chaque ligne
+porte son rôle (min/max, de/à) et sa valeur au ras de la poignée. Et la virgule
+décimale : accueil écrivait « 1.2 m », seule contre previsions et semaine.
