@@ -10222,10 +10222,40 @@ le phare est au vent, la ville est abritée).
 
 `sw.js` v143 → **v144**, `obs-stations.js` précaché.
 
+### ✓ La fiche est liée depuis `sorties.html`
+
+Demandé : « une option qui peut être liée d'ailleurs à la page sortie ».
+Chaque sortie porte désormais un bouton **📋 Fiche** dans son aperçu météo, qui
+ouvre `accueil.html#fiche=<spot>,<AAAA-MM-JJ>,<HH:MM>` sur le créneau de la
+sortie. Il remplace l'ancien « ↗ NC », qui ouvrait les prévisions sur le spot
+par défaut — sans rapport avec la sortie, et il fallait ensuite choisir le spot
+ET le jour à la main.
+
+Points traités, chacun vérifié dans le navigateur (6 scénarios, sous
+`Pacific/Noumea` ET `America/Los_Angeles`, sorties identiques) :
+
+| cas | ce que la page dit |
+|---|---|
+| nom exact + heure | ouvre la fiche, et signale le décalage si le créneau n'est pas pile à l'heure du départ |
+| nom partiel (« Dumbéa ») | retrouve « Passe de Dumbéa » et ouvre le MEILLEUR créneau du jour |
+| spot inconnu (champ libre) | « *X* ne fait pas partie des spots suivis ici » |
+| au-delà de l'horizon | « … est au-delà de l'horizon du modèle choisi » |
+| sortie passée | « Cette sortie est passée : … » |
+| fragment illisible | « Ce lien ne désigne pas une sortie lisible » |
+
+Un lien qui ne fait rien étant pire que pas de lien, aucun de ces cas n'est
+silencieux. Le nom du spot est encodé (donc ses virgules aussi), et chaque
+morceau du fragment est décodé SÉPARÉMENT — décoder la chaîne entière d'abord
+aurait cassé la découpe sur un nom à virgule.
+
+`msDeSortie()` est extraite exprès : c'est le seul point d'entrée d'une date
+venue d'une autre page. Elle est testée dans `test_tide.js` (+13 assertions,
+44 → 57) et entre dans l'empreinte comparée entre fuseaux. Validé par mutation :
+5 mutations, toutes détectées — dont « date lue en heure locale du navigateur »,
+que SEULE la comparaison inter-fuseaux attrape.
+
 ### ⚠ Reste à faire
 
-- Lier la fiche depuis `sorties.html` (demandé : « une option qui peut être liée
-  d'ailleurs à la page sortie »). Il faut un lien profond vers un créneau.
 - Les BMS ne sont lisibles qu'avec un token meteo.nc côté navigateur : la route
   `/proxy` du worker n'autorise que `meteo.nc/`, pas `rpcache.meteo.nc`. Une
   route `/bms` côté worker rendrait le bandeau disponible sans token.

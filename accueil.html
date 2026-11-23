@@ -543,6 +543,12 @@ table.t tr.now td.h{background:rgba(79,163,199,.2);}
    un coup de vent ou plus — c'est _bmsSeverity() qui tranche, pas cette feuille
    de style. Pas de fond saturé : la carte est sombre et l'image est partagée,
    un bloc plein vire au tract. */
+/* Message d'un lien venu d'ailleurs (sorties.html) : ton neutre, pas une
+   alerte — il annonce aussi bien « voici ta fiche » qu'un échec de recherche. */
+.lien-msg{margin:0 0 12px;padding:9px 12px;border-radius:10px;font-size:12.5px;
+  line-height:1.5;background:rgba(79,163,199,.08);border:1px solid rgba(79,163,199,.28);}
+.lien-msg b{font-weight:700;}
+.lien-msg.rate{background:rgba(232,160,87,.08);border-color:rgba(232,160,87,.3);}
 .fc-bms{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 9px;
   margin:0 0 11px;padding:8px 10px;border-radius:9px;line-height:1.4;
   background:rgba(232,160,87,.10);border:1px solid rgba(232,160,87,.38);}
@@ -692,6 +698,11 @@ footer .row{gap:14px;font-size:12px;}
        site répond est « où aller, et quand ». Elle était jusqu'ici la DERNIÈRE
        chose visible, au bas d'une liste triée par date où un créneau à 5 étoiles
        de jeudi passait après trente créneaux médiocres de mardi. -->
+  <!-- Message du lien profond (accueil.html#fiche=...). ÉLÉMENT PERMANENT
+       masqué par défaut : il n'apparaît que si une page extérieure a demandé un
+       créneau précis, et il doit pouvoir dire pourquoi elle ne l'a pas eu. -->
+  <div class="lien-msg" id="lien-msg" style="display:none;"></div>
+
   <div class="card" id="pod-card">
     <div class="row" style="justify-content:space-between;gap:10px;margin-bottom:9px;">
       <div class="section-label" style="margin:0;">Le meilleur créneau — tous les spots</div>
@@ -3135,8 +3146,12 @@ function critRun(auto){
   loadAllSpots(function(list){
     ensureTides(list, function(){
       var r = filtrer(list);
+      critDerniersR = r;
       renderPodium(r);
       critRender(r);
+      // Après le rendu : la fiche s'ouvre PAR-DESSUS une page déjà complète,
+      // pas sur un écran de chargement.
+      ficheDepuisLien(r);
       // Les créneaux sont notés : le bandeau peut enfin désigner le meilleur
       // spot de l'instant. Avant cet appel il montre le spot choisi.
       if (spot) fillNow();
@@ -3146,12 +3161,149 @@ function critRun(auto){
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// LIEN PROFOND VERS UNE FICHE — accueil.html#fiche=Spot,AAAA-MM-JJ,HH:MM
+// ════════════════════════════════════════════════════════════════════════════
+// Demandé pour sorties.html : « quand on dit qu'on va surfer tel jour, avoir une
+// fiche sortie… une option qui peut être liée à la page sortie ».
+//
+// Le nom du spot vient d'un champ LIBRE de sorties.html : il ne correspond pas
+// forcément à un spot suivi ici. D'où un rapprochement tolérant (sans accents,
+// sans ponctuation, et par inclusion dans les deux sens, pour que « Dumbéa »
+// trouve « Passe de Dumbéa »), et surtout un message EXPLICITE quand ça ne
+// tombe pas. Un lien qui ne fait rien est pire que pas de lien.
+function _clefSpot(t){
+  t = String(t == null ? '' : t).toLowerCase();
+  if (typeof t.normalize === 'function') t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return t.replace(/[^a-z0-9]+/g, '');
+}
+
+// Un jour « AAAA-MM-JJ » et une heure « HH:MM » venus d'une AUTRE page, rendus
+// en millisecondes RÉELLES. Minuit NC = Date.UTC(...) − 11 h : lire la date avec
+// les accesseurs locaux décalerait la fiche d'un jour entier pour qui n'est pas
+// en Nouvelle-Calédonie — le piège le plus récurrent de ce projet.
+//
+// Fonction à part, et pas trois lignes au milieu de ficheDepuisLien : c'est le
+// seul endroit où une date venue de l'extérieur entre dans la page, donc le
+// seul endroit où ce décalage peut être faux. test_tide.js la rejoue sous trois
+// fuseaux hostiles.
+//
+// Une heure illisible ou hors bornes n'est pas une erreur : elle vaut « pas
+// d'heure », et l'appelant choisit alors le meilleur créneau du jour.
+function msDeSortie(jour, heure){
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(jour || '')) return null;
+  var m = String(jour).split('-');
+  var hh = null, mm = 0;
+  if (/^\d{1,2}:\d{2}$/.test(heure || '')){
+    hh = +String(heure).split(':')[0];
+    mm = +String(heure).split(':')[1];
+    if (!(hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59)){ hh = null; mm = 0; }
+  }
+  var msJour = Date.UTC(+m[0], +m[1] - 1, +m[2]) - 11 * 36e5;
+  return { jour: msJour,
+           ms: msJour + (hh != null ? (hh * 60 + mm) * 60000 : 0),
+           heure: hh };
+}
+
+function _msgLien(txt, rate){
+  var el = document.getElementById('lien-msg');
+  if (!el) return;
+  el.className = 'lien-msg' + (rate ? ' rate' : '');
+  el.innerHTML = txt;
+  el.style.display = '';
+  _annonce(el.textContent || '');
+}
+
+var _lienFait = false;
+function ficheDepuisLien(r){
+  if (_lienFait) return;
+  var brut = String(location.hash || '').replace(/^#/, '');
+  if (brut.indexOf('fiche=') !== 0) return;
+  _lienFait = true;
+
+  // Chaque morceau est décodé SÉPARÉMENT : encodeURIComponent transforme la
+  // virgule en %2C, donc un spot dont le nom en contient une ne casse pas la
+  // découpe — à condition de ne pas décoder la chaîne entière d'abord.
+  var p = brut.slice(6).split(',');
+  function dec(x){ try { return decodeURIComponent(x || ''); } catch(e){ return x || ''; } }
+  var nom = dec(p[0]).trim(), jour = dec(p[1]).trim(), heure = dec(p[2]).trim();
+  var quand = msDeSortie(jour, heure);
+  if (!nom || !quand){
+    _msgLien('Ce lien ne désigne pas une sortie lisible.', true);
+    return;
+  }
+
+  // Le spot
+  var cle = _clefSpot(nom), cible = null, i;
+  for (i = 0; i < spots.length; i++){
+    if (_clefSpot(spots[i].name) === cle || _clefSpot(spots[i].short) === cle){ cible = spots[i]; break; }
+  }
+  if (!cible){
+    for (i = 0; i < spots.length; i++){
+      var k = _clefSpot(spots[i].name);
+      if (k && cle && (k.indexOf(cle) >= 0 || cle.indexOf(k) >= 0)){ cible = spots[i]; break; }
+    }
+  }
+  if (!cible){
+    _msgLien('<b>' + esc(nom) + '</b> ne fait pas partie des spots suivis ici. '
+      + 'Les créneaux ci-dessous couvrent les ' + spots.length + ' spots connus.', true);
+    return;
+  }
+
+  var msJour = quand.jour, msCible = quand.ms, hh = quand.heure;
+
+  // Le créneau. `tous` porte TOUS les créneaux notés, pas seulement ceux qui
+  // passent les critères : une sortie déjà décidée doit s'afficher même si ses
+  // conditions ne plaisent pas aux réglages du chercheur.
+  var liste = (r && r.tous) ? r.tous : [];
+  var best = null, bd = Infinity;
+  for (i = 0; i < liste.length; i++){
+    var sl = liste[i];
+    if (sl.spot !== cible) continue;
+    if (ncDs(sl.ms) !== jour) continue;
+    // Avec une heure de départ : le créneau le plus proche. Sans heure : le
+    // MEILLEUR du jour, ce qui est plus utile qu'un minuit arbitraire.
+    var d = (hh != null) ? Math.abs(sl.ms - msCible) : -(sl.surf ? sl.surf.score : 0);
+    if (d < bd){ bd = d; best = sl; }
+  }
+  if (!best){
+    var dj = Math.round((msJour - Date.now()) / 864e5);
+    // Aucun article devant la date : jourTxt rend « Demain » ou
+    // « Aujourd'hui » aussi bien qu'une date, et « du Demain » ne se dit pas.
+    // Les phrases sont donc construites pour que la date ouvre un segment.
+    _msgLien(dj < 0
+      ? 'Cette sortie est passée : <b>' + esc(jourTxt(msJour, 'long'))
+        + '</b>. Les modèles ne gardent pas l\'historique ici.'
+      : 'Aucune prévision pour <b>' + esc(cible.short || cible.name) + '</b> à cette date : <b>'
+        + esc(jourTxt(msJour, 'long')) + '</b> est au-delà de l\'horizon du modèle choisi.', true);
+    return;
+  }
+
+  _msgLien('Fiche de la sortie : <b>' + esc(jourTxt(best.ms, 'long')) + ' à '
+    + esc(heureTxt(best.ms)) + '</b> — <b>' + esc(cible.short || cible.name) + '</b>'
+    + (hh != null && Math.abs(best.ms - msCible) > 30 * 60000
+        ? ' (créneau le plus proche du départ prévu, ' + esc(heure) + ')' : '')
+    + '.', false);
+  openSlotFor(best);
+}
+
+// Un deuxième clic depuis sorties.html n'atteint pas le réseau (page en cache) :
+// seul le fragment change. Sans cet écouteur, rien ne se passerait.
+window.addEventListener('hashchange', function(){
+  _lienFait = false;
+  if (typeof critDerniersR !== 'undefined' && critDerniersR) ficheDepuisLien(critDerniersR);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // LE MEILLEUR CRÉNEAU — la réponse, avant les réglages
 // ════════════════════════════════════════════════════════════════════════════
 // Elle est donnée MÊME quand aucun créneau ne passe les critères : dans ce cas
 // on montre les meilleurs de la semaine en disant qu'ils sont hors critères.
 // Une page qui répond « rien » à « où aller » n'a pas répondu.
 var podDerniers = [];
+// Dernier résultat complet de filtrer(), gardé pour le lien profond : un
+// changement de fragment doit pouvoir rouvrir une fiche sans relancer toute la
+// recherche.
+var critDerniersR = null;
 
 function renderPodium(r){
   var box = document.getElementById('pod-body');

@@ -156,8 +156,14 @@ ne relire qu'elle-même.
 1. Un chantier = un commit. Vérifier qu'aucun `ReferenceError` n'apparaît.
 1bis. **Cinq harnais à relancer avant de pousser**, aucun n'a besoin du réseau :
    - `node test_score.js` (48 assertions) — moteur de score.
-   - `node test_tide.js` (44) — marée + fuseau. Il se relance seul dans 3 fuseaux
+   - `node test_tide.js` (57) — marée + fuseau. Il se relance seul dans 3 fuseaux
      hostiles, ce que le sandbox réglé sur `Pacific/Noumea` ne peut pas détecter.
+     Il couvre aussi, depuis le 23/11/2026, le **lien profond** de `sorties.html`
+     vers la fiche d'`accueil.html` (`#fiche=Spot,AAAA-MM-JJ,HH:MM`) : c'est le
+     seul endroit où une date venue d'une autre page entre dans la page, donc le
+     seul endroit où le décalage NC peut être faux. `msDeSortie()` entre dans
+     l'empreinte comparée entre fuseaux — une lecture en heure locale du
+     navigateur y est détectée, et pas par les assertions directes.
    - `node test_pages.js` (61, sur 8 pages) — invariants STRUCTURELS : commentaires
      CSS équilibrés, accolades, `var(--x)` jamais utilisée sans définition, id lus
      en JS présents dans le balisage, précache à jour.

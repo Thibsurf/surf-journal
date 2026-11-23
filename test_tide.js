@@ -39,6 +39,31 @@ function loadTide(fetchStub) {
   return ctx;
 }
 
+// ─── Le lien profond de sorties.html vers la fiche d'accueil.html ──────────
+// `msDeSortie()` est le SEUL endroit où une date venue d'une autre page entre
+// dans accueil.html. Elle a sa place ici plutôt que dans un harnais à elle :
+// ce fichier se rejoue déjà sous trois fuseaux hostiles, et c'est exactement ce
+// qu'il faut pour prouver qu'un « 2026-11-25 » cliqué depuis Los Angeles ouvre
+// bien la journée du 25 en Nouvelle-Calédonie, et pas celle du 24.
+//
+// On découpe la fonction du fichier HTML plutôt que de la recopier : une copie
+// finirait par diverger de la page, et c'est la page qu'on veut tester.
+function fnSrc(src, nom) {
+  const i = src.indexOf('function ' + nom + '(');
+  if (i < 0) throw new Error('fonction introuvable : ' + nom);
+  let prof = 0;
+  for (let k = src.indexOf('{', i); k < src.length; k++) {
+    if (src[k] === '{') prof++;
+    else if (src[k] === '}') { prof--; if (prof === 0) return src.slice(i, k + 1); }
+  }
+  throw new Error('accolades non refermées : ' + nom);
+}
+function loadLien() {
+  const page = readFileSync(join(ROOT, 'accueil.html'), 'utf8');
+  return (new Function(fnSrc(page, 'msDeSortie') + '\n' + fnSrc(page, '_clefSpot')
+    + '\nreturn { msDeSortie: msDeSortie, _clefSpot: _clefSpot };'))();
+}
+
 // ─── Données RÉELLES, relevées le 20/11/2026 sur le Worker ──────────────────
 // GET /tide?id=9881852&date=... (station Nouméa). Figées ici volontairement :
 // un test qui dépend du réseau ne tourne pas quand on en a le plus besoin, et
@@ -296,7 +321,50 @@ async function empreinte() {
   vals.push('model=' + T.tideHeightModel('2026-06-15', 7.25).toFixed(6));
   const pts = T._tideEventsToPoints(REEL['2026-11-20']);
   vals.push('pts=' + pts.map(p => p.ms).sort().join('|'));
+  // Le lien profond entre dans l'empreinte : c'est ce qui fait que les trois
+  // fuseaux hostiles le vérifient aussi, sans une ligne de plus.
+  const L = loadLien();
+  vals.push('lien=' + L.msDeSortie('2026-11-25', '07:00').ms
+    + '/' + L.msDeSortie('2026-11-25', '').jour
+    + '/' + L.msDeSortie('2026-07-15', '09:00').ms);
   return vals.join(',');
+}
+
+function testLienSortie() {
+  section('Lien sorties.html → fiche : la date reste calédonienne');
+  const L = loadLien();
+
+  // 07:00 en Nouvelle-Calédonie le 25/11, c'est 20:00 UTC le 24. Si cette
+  // assertion tombe, un utilisateur hors UTC+11 ouvre la fiche du mauvais jour.
+  ok(L.msDeSortie('2026-11-25', '07:00').ms === Date.UTC(2026, 10, 24, 20, 0),
+     '07:00 NC le 25/11 = 24/11 20:00 UTC');
+  ok(L.msDeSortie('2026-11-25', '07:00').jour === Date.UTC(2026, 10, 24, 13, 0),
+     'minuit NC du 25/11 = 24/11 13:00 UTC');
+  ok(L.msDeSortie('2026-01-01', '00:00').ms === Date.UTC(2025, 11, 31, 13, 0),
+     'un passage d\'année ne décale rien');
+  // NC n'a pas d'heure d'été : l'écart doit être le même en plein été austral
+  // (janvier) et en plein hiver (juillet).
+  ok(Date.UTC(2026, 0, 15, 9, 0) - L.msDeSortie('2026-01-15', '09:00').ms
+     === Date.UTC(2026, 6, 15, 9, 0) - L.msDeSortie('2026-07-15', '09:00').ms,
+     'même écart à UTC en janvier et en juillet (pas de DST)');
+
+  ok(L.msDeSortie('2026-11-25', '').heure === null
+     && L.msDeSortie('2026-11-25', '').ms === L.msDeSortie('2026-11-25', '').jour,
+     'sans heure, on vise minuit NC et on le signale (heure=null)');
+  ok(L.msDeSortie('2026-11-25', '99:99').heure === null,
+     'une heure hors bornes vaut « pas d\'heure », pas une date absurde');
+  ok(L.msDeSortie('25/11/2026', '07:00') === null, 'un format de date étranger est refusé');
+  ok(L.msDeSortie('', '07:00') === null && L.msDeSortie(null, null) === null,
+     'une date absente est refusée, sans lever');
+
+  // Le rapprochement de noms : le spot d'une sortie est un champ LIBRE.
+  ok(L._clefSpot('Passe de Dumbéa') === 'passededumbea', 'accents et espaces écartés');
+  ok(L._clefSpot('Îlot Ténia') === 'ilottenia', 'majuscule accentuée écartée aussi');
+  ok(L._clefSpot('Passe de Dumbéa').indexOf(L._clefSpot('Dumbéa')) >= 0,
+     '« Dumbéa » est bien contenu dans « Passe de Dumbéa » (le lien doit retomber dessus)');
+  ok(L._clefSpot('Baie de Ste Marie') !== L._clefSpot('Baie de Sainte Marie'),
+     '… mais deux libellés vraiment différents ne sont pas confondus');
+  ok(L._clefSpot(null) === '' && L._clefSpot(undefined) === '', 'une entrée vide ne lève pas');
 }
 
 function testFuseaux(empreinteLocale) {
@@ -336,6 +404,7 @@ function testFuseaux(empreinteLocale) {
   await testChaineComplete(T);
   testModele(T);
   testPorts(T);
+  testLienSortie();
   testFuseaux(await empreinte());
 
   console.log('\n' + '═'.repeat(64));

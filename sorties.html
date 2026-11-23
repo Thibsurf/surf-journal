@@ -1567,10 +1567,38 @@ async function loadMeteoForSortie(s) {
       + (per ? '<div class="m-item"><span class="v">⏱ ' + Math.round(per) + 's</span><span class="l">Période</span></div>' : '')
       + (ws ? '<div class="m-item"><span class="v' + (ws >= 20 ? '" style="color:var(--warm)' : '') + '">💨 ' + Math.round(ws) + 'nds</span><span class="l">Vent' + (wd !== null ? ' ' + dirArrow(wd) + ' ' + degCompass(wd) : '') + '</span></div>' : '')
       + '<div class="meteo-source" title="' + escapeHtml(coords.name) + ' (' + lat.toFixed(2) + ', ' + lon.toFixed(2) + ')">' + srcLabel + '</div>'
-      + '<a href="https://thibsurf.github.io/surf-journal/previsions.html" target="_blank" style="font-size:10px;color:var(--text-muted);text-decoration:none;align-self:center;">↗ NC</a>';
+      + ficheLink(s);
   } catch(e) {
     el.innerHTML = '<span class="meteo-loading">⚠ Impossible de charger</span>';
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// LIEN VERS LA FICHE DE SORTIE (accueil.html)
+// ════════════════════════════════════════════════════════════════
+// L'aperçu ci-dessus tient en trois chiffres. La fiche, elle, montre la rose
+// des houles sur la vue satellite, les trains secondaires, la marée de la
+// journée, le ciel et l'indice UV, l'avis marine s'il y en a un, et — le jour
+// même — la dernière mesure de vent près du spot. C'est le récap qu'on regarde
+// sur son téléphone avant de charger le bateau.
+//
+// Le lien remplace l'ancien « ↗ NC », qui ouvrait la page des prévisions à son
+// spot par défaut, sans rapport avec la sortie : il fallait ensuite choisir le
+// spot ET le jour à la main.
+//
+// Le format du fragment est lu par ficheDepuisLien() dans accueil.html. Le nom
+// du spot est encodé (donc ses virgules aussi, ce qui garde la découpe
+// fiable) ; il vient d'un champ libre et peut ne correspondre à aucun spot
+// suivi — accueil.html le dit alors clairement plutôt que de ne rien faire.
+function ficheLink(s) {
+  if (!s || !s.date_start) return '';
+  var frag = 'fiche=' + encodeURIComponent(s.spot || '')
+           + ',' + s.date_start
+           + (s.time_start ? ',' + encodeURIComponent(s.time_start) : '');
+  return '<a href="accueil.html#' + frag + '" '
+    + 'style="font-size:10px;color:var(--accent);text-decoration:none;align-self:center;'
+    + 'border:1px solid rgba(79,163,199,.3);border-radius:6px;padding:3px 8px;white-space:nowrap;" '
+    + 'title="Houle, vent, marée, ciel, UV et avis marine pour ce créneau">📋 Fiche</a>';
 }
 
 function degCompass(d) {
